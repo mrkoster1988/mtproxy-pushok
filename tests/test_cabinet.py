@@ -126,5 +126,48 @@ class CabinetTests(unittest.TestCase):
             self.assertNotIn("SET price_kopecks_snapshot", sql)
 
 
+
+    def test_foreign_payment_instructions_are_not_disclosed(self):
+        main.app.dependency_overrides[main.get_current_user] = lambda: {"id": uuid4(), "role": "advertiser"}
+        connection = MagicMock()
+        connection.execute.return_value.fetchone.return_value = None
+        with patch.object(main.psycopg, "connect") as connect:
+            connect.return_value.__enter__.return_value = connection
+            response = self.client.get("/api/v1/campaigns/" + str(uuid4()) + "/payment-instructions")
+            self.assertEqual(response.status_code, 404)
+            query = connection.execute.call_args.args[0]
+            self.assertIn("advertiser_user_id = %s", query)
+            self.assertIn("moderation_status = 'approved'", query)
+
+    def test_payment_instructions_use_snapshot_amount(self):
+        import base64
+        campaign_id = uuid4()
+        main.app.dependency_overrides[main.get_current_user] = lambda: {"id": uuid4(), "role": "advertiser"}
+        connection = MagicMock()
+        connection.execute.return_value.fetchone.return_value = {
+            "id": campaign_id, "price_kopecks_snapshot": 30000, "currency_snapshot": "RUB"}
+        with patch.object(main.psycopg, "connect") as connect, patch.dict(os.environ, {"PAYMENT_INSTRUCTIONS_B64": base64.b64encode("Получатель: Тест".encode()).decode()}):
+            connect.return_value.__enter__.return_value = connection
+            response = self.client.get("/api/v1/campaigns/" + str(campaign_id) + "/payment-instructions")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["amount_kopecks"], 30000)
+            self.assertEqual(response.json()["reference"], str(campaign_id))
+            self.assertEqual(response.json()["instructions"], "Получатель: Тест")
+            self.assertEqual(response.headers["cache-control"], "private, no-store")
+
+    def test_missing_payment_instructions_have_no_fake_details(self):
+        main.app.dependency_overrides[main.get_current_user] = lambda: {"id": uuid4(), "role": "advertiser"}
+        connection = MagicMock()
+        connection.execute.return_value.fetchone.return_value = {"id": uuid4(), "price_kopecks_snapshot": 30000, "currency_snapshot": "RUB"}
+        with patch.object(main.psycopg, "connect") as connect, patch.dict(os.environ, {"PAYMENT_INSTRUCTIONS_B64": ""}):
+            connect.return_value.__enter__.return_value = connection
+            response = self.client.get("/api/v1/campaigns/" + str(uuid4()) + "/payment-instructions")
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.json()["detail"], "payment_instructions_not_configured")
+
+    def test_anonymous_payment_instructions_denied(self):
+        self.assertEqual(self.client.get("/api/v1/campaigns/" + str(uuid4()) + "/payment-instructions").status_code, 401)
+
+
 if __name__ == "__main__":
     unittest.main()
