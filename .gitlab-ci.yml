@@ -1,0 +1,17 @@
+image: python:3.12-slim
+
+services:
+  - name: postgres:16-alpine
+    alias: postgres
+
+variables:
+  POSTGRES_DB: postgres
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: ci-test-only
+  TEST_ADMIN_DSN: "postgresql://postgres:ci-test-only@postgres:5432/postgres"
+  DATABASE_URL: "postgresql://postgres:ci-test-only@postgres:5432/postgres"
+
+test:
+  script:
+    - pip install -r api/requirements-dev.txt
+    - python -m unittest discover -s tests -v
