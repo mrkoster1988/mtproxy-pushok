@@ -25,7 +25,7 @@ from psycopg.rows import dict_row
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.008",
+    version="0.009",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 
@@ -479,11 +479,22 @@ def submit_campaign(
 ) -> CampaignResponse:
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            channel = connection.execute(
+                """
+                SELECT ch.id FROM sponsor_channels AS ch
+                JOIN campaigns AS c ON c.channel_id = ch.id
+                WHERE c.id = %s AND c.advertiser_user_id = %s
+                FOR UPDATE OF ch
+                """, (campaign_id, user["id"]),
+            ).fetchone()
+            if channel is None:
+                raise HTTPException(status_code=404, detail="campaign_not_found")
             row = connection.execute(
                 """
                 UPDATE campaigns
                 SET moderation_status = 'pending', updated_at = now()
-                WHERE id = %s AND advertiser_user_id = %s AND moderation_status = 'draft'
+                WHERE id = %s AND advertiser_user_id = %s AND moderation_status IN ('draft', 'changes_requested')
+                  AND payment_status = 'not_required' AND placement_status = 'not_scheduled'
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
                           duration_seconds_snapshot, price_kopecks_snapshot,
                           currency_snapshot, moderation_status, payment_status,
@@ -499,7 +510,7 @@ def submit_campaign(
                 ).fetchone()
                 if exists is None:
                     raise HTTPException(status_code=404, detail="campaign_not_found")
-                raise HTTPException(status_code=409, detail="campaign_not_draft")
+                raise HTTPException(status_code=409, detail="campaign_not_editable")
             connection.execute(
                 """
                 INSERT INTO audit_events (actor_user_id, campaign_id, event_type)
@@ -1105,6 +1116,71 @@ def change_proxy_node_status(
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return row
+
+
+
+
+@app.patch("/api/v1/campaigns/{campaign_id}/channel", response_model=ChannelResponse, tags=["campaigns"])
+def correct_campaign_channel(
+    campaign_id: UUID,
+    payload: ChannelCreate,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> ChannelResponse:
+    title = payload.title.strip()
+    try:
+        parsed = urlparse(payload.telegram_url)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="invalid_telegram_channel_url") from None
+    if not title:
+        raise HTTPException(status_code=422, detail="channel_title_required")
+    if (parsed.scheme != "https" or parsed.hostname not in {"t.me", "telegram.me"}
+        or not parsed.path.strip("/") or parsed.query or parsed.fragment
+        or parsed.netloc.lower() != parsed.hostname):
+        raise HTTPException(status_code=422, detail="invalid_telegram_channel_url")
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            channel = connection.execute(
+                """
+                SELECT ch.id FROM sponsor_channels AS ch
+                JOIN campaigns AS c ON c.channel_id = ch.id
+                WHERE c.id = %s AND c.advertiser_user_id = %s
+                  AND ch.owner_user_id = %s
+                FOR UPDATE OF ch
+                """, (campaign_id, user["id"], user["id"]),
+            ).fetchone()
+            if channel is None:
+                raise HTTPException(status_code=404, detail="campaign_not_found")
+            blocked = connection.execute(
+                """
+                SELECT 1 FROM campaigns WHERE channel_id = %s AND (
+                    moderation_status NOT IN ('draft', 'changes_requested')
+                    OR payment_status <> 'not_required'
+                    OR placement_status <> 'not_scheduled')
+                LIMIT 1
+                """, (channel["id"],),
+            ).fetchone()
+            if blocked:
+                raise HTTPException(status_code=409, detail="channel_in_review_or_approved")
+            row = connection.execute(
+                """
+                UPDATE sponsor_channels SET title = %s, telegram_url = %s,
+                    telegram_channel_id = NULL
+                WHERE id = %s RETURNING id, telegram_url, title
+                """, (title, payload.telegram_url.rstrip("/"), channel["id"]),
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO audit_events (actor_user_id, campaign_id, event_type)
+                VALUES (%s, %s, 'campaign_channel_corrected')
+                """, (user["id"], campaign_id),
+            )
+    except UniqueViolation as exc:
+        raise HTTPException(status_code=409, detail="channel_already_added") from exc
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return ChannelResponse(**row)
 
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
