@@ -1,31 +1,27 @@
 # MTProxy Pushok
 
-**Версия проекта: v0.004.**
+Версия проекта: v0.005.
 
 Отдельный проект для установки MTProxy и управления спонсорским каналом. Он развивается параллельно VPN-магазину; интеграцию с магазином выполним позже.
 
-## Что есть
+## Что готово
 
-- Установщик MTProxy на официальном исходном коде Telegram.
-- systemd-служба MTProxy и ежедневное обновление конфигурации Telegram.
-- Спецификация MVP кабинета спонсора: `docs/MVP.md`.
-- FastAPI и PostgreSQL-схема: роли, пользователи, каналы, тарифы, кампании и сессии.
-- Telegram Login Widget, список тарифов, создание каналов и черновиков кампаний, отправка на модерацию, решение оператора.
+- Установщик MTProxy, systemd-служба и ежедневное обновление конфигурации Telegram.
+- Спецификация MVP кабинета: docs/MVP.md.
+- FastAPI, PostgreSQL и вход через Telegram Login Widget.
+- Личные каналы и кампании, отправка на модерацию.
+- Ручная проверка оплаты, закрытая загрузка чеков, назначение слота и фиксация размещения оператором.
 
-## API и PostgreSQL
+## Локальный запуск API
 
-Это локальная среда разработки, не production-развёртывание. Порт API привязан к `127.0.0.1:8000`, PostgreSQL не публикует порт на хосте.
-
-Требуется Docker Engine с Compose plugin. Подготовьте настройки:
+Требуется Docker Engine с Compose plugin. Подготовьте .env:
 
 ~~~bash
 cp .env.example .env
 openssl rand -hex 32
 ~~~
 
-Сгенерируйте разные случайные строки для `POSTGRES_PASSWORD` и `SESSION_SIGNING_KEY`, затем заполните `TELEGRAM_BOT_TOKEN`. В @BotFather настройте домен сайта через `/setdomain` для бота авторизации. Не добавляйте реальные значения в Git.
-
-Запустите сервисы:
+Сгенерируйте разные случайные значения для POSTGRES_PASSWORD и SESSION_SIGNING_KEY, затем задайте токен бота в TELEGRAM_BOT_TOKEN. В @BotFather настройте домен сайта через /setdomain. Не добавляйте реальные секреты в Git.
 
 ~~~bash
 docker compose up --build -d
@@ -35,54 +31,46 @@ curl -fsS http://127.0.0.1:8000/health/ready
 curl -fsS http://127.0.0.1:8000/api/v1/tariffs
 ~~~
 
-Для интерфейса Telegram Login Widget отправляйте полученные от Telegram поля JSON-запросом на `POST /api/v1/auth/telegram`. Успешный ответ содержит bearer-токен; передавайте его как `Authorization: Bearer <token>`. Входная подпись проверяется по токену бота, устаревшие и повторно использованные данные отклоняются. Токен действует 12 часов и отзывается через `POST /api/v1/auth/logout`.
+API привязан к 127.0.0.1:8000; PostgreSQL и хранилище чеков не публикуются. Чеки ограничены 5 МБ и принимаются как JPEG, PNG или PDF. Оператор скачивает чек через защищённый маршрут GET /api/v1/operator/campaigns/{campaign_id}/payment-proofs/{proof_id}.
 
-Основные маршруты:
+## Сценарии рекламодателя
 
-- `GET /api/v1/tariffs` — активные тарифы;
-- `POST /api/v1/channels` — добавить свой канал;
-- `POST /api/v1/campaigns` — создать черновик по собственному каналу и активному тарифу;
-- `GET /api/v1/campaigns` — свои кампании;
-- `POST /api/v1/campaigns/{id}/submit` — отправить черновик на модерацию;
-- `POST /api/v1/operator/campaigns/{id}/moderation` — решение оператора; одобрение открывает шаг оплаты.
+1. Получить данные входа через Telegram Login Widget и отправить на POST /api/v1/auth/telegram.
+2. Передавать выданный токен в заголовке Authorization: Bearer <token>.
+3. Добавить канал через POST /api/v1/channels.
+4. Создать кампанию через POST /api/v1/campaigns и отправить на модерацию через POST /api/v1/campaigns/{id}/submit.
+5. После одобрения загрузить чек через POST /api/v1/campaigns/{id}/payment-proofs.
 
-Для проверки защищённых маршрутов сначала получите токен через Telegram Login Widget и передавайте его в заголовке Authorization. Роль оператора назначается администратором напрямую в БД; публичного API для повышения роли нет.
+Список тарифов: GET /api/v1/tariffs. Свои кампании и комментарии по чекам: GET /api/v1/campaigns. Выход с отзывом сессии: POST /api/v1/auth/logout.
 
-На чистой базе SQL-файлы в `database/` выполняются при первом запуске Compose. Для существующего локального тома v0.003 примените добавленную миграцию:
+## Сценарии оператора
 
-~~~bash
-docker compose exec -T db psql -U mtproxy_pushok -d mtproxy_pushok < database/002_telegram_auth.sql
-~~~
+- Очередь: GET /api/v1/operator/campaigns?moderation_status=pending или payment_status=proof_submitted.
+- Модерация: POST /api/v1/operator/campaigns/{id}/moderation.
+- Проверка оплаты: POST /api/v1/operator/campaigns/{id}/payment-review; отказ требует комментарий.
+- Назначение размещения: POST /api/v1/operator/campaigns/{id}/schedule; время окончания вычисляется по длительности тарифа, PostgreSQL блокирует пересечения на одном узле.
+- Фиксация ручного включения: POST /api/v1/operator/campaigns/{id}/activate.
+- Фиксация выключения и завершения: POST /api/v1/operator/campaigns/{id}/complete.
 
-Сброс локальной базы командой `docker compose down -v` удаляет все данные в томе.
+Решение оператора об активации означает, что тег был вручную применён в конфигурации MTProxy. API не хранит тег и не переключает его автоматически. Прокси-узлы пока добавляются администратором напрямую в БД; публичного API управления инфраструктурой нет.
 
-## Установка MTProxy
+Для чистой БД Compose выполняет SQL-файлы из database/ при первом создании тома. При существующей базе новые SQL-миграции применяются вручную. Команда docker compose down -v удаляет локальные данные БД и загруженные чеки.
 
-Требуется Ubuntu/Debian с systemd и доступом root, домен или IPv4 и свободный TCP-порт. Для домена `mtproxy.pushok.shop` создайте DNS A-запись на IPv4 VPS. По умолчанию используется TCP 8443.
+## MTProxy
+
+Для mtproxy.pushok.shop создайте DNS A-запись на IPv4 VPS. Установщик запускается от root на Ubuntu/Debian:
 
 ~~~bash
 sudo bash install.sh
 ~~~
 
-Проверьте службы:
-
-~~~bash
-systemctl is-active mtproxy-pushok
-systemctl is-active mtproxy-pushok-update-config.timer
-ss -lntp | grep ':8443'
-journalctl -u mtproxy-pushok -n 100 --no-pager
-~~~
-
-Обычный HTTP reverse proxy (Nginx/Caddy) не проксирует MTProxy как HTTP-сайт. Межсетевой экран должен пропускать выбранный TCP-порт.
+По умолчанию используется TCP-порт 8443. Обычный HTTP reverse proxy не проксирует MTProxy как HTTP-сайт. Регистрация прокси и получение спонсорского тега выполняются через официальный @MTProxybot.
 
 ## Ограничения
 
-- Telegram-аутентификация и API-маршруты опубликованы в исходниках, но их запуск и интеграционные сценарии ещё не проверены.
-- Перед публичным размещением нужны HTTPS, ограничения частоты запросов и проверка параметров развёртывания.
-- Платежи подтверждаются вручную; автоматическая смена спонсорского тега не реализована.
-- Секрет MTProxy находится в `/etc/mtproxy-pushok/mtproxy.env` с правами 0600. Не публикуйте его.
+- v0.005 не развёрнут на VPS и не проверен с реальным Telegram-ботом или PostgreSQL.
+- Перед публичным размещением нужны HTTPS, ограничения частоты запросов, резервное копирование БД и файлов, а также операционные проверки.
+- Подтверждение оплаты и применение MTProxy-тега выполняются оператором вручную.
 - MTProxy Pushok остаётся отдельным от VPN-магазина; объединение планируется позже.
 
-## Версии
-
-Подробная история изменений находится в [CHANGELOG.md](CHANGELOG.md). MVP-спецификация — [docs/MVP.md](docs/MVP.md).
+Версии: CHANGELOG.md.
