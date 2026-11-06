@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import os
+from pathlib import Path
 import secrets
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
@@ -13,6 +14,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
@@ -21,7 +23,7 @@ from psycopg.rows import dict_row
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.005",
+    version="0.006",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 
@@ -103,6 +105,8 @@ class CampaignResponse(BaseModel):
     scheduled_end_at: datetime | None
     moderator_comment: str | None
     payment_review_comment: str | None = None
+    channel_title: str | None = None
+    channel_url: str | None = None
 
 
 class PaymentReviewRequest(BaseModel):
@@ -436,13 +440,15 @@ def list_campaigns(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             rows = connection.execute(
                 """
-                SELECT c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
+                SELECT sc.title AS channel_title, sc.telegram_url AS channel_url,
+                       c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
                        c.duration_seconds_snapshot, c.price_kopecks_snapshot,
                        c.currency_snapshot, c.moderation_status, c.payment_status,
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
                        c.scheduled_end_at, c.moderator_comment,
                        latest_proof.review_comment AS payment_review_comment
                 FROM campaigns AS c
+                JOIN sponsor_channels AS sc ON sc.id = c.channel_id
                 LEFT JOIN LATERAL (
                     SELECT p.review_comment
                     FROM payment_proofs AS p
@@ -915,13 +921,15 @@ def list_operator_campaigns(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             rows = connection.execute(
                 f"""
-                SELECT c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
+                SELECT sc.title AS channel_title, sc.telegram_url AS channel_url,
+                       c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
                        c.duration_seconds_snapshot, c.price_kopecks_snapshot,
                        c.currency_snapshot, c.moderation_status, c.payment_status,
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
                        c.scheduled_end_at, c.moderator_comment,
                        latest_proof.review_comment AS payment_review_comment
                 FROM campaigns AS c
+                JOIN sponsor_channels AS sc ON sc.id = c.channel_id
                 LEFT JOIN LATERAL (
                     SELECT p.review_comment
                     FROM payment_proofs AS p
@@ -938,3 +946,61 @@ def list_operator_campaigns(
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [_campaign_response(row) for row in rows]
+
+
+@app.get("/api/v1/public-config", tags=["configuration"])
+def public_config() -> dict[str, str]:
+    username = os.getenv("TELEGRAM_BOT_USERNAME", "").lstrip("@")
+    return {"telegram_bot_username": "" if username.startswith("REPLACE_WITH") else username}
+
+
+@app.get("/api/v1/channels", response_model=list[ChannelResponse], tags=["channels"])
+def list_channels(user: dict[str, Any] = Depends(get_current_user)) -> list[ChannelResponse]:
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            rows = connection.execute(
+                "SELECT id, telegram_url, title FROM sponsor_channels WHERE owner_user_id = %s ORDER BY created_at DESC",
+                (user["id"],),
+            ).fetchall()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return [ChannelResponse(**row) for row in rows]
+
+
+@app.get("/api/v1/operator/proxy-nodes", tags=["operator"])
+def list_proxy_nodes(operator: dict[str, Any] = Depends(require_operator)) -> list[dict[str, Any]]:
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            return connection.execute(
+                "SELECT id, name, status FROM proxy_nodes ORDER BY name"
+            ).fetchall()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+
+
+@app.get("/api/v1/operator/campaigns/{campaign_id}/payment-proofs", tags=["operator"])
+def list_payment_proofs(
+    campaign_id: UUID,
+    operator: dict[str, Any] = Depends(require_operator),
+) -> list[dict[str, Any]]:
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            return connection.execute(
+                """
+                SELECT id, original_file_name, content_type, size_bytes, submitted_at,
+                       reviewed_at, review_comment
+                FROM payment_proofs WHERE campaign_id = %s ORDER BY submitted_at DESC
+                """,
+                (campaign_id,),
+            ).fetchall()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+
+
+WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
+
+
+@app.get("/", include_in_schema=False)
+def cabinet() -> FileResponse:
+    return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-store"})
