@@ -69,7 +69,9 @@ class PostgresIntegration(unittest.TestCase):
         main.app.dependency_overrides[main.get_current_user] = lambda: actor
         channel = self.request("POST", "/channels", 201, json={"title": "Тест", "telegram_url": "https://t.me/pushok_test"})
         tariff = self.request("GET", "/tariffs")[0]
-        campaign = self.request("POST", "/campaigns", 201, json={"channel_id": channel["id"], "tariff_id": tariff["id"]})
+        desired = (datetime.now(timezone.utc) + timedelta(hours=1)).replace(microsecond=0)
+        campaign = self.request("POST", "/campaigns", 201, json={"channel_id": channel["id"], "tariff_id": tariff["id"], "requested_start_at": desired.isoformat()})
+        self.assertEqual(datetime.fromisoformat(campaign["requested_start_at"].replace("Z", "+00:00")), desired)
         cid = campaign["id"]
         self.request("POST", "/campaigns/" + cid + "/submit")
         actor = {"id": operator, "role": "admin"}
@@ -90,9 +92,17 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1" + download).status_code, 200)
         self.request("POST", "/operator/campaigns/" + cid + "/payment-review", json={"decision": "verified"})
         node = self.request("POST", "/admin/proxy-nodes", 201, json={"name": "Тестовый узел", "host": "proxy.example.org", "port": 8443})
-        start = datetime.now(timezone.utc) + timedelta(hours=1)
+        start = desired
+        params = {"tariff_id": tariff["id"], "date_from": start.date().isoformat(), "start_time": start.strftime("%H:%M:%S"), "timezone_name": "UTC", "days": 2}
+        before = self.request("GET", "/availability", params=params)
+        self.assertEqual(before["days"][0]["available_nodes"], 1)
+        self.assertFalse(before["reservation"])
+        self.assertEqual(set(before["days"][0]), {"date", "start_at", "end_at", "available_nodes"})
         scheduled = self.request("POST", "/operator/campaigns/" + cid + "/schedule", json={"proxy_node_id": node["id"], "start_at": start.isoformat()})
         self.assertEqual(scheduled["placement_status"], "scheduled")
+        busy = self.request("GET", "/availability", params=params)
+        self.assertEqual(busy["days"][0]["available_nodes"], 0)
+        self.assertEqual(busy["days"][1]["available_nodes"], 1)
         self.request("PATCH", "/admin/proxy-nodes/" + node["id"] + "/status", 409, json={"status": "paused"})
         self.request("POST", "/operator/campaigns/" + cid + "/activate", 409)
         # Вторая оплаченная кампания нужна для проверки ограничения интервалов в PostgreSQL.

@@ -169,5 +169,29 @@ class CabinetTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1/campaigns/" + str(uuid4()) + "/payment-instructions").status_code, 401)
 
 
+
+    def test_calendar_requires_login(self):
+        from datetime import datetime, timezone
+        self.assertEqual(self.client.get("/api/v1/availability", params={"tariff_id": str(uuid4()), "date_from": datetime.now(timezone.utc).date().isoformat()}).status_code, 401)
+
+    def test_calendar_invalid_parameters_do_not_reach_database(self):
+        from datetime import datetime, timezone
+        main.app.dependency_overrides[main.get_current_user] = lambda: {"id": uuid4(), "role": "advertiser"}
+        params = {"tariff_id": str(uuid4()), "date_from": datetime.now(timezone.utc).date().isoformat()}
+        with patch.object(main.psycopg, "connect") as connect:
+            self.assertEqual(self.client.get("/api/v1/availability", params={**params, "days": 32}).status_code, 422)
+            self.assertEqual(self.client.get("/api/v1/availability", params={**params, "timezone_name": "Not/AZone"}).status_code, 422)
+            self.assertEqual(self.client.get("/api/v1/availability", params={**params, "date_from": "2000-01-01"}).status_code, 422)
+            connect.assert_not_called()
+
+    def test_requested_start_requires_future_and_timezone(self):
+        main.app.dependency_overrides[main.get_current_user] = lambda: {"id": uuid4(), "role": "advertiser"}
+        payload = {"channel_id": str(uuid4()), "tariff_id": str(uuid4())}
+        with patch.object(main.psycopg, "connect") as connect:
+            for start in ["2030-01-01T12:00:00", "2000-01-01T12:00:00Z"]:
+                response = self.client.post("/api/v1/campaigns", json={**payload, "requested_start_at": start})
+                self.assertEqual(response.status_code, 422)
+            connect.assert_not_called()
+
 if __name__ == "__main__":
     unittest.main()

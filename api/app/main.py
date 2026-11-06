@@ -9,7 +9,8 @@ from pathlib import Path
 import secrets
 import time
 from base64 import b64decode, urlsafe_b64decode, urlsafe_b64encode
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date as Date, time as Time
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
@@ -19,13 +20,13 @@ from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile,
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from psycopg.errors import ExclusionViolation, UniqueViolation
 from psycopg.rows import dict_row
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.011",
+    version="0.012",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 
@@ -89,6 +90,16 @@ class CampaignCreate(BaseModel):
     channel_id: UUID
     tariff_id: UUID
     requested_start_at: datetime | None = None
+
+    @field_validator("requested_start_at")
+    @classmethod
+    def validate_requested_start(cls, value: datetime | None) -> datetime | None:
+        if value is not None:
+            if value.tzinfo is None or value.utcoffset() is None:
+                raise ValueError("Укажите часовой пояс")
+            if value <= datetime.now(timezone.utc):
+                raise ValueError("Выберите время в будущем")
+        return value
 
 
 class CampaignResponse(BaseModel):
@@ -1223,6 +1234,72 @@ def get_payment_instructions(
         "reference": str(campaign["id"]),
         "instructions": instructions,
         "verification": "manual",
+    }
+
+
+
+
+@app.get("/api/v1/availability", tags=["calendar"])
+def get_availability(
+    tariff_id: UUID,
+    date_from: Date,
+    days: int = 14,
+    timezone_name: str = "Europe/Moscow",
+    start_time: Time = Time(12, 0),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    if days < 1 or days > 31 or start_time.tzinfo is not None:
+        raise HTTPException(status_code=422, detail="invalid_calendar_range")
+    try:
+        zone = ZoneInfo(timezone_name)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise HTTPException(status_code=422, detail="invalid_calendar_timezone") from None
+    today = datetime.now(zone).date()
+    if date_from < today or date_from + timedelta(days=days - 1) > today + timedelta(days=90):
+        raise HTTPException(status_code=422, detail="invalid_calendar_range")
+    now = datetime.now(timezone.utc)
+    starts = [datetime.combine(date_from + timedelta(days=i), start_time, tzinfo=zone) for i in range(days)]
+    # В дни перехода часов не предлагаем несуществующее локальное время.
+    valid = [dt for dt in starts if dt > now and dt.astimezone(timezone.utc).astimezone(zone).replace(tzinfo=None) == dt.replace(tzinfo=None)]
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            tariff = connection.execute(
+                "SELECT duration_seconds FROM tariffs WHERE id = %s AND is_active = TRUE",
+                (tariff_id,),
+            ).fetchone()
+            if tariff is None:
+                raise HTTPException(status_code=404, detail="active_tariff_not_found")
+            duration = timedelta(seconds=tariff["duration_seconds"])
+            ends = [dt.astimezone(timezone.utc) + duration for dt in valid]
+            rows = connection.execute(
+                """
+                SELECT w.starts_at, count(n.id) AS available_nodes
+                FROM unnest(%s::timestamptz[], %s::timestamptz[]) AS w(starts_at, ends_at)
+                LEFT JOIN proxy_nodes AS n ON n.status = 'active'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM campaigns AS c
+                    WHERE c.proxy_node_id = n.id
+                      AND c.placement_status IN ('scheduled', 'active')
+                      AND tstzrange(c.scheduled_start_at, c.scheduled_end_at, '[)')
+                          && tstzrange(w.starts_at, w.ends_at, '[)')
+                  )
+                GROUP BY w.starts_at ORDER BY w.starts_at
+                """, (valid, ends),
+            ).fetchall() if valid else []
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    counts = {row["starts_at"]: row["available_nodes"] for row in rows}
+    return {
+        "tariff_id": tariff_id, "timezone": timezone_name,
+        "duration_seconds": tariff["duration_seconds"], "reservation": False,
+        "days": [
+            {"date": dt.date().isoformat(), "start_at": dt.isoformat(),
+             "end_at": (dt.astimezone(timezone.utc) + duration).isoformat(),
+             "available_nodes": counts.get(dt, 0)}
+            for dt in starts
+        ],
     }
 
 
