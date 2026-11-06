@@ -70,5 +70,61 @@ class CabinetTests(unittest.TestCase):
             main._decode_session_token(token.split(".")[0] + ".invalid")
 
 
+    def test_foreign_campaign_correction_returns_404(self):
+        main.app.dependency_overrides[main.get_current_user] = lambda: {"id": uuid4(), "role": "advertiser"}
+        connection = MagicMock()
+        connection.execute.return_value.fetchone.return_value = None
+        with patch.object(main.psycopg, "connect") as connect:
+            connect.return_value.__enter__.return_value = connection
+            response = self.client.patch("/api/v1/campaigns/" + str(uuid4()) + "/channel", json={"title": "Канал", "telegram_url": "https://t.me/example"})
+            self.assertEqual(response.status_code, 404)
+            self.assertEqual(connection.execute.call_count, 1)
+
+    def test_reviewed_channel_cannot_be_corrected(self):
+        main.app.dependency_overrides[main.get_current_user] = lambda: {"id": uuid4(), "role": "advertiser"}
+        connection = MagicMock()
+        connection.execute.return_value.fetchone.side_effect = [{"id": uuid4()}, {"blocked": 1}]
+        with patch.object(main.psycopg, "connect") as connect:
+            connect.return_value.__enter__.return_value = connection
+            response = self.client.patch("/api/v1/campaigns/" + str(uuid4()) + "/channel", json={"title": "Канал", "telegram_url": "https://t.me/example"})
+            self.assertEqual(response.status_code, 409)
+            self.assertEqual(connection.execute.call_count, 2)
+
+    def test_channel_correction_is_audited(self):
+        user_id, channel_id, campaign_id = uuid4(), uuid4(), uuid4()
+        main.app.dependency_overrides[main.get_current_user] = lambda: {"id": user_id, "role": "advertiser"}
+        connection = MagicMock()
+        connection.execute.return_value.fetchone.side_effect = [
+            {"id": channel_id}, None,
+            {"id": channel_id, "title": "Исправлено", "telegram_url": "https://t.me/corrected"},
+        ]
+        with patch.object(main.psycopg, "connect") as connect:
+            connect.return_value.__enter__.return_value = connection
+            response = self.client.patch("/api/v1/campaigns/" + str(campaign_id) + "/channel", json={"title": "Исправлено", "telegram_url": "https://t.me/corrected"})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["title"], "Исправлено")
+            self.assertIn("campaign_channel_corrected", connection.execute.call_args.args[0])
+
+    def test_resubmit_returned_campaign_preserves_tariff(self):
+        user_id, campaign_id = uuid4(), uuid4()
+        main.app.dependency_overrides[main.get_current_user] = lambda: {"id": user_id, "role": "advertiser"}
+        row = dict(id=campaign_id, channel_id=uuid4(), tariff_id=uuid4(),
+                   tariff_name_snapshot="1 день", duration_seconds_snapshot=86400,
+                   price_kopecks_snapshot=30000, currency_snapshot="RUB",
+                   moderation_status="pending", payment_status="not_required",
+                   placement_status="not_scheduled", requested_start_at=None,
+                   scheduled_start_at=None, scheduled_end_at=None, moderator_comment="Исправьте ссылку")
+        connection = MagicMock()
+        connection.execute.return_value.fetchone.side_effect = [{"id": row["channel_id"]}, row]
+        with patch.object(main.psycopg, "connect") as connect:
+            connect.return_value.__enter__.return_value = connection
+            response = self.client.post("/api/v1/campaigns/" + str(campaign_id) + "/submit")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["price_kopecks_snapshot"], 30000)
+            sql = connection.execute.call_args_list[1].args[0]
+            self.assertIn("'changes_requested'", sql)
+            self.assertNotIn("SET price_kopecks_snapshot", sql)
+
+
 if __name__ == "__main__":
     unittest.main()
