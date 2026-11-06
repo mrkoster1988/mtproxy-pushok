@@ -8,14 +8,14 @@ import re
 from pathlib import Path
 import secrets
 import time
-from base64 import urlsafe_b64decode, urlsafe_b64encode
+from base64 import b64decode, urlsafe_b64decode, urlsafe_b64encode
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import psycopg
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -25,7 +25,7 @@ from psycopg.rows import dict_row
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.009",
+    version="0.010",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 
@@ -1181,6 +1181,49 @@ def correct_campaign_channel(
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return ChannelResponse(**row)
+
+
+
+
+@app.get("/api/v1/campaigns/{campaign_id}/payment-instructions", tags=["payments"])
+def get_payment_instructions(
+    campaign_id: UUID,
+    response: Response,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            campaign = connection.execute(
+                """
+                SELECT id, price_kopecks_snapshot, currency_snapshot
+                FROM campaigns
+                WHERE id = %s AND advertiser_user_id = %s
+                  AND moderation_status = 'approved'
+                  AND payment_status IN ('awaiting_payment', 'rejected', 'proof_submitted', 'verified')
+                """, (campaign_id, user["id"]),
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="campaign_not_found")
+    try:
+        raw = os.getenv("PAYMENT_INSTRUCTIONS_B64", "")
+        if len(raw) > 22000:
+            raise ValueError("too long")
+        instructions = b64decode(raw, validate=True).decode("utf-8").strip()
+        if not instructions or len(instructions) > 4000:
+            raise ValueError("invalid instructions")
+    except (ValueError, binascii.Error, UnicodeDecodeError):
+        raise HTTPException(status_code=503, detail="payment_instructions_not_configured") from None
+    response.headers["Cache-Control"] = "private, no-store"
+    return {
+        "campaign_id": campaign["id"],
+        "amount_kopecks": campaign["price_kopecks_snapshot"],
+        "currency": campaign["currency_snapshot"].strip(),
+        "reference": str(campaign["id"]),
+        "instructions": instructions,
+        "verification": "manual",
+    }
 
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
