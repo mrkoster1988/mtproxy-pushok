@@ -67,16 +67,35 @@ install_docker() {
   apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl enable --now docker
 }
-echo "MTProxy Pushok v0.007 — мастер настройки" >&2
+
+configure_payments() {
+  PAYMENT_B64=""
+  choose PAYMENT_MODE "Реквизиты для ручной оплаты" 1 "Указать инструкцию и получателя сейчас" "Настроить позже / отключить показ реквизитов"
+  if [[ "$PAYMENT_MODE" == 1 ]]; then
+    while true; do
+      ask PAYMENT_TEXT "Реквизиты, получатель и инструкция (одной строкой, без суммы)" ""
+      if [[ -n "$PAYMENT_TEXT" ]] && (( $(printf '%s' "$PAYMENT_TEXT" | wc -m) <= 4000 )); then break; fi
+      echo "Введите от 1 до 4000 символов." >&2
+    done
+    PAYMENT_B64="$(printf '%s' "$PAYMENT_TEXT" | base64 -w0)"
+    unset PAYMENT_TEXT
+  fi
+  PAYMENT_CHANGED=true
+}
+
+echo "MTProxy Pushok v0.010 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 NEW_CONFIG=true
 HTTPS=1
 ADMIN_ID=""
+PAYMENT_CHANGED=false
+PAYMENT_B64=""
 if [[ "$COMPONENTS" != 1 ]]; then
   if [[ -f "$ROOT_DIR/.env" ]]; then
-    choose EXISTING "Найдена существующая настройка" 1 "Сохранить настройки и обновить сервисы" "Завершить без изменений"
-    [[ "$EXISTING" == 1 ]] || exit 0
+    choose EXISTING "Найдена существующая настройка" 1 "Сохранить настройки и обновить сервисы" "Изменить инструкцию оплаты и обновить" "Завершить без изменений"
+    [[ "$EXISTING" != 3 ]] || exit 0
     NEW_CONFIG=false
+    if [[ "$EXISTING" == 2 ]]; then configure_payments; fi
   else
     choose HTTPS "Как открыть кабинет?" 1 "Через существующий Nginx/Caddy (API на localhost)" "Новый Caddy с автоматическим HTTPS (свободные 80/443)" "Только локально, без домена"
     if [[ "$HTTPS" != 3 ]]; then domain_input CABINET_DOMAIN; fi
@@ -106,6 +125,7 @@ if [[ "$COMPONENTS" != 1 ]]; then
         done
       fi
     fi
+    configure_payments
   fi
 fi
 case "$COMPONENTS" in
@@ -157,6 +177,7 @@ SESSION_SIGNING_KEY=$SESSION_KEY
 TELEGRAM_BOT_TOKEN=$BOT_TOKEN
 TELEGRAM_BOT_USERNAME=$BOT_USERNAME
 API_BIND_PORT=$API_PORT
+PAYMENT_INSTRUCTIONS_B64=$PAYMENT_B64
 EOF
     chmod 0600 .env
     if [[ "$HTTPS" == 2 ]]; then
@@ -185,6 +206,14 @@ EOF
     fi
   fi
   command -v curl >/dev/null || { apt-get update; apt-get install -y curl; }
+  if "$PAYMENT_CHANGED" && ! "$NEW_CONFIG"; then
+    umask 077
+    payment_env="$(mktemp .env.payments.XXXXXX)"
+    sed '/^PAYMENT_INSTRUCTIONS_B64=/d' .env > "$payment_env"
+    printf 'PAYMENT_INSTRUCTIONS_B64=%s\n' "$PAYMENT_B64" >> "$payment_env"
+    chmod 0600 "$payment_env"
+    mv "$payment_env" .env
+  fi
   docker compose config --quiet
   docker compose up -d db
   ready=false
