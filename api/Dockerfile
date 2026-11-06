@@ -6,7 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /srv/mtproxy-pushok
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && mkdir -p /var/lib/mtproxy-pushok/payment-proofs \
+    && chown -R 10001:10001 /var/lib/mtproxy-pushok
 
 COPY app ./app
 
