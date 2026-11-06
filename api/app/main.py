@@ -3,6 +3,8 @@ import hashlib
 import hmac
 import json
 import os
+import ipaddress
+import re
 from pathlib import Path
 import secrets
 import time
@@ -23,7 +25,7 @@ from psycopg.rows import dict_row
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.006",
+    version="0.008",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 
@@ -785,7 +787,7 @@ def schedule_placement(
             ):
                 raise HTTPException(status_code=409, detail="campaign_not_ready_for_placement")
             node = connection.execute(
-                "SELECT id FROM proxy_nodes WHERE id = %s AND status = 'active'",
+                "SELECT id FROM proxy_nodes WHERE id = %s AND status = 'active' FOR UPDATE",
                 (payload.proxy_node_id,),
             ).fetchone()
             if node is None:
@@ -972,7 +974,7 @@ def list_proxy_nodes(operator: dict[str, Any] = Depends(require_operator)) -> li
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             return connection.execute(
-                "SELECT id, name, status FROM proxy_nodes ORDER BY name"
+                "SELECT id, name, host, port, status FROM proxy_nodes ORDER BY name"
             ).fetchall()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
@@ -995,6 +997,114 @@ def list_payment_proofs(
             ).fetchall()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
+
+
+
+
+def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="admin_role_required")
+    return user
+
+
+class ProxyNodeCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    host: str = Field(min_length=1, max_length=253)
+    port: int = Field(ge=1, le=65535)
+
+
+class ProxyNodeStatus(BaseModel):
+    status: str = Field(pattern="^(active|paused)$")
+
+
+def normalize_proxy_host(host: str) -> str:
+    host = host.strip().lower()
+    try:
+        return str(ipaddress.ip_address(host))
+    except ValueError:
+        labels = host.split(".")
+        if len(labels) < 2 or any(
+            not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+            for label in labels
+        ):
+            raise HTTPException(status_code=422, detail="invalid_proxy_host") from None
+        return host
+
+
+@app.post("/api/v1/admin/proxy-nodes", status_code=201, tags=["admin"])
+def create_proxy_node(
+    payload: ProxyNodeCreate,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="proxy_name_required")
+    host = normalize_proxy_host(payload.host)
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            row = connection.execute(
+                """
+                INSERT INTO proxy_nodes (name, host, port)
+                VALUES (%s, %s, %s)
+                RETURNING id, name, host, port, status
+                """,
+                (name, host, payload.port),
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO audit_events (actor_user_id, event_type, details_json)
+                VALUES (%s, 'proxy_node_created', jsonb_build_object('node_id', %s::text))
+                """,
+                (admin["id"], str(row["id"])),
+            )
+    except UniqueViolation as exc:
+        raise HTTPException(status_code=409, detail="proxy_node_already_exists") from exc
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return row
+
+
+@app.patch("/api/v1/admin/proxy-nodes/{node_id}/status", tags=["admin"])
+def change_proxy_node_status(
+    node_id: UUID,
+    payload: ProxyNodeStatus,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            node = connection.execute(
+                "SELECT id FROM proxy_nodes WHERE id = %s FOR UPDATE", (node_id,)
+            ).fetchone()
+            if node is None:
+                raise HTTPException(status_code=404, detail="proxy_node_not_found")
+            if payload.status == "paused":
+                occupied = connection.execute(
+                    """
+                    SELECT 1 FROM campaigns
+                    WHERE proxy_node_id = %s AND placement_status IN ('scheduled', 'active')
+                    LIMIT 1
+                    """, (node_id,),
+                ).fetchone()
+                if occupied:
+                    raise HTTPException(status_code=409, detail="proxy_node_has_placements")
+            row = connection.execute(
+                """
+                UPDATE proxy_nodes SET status = %s, updated_at = now()
+                WHERE id = %s RETURNING id, name, host, port, status
+                """, (payload.status, node_id),
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO audit_events (actor_user_id, event_type, details_json)
+                VALUES (%s, 'proxy_node_status_changed',
+                        jsonb_build_object('node_id', %s::text, 'status', %s::text))
+                """, (admin["id"], str(node_id), payload.status),
+            )
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return row
 
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
