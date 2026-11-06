@@ -1,0 +1,72 @@
+# Изолированная тестовая среда: нет опубликованных портов и production .env.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: smoke-only
+      POSTGRES_DB: pushok_smoke
+    volumes:
+      - smoke-db:/var/lib/postgresql/data
+      - ./database:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d pushok_smoke"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [smoke]
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgresql://postgres:smoke-only@db:5432/pushok_smoke
+      SESSION_SIGNING_KEY: smoke-only-session-signing-key-000000000000
+      TELEGRAM_BOT_TOKEN: ""
+      TELEGRAM_BOT_USERNAME: ""
+    volumes:
+      - smoke-proofs:/var/lib/mtproxy-pushok/payment-proofs
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=3)"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+      start_period: 20s
+    networks: [smoke]
+  backupcheck:
+    image: postgres:16-alpine
+    environment:
+      PGHOST: db
+      PGUSER: postgres
+      PGPASSWORD: smoke-only
+      PGDATABASE: pushok_smoke
+    volumes:
+      - ./scripts:/checks:ro
+      - ./database:/migrations:ro
+      - smoke-proofs:/proofs
+    command: ["sh", "/checks/check_backup_restore.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [smoke]
+  checks:
+    build:
+      context: .
+      dockerfile: Dockerfile.smoke
+    environment:
+      DATABASE_URL: postgresql://postgres:smoke-only@db:5432/pushok_smoke
+      TEST_ADMIN_DSN: postgresql://postgres:smoke-only@db:5432/postgres
+      SMOKE_API_URL: http://api:8000
+    volumes:
+      - smoke-proofs:/proofs:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    networks: [smoke]
+volumes:
+  smoke-db:
+  smoke-proofs:
+networks:
+  smoke:
+    internal: true

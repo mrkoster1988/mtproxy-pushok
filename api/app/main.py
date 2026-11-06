@@ -26,7 +26,7 @@ from psycopg.rows import dict_row
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.012",
+    version="0.013",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 

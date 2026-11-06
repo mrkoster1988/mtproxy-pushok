@@ -29,3 +29,13 @@ jobs:
           python-version: "3.12"
       - run: pip install -r api/requirements-dev.txt
       - run: python -m unittest discover -s tests -v
+
+  compose-smoke:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash -n setup.sh scripts/smoke.sh
+      - run: sh -n scripts/check_backup_restore.sh scripts/compose_checks.sh
+      - run: bash scripts/smoke.sh

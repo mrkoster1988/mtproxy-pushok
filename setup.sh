@@ -83,7 +83,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v0.012 — мастер настройки" >&2
+echo "MTProxy Pushok v0.013 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 NEW_CONFIG=true
 HTTPS=1
@@ -97,10 +97,24 @@ if [[ "$COMPONENTS" != 1 ]]; then
     NEW_CONFIG=false
     if [[ "$EXISTING" == 2 ]]; then configure_payments; fi
   else
-    choose HTTPS "Как открыть кабинет?" 1 "Через существующий Nginx/Caddy (API на localhost)" "Новый Caddy с автоматическим HTTPS (свободные 80/443)" "Только локально, без домена"
+    choose INSTALL_MODE "Назначение установки" 1 "Основная установка" "Приватный staging (только localhost)"
+    PROJECT_DEFAULT=mtproxy-pushok
+    PORT_DEFAULT=8000
+    if [[ "$INSTALL_MODE" == 2 ]]; then PROJECT_DEFAULT=mtproxy-pushok-staging; PORT_DEFAULT=8010; fi
+    while true; do
+      ask PROJECT_NAME "Уникальное имя Compose-проекта" "$PROJECT_DEFAULT"
+      [[ "$PROJECT_NAME" =~ ^[a-z0-9][a-z0-9_-]{0,39}$ ]] && break
+      echo "Используйте строчные латинские буквы, цифры, дефис или подчёркивание." >&2
+    done
+    if [[ "$INSTALL_MODE" == 2 ]]; then
+      HTTPS=3
+      echo "Приватный staging: API будет доступен только на localhost." >&2
+    else
+      choose HTTPS "Как открыть кабинет?" 1 "Через существующий Nginx/Caddy (API на localhost)" "Новый Caddy с автоматическим HTTPS (свободные 80/443)" "Только локально, без домена"
+    fi
     if [[ "$HTTPS" != 3 ]]; then domain_input CABINET_DOMAIN; fi
     while true; do
-      ask API_PORT "Локальный порт API" 8000
+      ask API_PORT "Локальный порт API" "$PORT_DEFAULT"
       if [[ "$API_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && ((API_PORT<=65535)); then break; fi
       echo "Порт должен быть от 1 до 65535." >&2
     done
@@ -135,6 +149,7 @@ case "$COMPONENTS" in
 esac
 if [[ "$COMPONENTS" != 1 ]]; then
   if "$NEW_CONFIG"; then
+    echo "Compose-проект: $PROJECT_NAME" >&2
     echo "Локальный порт API: $API_PORT" >&2
     if [[ "$HTTPS" != 3 ]]; then echo "Домен кабинета: $CABINET_DOMAIN" >&2; fi
     case "$HTTPS" in
@@ -164,11 +179,17 @@ if [[ "$COMPONENTS" != 1 ]]; then
   fi
   install_docker
   if "$NEW_CONFIG"; then
+    if [[ -n "$(docker ps -a -q --filter "label=com.docker.compose.project=$PROJECT_NAME")" ]] || [[ -n "$(docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT_NAME")" ]]; then
+      echo "Compose-проект $PROJECT_NAME уже содержит ресурсы. Выберите другое имя; существующие данные не изменены."
+      exit 1
+    fi
+  fi
+  if "$NEW_CONFIG"; then
     umask 077
     DB_PASSWORD="$(openssl rand -hex 32)"
     SESSION_KEY="$(openssl rand -hex 32)"
     cat > .env <<EOF
-COMPOSE_PROJECT_NAME=mtproxy-pushok
+COMPOSE_PROJECT_NAME=$PROJECT_NAME
 POSTGRES_DB=mtproxy_pushok
 POSTGRES_USER=mtproxy_pushok
 POSTGRES_PASSWORD=$DB_PASSWORD
