@@ -25,7 +25,7 @@ from psycopg.rows import dict_row
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.010",
+    version="0.011",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 
@@ -567,7 +567,7 @@ def moderate_campaign(
             connection.execute(
                 """
                 INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
-                VALUES (%s, %s, 'campaign_moderated', jsonb_build_object('decision', %s))
+                VALUES (%s, %s, 'campaign_moderated', jsonb_build_object('decision', %s::text))
                 """,
                 (operator["id"], campaign_id, payload.decision),
             )
@@ -757,7 +757,7 @@ def review_payment(
             connection.execute(
                 """
                 INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
-                VALUES (%s, %s, 'payment_reviewed', jsonb_build_object('decision', %s))
+                VALUES (%s, %s, 'payment_reviewed', jsonb_build_object('decision', %s::text))
                 """,
                 (operator["id"], campaign_id, payload.decision),
             )
@@ -823,7 +823,7 @@ def schedule_placement(
                 """
                 INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
                 VALUES (%s, %s, 'placement_scheduled',
-                        jsonb_build_object('proxy_node_id', %s, 'start_at', %s, 'end_at', %s))
+                        jsonb_build_object('proxy_node_id', %s::text, 'start_at', %s::text, 'end_at', %s::text))
                 """,
                 (operator["id"], campaign_id, str(payload.proxy_node_id), start_at.isoformat(), end_at.isoformat()),
             )
