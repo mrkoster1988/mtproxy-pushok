@@ -6,25 +6,28 @@ import os
 import secrets
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import psycopg
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field
-from psycopg.errors import UniqueViolation
+from psycopg.errors import ExclusionViolation, UniqueViolation
 from psycopg.rows import dict_row
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.004",
+    version="0.005",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 
 DATABASE_URL = os.environ["DATABASE_URL"]
+PAYMENT_PROOFS_DIR = os.getenv("PAYMENT_PROOFS_DIR", "/var/lib/mtproxy-pushok/payment-proofs")
+MAX_PAYMENT_PROOF_BYTES = 5 * 1024 * 1024
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 SESSION_SIGNING_KEY = os.getenv("SESSION_SIGNING_KEY", "")
 TELEGRAM_LOGIN_MAX_AGE_SECONDS = 300
@@ -99,6 +102,25 @@ class CampaignResponse(BaseModel):
     scheduled_start_at: datetime | None
     scheduled_end_at: datetime | None
     moderator_comment: str | None
+    payment_review_comment: str | None = None
+
+
+class PaymentReviewRequest(BaseModel):
+    decision: str = Field(pattern="^(verified|rejected)$")
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class PlacementScheduleRequest(BaseModel):
+    proxy_node_id: UUID
+    start_at: datetime
+
+
+class PaymentProofResponse(BaseModel):
+    id: UUID
+    original_file_name: str
+    content_type: str
+    size_bytes: int
+    submitted_at: datetime
 
 
 class ModerationRequest(BaseModel):
@@ -414,14 +436,22 @@ def list_campaigns(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             rows = connection.execute(
                 """
-                SELECT id, channel_id, tariff_id, tariff_name_snapshot,
-                       duration_seconds_snapshot, price_kopecks_snapshot,
-                       currency_snapshot, moderation_status, payment_status,
-                       placement_status, requested_start_at, scheduled_start_at,
-                       scheduled_end_at, moderator_comment
-                FROM campaigns
-                WHERE advertiser_user_id = %s
-                ORDER BY created_at DESC
+                SELECT c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
+                       c.duration_seconds_snapshot, c.price_kopecks_snapshot,
+                       c.currency_snapshot, c.moderation_status, c.payment_status,
+                       c.placement_status, c.requested_start_at, c.scheduled_start_at,
+                       c.scheduled_end_at, c.moderator_comment,
+                       latest_proof.review_comment AS payment_review_comment
+                FROM campaigns AS c
+                LEFT JOIN LATERAL (
+                    SELECT p.review_comment
+                    FROM payment_proofs AS p
+                    WHERE p.campaign_id = c.id AND p.reviewed_at IS NOT NULL
+                    ORDER BY p.submitted_at DESC
+                    LIMIT 1
+                ) AS latest_proof ON TRUE
+                WHERE c.advertiser_user_id = %s
+                ORDER BY c.created_at DESC
                 """,
                 (user["id"],),
             ).fetchall()
@@ -527,3 +557,384 @@ def moderate_campaign(
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return _campaign_response(row)
+
+
+def _receipt_metadata(upload: UploadFile) -> tuple[bytes, str, str, str]:
+    data = upload.file.read(MAX_PAYMENT_PROOF_BYTES + 1)
+    if not data:
+        raise HTTPException(status_code=422, detail="payment_proof_empty")
+    if len(data) > MAX_PAYMENT_PROOF_BYTES:
+        raise HTTPException(status_code=413, detail="payment_proof_too_large")
+    signatures = (
+        (bytes([0xFF, 0xD8, 0xFF]), "image/jpeg", ".jpg"),
+        (bytes([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), "image/png", ".png"),
+        (b"%PDF-", "application/pdf", ".pdf"),
+    )
+    for signature, content_type, suffix in signatures:
+        if data.startswith(signature):
+            if upload.content_type != content_type:
+                raise HTTPException(status_code=415, detail="payment_proof_content_type_mismatch")
+            original_name = os.path.basename(upload.filename or "payment-proof")
+            original_name = "".join(ch for ch in original_name if ch.isprintable())[:255]
+            return data, content_type, original_name or "payment-proof", suffix
+    raise HTTPException(status_code=415, detail="unsupported_payment_proof_format")
+
+
+def _store_payment_proof(data: bytes, suffix: str) -> tuple[str, str]:
+    storage_key = f"{uuid4().hex}{suffix}"
+    os.makedirs(PAYMENT_PROOFS_DIR, mode=0o700, exist_ok=True)
+    os.chmod(PAYMENT_PROOFS_DIR, 0o700)
+    full_path = os.path.join(PAYMENT_PROOFS_DIR, storage_key)
+    descriptor = os.open(full_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(data)
+    except OSError:
+        if os.path.exists(full_path):
+            os.unlink(full_path)
+        raise
+    return storage_key, full_path
+
+
+@app.post("/api/v1/campaigns/{campaign_id}/payment-proofs", response_model=PaymentProofResponse, status_code=201, tags=["payments"])
+def upload_payment_proof(
+    campaign_id: UUID,
+    file: UploadFile = File(...),
+    user: dict[str, Any] = Depends(get_current_user),
+) -> PaymentProofResponse:
+    data, content_type, original_name, suffix = _receipt_metadata(file)
+    stored_path = None
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            campaign = connection.execute(
+                """
+                SELECT id, payment_status
+                FROM campaigns
+                WHERE id = %s AND advertiser_user_id = %s
+                  AND moderation_status = 'approved'
+                FOR UPDATE
+                """,
+                (campaign_id, user["id"]),
+            ).fetchone()
+            if campaign is None:
+                raise HTTPException(status_code=404, detail="campaign_not_found")
+            if campaign["payment_status"] not in {"awaiting_payment", "rejected"}:
+                raise HTTPException(status_code=409, detail="payment_proof_not_expected")
+
+            storage_key, stored_path = _store_payment_proof(data, suffix)
+            proof = connection.execute(
+                """
+                INSERT INTO payment_proofs (
+                    campaign_id, file_storage_key, original_file_name,
+                    content_type, size_bytes, submitted_by_user_id
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id, original_file_name, content_type, size_bytes, submitted_at
+                """,
+                (campaign_id, storage_key, original_name, content_type, len(data), user["id"]),
+            ).fetchone()
+            connection.execute(
+                "UPDATE campaigns SET payment_status = 'proof_submitted', updated_at = now() WHERE id = %s",
+                (campaign_id,),
+            )
+            connection.execute(
+                "INSERT INTO audit_events (actor_user_id, campaign_id, event_type) VALUES (%s, %s, 'payment_proof_submitted')",
+                (user["id"], campaign_id),
+            )
+    except HTTPException:
+        if stored_path and os.path.exists(stored_path):
+            os.unlink(stored_path)
+        raise
+    except OSError as exc:
+        if stored_path and os.path.exists(stored_path):
+            os.unlink(stored_path)
+        raise HTTPException(status_code=503, detail="payment_proof_storage_unavailable") from exc
+    except psycopg.Error as exc:
+        if stored_path and os.path.exists(stored_path):
+            os.unlink(stored_path)
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return PaymentProofResponse(**proof)
+
+
+@app.get("/api/v1/operator/campaigns/{campaign_id}/payment-proofs/{proof_id}", tags=["operator"])
+def download_payment_proof(
+    campaign_id: UUID,
+    proof_id: UUID,
+    operator: dict[str, Any] = Depends(require_operator),
+) -> FileResponse:
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            proof = connection.execute(
+                "SELECT file_storage_key, original_file_name, content_type FROM payment_proofs WHERE id = %s AND campaign_id = %s",
+                (proof_id, campaign_id),
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    if proof is None:
+        raise HTTPException(status_code=404, detail="payment_proof_not_found")
+    storage_key = proof["file_storage_key"]
+    if os.path.basename(storage_key) != storage_key or not storage_key.endswith((".jpg", ".png", ".pdf")):
+        raise HTTPException(status_code=404, detail="payment_proof_not_found")
+    full_path = os.path.join(PAYMENT_PROOFS_DIR, storage_key)
+    if not os.path.isfile(full_path):
+        raise HTTPException(status_code=404, detail="payment_proof_file_missing")
+    return FileResponse(
+        full_path,
+        media_type=proof["content_type"],
+        filename=proof["original_file_name"],
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@app.post("/api/v1/operator/campaigns/{campaign_id}/payment-review", response_model=CampaignResponse, tags=["operator"])
+def review_payment(
+    campaign_id: UUID,
+    payload: PaymentReviewRequest,
+    operator: dict[str, Any] = Depends(require_operator),
+) -> CampaignResponse:
+    if payload.decision == "rejected" and not (payload.comment and payload.comment.strip()):
+        raise HTTPException(status_code=422, detail="payment_review_comment_required")
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            campaign = connection.execute(
+                "SELECT id, payment_status FROM campaigns WHERE id = %s FOR UPDATE",
+                (campaign_id,),
+            ).fetchone()
+            if campaign is None:
+                raise HTTPException(status_code=404, detail="campaign_not_found")
+            if campaign["payment_status"] != "proof_submitted":
+                raise HTTPException(status_code=409, detail="payment_proof_not_pending_review")
+            proof = connection.execute(
+                """
+                SELECT id FROM payment_proofs
+                WHERE campaign_id = %s AND reviewed_at IS NULL
+                ORDER BY submitted_at DESC LIMIT 1 FOR UPDATE
+                """,
+                (campaign_id,),
+            ).fetchone()
+            if proof is None:
+                raise HTTPException(status_code=409, detail="payment_proof_not_found")
+            comment = payload.comment.strip() if payload.comment else None
+            connection.execute(
+                """
+                UPDATE payment_proofs
+                SET reviewed_by_user_id = %s, review_comment = %s, reviewed_at = now()
+                WHERE id = %s
+                """,
+                (operator["id"], comment, proof["id"]),
+            )
+            row = connection.execute(
+                """
+                UPDATE campaigns SET payment_status = %s, updated_at = now()
+                WHERE id = %s
+                RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
+                          duration_seconds_snapshot, price_kopecks_snapshot,
+                          currency_snapshot, moderation_status, payment_status,
+                          placement_status, requested_start_at, scheduled_start_at,
+                          scheduled_end_at, moderator_comment
+                """,
+                (payload.decision, campaign_id),
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
+                VALUES (%s, %s, 'payment_reviewed', jsonb_build_object('decision', %s))
+                """,
+                (operator["id"], campaign_id, payload.decision),
+            )
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return _campaign_response(row)
+
+
+@app.post("/api/v1/operator/campaigns/{campaign_id}/schedule", response_model=CampaignResponse, tags=["operator"])
+def schedule_placement(
+    campaign_id: UUID,
+    payload: PlacementScheduleRequest,
+    operator: dict[str, Any] = Depends(require_operator),
+) -> CampaignResponse:
+    if payload.start_at.tzinfo is None or payload.start_at.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="schedule_start_requires_timezone")
+    start_at = payload.start_at.astimezone(timezone.utc)
+    if start_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=422, detail="schedule_start_must_be_future")
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            campaign = connection.execute(
+                """
+                SELECT id, duration_seconds_snapshot, moderation_status,
+                       payment_status, placement_status
+                FROM campaigns WHERE id = %s FOR UPDATE
+                """,
+                (campaign_id,),
+            ).fetchone()
+            if campaign is None:
+                raise HTTPException(status_code=404, detail="campaign_not_found")
+            if (
+                campaign["moderation_status"] != "approved"
+                or campaign["payment_status"] != "verified"
+                or campaign["placement_status"] != "not_scheduled"
+            ):
+                raise HTTPException(status_code=409, detail="campaign_not_ready_for_placement")
+            node = connection.execute(
+                "SELECT id FROM proxy_nodes WHERE id = %s AND status = 'active'",
+                (payload.proxy_node_id,),
+            ).fetchone()
+            if node is None:
+                raise HTTPException(status_code=404, detail="active_proxy_node_not_found")
+            end_at = start_at + timedelta(seconds=campaign["duration_seconds_snapshot"])
+            row = connection.execute(
+                """
+                UPDATE campaigns
+                SET proxy_node_id = %s, scheduled_start_at = %s,
+                    scheduled_end_at = %s, placement_status = 'scheduled',
+                    updated_at = now()
+                WHERE id = %s
+                RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
+                          duration_seconds_snapshot, price_kopecks_snapshot,
+                          currency_snapshot, moderation_status, payment_status,
+                          placement_status, requested_start_at, scheduled_start_at,
+                          scheduled_end_at, moderator_comment
+                """,
+                (payload.proxy_node_id, start_at, end_at, campaign_id),
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
+                VALUES (%s, %s, 'placement_scheduled',
+                        jsonb_build_object('proxy_node_id', %s, 'start_at', %s, 'end_at', %s))
+                """,
+                (operator["id"], campaign_id, str(payload.proxy_node_id), start_at.isoformat(), end_at.isoformat()),
+            )
+    except ExclusionViolation as exc:
+        raise HTTPException(status_code=409, detail="proxy_node_slot_unavailable") from exc
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return _campaign_response(row)
+
+
+@app.post("/api/v1/operator/campaigns/{campaign_id}/activate", response_model=CampaignResponse, tags=["operator"])
+def activate_placement(
+    campaign_id: UUID,
+    operator: dict[str, Any] = Depends(require_operator),
+) -> CampaignResponse:
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            row = connection.execute(
+                """
+                UPDATE campaigns
+                SET placement_status = 'active', updated_at = now()
+                WHERE id = %s AND placement_status = 'scheduled'
+                  AND scheduled_start_at <= now() AND scheduled_end_at > now()
+                RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
+                          duration_seconds_snapshot, price_kopecks_snapshot,
+                          currency_snapshot, moderation_status, payment_status,
+                          placement_status, requested_start_at, scheduled_start_at,
+                          scheduled_end_at, moderator_comment
+                """,
+                (campaign_id,),
+            ).fetchone()
+            if row is None:
+                exists = connection.execute("SELECT 1 FROM campaigns WHERE id = %s", (campaign_id,)).fetchone()
+                if exists is None:
+                    raise HTTPException(status_code=404, detail="campaign_not_found")
+                raise HTTPException(status_code=409, detail="placement_not_in_active_window")
+            connection.execute(
+                "INSERT INTO audit_events (actor_user_id, campaign_id, event_type) VALUES (%s, %s, 'placement_activated_manually')",
+                (operator["id"], campaign_id),
+            )
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return _campaign_response(row)
+
+
+@app.post("/api/v1/operator/campaigns/{campaign_id}/complete", response_model=CampaignResponse, tags=["operator"])
+def complete_placement(
+    campaign_id: UUID,
+    operator: dict[str, Any] = Depends(require_operator),
+) -> CampaignResponse:
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            row = connection.execute(
+                """
+                UPDATE campaigns
+                SET placement_status = 'completed', updated_at = now()
+                WHERE id = %s AND placement_status = 'active'
+                RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
+                          duration_seconds_snapshot, price_kopecks_snapshot,
+                          currency_snapshot, moderation_status, payment_status,
+                          placement_status, requested_start_at, scheduled_start_at,
+                          scheduled_end_at, moderator_comment
+                """,
+                (campaign_id,),
+            ).fetchone()
+            if row is None:
+                exists = connection.execute("SELECT 1 FROM campaigns WHERE id = %s", (campaign_id,)).fetchone()
+                if exists is None:
+                    raise HTTPException(status_code=404, detail="campaign_not_found")
+                raise HTTPException(status_code=409, detail="placement_not_active")
+            connection.execute(
+                "INSERT INTO audit_events (actor_user_id, campaign_id, event_type) VALUES (%s, %s, 'placement_completed_manually')",
+                (operator["id"], campaign_id),
+            )
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return _campaign_response(row)
+
+
+@app.get("/api/v1/operator/campaigns", response_model=list[CampaignResponse], tags=["operator"])
+def list_operator_campaigns(
+    moderation_status: str | None = None,
+    payment_status: str | None = None,
+    operator: dict[str, Any] = Depends(require_operator),
+) -> list[CampaignResponse]:
+    valid_moderation = {"draft", "pending", "approved", "rejected", "changes_requested"}
+    valid_payment = {"not_required", "awaiting_payment", "proof_submitted", "verified", "rejected", "refunded"}
+    if moderation_status is not None and moderation_status not in valid_moderation:
+        raise HTTPException(status_code=422, detail="invalid_moderation_status")
+    if payment_status is not None and payment_status not in valid_payment:
+        raise HTTPException(status_code=422, detail="invalid_payment_status")
+    filters = []
+    params: list[str] = []
+    if moderation_status is not None:
+        filters.append("c.moderation_status = %s")
+        params.append(moderation_status)
+    if payment_status is not None:
+        filters.append("c.payment_status = %s")
+        params.append(payment_status)
+    where_clause = " AND ".join(filters) if filters else "TRUE"
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
+                       c.duration_seconds_snapshot, c.price_kopecks_snapshot,
+                       c.currency_snapshot, c.moderation_status, c.payment_status,
+                       c.placement_status, c.requested_start_at, c.scheduled_start_at,
+                       c.scheduled_end_at, c.moderator_comment,
+                       latest_proof.review_comment AS payment_review_comment
+                FROM campaigns AS c
+                LEFT JOIN LATERAL (
+                    SELECT p.review_comment
+                    FROM payment_proofs AS p
+                    WHERE p.campaign_id = c.id AND p.reviewed_at IS NOT NULL
+                    ORDER BY p.submitted_at DESC
+                    LIMIT 1
+                ) AS latest_proof ON TRUE
+                WHERE {where_clause}
+                ORDER BY c.created_at DESC
+                LIMIT 100
+                """,
+                params,
+            ).fetchall()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return [_campaign_response(row) for row in rows]
