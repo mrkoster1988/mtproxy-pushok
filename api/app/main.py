@@ -1,3 +1,4 @@
+import binascii
 import hashlib
 import hmac
 import json
@@ -176,7 +177,7 @@ def _decode_session_token(token: str) -> tuple[UUID, UUID, int]:
         user_id = UUID(payload["sub"])
         session_id = UUID(payload["sid"])
         expires_at = int(payload["exp"])
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError, binascii.Error):
         raise HTTPException(status_code=401, detail="invalid_access_token") from None
     if expires_at <= int(time.time()):
         raise HTTPException(status_code=401, detail="access_token_expired")
@@ -350,6 +351,9 @@ def create_channel(
         or parsed.fragment
     ):
         raise HTTPException(status_code=422, detail="invalid_telegram_channel_url")
+    normalized_title = payload.title.strip()
+    if not normalized_title:
+        raise HTTPException(status_code=422, detail="channel_title_required")
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             row = connection.execute(
@@ -358,7 +362,7 @@ def create_channel(
                 VALUES (%s, %s, %s)
                 RETURNING id, telegram_url, title
                 """,
-                (user["id"], payload.telegram_url.rstrip("/"), payload.title.strip()),
+                (user["id"], payload.telegram_url.rstrip("/"), normalized_title),
             ).fetchone()
     except UniqueViolation as exc:
         raise HTTPException(status_code=409, detail="channel_already_added") from exc
