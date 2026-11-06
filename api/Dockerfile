@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && chown -R 10001:10001 /var/lib/mtproxy-pushok
 
 COPY app ./app
+COPY web ./web
 
 USER 10001:10001
 EXPOSE 8000
