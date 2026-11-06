@@ -23,16 +23,21 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      PAYMENT_PROOFS_DIR: /var/lib/mtproxy-pushok/payment-proofs
     depends_on:
       db:
         condition: service_healthy
     ports:
       - "127.0.0.1:8000:8000"
+    volumes:
+      - mtproxy-pushok-proofs:/var/lib/mtproxy-pushok/payment-proofs
     networks:
       - internal
 
 volumes:
   mtproxy-pushok-db:
+  mtproxy-pushok-proofs:
 
 networks:
   internal:
