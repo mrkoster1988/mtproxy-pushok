@@ -34,6 +34,7 @@ services:
       - mtproxy-pushok-proofs:/var/lib/mtproxy-pushok/payment-proofs
     networks:
       - internal
+      - bot-api
 
   # Запускается только с --profile bot. Не имеет доступа к внутренней сети API/БД.
   bot:
@@ -44,6 +45,7 @@ services:
     restart: unless-stopped
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      BOT_INTERNAL_SECRET: ${BOT_INTERNAL_SECRET:-}
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -51,6 +53,7 @@ services:
       - ALL
     networks:
       - bot-egress
+      - bot-api
 
 volumes:
   mtproxy-pushok-db:
@@ -60,3 +63,5 @@ networks:
   internal:
     internal: true
   bot-egress:
+  bot-api:
+    internal: true
