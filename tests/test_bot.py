@@ -19,7 +19,7 @@ class TelegramBotTests(unittest.TestCase):
     def test_bot_container_is_optional_and_isolated(self):
         root = Path(__file__).resolve().parents[1]
         config = (root / "compose.yaml").read_text(encoding="utf-8")
-        bot_service = config.split("\\n  bot:\\n", 1)[1].split("\\nvolumes:\\n", 1)[0]
+        bot_service = config.split("\n  bot:\n", 1)[1].split("\nvolumes:\n", 1)[0]
         self.assertIn('profiles: ["bot"]', bot_service)
         self.assertIn("read_only: true", bot_service)
         self.assertIn("no-new-privileges:true", bot_service)
