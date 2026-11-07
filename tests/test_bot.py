@@ -24,6 +24,9 @@ class TelegramBotTests(unittest.TestCase):
         self.assertIn("read_only: true", bot_service)
         self.assertIn("no-new-privileges:true", bot_service)
         self.assertIn("- bot-egress", bot_service)
+        self.assertIn("- bot-api", bot_service)
+        self.assertIn("BOT_INTERNAL_SECRET:", bot_service)
+        self.assertIn("  bot-api:\n    internal: true".replace("\\n", "\\n"), config)
         self.assertNotIn("env_file:", bot_service)
         self.assertNotIn("- internal", bot_service)
 
