@@ -33,7 +33,7 @@ class BotCampaignSummary(BaseModel):
 
 def _verify_bot_secret(provided: str | None) -> None:
     expected = os.getenv("BOT_INTERNAL_SECRET", "")
-    if len(expected) < 32:
+    if len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected):
         raise HTTPException(status_code=503, detail="bot_api_not_configured")
     if provided is None or not hmac.compare_digest(expected, provided):
         raise HTTPException(status_code=401, detail="bot_auth_required")
