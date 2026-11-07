@@ -40,7 +40,72 @@ def message_for(command):
     return "❓ Поддержка: напишите через сообщения каналу\n" + CHANNEL_URL
 
 
-def response_for(update):
+def fetch_campaigns(telegram_user_id):
+    """Read-only запрос к внутреннему API по подтверждённому Telegram ID."""
+    secret = os.getenv("BOT_INTERNAL_SECRET", "")
+    if len(secret) < 32:
+        raise RuntimeError("Интеграция с кабинетом не настроена")
+    body = json.dumps({"telegram_user_id": telegram_user_id}).encode("utf-8")
+    request = Request(
+        "http://api:8000/api/v1/internal/bot/campaigns",
+        data=body,
+        headers={"Content-Type": "application/json", "X-Pushok-Bot-Secret": secret},
+        method="POST",
+    )
+    with urlopen(request, timeout=5) as stream:
+        result = json.load(stream)
+    if not isinstance(result, list):
+        raise ValueError("Неверный формат ответа API")
+    return result
+
+
+def format_campaigns(campaigns):
+    if not campaigns:
+        return ("📋 Пока у вас нет заявок в рекламном кабинете.\\n"
+                "Оформление заказов через бота пока в разработке.")
+    moderation = {"draft": "Черновик", "pending": "На модерации",
+                  "approved": "Одобрено", "rejected": "Отклонено",
+                  "changes_requested": "Нужны исправления"}
+    payment = {"not_required": "Не требуется", "awaiting_payment": "Ожидается",
+               "proof_submitted": "Чек на проверке", "verified": "Подтверждена",
+               "rejected": "Отклонена", "refunded": "Возврат"}
+    placement = {"not_scheduled": "Не назначено", "scheduled": "Запланировано",
+                 "active": "Активно", "completed": "Завершено",
+                 "cancelled": "Отменено"}
+    lines = ["📋 Ваши последние рекламные заявки:"]
+    for index, campaign in enumerate(campaigns[:10], 1):
+        title = " ".join(str(campaign.get("channel_title") or "Без названия").split())[:64]
+        price = campaign.get("price_kopecks_snapshot", 0)
+        currency = (campaign.get("currency_snapshot") or "RUB").strip()
+        price_text = (f"{price / 100:g} ₽" if currency == "RUB" and type(price) is int
+                      else "Цена в кабинете")
+        lines.append(
+            f"\\n{index}. {title}\\n"
+            f"Тариф: {campaign.get('tariff_name_snapshot', '—')} · {price_text}\\n"
+            f"Модерация: {moderation.get(campaign.get('moderation_status'), '—')}\\n"
+            f"Оплата: {payment.get(campaign.get('payment_status'), '—')}\\n"
+            f"Размещение: {placement.get(campaign.get('placement_status'), '—')}"
+        )
+    lines.append("\\nПоказаны до 10 последних заявок. Подробности доступны в кабинете.")
+    return "".join(lines)[:3900]
+
+
+def command_text(command, actor, chat_id, campaign_loader=None):
+    if command != "campaigns":
+        return message_for(command)
+    telegram_id = (actor or {}).get("id")
+    if type(telegram_id) is not int or telegram_id <= 0 or telegram_id != chat_id:
+        return "Откройте личный чат с ботом для просмотра ваших заявок."
+    if campaign_loader is None:
+        return message_for("campaigns")
+    try:
+        return format_campaigns(campaign_loader(telegram_id))
+    except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+        LOG.warning("Недоступен внутренний API: %s", type(exc).__name__)
+        return "📋 Заявки временно недоступны. Попробуйте позже."
+
+
+def response_for(update, campaign_loader=None):
     """Вернуть (sendMessage_payload, callback_query_id) либо None."""
     callback = update.get("callback_query")
     if callback:
@@ -50,7 +115,8 @@ def response_for(update):
             return None
         if not isinstance(chat.get("id"), int):
             return None
-        return ({"chat_id": chat["id"], "text": message_for(command),
+        return ({"chat_id": chat["id"], "text": command_text(
+            command, callback.get("from"), chat["id"], campaign_loader),
                  "reply_markup": keyboard()}, callback.get("id"))
     message = update.get("message") or {}
     chat = message.get("chat") or {}
@@ -65,7 +131,8 @@ def response_for(update):
     command = parts[0].lower()
     if command not in COMMANDS:
         return None
-    return ({"chat_id": chat["id"], "text": message_for(command),
+    return ({"chat_id": chat["id"], "text": command_text(
+        command, message.get("from"), chat["id"], campaign_loader),
              "reply_markup": keyboard()}, None)
 
 
@@ -108,7 +175,7 @@ def run():
                 "allowed_updates": ["message", "callback_query"]})
             for update in updates:
                 next_offset = update["update_id"] + 1
-                response = response_for(update)
+                response = response_for(update, campaign_loader=fetch_campaigns)
                 if response is not None:
                     payload, callback_id = response
                     if callback_id:
