@@ -35,6 +35,23 @@ services:
     networks:
       - internal
 
+  # Запускается только с --profile bot. Не имеет доступа к внутренней сети API/БД.
+  bot:
+    profiles: ["bot"]
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - bot-egress
+
 volumes:
   mtproxy-pushok-db:
   mtproxy-pushok-proofs:
@@ -42,3 +59,4 @@ volumes:
 networks:
   internal:
     internal: true
+  bot-egress:
