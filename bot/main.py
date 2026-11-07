@@ -80,11 +80,26 @@ def telegram_call(token, method, payload):
     return result["result"]
 
 
+def validate_bot(token):
+    """Проверить правильность токена и отсутствие webhook перед polling."""
+    info = telegram_call(token, "getMe", {})
+    if info.get("username", "").lower() != BOT_USERNAME:
+        raise RuntimeError("Токен принадлежит другому Telegram-боту")
+    webhook = telegram_call(token, "getWebhookInfo", {})
+    if webhook.get("url"):
+        raise RuntimeError("Webhook включён: polling не запускается")
+
+
 def run():
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     if not token or token.startswith("REPLACE_"):
         raise SystemExit("Требуется TELEGRAM_BOT_TOKEN в окружении.")
     logging.basicConfig(level=logging.INFO)
+    try:
+        validate_bot(token)
+    except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+        LOG.error("Проверка бота не пройдена: %s", type(exc).__name__)
+        raise SystemExit("Не удалось запустить бота: проверьте токен, username и webhook.") from None
     offset = None
     while True:
         try:
@@ -92,15 +107,16 @@ def run():
                 "offset": offset, "timeout": 25,
                 "allowed_updates": ["message", "callback_query"]})
             for update in updates:
-                offset = update["update_id"] + 1
+                next_offset = update["update_id"] + 1
                 response = response_for(update)
-                if response is None:
-                    continue
-                payload, callback_id = response
-                if callback_id:
-                    telegram_call(token, "answerCallbackQuery",
-                                  {"callback_query_id": callback_id})
-                telegram_call(token, "sendMessage", payload)
+                if response is not None:
+                    payload, callback_id = response
+                    if callback_id:
+                        telegram_call(token, "answerCallbackQuery",
+                                      {"callback_query_id": callback_id})
+                    telegram_call(token, "sendMessage", payload)
+                # Не подтверждать update до завершения обработки.
+                offset = next_offset
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
             # Не включать str(exc): HTTPError содержит URL с секретным токеном.
             LOG.warning("Ошибка Telegram API: %s, повтор через 5 сек.", type(exc).__name__)
