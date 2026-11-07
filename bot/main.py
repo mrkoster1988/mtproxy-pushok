@@ -61,7 +61,7 @@ def fetch_campaigns(telegram_user_id):
 
 def format_campaigns(campaigns):
     if not campaigns:
-        return ("📋 Пока у вас нет заявок в рекламном кабинете.\\n"
+        return ("📋 Пока у вас нет заявок в рекламном кабинете.\n"
                 "Оформление заказов через бота пока в разработке.")
     moderation = {"draft": "Черновик", "pending": "На модерации",
                   "approved": "Одобрено", "rejected": "Отклонено",
@@ -80,13 +80,13 @@ def format_campaigns(campaigns):
         price_text = (f"{price / 100:g} ₽" if currency == "RUB" and type(price) is int
                       else "Цена в кабинете")
         lines.append(
-            f"\\n{index}. {title}\\n"
-            f"Тариф: {campaign.get('tariff_name_snapshot', '—')} · {price_text}\\n"
-            f"Модерация: {moderation.get(campaign.get('moderation_status'), '—')}\\n"
-            f"Оплата: {payment.get(campaign.get('payment_status'), '—')}\\n"
+            f"\n{index}. {title}\n"
+            f"Тариф: {campaign.get('tariff_name_snapshot', '—')} · {price_text}\n"
+            f"Модерация: {moderation.get(campaign.get('moderation_status'), '—')}\n"
+            f"Оплата: {payment.get(campaign.get('payment_status'), '—')}\n"
             f"Размещение: {placement.get(campaign.get('placement_status'), '—')}"
         )
-    lines.append("\\nПоказаны до 10 последних заявок. Подробности доступны в кабинете.")
+    lines.append("\nПоказаны до 10 последних заявок. Подробности доступны в кабинете.")
     return "".join(lines)[:3900]
 
 
