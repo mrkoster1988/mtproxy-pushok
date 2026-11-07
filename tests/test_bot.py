@@ -1,5 +1,6 @@
 """Проверки команд и безопасных ответов бота."""
 import unittest
+from pathlib import Path
 from unittest.mock import patch, call
 from bot.main import CHANNEL_URL, COMMANDS, keyboard, response_for, validate_bot
 
@@ -14,6 +15,17 @@ class TelegramBotTests(unittest.TestCase):
                 self.assertIsNotNone(response)
                 self.assertEqual(response[0]["chat_id"], 123)
                 self.assertIn("inline_keyboard", response[0]["reply_markup"])
+
+    def test_bot_container_is_optional_and_isolated(self):
+        root = Path(__file__).resolve().parents[1]
+        config = (root / "compose.yaml").read_text(encoding="utf-8")
+        bot_service = config.split("\\n  bot:\\n", 1)[1].split("\\nvolumes:\\n", 1)[0]
+        self.assertIn('profiles: ["bot"]', bot_service)
+        self.assertIn("read_only: true", bot_service)
+        self.assertIn("no-new-privileges:true", bot_service)
+        self.assertIn("- bot-egress", bot_service)
+        self.assertNotIn("env_file:", bot_service)
+        self.assertNotIn("- internal", bot_service)
 
     def test_validates_identity_and_polling_mode(self):
         with patch("bot.main.telegram_call", side_effect=[
