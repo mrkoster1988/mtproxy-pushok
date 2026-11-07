@@ -1,6 +1,7 @@
 """Проверки команд и безопасных ответов бота."""
 import unittest
-from bot.main import CHANNEL_URL, COMMANDS, keyboard, response_for
+from unittest.mock import patch, call
+from bot.main import CHANNEL_URL, COMMANDS, keyboard, response_for, validate_bot
 
 
 class TelegramBotTests(unittest.TestCase):
@@ -13,6 +14,28 @@ class TelegramBotTests(unittest.TestCase):
                 self.assertIsNotNone(response)
                 self.assertEqual(response[0]["chat_id"], 123)
                 self.assertIn("inline_keyboard", response[0]["reply_markup"])
+
+    def test_validates_identity_and_polling_mode(self):
+        with patch("bot.main.telegram_call", side_effect=[
+            {"username": "mtproxy_pushok_bot"}, {"url": ""}
+        ]) as client:
+            validate_bot("test-token")
+        self.assertEqual(client.call_args_list, [
+            call("test-token", "getMe", {}),
+            call("test-token", "getWebhookInfo", {}),
+        ])
+
+    def test_other_bot_token_rejected(self):
+        with patch("bot.main.telegram_call", return_value={"username": "wrong_bot"}):
+            with self.assertRaisesRegex(RuntimeError, "другому Telegram-боту"):
+                validate_bot("test-token")
+
+    def test_active_webhook_rejected(self):
+        with patch("bot.main.telegram_call", side_effect=[
+            {"username": "mtproxy_pushok_bot"}, {"url": "https://example.org/webhook"}
+        ]):
+            with self.assertRaisesRegex(RuntimeError, "Webhook"):
+                validate_bot("test-token")
 
     def test_others_and_groups_ignored(self):
         self.assertIsNone(response_for({"message": {
