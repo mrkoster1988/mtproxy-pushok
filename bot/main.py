@@ -43,7 +43,7 @@ def message_for(command):
 def fetch_campaigns(telegram_user_id):
     """Read-only запрос к внутреннему API по подтверждённому Telegram ID."""
     secret = os.getenv("BOT_INTERNAL_SECRET", "")
-    if len(secret) < 32:
+    if len(secret) != 64 or any(c not in "0123456789abcdef" for c in secret):
         raise RuntimeError("Интеграция с кабинетом не настроена")
     body = json.dumps({"telegram_user_id": telegram_user_id}).encode("utf-8")
     request = Request(
