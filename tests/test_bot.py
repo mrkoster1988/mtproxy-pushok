@@ -26,9 +26,62 @@ class TelegramBotTests(unittest.TestCase):
         self.assertIn("- bot-egress", bot_service)
         self.assertIn("- bot-api", bot_service)
         self.assertIn("BOT_INTERNAL_SECRET:", bot_service)
-        self.assertIn("  bot-api:\n    internal: true".replace("\\n", "\\n"), config)
+        self.assertIn("  bot-api:\n    internal: true", config)
         self.assertNotIn("env_file:", bot_service)
         self.assertNotIn("- internal", bot_service)
+
+    def test_own_campaigns_from_sender_id(self):
+        seen = []
+        def load(telegram_id):
+            seen.append(telegram_id)
+            return [{
+                "channel_title": "Мой канал", "tariff_name_snapshot": "1 день",
+                "price_kopecks_snapshot": 30000, "currency_snapshot": "RUB",
+                "moderation_status": "pending", "payment_status": "not_required",
+                "placement_status": "not_scheduled",
+            }]
+        response = response_for({"message": {
+            "chat": {"id": 123, "type": "private"},
+            "from": {"id": 123}, "text": "/campaigns",
+        }}, campaign_loader=load)
+        self.assertEqual(seen, [123])
+        self.assertIn("Мой канал", response[0]["text"])
+        self.assertIn("300 ₽", response[0]["text"])
+        self.assertIn("На модерации", response[0]["text"])
+
+    def test_foreign_sender_cannot_fetch_campaigns(self):
+        def load(_):
+            self.fail("Нельзя запрашивать чужие данные")
+        response = response_for({"message": {
+            "chat": {"id": 123, "type": "private"},
+            "from": {"id": 999}, "text": "/campaigns",
+        }}, campaign_loader=load)
+        self.assertIn("личный чат", response[0]["text"])
+        callback = response_for({"callback_query": {
+            "id": "cb", "data": "campaigns",
+            "from": {"id": 999},
+            "message": {"chat": {"id": 123, "type": "private"}},
+        }}, campaign_loader=load)
+        self.assertIn("личный чат", callback[0]["text"])
+
+    def test_internal_api_failure_is_not_leaked_to_chat(self):
+        def load(_):
+            raise RuntimeError("internal secret")
+        response = response_for({"message": {
+            "chat": {"id": 123, "type": "private"},
+            "from": {"id": 123}, "text": "/campaigns",
+        }}, campaign_loader=load)
+        self.assertIn("временно недоступны", response[0]["text"])
+        self.assertNotIn("internal secret", response[0]["text"])
+
+    def test_campaign_callback_uses_sender_id(self):
+        called = []
+        response = response_for({"callback_query": {
+            "id": "click", "data": "campaigns", "from": {"id": 77},
+            "message": {"chat": {"id": 77, "type": "private"}},
+        }}, campaign_loader=lambda identity: called.append(identity) or [])
+        self.assertEqual(called, [77])
+        self.assertIn("нет заявок", response[0]["text"])
 
     def test_validates_identity_and_polling_mode(self):
         with patch("bot.main.telegram_call", side_effect=[
