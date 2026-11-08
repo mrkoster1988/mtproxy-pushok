@@ -1133,6 +1133,59 @@ def create_proxy_node(
     return {**row, "provisioning_verified": False, "changes_applied": False}
 
 
+@app.patch("/api/v1/admin/proxy-nodes/{node_id}/engine-plan", tags=["admin"])
+def update_proxy_engine_plan(
+    node_id: UUID,
+    payload: EngineSelectionInput,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """Менять только запись о целевом движке. Не переключать MTProxy на сервере."""
+    plan = _engine_plan(payload)
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            node = connection.execute(
+                "SELECT id FROM proxy_nodes WHERE id = %s FOR UPDATE",
+                (node_id,),
+            ).fetchone()
+            if node is None:
+                raise HTTPException(status_code=404, detail="proxy_node_not_found")
+            occupied = connection.execute(
+                """SELECT 1 FROM campaigns WHERE proxy_node_id = %s
+                   AND placement_status IN ('scheduled', 'active') LIMIT 1""",
+                (node_id,),
+            ).fetchone()
+            if occupied:
+                raise HTTPException(status_code=409, detail="proxy_node_has_placements")
+            sponsor = connection.execute(
+                "SELECT engine FROM proxy_sponsor_registrations WHERE proxy_node_id = %s",
+                (node_id,),
+            ).fetchone()
+            if sponsor and sponsor["engine"] != plan["engine"]:
+                raise HTTPException(status_code=409, detail="sponsor_engine_mismatch")
+            row = connection.execute(
+                """UPDATE proxy_nodes
+                   SET target_engine = %s, engine_selection_mode = %s,
+                       deployment_profile = %s, updated_at = now()
+                   WHERE id = %s
+                   RETURNING id, name, host, port, status, target_engine,
+                             engine_selection_mode, deployment_profile""",
+                (plan["engine"], plan["engine_mode"], plan["deployment"], node_id),
+            ).fetchone()
+            connection.execute(
+                """INSERT INTO audit_events(actor_user_id, event_type, details_json)
+                   VALUES (%s, 'proxy_engine_plan_updated',
+                           jsonb_build_object('proxy_node_id', %s::text,
+                                              'target_engine', %s::text,
+                                              'engine_mode', %s::text))""",
+                (admin["id"], str(node_id), plan["engine"], plan["engine_mode"]),
+            )
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return {**row, "provisioning_verified": False, "changes_applied": False}
+
+
 @app.patch("/api/v1/admin/proxy-nodes/{node_id}/status", tags=["admin"])
 def change_proxy_node_status(
     node_id: UUID,
