@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+from uuid import UUID
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from .wizard import DraftWizard
@@ -73,6 +74,59 @@ def create_campaign_draft(telegram_user_id, channel_username, request_key):
     return result
 
 
+def submit_campaign_draft(telegram_user_id, campaign_id):
+    result = _internal_api("campaign-drafts/submit", {
+        "telegram_user_id": telegram_user_id,
+        "campaign_id": str(campaign_id),
+    })
+    if not isinstance(result, dict) or result.get("moderation_status") != "pending":
+        raise ValueError("API не подтвердил отправку на модерацию")
+    return result
+
+
+def submission_reply(callback, submitter):
+    chat = (callback.get("message") or {}).get("chat") or {}
+    actor = callback.get("from") or {}
+    chat_id = chat.get("id")
+    telegram_id = actor.get("id")
+    if (
+        chat.get("type") != "private" or type(telegram_id) is not int
+        or telegram_id <= 0 or type(chat_id) is not int or chat_id != telegram_id
+    ):
+        return None
+    callback_id = callback.get("id")
+    raw = callback.get("data", "")[7:]
+    try:
+        campaign_id = UUID(raw)
+    except (ValueError, TypeError, AttributeError):
+        return ({"chat_id": chat_id, "text": "Не удалось определить заявку. Начните с /advertise."}, callback_id)
+    if submitter is None:
+        return ({"chat_id": chat_id, "text": "Проверка канала пока недоступна."}, callback_id)
+    try:
+        submitter(telegram_id, campaign_id)
+        text = ("✅ Права администратора канала подтверждены.\n"
+                "Черновик отправлен на модерацию.\n"
+                "Оплату и размещение рекламы пока не выполняем.")
+    except HTTPError as exc:
+        if exc.code == 409:
+            text = ("⚠️ Не удалось подтвердить права на канал.\n"
+                    "Добавьте @mtproxy_pushok_bot администратором рекламируемого "
+                    "канала и убедитесь, что вы сами его администратор.\n"
+                    "После этого нажмите кнопку проверки повторно.")
+        elif exc.code == 404:
+            text = "Заявка не найдена в вашем кабинете."
+        else:
+            text = "Проверка Telegram временно недоступна. Попробуйте позже."
+        LOG.warning("Ошибка проверки канала: HTTP %s", exc.code)
+    except (URLError, OSError, RuntimeError, ValueError) as exc:
+        LOG.warning("Ошибка проверки канала: %s", type(exc).__name__)
+        text = "Проверка Telegram временно недоступна. Попробуйте позже."
+    return ({"chat_id": chat_id, "text": text,
+             "reply_markup": {"inline_keyboard": [
+                 [{"text": "📋 Мои кампании", "callback_data": "campaigns"}]
+             ]}}, callback_id)
+
+
 def format_campaigns(campaigns):
     if not campaigns:
         return ("📋 Пока у вас нет заявок в рекламном кабинете.\n"
@@ -119,13 +173,15 @@ def command_text(command, actor, chat_id, campaign_loader=None):
         return "📋 Заявки временно недоступны. Попробуйте позже."
 
 
-def response_for(update, campaign_loader=None, wizard=None):
+def response_for(update, campaign_loader=None, wizard=None, submitter=None):
     """Вернуть (sendMessage_payload, callback_query_id) либо None."""
     if wizard is not None:
         draft_reply = wizard.handle(update)
         if draft_reply is not None:
             return draft_reply
     callback = update.get("callback_query")
+    if callback and isinstance(callback.get("data"), str) and callback["data"].startswith("submit:"):
+        return submission_reply(callback, submitter)
     if callback:
         chat = (callback.get("message") or {}).get("chat") or {}
         command = callback.get("data")
@@ -196,7 +252,8 @@ def run():
                 "allowed_updates": ["message", "callback_query"]})
             for update in updates:
                 next_offset = update["update_id"] + 1
-                response = response_for(update, campaign_loader=fetch_campaigns, wizard=wizard)
+                response = response_for(update, campaign_loader=fetch_campaigns, wizard=wizard,
+                                        submitter=submit_campaign_draft)
                 if response is not None:
                     payload, callback_id = response
                     if callback_id:
