@@ -115,7 +115,9 @@ class DraftWizard:
                            "Заявка пока НЕ отправлена на модерацию и НЕ оплачена.\n"
                            "Посмотрите её в разделе «Мои кампании».",
                            callback_id,
-                           [[{"text": "📋 Мои кампании", "callback_data": "campaigns"}]])
+                           [[{"text": "🔍 Проверить канал и отправить на модерацию",
+                              "callback_data": "submit:" + str(result["campaign_id"])}],
+                            [{"text": "📋 Мои кампании", "callback_data": "campaigns"}]])
         if action and action.startswith("draft:"):
             return None
 
