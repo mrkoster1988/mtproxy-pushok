@@ -51,18 +51,18 @@ Telemt использует собственную `TELEMT Public License`, не
 
 ## Что добавила v0.027
 
-\`third_party/telemt/patches/0001-pushok-build-info.patch\` — детерминированный дифф исходного \`src/main.rs\` и нового \`src/pushok_build.rs\`. Обработка \`--pushok-build-info\` выполняется до инициализации криптографии, Tokio и открытия сетевых портов. Формат ответа — JSON (\`product\`, \`version\`, \`based_on\`, \`upstream_commit\`, \`patch\`, \`proxy_started=false\`). При одновременной передаче любых других аргументов возвращается код 2, без старта сервиса.
+`third_party/telemt/patches/0001-pushok-build-info.patch` — детерминированный дифф исходного `src/main.rs` и нового `src/pushok_build.rs`. Обработка `--pushok-build-info` выполняется до инициализации криптографии, Tokio и открытия сетевых портов. Формат ответа — JSON (`product`, `version`, `based_on`, `upstream_commit`, `patch`, `proxy_started=false`). При одновременной передаче любых других аргументов возвращается код 2, без старта сервиса.
 
 Команды локальной разработки:
 
-\`\`\`bash
+```bash
 bash setup.sh --core-plan
 bash scripts/fetch_pushok_core.sh --fetch
 bash scripts/apply_pushok_core_patch.sh --check
 bash scripts/build_pushok_core.sh --build
-\`\`\`
+```
 
-\`--check\` только проверяет применимость патча; \`--build\` применяет его и компилирует \`pushok-core-0.027-<commit>\`. В папке результата обязательно находятся \`TELEMT-LICENSE\`, \`NOTICE.md\`, \`PATCHES.md\` и SHA256. Повторное применение того же патча оставляет дерево без новых изменений; посторонние изменения запрещены. Для проверки в GitHub Actions добавлено задание \`rust-core\`: pinned fetch, patch check, Rust unit-test, release build, CLI JSON и checksum.
+`--check` только проверяет применимость патча; `--build` применяет его и компилирует `pushok-core-0.027-<commit>`. В папке результата обязательно находятся `TELEMT-LICENSE`, `NOTICE.md`, `PATCHES.md` и SHA256. Повторное применение того же патча оставляет дерево без новых изменений; посторонние изменения запрещены. Для проверки в GitHub Actions добавлено задание `rust-core`: pinned fetch, patch check, Rust unit-test, release build, CLI JSON и checksum.
 
 В v0.026 исходники только загружались и собирались без модификации; начиная с v0.027 формируется **отдельный изменённый двоичный файл**. Статус сборки подтверждается только по CI и не означает проверки рабочего Telegram MTProxy. На сервере живые сервисы не меняются.
 
