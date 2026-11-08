@@ -255,9 +255,11 @@ footer { margin-top: 64px; padding: 26px 0 34px; border-top: 1px solid #33495a; 
 @media (max-width: 520px) {
   .brand-mark { width: 42px; height: 42px; font-size: 28px; border-radius: 14px; }
   .brand-name strong { font-size: 22px; }
-  .brand-name small { font-size: 8px; letter-spacing: .6px; }
-  .account { gap: 8px; font-size: 11px; }
-  #identity { max-width: 100px; }
+  .brand-name small { display: none; }
+  .header-inner { gap: 7px; }
+  .brand { gap: 8px; min-width: 0; flex-shrink: 1; }
+  .account { gap: 6px; font-size: 11px; min-width: 0; flex-shrink: 1; }
+  #identity { max-width: 90px; min-width: 0; }
   #logout { padding: 9px; font-size: 11px; }
   .hero-inner { padding: 28px 20px 27px; }
   .hero h1 { font-size: clamp(49px, 12vw, 61px); line-height: 1.03; letter-spacing: -3px; }
