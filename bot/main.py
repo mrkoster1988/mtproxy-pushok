@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 from .wizard import DraftWizard
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
+from .delivery_inbox import DeliveryInbox
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
@@ -86,6 +87,22 @@ def submit_campaign_draft(telegram_user_id, campaign_id):
     if result.get("verified_now") is True:
         # Уведомление опционально: нельзя отменять уже сохранённую заявку.
         notify_subscribed_operators(campaign_id)
+    return result
+
+
+def admin_delivery_report(user_id):
+    result = _internal_api("admin/delivery-report", {"telegram_user_id": user_id})
+    if not isinstance(result, dict) or "advertiser" not in result:
+        raise ValueError("Неправильный формат диагностики")
+    return result
+
+
+def admin_retry_advertiser_notice(user_id, notice_id):
+    result = _internal_api("admin/retry-advertiser-notice", {
+        "telegram_user_id": user_id, "notice_id": str(notice_id),
+    })
+    if not isinstance(result, dict) or result.get("queued") is not True:
+        raise ValueError("API не подтвердил повтор")
     return result
 
 
@@ -253,8 +270,12 @@ def command_text(command, actor, chat_id, campaign_loader=None):
 
 
 def response_for(update, campaign_loader=None, wizard=None, submitter=None,
-                 operator_inbox=None):
+                 operator_inbox=None, delivery_inbox=None):
     """Вернуть (sendMessage_payload, callback_query_id) либо None."""
+    if delivery_inbox is not None:
+        delivery_reply = delivery_inbox.handle(update)
+        if delivery_reply is not None:
+            return delivery_reply
     if operator_inbox is not None:
         operator_reply = operator_inbox.handle(update)
         if operator_reply is not None:
@@ -329,6 +350,7 @@ def run():
     ready = len(secret) == 64 and all(c in "0123456789abcdef" for c in secret)
     wizard = DraftWizard(create_campaign_draft, enabled=ready)
     operator_inbox = OperatorInbox(operator_queue, operator_decide, operator_unsubscribe)
+    delivery_inbox = DeliveryInbox(admin_delivery_report, admin_retry_advertiser_notice)
     next_notification_poll = time.monotonic()
     offset = None
     while True:
@@ -340,7 +362,8 @@ def run():
                 next_offset = update["update_id"] + 1
                 response = response_for(update, campaign_loader=fetch_campaigns, wizard=wizard,
                                         submitter=submit_campaign_draft,
-                                        operator_inbox=operator_inbox)
+                                        operator_inbox=operator_inbox,
+                                        delivery_inbox=delivery_inbox)
                 if response is not None:
                     payload, callback_id = response
                     if callback_id:
