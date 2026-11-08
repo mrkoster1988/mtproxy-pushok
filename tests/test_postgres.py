@@ -175,6 +175,115 @@ class PostgresIntegration(unittest.TestCase):
             """, (campaign_id,)).fetchone()[0]
             self.assertEqual(audit_count, 1)
 
+    def test_bot_operator_review_and_notification_in_real_postgres(self):
+        """Оператор: права, уведомление, статус, аудит и отсутствие дублей."""
+        main.app.dependency_overrides.clear()
+        base = "/api/v1/internal/bot/"
+        secret = "f" * 64
+        headers = {"X-Pushok-Bot-Secret": secret}
+        admin_id = 71011
+        advertiser_id = 71012
+        campaign_key = str(uuid4())
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(
+                "INSERT INTO users(telegram_user_id, role) VALUES (%s, 'admin')",
+                (admin_id,),
+            )
+        with patch.dict(os.environ, {
+            "BOT_INTERNAL_SECRET": secret, "DATABASE_URL": self.dsn,
+        }), patch("app.bot_routes.verify_channel_admin",
+                  return_value=-1001234999999):
+            create = self.client.post(base + "campaign-drafts", headers=headers, json={
+                "telegram_user_id": advertiser_id,
+                "channel_username": "BotOperatorTest",
+                "request_key": campaign_key,
+            })
+            self.assertEqual(create.status_code, 200, create.text)
+            campaign_id = create.json()["campaign_id"]
+            send = self.client.post(base + "campaign-drafts/submit",
+                                    headers=headers, json={
+                                        "telegram_user_id": advertiser_id,
+                                        "campaign_id": campaign_id,
+                                    })
+            self.assertEqual(send.status_code, 200, send.text)
+
+            # Рекламодатель не является оператором, даже зная URL API.
+            bad = self.client.post(base + "operator/queue", headers=headers, json={
+                "telegram_user_id": advertiser_id,
+            })
+            self.assertEqual(bad.status_code, 403)
+            pending = self.client.post(base + "operator/queue", headers=headers, json={
+                "telegram_user_id": admin_id,
+            })
+            self.assertEqual(pending.status_code, 200, pending.text)
+            self.assertTrue(any(item["id"] == campaign_id for item in pending.json()))
+            notice = self.client.post(base + "operator/notifications",
+                                      headers=headers, json={"telegram_user_id": admin_id})
+            self.assertEqual(notice.status_code, 200, notice.text)
+            self.assertTrue(any(item["id"] == campaign_id for item in notice.json()))
+            ack = self.client.post(base + "operator/notifications/ack",
+                                   headers=headers, json={
+                                       "telegram_user_id": admin_id,
+                                       "campaign_id": campaign_id,
+                                   })
+            self.assertEqual(ack.status_code, 200, ack.text)
+            ack_again = self.client.post(base + "operator/notifications/ack",
+                                         headers=headers, json={
+                                             "telegram_user_id": admin_id,
+                                             "campaign_id": campaign_id,
+                                         })
+            self.assertEqual(ack_again.status_code, 200, ack_again.text)
+            no_second = self.client.post(base + "operator/notifications",
+                                         headers=headers, json={
+                                             "telegram_user_id": admin_id,
+                                         })
+            self.assertEqual(no_second.status_code, 200, no_second.text)
+            self.assertFalse(any(item["id"] == campaign_id for item in no_second.json()))
+
+            # Реальное решение меняет оплату, но не запускает рекламу.
+            approved = self.client.post(base + "operator/review", headers=headers, json={
+                "telegram_user_id": admin_id,
+                "campaign_id": campaign_id,
+                "decision": "approved",
+            })
+            self.assertEqual(approved.status_code, 200, approved.text)
+            self.assertEqual(approved.json()["moderation_status"], "approved")
+            self.assertEqual(approved.json()["payment_status"], "awaiting_payment")
+            twice = self.client.post(base + "operator/review", headers=headers, json={
+                "telegram_user_id": admin_id,
+                "campaign_id": campaign_id,
+                "decision": "approved",
+            })
+            self.assertEqual(twice.status_code, 409)
+            history = self.client.post(base + "operator/history",
+                                       headers=headers, json={"telegram_user_id": admin_id})
+            self.assertEqual(history.status_code, 200, history.text)
+            self.assertTrue(any(event["campaign_id"] == campaign_id
+                                for event in history.json()))
+
+        with psycopg.connect(self.dsn) as connection:
+            status = connection.execute(
+                """SELECT moderation_status, payment_status, placement_status
+                   FROM campaigns WHERE id = %s""", (campaign_id,),
+            ).fetchone()
+            self.assertEqual(status, ("approved", "awaiting_payment", "not_scheduled"))
+            changes = connection.execute(
+                """SELECT count(*) FROM audit_events
+                   WHERE campaign_id = %s AND event_type = 'campaign_moderated'
+                     AND details_json->>'source' = 'telegram_bot'""",
+                (campaign_id,),
+            ).fetchone()[0]
+            self.assertEqual(changes, 1)
+
+    def test_bot_operator_notifications_migration_is_repeatable(self):
+        migration = (ROOT / "database/004_bot_operator_notifications.sql").read_text()
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(migration)
+            connection.execute(migration)
+            self.assertTrue(connection.execute(
+                """SELECT to_regclass('public.bot_operator_notifications') IS NOT NULL"""
+            ).fetchone()[0])
+
     def test_campaign_lifecycle_and_slot_collision(self):
         owner, operator = uuid4(), uuid4()
         with psycopg.connect(self.dsn) as conn:
