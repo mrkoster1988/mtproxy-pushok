@@ -7,6 +7,7 @@ from uuid import UUID
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from .wizard import DraftWizard
+from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
@@ -351,6 +352,10 @@ def run():
             if ready and time.monotonic() >= next_notification_poll:
                 next_notification_poll = time.monotonic() + 30
                 deliver_operator_outbox(token)
+                deliver_advertiser_notices(
+                    _internal_api,
+                    lambda payload: telegram_call(token, "sendMessage", payload, timeout=4),
+                )
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
             # Не включать str(exc): HTTPError содержит URL с секретным токеном.
             LOG.warning("Ошибка Telegram API: %s, повтор через 5 сек.", type(exc).__name__)
