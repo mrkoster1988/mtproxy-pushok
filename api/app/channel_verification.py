@@ -48,7 +48,7 @@ def verify_channel_admin(username: str, telegram_user_id: int) -> int:
     if not token or token.startswith("REPLACE_") or ":" not in token:
         raise TelegramUnavailable("telegram_token_unconfigured")
     bot = _telegram_call(token, "getMe", {})
-    if bot.get("username", "").lower() != "mtproxy_pushok_bot" or bot.get("is_bot") is not True:
+    if str(bot.get("username") or "").lower() != "mtproxy_pushok_bot" or bot.get("is_bot") is not True:
         raise TelegramUnavailable("unexpected_telegram_bot")
     bot_id = bot.get("id")
     if type(bot_id) is not int or bot_id <= 0:
