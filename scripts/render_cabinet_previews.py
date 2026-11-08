@@ -51,19 +51,19 @@ def demo_response(path: str, role: str) -> object:
     if path.endswith("/tariffs"):
         return [{"id": TARIFF, "name": "1 день", "price_kopecks": 30000,
                  "currency": "RUB", "duration_seconds": 86400}]
-    if path.endswith("/campaigns"):
-        return [
-            campaign("00000000-0000-4000-8000-000000000032",
-                     "Новости технологий", "pending", "not_required", "not_scheduled"),
-            campaign("00000000-0000-4000-8000-000000000033",
-                     "Дизайн и вдохновение", "approved", "verified", "scheduled"),
-        ]
     if path.endswith("/operator/campaigns"):
         return [
             campaign("00000000-0000-4000-8000-000000000034",
                      "Новости технологий", "pending", "not_required", "not_scheduled"),
             campaign("00000000-0000-4000-8000-000000000035",
                      "Дизайн и вдохновение", "approved", "proof_submitted", "not_scheduled"),
+        ]
+    if path.endswith("/campaigns"):
+        return [
+            campaign("00000000-0000-4000-8000-000000000032",
+                     "Новости технологий", "pending", "not_required", "not_scheduled"),
+            campaign("00000000-0000-4000-8000-000000000033",
+                     "Дизайн и вдохновение", "approved", "verified", "scheduled"),
         ]
     if path.endswith("/operator/proxy-nodes"):
         return [{"id": NODE, "name": "Pushok · тестовый узел", "host": "proxy.example.org",
