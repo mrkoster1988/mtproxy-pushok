@@ -80,11 +80,35 @@ function card(c,op){
  }
  return box;
 }
+const engineTitles={official_mtproxy:'MTProxy Classic',official_docker:'MTProxy Docker (тест)',telemt:'Telemt (адаптер)'};
+function engineRequest(){
+ const data=Object.fromEntries(new FormData($('node-form')));
+ const policy={deployment:data.deployment,environment:data.environment,engine_mode:data.engine_mode};
+ if(policy.engine_mode==='manual')policy.preferred_engine=data.preferred_engine||null;
+ return policy;
+}
+$('engine-mode').addEventListener('change',()=>{
+ const manual=$('engine-mode').value==='manual';
+ $('preferred-engine-row').hidden=!manual;
+ $('preferred-engine').required=manual;
+});
+$('engine-preview').addEventListener('click',()=>run(async()=>{
+ const plan=await api('/admin/proxy-engines/recommend',{method:'POST',body:engineRequest()});
+ $('engine-advice').textContent='План: '+plan.title+' · '+plan.availability+
+  '. Не установлено и не проверено. Смена работающего прокси не выполняется.';
+}));
 function renderNodes(){
  $('node-admin').hidden=me?.role!=='admin';
  $('nodes-list').replaceChildren(...nodes.map(n=>{
   const box=el('div',undefined,'card');
-  box.append(el('h3',n.name),el('p',n.host+':'+n.port+' · '+(n.status==='active'?'Доступен для размещения':'На паузе')));
+  box.append(el('h3',n.name),el('p',n.host+':'+n.port+' · '+(n.status==='active'?'Доступен для расписания':'На паузе')));
+  box.append(el('p','План движка: '+(engineTitles[n.target_engine]||'Не выбран (старый узел)')+
+    ' · '+(n.engine_selection_mode||'legacy')+'. Установка и доступность не проверены.','muted'));
+  box.append(button('Изменить план движка',async()=>{
+   if(!confirm('Изменить только план движка? Реальный прокси не будет переключён.'))return;
+   await api('/admin/proxy-nodes/'+n.id+'/engine-plan',{method:'PATCH',body:engineRequest()});
+   await refresh();notice('План сохранён. Проверка и установка выполняются отдельно.',true);
+  }));
   box.append(button(n.status==='active'?'Поставить на паузу':'Возобновить',async()=>{
    await api('/admin/proxy-nodes/'+n.id+'/status',{method:'PATCH',body:{status:n.status==='active'?'paused':'active'}});
    await refresh();notice('Состояние узла сохранено.',true);
@@ -93,6 +117,7 @@ function renderNodes(){
 }
 $('node-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
  const data=Object.fromEntries(new FormData(e.target));data.port=Number(data.port);
+ if(data.engine_mode==='auto')delete data.preferred_engine;
  await api('/admin/proxy-nodes',{method:'POST',body:data});e.target.reset();await refresh();notice('Узел добавлен в реестр.',true);
 },e.submitter);});
 async function refresh(){

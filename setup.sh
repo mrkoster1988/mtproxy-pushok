@@ -83,12 +83,12 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v0.024 — мастер настройки" >&2
+echo "MTProxy Pushok v0.025 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
 PROXY_ENGINE=""
 if [[ "$COMPONENTS" != 2 ]]; then
-  choose PROXY_ENGINE "Какой движок установить для MTProxy?" 1     "Официальный MTProxy (Docker; отдельный тестовый проект)"     "Классический MTProxy (сборка из исходников + systemd)"
+  choose PROXY_ENGINE "Какой движок установить для MTProxy?" 3     "Официальный MTProxy (Docker; только тестовый стенд)"     "Классический MTProxy (сборка из исходников + systemd)"     "Автоматически: Classic (предпочтительно, без Telemt до проверки)"
 fi
 NEW_CONFIG=true
 HTTPS=1
@@ -167,6 +167,9 @@ if [[ "$COMPONENTS" != 2 ]]; then
     echo "Движок: telegrammessenger/proxy:latest (Docker, изолированный проект)." >&2
     echo "После подтверждения будут дополнительные вопросы о порте и TAG." >&2
   else
+    if [[ "$PROXY_ENGINE" == 3 ]]; then
+      echo "Автовыбор Pushok: Classic/native (без изменений работающих сервисов до подтверждения)." >&2
+    fi
     echo "Движок: классический Telegram MTProxy, systemd (текущий способ)." >&2
   fi
 fi
@@ -293,6 +296,8 @@ EOF
   # Реестр официальных MTProxyBot ad_tag без изменения живого прокси.
   docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/007_proxy_sponsor_registration.sql
   docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/008_official_docker_engine.sql
+  # Безопасная повторяемая миграция: старые proxy_nodes остаются без target_engine.
+  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/009_unified_engine_selection.sql
   if [[ -n "$ADMIN_ID" ]]; then
     printf "INSERT INTO users (telegram_user_id, role) VALUES (%s, 'admin') ON CONFLICT (telegram_user_id) DO UPDATE SET role='admin';\n" "$ADMIN_ID" |
       docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'

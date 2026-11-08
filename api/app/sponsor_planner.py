@@ -6,6 +6,7 @@
 import re
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
+from .engine_adapters import get_adapter
 
 _TAG = re.compile(r"^[0-9a-f]{32}$")
 _USERNAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
@@ -89,10 +90,11 @@ def build_readiness(row: dict, now: datetime | None = None) -> dict:
 def render_config_fragment(engine: str, tag: str) -> str:
     """Сформировать ТОЛЬКО текст для ручного переноса, не команду исполнения."""
     tag = normalize_ad_tag(tag)
-    if engine == "telemt":
+    style = get_adapter(engine).sponsor_format
+    if style == "ad_tag":
         return '[general]\nuse_middle_proxy = true\nad_tag = "' + tag + '"'
-    if engine == "official_mtproxy":
+    if style == "-P":
         return "-P " + tag
-    if engine == "official_docker":
+    if style == "TAG":
         return "TAG=" + tag
     raise ValueError("Неизвестный движок MTProxy")

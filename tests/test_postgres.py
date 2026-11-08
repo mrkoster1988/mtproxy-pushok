@@ -62,6 +62,44 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(result.status_code, expected, result.text)
         return result.json() if expected != 204 else None
 
+    def test_unified_engine_migration_keeps_legacy_and_allows_safe_plan(self):
+        migration = (ROOT / "database/009_unified_engine_selection.sql").read_text()
+        node_id, admin_id = uuid4(), uuid4()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("INSERT INTO users(id, telegram_user_id, role) VALUES (%s, %s, 'admin')",
+                         (admin_id, 99502501))
+            conn.execute("""INSERT INTO proxy_nodes(id, name, host, port)
+                            VALUES (%s, 'Legacy for engine test', %s, 8443)""",
+                         (node_id, f"legacy-{node_id.hex[:12]}.example.org"))
+            # Миграция поверх существующей БД не выбирает движок вместо оператора.
+            conn.execute(migration)
+            conn.execute(migration)
+            legacy = conn.execute(
+                "SELECT target_engine, engine_selection_mode FROM proxy_nodes WHERE id=%s",
+                (node_id,)).fetchone()
+            self.assertEqual(legacy, (None, "legacy"))
+        main.app.dependency_overrides[main.require_admin] = lambda: {
+            "id": admin_id, "role": "admin"}
+        try:
+            result = self.client.patch(
+                f"/api/v1/admin/proxy-nodes/{node_id}/engine-plan",
+                json={"environment": "staging", "deployment": "native",
+                      "engine_mode": "manual", "preferred_engine": "telemt"})
+            self.assertEqual(result.status_code, 200, result.text)
+            self.assertEqual(result.json()["target_engine"], "telemt")
+            self.assertFalse(result.json()["provisioning_verified"])
+            with psycopg.connect(self.dsn) as conn:
+                row = conn.execute("""SELECT target_engine, engine_selection_mode,
+                                             deployment_profile FROM proxy_nodes
+                                      WHERE id=%s""", (node_id,)).fetchone()
+                self.assertEqual(row, ("telemt", "manual", "native"))
+                audit = conn.execute(
+                    "SELECT count(*) FROM audit_events WHERE event_type='proxy_engine_plan_updated'"
+                    " AND actor_user_id=%s", (admin_id,)).fetchone()
+                self.assertEqual(audit[0], 1)
+        finally:
+            main.app.dependency_overrides.clear()
+
     def test_official_docker_engine_migration_and_real_postgres(self):
         """Новый тип не ломает старые записи, config preview только текст."""
         main.app.dependency_overrides.clear()
