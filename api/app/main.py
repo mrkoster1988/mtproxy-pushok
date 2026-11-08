@@ -31,7 +31,7 @@ from .bot_delivery_admin import router as bot_delivery_admin_router
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.020",
+    version="0.021",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
