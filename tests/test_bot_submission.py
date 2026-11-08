@@ -23,11 +23,19 @@ class BotSubmissionTests(unittest.TestCase):
         calls = []
         def send(sender, campaign_id):
             calls.append((sender, campaign_id))
-            return {"moderation_status": "pending"}
+            return {"moderation_status": "pending", "verified_now": True}
         response = response_for(callback(), submitter=send)
         self.assertEqual(calls, [(42, CAMPAIGN)])
         self.assertIn("отправлен на модерацию", response[0]["text"])
         self.assertEqual(response[1], "callback-verification")
+
+    def test_repeat_does_not_claim_fresh_verification(self):
+        response = response_for(
+            callback(),
+            submitter=lambda *_: {"moderation_status": "pending", "verified_now": False},
+        )
+        self.assertIn("уже находится", response[0]["text"])
+        self.assertNotIn("Права администратора канала подтверждены", response[0]["text"])
 
     def test_other_actor_cannot_submit(self):
         calls = []
