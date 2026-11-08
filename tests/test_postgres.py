@@ -282,6 +282,121 @@ class PostgresIntegration(unittest.TestCase):
                 ).fetchone()[0]
                 self.assertEqual(count, 0)
 
+    def test_operator_outbox_survives_retries_and_role_revocation(self):
+        """Новая pending-заявка надёжно сохраняет notice до успешного ACK."""
+        main.app.dependency_overrides.clear()
+        base = "/api/v1/internal/bot/"
+        secret = "e" * 64
+        headers = {"X-Pushok-Bot-Secret": secret}
+        operator_id, advertiser_id = 73001, 73002
+        key = str(uuid4())
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(
+                "INSERT INTO users (telegram_user_id, role) VALUES (%s, 'admin')",
+                (operator_id,),
+            )
+        with patch.dict(os.environ, {
+            "BOT_INTERNAL_SECRET": secret, "DATABASE_URL": self.dsn,
+        }), patch("app.bot_routes.verify_channel_admin",
+                  return_value=-1001234555000):
+            subscribe = self.client.post(base + "operators/queue",
+                                         headers=headers, json={
+                                             "telegram_user_id": operator_id,
+                                             "subscribe": True,
+                                         })
+            self.assertEqual(subscribe.status_code, 200, subscribe.text)
+            self.assertTrue(subscribe.json()["subscribed"])
+
+            draft = self.client.post(base + "campaign-drafts", headers=headers, json={
+                "telegram_user_id": advertiser_id,
+                "channel_username": "OutboxTestChannel",
+                "request_key": key,
+            })
+            self.assertEqual(draft.status_code, 200, draft.text)
+            campaign_id = draft.json()["campaign_id"]
+            submit = self.client.post(base + "campaign-drafts/submit",
+                                      headers=headers, json={
+                                          "telegram_user_id": advertiser_id,
+                                          "campaign_id": campaign_id,
+                                      })
+            self.assertEqual(submit.status_code, 200, submit.text)
+            self.assertTrue(submit.json()["verified_now"])
+
+            # Отозванная роль немедленно блокирует выдачу отложенного сообщения.
+            with psycopg.connect(self.dsn) as connection:
+                connection.execute(
+                    "UPDATE users SET role = 'advertiser' WHERE telegram_user_id = %s",
+                    (operator_id,),
+                )
+            no_access = self.client.post(base + "operators/outbox/claim", headers=headers)
+            self.assertEqual(no_access.status_code, 200, no_access.text)
+            self.assertEqual(no_access.json(), [])
+
+            with psycopg.connect(self.dsn) as connection:
+                connection.execute(
+                    "UPDATE users SET role = 'admin' WHERE telegram_user_id = %s",
+                    (operator_id,),
+                )
+            first = self.client.post(base + "operators/outbox/claim", headers=headers)
+            self.assertEqual(first.status_code, 200, first.text)
+            matches = [notice for notice in first.json()
+                       if notice["campaign_id"] == campaign_id]
+            self.assertEqual(len(matches), 1)
+            notice_id = matches[0]["notice_id"]
+            self.assertEqual(matches[0]["telegram_user_id"], operator_id)
+
+            # Пока таймаут не истёк, сообщение другим воркером не забирается.
+            immediate = self.client.post(base + "operators/outbox/claim",
+                                         headers=headers)
+            self.assertEqual(immediate.status_code, 200)
+            self.assertNotIn(notice_id, [x["notice_id"] for x in immediate.json()])
+
+            # Имитируем падение после claim и до Telegram/ACK.
+            with psycopg.connect(self.dsn) as connection:
+                connection.execute(
+                    """UPDATE bot_operator_notice_outbox
+                       SET last_attempt_at = now() - interval '3 minutes'
+                       WHERE id = %s""",
+                    (notice_id,),
+                )
+            retry = self.client.post(base + "operators/outbox/claim",
+                                     headers=headers)
+            self.assertEqual(retry.status_code, 200, retry.text)
+            self.assertIn(notice_id, [x["notice_id"] for x in retry.json()])
+
+            ack = self.client.post(base + "operators/outbox/ack",
+                                   headers=headers, json={"notice_id": notice_id})
+            self.assertEqual(ack.status_code, 200, ack.text)
+            ack_again = self.client.post(base + "operators/outbox/ack",
+                                         headers=headers, json={"notice_id": notice_id})
+            self.assertEqual(ack_again.status_code, 200, ack_again.text)
+            finished = self.client.post(base + "operators/outbox/claim",
+                                        headers=headers)
+            self.assertNotIn(notice_id, [x["notice_id"] for x in finished.json()])
+
+        with psycopg.connect(self.dsn) as connection:
+            row = connection.execute(
+                """SELECT attempts, delivered_at IS NOT NULL
+                   FROM bot_operator_notice_outbox WHERE id = %s""",
+                (notice_id,),
+            ).fetchone()
+            self.assertEqual(row, (2, True))
+            audit_count = connection.execute(
+                """SELECT count(*) FROM audit_events
+                   WHERE campaign_id = %s AND event_type = 'campaign_submitted_from_bot'""",
+                (campaign_id,),
+            ).fetchone()[0]
+            self.assertEqual(audit_count, 1)
+
+    def test_outbox_migration_idempotent(self):
+        migration = (ROOT / "database/005_operator_notice_outbox.sql").read_text()
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(migration)
+            connection.execute(migration)
+            self.assertTrue(connection.execute(
+                "SELECT to_regclass('public.bot_operator_notice_outbox') IS NOT NULL"
+            ).fetchone()[0])
+
     def test_campaign_lifecycle_and_slot_collision(self):
         owner, operator = uuid4(), uuid4()
         with psycopg.connect(self.dsn) as conn:

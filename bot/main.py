@@ -113,37 +113,49 @@ def operator_decide(user_id, campaign_id, decision, comment=None):
     return result
 
 
-def notify_subscribed_operators(campaign_id):
-    """Лучшее усилие, не изменяющее статус кампании при отказе Telegram."""
-    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+def deliver_operator_outbox(token):
+    """At-least-once отправка. ACK выполняется только после sendMessage."""
     try:
-        user_ids = _internal_api("operators/recipients", {})
-        if not isinstance(user_ids, list):
-            raise ValueError("Неверный список подписчиков")
+        notices = _internal_api("operators/outbox/claim", {})
+        if not isinstance(notices, list):
+            raise ValueError("Неверный ответ очереди уведомлений")
     except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
-        LOG.warning("Не удалось прочитать подписчиков: %s", type(exc).__name__)
+        LOG.warning("Не удалось получить отложенные уведомления: %s", type(exc).__name__)
         return
-    content = (
-        "📨 Новая заявка на модерацию MTProxy Pushok\n"
-        f"Заявка: {str(campaign_id)[:8]}\n"
-        "Тариф: 1 день — 300 ₽\n"
-        "Откройте /moderation для проверки."
-    )
-    for telegram_id in user_ids[:5]:
-        if type(telegram_id) is not int or telegram_id <= 0:
-            continue
+
+    for notice in notices[:5]:
         try:
+            notice_id = UUID(str(notice["notice_id"]))
+            campaign_id = UUID(str(notice["campaign_id"]))
+            recipient = notice["telegram_user_id"]
+            if type(recipient) is not int or recipient <= 0:
+                raise ValueError("Неверный получатель")
             telegram_call(token, "sendMessage", {
-                "chat_id": telegram_id,
-                "text": content,
+                "chat_id": recipient,
+                "text": (
+                    "📨 Заявка на модерацию MTProxy Pushok\n"
+                    f"Заявка: {str(campaign_id)[:8]}\n"
+                    "Тариф: 1 день — 300 ₽\n"
+                    "Откройте /moderation для проверки."
+                ),
                 "reply_markup": {"inline_keyboard": [[
                     {"text": "📋 Открыть очередь", "callback_data": "moderation"},
                 ]]},
             }, timeout=4)
-        except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
-            # Администратор мог ещё не открыть диалог с ботом или заблокировать его.
-            # Не раскрываем токен или URL Telegram Bot API.
+        except (HTTPError, URLError, OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+            # Сбой доставки: запись останется в PostgreSQL, повтор через 2 мин.
             LOG.warning("Уведомление Telegram не доставлено: %s", type(exc).__name__)
+            continue
+        try:
+            _internal_api("operators/outbox/ack", {"notice_id": str(notice_id)})
+        except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+            # Telegram уже отправил сообщение. Если ACK не записан, возможен дубль.
+            LOG.warning("ACK уведомления не сохранён: %s", type(exc).__name__)
+
+
+def notify_subscribed_operators(campaign_id):
+    """Быстрая попытка отправки после submit; при сбое поможет периодический опрос."""
+    deliver_operator_outbox(os.getenv("TELEGRAM_BOT_TOKEN", ""))
 
 
 def submission_reply(callback, submitter):
@@ -316,6 +328,7 @@ def run():
     ready = len(secret) == 64 and all(c in "0123456789abcdef" for c in secret)
     wizard = DraftWizard(create_campaign_draft, enabled=ready)
     operator_inbox = OperatorInbox(operator_queue, operator_decide, operator_unsubscribe)
+    next_notification_poll = time.monotonic()
     offset = None
     while True:
         try:
@@ -335,6 +348,9 @@ def run():
                     telegram_call(token, "sendMessage", payload)
                 # Не подтверждать update до завершения обработки.
                 offset = next_offset
+            if ready and time.monotonic() >= next_notification_poll:
+                next_notification_poll = time.monotonic() + 30
+                deliver_operator_outbox(token)
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
             # Не включать str(exc): HTTPError содержит URL с секретным токеном.
             LOG.warning("Ошибка Telegram API: %s, повтор через 5 сек.", type(exc).__name__)

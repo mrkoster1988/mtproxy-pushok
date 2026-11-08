@@ -125,7 +125,7 @@ class DraftSubmissionTests(unittest.TestCase):
 
     def test_success_updates_status_and_writes_audit(self):
         first = connection_with_rows(campaign_row())
-        second = connection_with_rows({"id": UUID(CHID)}, {"id": UUID(CID)}, None)
+        second = connection_with_rows({"id": UUID(CHID)}, {"id": UUID(CID)}, None, None)
         with patch("app.bot_routes.psycopg.connect", side_effect=[first, second]), \
              patch("app.bot_routes.verify_channel_admin",
                    return_value=CHANNEL_TELEGRAM_ID) as tg:
@@ -142,6 +142,7 @@ class DraftSubmissionTests(unittest.TestCase):
         self.assertIn("owner_user_id = %s", changes[0].args[0])
         self.assertIn("moderation_status = 'draft'", changes[1].args[0])
         self.assertIn("campaign_submitted_from_bot", changes[2].args[0])
+        self.assertIn("bot_operator_notice_outbox", changes[3].args[0])
 
     def test_changed_campaign_rolls_back_and_does_not_audit(self):
         first = connection_with_rows(campaign_row())
