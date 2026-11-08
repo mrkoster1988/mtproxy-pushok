@@ -72,7 +72,7 @@ class OfficialDockerInstallerTests(unittest.TestCase):
             # Прокси -> Enter (автовыбор) -> Начать, но только в --plan.
             result = subprocess.run(
                 ["bash", str(root / "setup.sh"), "--plan"],
-                input="1\\n\\n1\\n".replace("\\\\n", "\\n"), text=True,
+                input="1\n\n1\n", text=True,
                 capture_output=True, timeout=10,
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
