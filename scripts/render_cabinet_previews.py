@@ -127,10 +127,10 @@ def main() -> None:
                 page.evaluate("""() => {
                   const badge=document.createElement('div');
                   badge.textContent='ДЕМО · тестовые данные · не подключено к серверу';
-                  badge.style.cssText='position:fixed;bottom:12px;right:12px;z-index:2000;'+
-                   'background:#102437;color:#dcfff3;border:1px solid #64cdbb;'+
-                   'padding:8px 12px;border-radius:10px;font:bold 11px system-ui;'+
-                   'box-shadow:0 5px 20px #0007;pointer-events:none';
+                  badge.style.cssText='display:table;position:relative;max-width:calc(100% - 24px);'+
+                   'margin:12px 12px 24px auto;background:#102437;color:#dcfff3;'+
+                   'border:1px solid #64cdbb;padding:8px 12px;border-radius:10px;'+
+                   'font:bold 11px system-ui;pointer-events:none';
                   document.body.append(badge);
                 }""")
                 return page
