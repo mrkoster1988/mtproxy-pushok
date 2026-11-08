@@ -62,6 +62,128 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(result.status_code, expected, result.text)
         return result.json() if expected != 204 else None
 
+    def test_delivery_admin_diagnostics_and_retry_in_real_postgres(self):
+        """Роль admin, статистика отказов, ограничение повторов и аудит."""
+        main.app.dependency_overrides.clear()
+        admin_id, operator_id, advertiser_id = uuid4(), uuid4(), uuid4()
+        channel_id, campaign_id = uuid4(), uuid4()
+        delayed, inflight, delivered, abandoned = [uuid4() for _ in range(4)]
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(
+                """
+                INSERT INTO users(id, telegram_user_id, role)
+                VALUES (%s, 89001, 'admin'), (%s, 89002, 'operator'),
+                       (%s, 89003, 'advertiser')
+                """,
+                (admin_id, operator_id, advertiser_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO sponsor_channels(id, owner_user_id, telegram_url, title)
+                VALUES (%s, %s, 'https://t.me/delivery_demo', 'Demo delivery')
+                """,
+                (channel_id, advertiser_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO campaigns (
+                    id, advertiser_user_id, channel_id, tariff_id,
+                    tariff_name_snapshot, duration_seconds_snapshot,
+                    price_kopecks_snapshot, currency_snapshot
+                ) VALUES (%s, %s, %s, %s, '1 день', 86400, 30000, 'RUB')
+                """,
+                (campaign_id, advertiser_id, channel_id,
+                 "00000000-0000-4000-8000-000000000001"),
+            )
+            connection.execute(
+                """
+                INSERT INTO bot_advertiser_notice_outbox
+                    (id, campaign_id, recipient_user_id, decision, attempts,
+                     next_attempt_at, lease_until, delivered_at, abandoned_at)
+                VALUES
+                    (%s, %s, %s, 'approved', 3, now() + interval '20 minutes',
+                     NULL, NULL, NULL),
+                    (%s, %s, %s, 'rejected', 1, now() + interval '20 minutes',
+                     now() + interval '60 seconds', NULL, NULL),
+                    (%s, %s, %s, 'approved', 1, now(),
+                     NULL, now(), NULL),
+                    (%s, %s, %s, 'rejected', 4, now(),
+                     NULL, NULL, now())
+                """,
+                (delayed, campaign_id, advertiser_id,
+                 inflight, campaign_id, advertiser_id,
+                 delivered, campaign_id, advertiser_id,
+                 abandoned, campaign_id, advertiser_id),
+            )
+            connection.execute(
+                """
+                INSERT INTO bot_operator_notice_outbox
+                    (campaign_id, operator_user_id)
+                VALUES (%s, %s)
+                """,
+                (campaign_id, operator_id),
+            )
+
+        secret = "c" * 64
+        path = "/api/v1/internal/bot/admin/"
+        headers = {"X-Pushok-Bot-Secret": secret}
+        with patch.dict(os.environ, {"BOT_INTERNAL_SECRET": secret,
+                                     "DATABASE_URL": self.dsn}):
+            denied = self.client.post(path + "delivery-report",
+                                      json={"telegram_user_id": 89002},
+                                      headers=headers)
+            self.assertEqual(denied.status_code, 403)
+            report = self.client.post(path + "delivery-report",
+                                      json={"telegram_user_id": 89001},
+                                      headers=headers)
+            self.assertEqual(report.status_code, 200, report.text)
+            stats = report.json()
+            self.assertEqual(stats["advertiser"], {
+                "waiting": 1, "in_flight": 1, "delivered": 1, "abandoned": 1,
+            })
+            self.assertEqual(stats["operator"]["waiting"], 1)
+            self.assertEqual(len(stats["recent_undelivered"]), 3)
+            self.assertNotIn("telegram_user_id", report.text)
+
+            blocked = self.client.post(path + "retry-advertiser-notice",
+                                       json={"telegram_user_id": 89002,
+                                             "notice_id": str(delayed)},
+                                       headers=headers)
+            self.assertEqual(blocked.status_code, 403)
+            for ident in (inflight, delivered, abandoned):
+                blocked_state = self.client.post(
+                    path + "retry-advertiser-notice", headers=headers,
+                    json={"telegram_user_id": 89001, "notice_id": str(ident)},
+                )
+                self.assertEqual(blocked_state.status_code, 409, blocked_state.text)
+
+            requested = self.client.post(
+                path + "retry-advertiser-notice", headers=headers,
+                json={"telegram_user_id": 89001, "notice_id": str(delayed)},
+            )
+            self.assertEqual(requested.status_code, 200, requested.text)
+            self.assertEqual(requested.json(), {"queued": True})
+            again = self.client.post(
+                path + "retry-advertiser-notice", headers=headers,
+                json={"telegram_user_id": 89001, "notice_id": str(delayed)},
+            )
+            self.assertEqual(again.status_code, 409)
+
+        with psycopg.connect(self.dsn) as connection:
+            due = connection.execute(
+                """SELECT next_attempt_at <= now()
+                   FROM bot_advertiser_notice_outbox WHERE id = %s""",
+                (delayed,),
+            ).fetchone()[0]
+            self.assertTrue(due)
+            records = connection.execute(
+                """SELECT count(*) FROM audit_events
+                   WHERE actor_user_id = %s AND campaign_id = %s
+                     AND event_type = 'advertiser_notice_retry_requested'""",
+                (admin_id, campaign_id),
+            ).fetchone()[0]
+            self.assertEqual(records, 1)
+
     def test_advertiser_moderation_outbox_in_real_postgres(self):
         """Два пути модерации -> транзакционный outbox и lease/ACK."""
         main.app.dependency_overrides.clear()
