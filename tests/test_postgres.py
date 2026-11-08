@@ -115,9 +115,9 @@ class PostgresIntegration(unittest.TestCase):
                        'approved', 'verified', 'scheduled',
                        %s, %s
                    )""",
-                (campaign_id, advertiser_id, channel_id, node_id,
+                (campaign_id, advertiser_id, channel_id,
                  "00000000-0000-4000-8000-000000000001",
-                 future, future + timedelta(days=1)),
+                 node_id, future, future + timedelta(days=1)),
             )
         # Нельзя незаметно поменять тег, когда место уже запланировано.
         busy = self.client.put(admin_base + "/sponsor-registration", json={
