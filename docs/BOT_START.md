@@ -175,3 +175,6 @@ docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d 
 `tests/test_postgres.py` проверяют проверку секрета, отозванную роль,
 таймауты попыток, ACK и отсутствие второй записи аудита.
 Реальный запуск на VPS остаётся отдельным этапом.
+
+
+**Итог CI v0.019:** [GitHub Actions run](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42463859043): 120 тестов и Docker Compose smoke-test — успешно. Это не заменяет реальную проверку Telegram API и VPS.
