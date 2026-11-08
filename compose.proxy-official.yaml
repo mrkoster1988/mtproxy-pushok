@@ -1,0 +1,23 @@
+# Отдельный Compose-проект официального MTProto Proxy (не затрагивает кабинет).
+# ВАЖНО: официальный образ latest исторически старый; тестировать до production.
+# Секрет и TAG поступают только из root-only файла; env не публиковать.
+name: mtproxy-pushok-official
+services:
+  proxy:
+    image: telegrammessenger/proxy:latest
+    restart: unless-stopped
+    env_file:
+      - ${MTPROXY_SECRET_FILE:?Укажите путь к закрытому файлу секретов}
+    ports:
+      - "${MTPROXY_BIND_IP:-0.0.0.0}:${MTPROXY_PORT:-8443}:443/tcp"
+    volumes:
+      - proxy-data:/data
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "2"
+volumes:
+  proxy-data:
