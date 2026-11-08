@@ -36,7 +36,7 @@ class UnifiedBotInstallerTests(unittest.TestCase):
         answers = "2\n2\n\n\n1\n" + token + "\nmtproxy_pushok_bot\n2\n2\n1\n"
         output = self.run_plan(answers)
         self.assertIn("запуск polling вместе с кабинетом", output)
-        self.assertIn("режим --plan: изменения не выполнялись", output)
+        self.assertIn("Режим --plan: изменения не выполнялись", output)
         self.assertNotIn(token, output)
 
     def test_new_install_without_telegram_does_not_start_bot(self):
