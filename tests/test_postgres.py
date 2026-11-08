@@ -62,6 +62,138 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(result.status_code, expected, result.text)
         return result.json() if expected != 204 else None
 
+    def test_advertiser_moderation_outbox_in_real_postgres(self):
+        """Два пути модерации -> транзакционный outbox и lease/ACK."""
+        main.app.dependency_overrides.clear()
+        owner_id, operator_id, channel_id = uuid4(), uuid4(), uuid4()
+        web_campaign, bot_campaign = uuid4(), uuid4()
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(
+                """INSERT INTO users(id, telegram_user_id, role)
+                   VALUES (%s, 86001, 'advertiser'), (%s, 86002, 'operator')""",
+                (owner_id, operator_id),
+            )
+            connection.execute(
+                """INSERT INTO sponsor_channels(id, owner_user_id, telegram_url, title)
+                   VALUES (%s, %s, 'https://t.me/notices_test', 'Notices')""",
+                (channel_id, owner_id),
+            )
+            for campaign in (web_campaign, bot_campaign):
+                connection.execute(
+                    """INSERT INTO campaigns (
+                       id, advertiser_user_id, channel_id, tariff_id,
+                       tariff_name_snapshot, duration_seconds_snapshot,
+                       price_kopecks_snapshot, currency_snapshot, moderation_status
+                       ) VALUES (%s, %s, %s, %s, '1 день', 86400, 30000, 'RUB', 'pending')""",
+                    (campaign, owner_id, channel_id,
+                     "00000000-0000-4000-8000-000000000001"),
+                )
+
+        # Старый операторский веб-маршрут должен создавать такое же событие.
+        main.app.dependency_overrides[main.require_operator] = lambda: {
+            "id": operator_id, "role": "operator",
+        }
+        web = self.client.post(
+            "/api/v1/operator/campaigns/" + str(web_campaign) + "/moderation",
+            json={"decision": "approved"},
+        )
+        main.app.dependency_overrides.clear()
+        self.assertEqual(web.status_code, 200, web.text)
+
+        secret = "a" * 64
+        headers = {"X-Pushok-Bot-Secret": secret}
+        prefix = "/api/v1/internal/bot/"
+        with patch.dict(os.environ, {
+            "BOT_INTERNAL_SECRET": secret, "DATABASE_URL": self.dsn,
+        }):
+            bot = self.client.post(prefix + "operators/decide",
+                                   headers=headers, json={
+                                       "telegram_user_id": 86002,
+                                       "campaign_id": str(bot_campaign),
+                                       "decision": "rejected",
+                                       "comment": "Исправьте запрещённое описание",
+                                   })
+            self.assertEqual(bot.status_code, 200, bot.text)
+            with psycopg.connect(self.dsn) as conn:
+                records = conn.execute(
+                    """SELECT campaign_id, decision, comment_snapshot
+                       FROM bot_advertiser_notice_outbox
+                       WHERE campaign_id IN (%s, %s)
+                       ORDER BY campaign_id""",
+                    (web_campaign, bot_campaign),
+                ).fetchall()
+                self.assertEqual(len(records), 2)
+                self.assertEqual({r[1] for r in records}, {"approved", "rejected"})
+                self.assertIn("Исправьте запрещённое описание",
+                              [r[2] for r in records])
+
+            claim = self.client.post(prefix + "advertisers/outbox/claim",
+                                     headers=headers)
+            self.assertEqual(claim.status_code, 200, claim.text)
+            batch = [r for r in claim.json()
+                     if r["campaign_id"] in {str(web_campaign), str(bot_campaign)}]
+            self.assertEqual(len(batch), 2)
+            self.assertEqual({r["telegram_user_id"] for r in batch}, {86001})
+
+            second = self.client.post(prefix + "advertisers/outbox/claim",
+                                      headers=headers)
+            self.assertFalse(any(r["campaign_id"] in
+                                 {str(web_campaign), str(bot_campaign)}
+                                 for r in second.json()))
+
+            first = batch[0]
+            bad = self.client.post(prefix + "advertisers/outbox/finish",
+                                   headers=headers, json={
+                                       "notice_id": first["notice_id"],
+                                       "claim_token": str(uuid4()),
+                                   })
+            self.assertEqual(bad.status_code, 409)
+            ack = self.client.post(prefix + "advertisers/outbox/finish",
+                                   headers=headers, json={
+                                       "notice_id": first["notice_id"],
+                                       "claim_token": first["claim_token"],
+                                   })
+            self.assertEqual(ack.status_code, 200, ack.text)
+
+            # Вторая отправка не получила ACK. Через таймаут её можно забрать
+            # новым обработчиком; старый claim_token должен стать недействительным.
+            unacked = batch[1]
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute(
+                    """UPDATE bot_advertiser_notice_outbox
+                       SET lease_until = now() - interval '1 second',
+                           next_attempt_at = now() - interval '1 second'
+                       WHERE id = %s""",
+                    (unacked["notice_id"],),
+                )
+            retried = self.client.post(prefix + "advertisers/outbox/claim",
+                                       headers=headers)
+            self.assertEqual(retried.status_code, 200, retried.text)
+            again = next(x for x in retried.json()
+                         if x["notice_id"] == unacked["notice_id"])
+            self.assertNotEqual(again["claim_token"], unacked["claim_token"])
+            old_ack = self.client.post(prefix + "advertisers/outbox/finish",
+                                       headers=headers, json={
+                                           "notice_id": unacked["notice_id"],
+                                           "claim_token": unacked["claim_token"],
+                                       })
+            self.assertEqual(old_ack.status_code, 409)
+            good_ack = self.client.post(prefix + "advertisers/outbox/finish",
+                                        headers=headers, json={
+                                            "notice_id": again["notice_id"],
+                                            "claim_token": again["claim_token"],
+                                        })
+            self.assertEqual(good_ack.status_code, 200, good_ack.text)
+
+        with psycopg.connect(self.dsn) as conn:
+            counts = conn.execute(
+                """SELECT count(*), count(delivered_at)
+                   FROM bot_advertiser_notice_outbox
+                   WHERE campaign_id IN (%s, %s)""",
+                (web_campaign, bot_campaign),
+            ).fetchone()
+            self.assertEqual(counts, (2, 2))
+
     def test_bot_draft_in_real_postgres_with_retry(self):
         """В PostgreSQL один request_key создаёт ровно один черновик."""
         main.app.dependency_overrides.clear()
