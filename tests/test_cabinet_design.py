@@ -108,7 +108,7 @@ class CabinetDesignTests(unittest.TestCase):
         self.assertIn('version="0.028"', main)
         self.assertIn("v0.028", setup)
         self.assertIn("v0.028", self.html)
-        self.assertIn("Pushok VPN", (ROOT / "docs/ROADMAP.md").read_text(encoding="utf-8"))
+        self.assertIn("Pushok VPN", (ROOT / "README.md").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
