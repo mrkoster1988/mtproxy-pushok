@@ -26,6 +26,10 @@ if (( EUID == 0 )); then
   exit 1
 fi
 command -v git >/dev/null || { echo "Нужен git." >&2; exit 1; }
+if [[ -L "$ROOT/.build" || -L "$ROOT/.build/pushok-core" || -L "$OUT" ]]; then
+  echo "Символьные ссылки в каталоге сборки запрещены." >&2
+  exit 1
+fi
 if [[ -e "$OUT" ]]; then
   [[ -d "$OUT/.git" ]] || { echo "Каталог существует и не является рабочей копией git. Отказ без перезаписи." >&2; exit 1; }
   got="$(git -C "$OUT" rev-parse HEAD)"
