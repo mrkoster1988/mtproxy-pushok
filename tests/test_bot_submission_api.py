@@ -75,6 +75,7 @@ class DraftSubmissionTests(unittest.TestCase):
             response = self.submit()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["moderation_status"], "pending")
+        self.assertIs(response.json()["verified_now"], False)
         self.assertEqual(response.headers["cache-control"], "no-store")
         db.assert_called_once()
         tg.assert_not_called()
@@ -132,6 +133,7 @@ class DraftSubmissionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["moderation_status"], "pending")
         self.assertEqual(response.json()["campaign_id"], CID)
+        self.assertIs(response.json()["verified_now"], True)
         tg.assert_called_once_with("ExampleChannel", 321)
         first_sql = first.__enter__.return_value.execute.call_args_list[0]
         self.assertIn("u.telegram_user_id = %s", first_sql.args[0])
