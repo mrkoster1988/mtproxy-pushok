@@ -50,7 +50,7 @@ class PushokCoreTests(unittest.TestCase):
                 validate_domain(bad)
         for kwargs in (
             {"port": 0}, {"port": 65536}, {"port": True},
-            {"username": "name"\n[evil]"},
+            {"username": "name\u0022injection"},
             {"username": "bad username"},
             {"secret": "0" * 32},
             {"secret": "a" * 31},
