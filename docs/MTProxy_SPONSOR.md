@@ -66,3 +66,7 @@ docker compose --profile bot config --quiet
 ## Подтверждённые проверки v0.022
 
 [GitHub Actions для PR №8](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42485828864) — **170 Python-тестов и Docker Compose smoke-test прошли**. Утверждена только корректность кода реестра и предварительного плана. Это не означает, что на VPS установлен Telemt, получен реальный тег или что спонсорский канал отображается у пользователей Telegram.
+
+## Docker MTProxy в v0.023
+
+Отдельный тестовый установщик официального Docker-образа описан в [MTProxy_OFFICIAL_DOCKER.md](MTProxy_OFFICIAL_DOCKER.md). Для официального **Docker** контейнера ad_tag задаётся переменной TAG; параметр -P из инструкции выше применим к бинарному MTProxy, а не как аргумент запуска Docker-контейнера. В кабинете эти варианты различаются типами official_docker и official_mtproxy. Выбор Telegram Set promotion остаётся ручным.
