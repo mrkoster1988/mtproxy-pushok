@@ -107,3 +107,5 @@ python3 -m unittest tests.test_channel_verification tests.test_bot_submission \
 ```
 
 Полная проверка CI включает `tests/test_postgres.py` с отдельной PostgreSQL, миграциями и повторной отправкой одной заявки. Реальное добавление бота в Telegram-канал и проверка на VPS пока **не проводились**.
+
+**Результат CI v0.017:** [GitHub Actions run #106](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42453241503) — 90 тестов и Compose smoke-test успешны. Это проверка кода в CI, а не Telegram-канала на VPS.
