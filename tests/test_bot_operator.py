@@ -111,19 +111,45 @@ class BotOperatorInboxTests(unittest.TestCase):
         self.assertIsNone(response_for(msg("Причина"), operator_inbox=inbox))
         self.assertFalse(self.calls)
 
-    def test_notify_only_new_submission_and_role_filtered_recipients(self):
+    def test_new_submission_claims_outbox_then_acknowledges_deliveries(self):
+        nid1 = "00000000-0000-4000-8000-000000000143"
+        nid2 = "00000000-0000-4000-8000-000000000144"
+        requests = []
         def api(route, payload):
+            requests.append((route, payload))
             if route == "campaign-drafts/submit":
                 return {"moderation_status": "pending", "verified_now": True}
-            if route == "operators/recipients":
-                return [55, 99]
-            self.fail("unexpected route")
+            if route == "operators/outbox/claim":
+                return [
+                    {"notice_id": nid1, "campaign_id": str(CID), "telegram_user_id": 55},
+                    {"notice_id": nid2, "campaign_id": str(CID), "telegram_user_id": 99},
+                ]
+            if route == "operators/outbox/ack":
+                return {"acknowledged": True}
+            self.fail("unexpected route " + route)
         with patch("bot.main._internal_api", side_effect=api), \
              patch("bot.main.telegram_call") as send, \
              patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": "123:test"}):
             submit_campaign_draft(77, CID)
         self.assertEqual(send.call_count, 2)
         self.assertEqual([c.args[2]["chat_id"] for c in send.call_args_list], [55, 99])
+        acks = [payload for route, payload in requests if route == "operators/outbox/ack"]
+        self.assertEqual(acks, [{"notice_id": nid1}, {"notice_id": nid2}])
+
+    def test_failed_send_never_acknowledges_delivery(self):
+        notice_id = "00000000-0000-4000-8000-000000000143"
+        calls = []
+        def api(route, payload):
+            calls.append(route)
+            if route == "operators/outbox/claim":
+                return [{"notice_id": notice_id,
+                         "campaign_id": str(CID), "telegram_user_id": 55}]
+            self.fail("ACK not allowed after send error")
+        with patch("bot.main._internal_api", side_effect=api), \
+             patch("bot.main.telegram_call", side_effect=RuntimeError("telegram down")):
+            from bot.main import deliver_operator_outbox
+            deliver_operator_outbox("test-token")
+        self.assertEqual(calls, ["operators/outbox/claim"])
 
     def test_idempotent_submission_does_not_resend_notifications(self):
         with patch("bot.main._internal_api", return_value={
