@@ -129,7 +129,7 @@ def notify_subscribed_operators(campaign_id):
         "Тариф: 1 день — 300 ₽\n"
         "Откройте /moderation для проверки."
     )
-    for telegram_id in user_ids[:100]:
+    for telegram_id in user_ids[:5]:
         if type(telegram_id) is not int or telegram_id <= 0:
             continue
         try:
@@ -139,7 +139,7 @@ def notify_subscribed_operators(campaign_id):
                 "reply_markup": {"inline_keyboard": [[
                     {"text": "📋 Открыть очередь", "callback_data": "moderation"},
                 ]]},
-            })
+            }, timeout=4)
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
             # Администратор мог ещё не открыть диалог с ботом или заблокировать его.
             # Не раскрываем токен или URL Telegram Bot API.
@@ -281,11 +281,11 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
              "reply_markup": keyboard()}, None)
 
 
-def telegram_call(token, method, payload):
+def telegram_call(token, method, payload, timeout=40):
     req = Request("https://api.telegram.org/bot" + token + "/" + method,
                   data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                   headers={"Content-Type": "application/json"}, method="POST")
-    with urlopen(req, timeout=40) as stream:
+    with urlopen(req, timeout=timeout) as stream:
         result = json.load(stream)
     if not result.get("ok"):
         raise RuntimeError("Telegram API отклонил запрос")
