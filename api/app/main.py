@@ -11,7 +11,7 @@ import time
 from base64 import b64decode, urlsafe_b64decode, urlsafe_b64encode
 from datetime import datetime, timedelta, timezone, date as Date, time as Time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
@@ -29,10 +29,11 @@ from .bot_advertiser_notices import router as advertiser_notices_router
 from .bot_outbox import router as bot_outbox_router
 from .bot_delivery_admin import router as bot_delivery_admin_router
 from .sponsor_planner import build_readiness, normalize_ad_tag, render_config_fragment
+from .engine_adapters import recommend_engine, engine_catalog
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.024",
+    version="0.025",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1007,7 +1008,9 @@ def list_proxy_nodes(operator: dict[str, Any] = Depends(require_operator)) -> li
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             return connection.execute(
-                "SELECT id, name, host, port, status FROM proxy_nodes ORDER BY name"
+                """SELECT id, name, host, port, status, target_engine,
+                          engine_selection_mode, deployment_profile
+                   FROM proxy_nodes ORDER BY name"""
             ).fetchall()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
@@ -1040,10 +1043,39 @@ def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str,
     return user
 
 
-class ProxyNodeCreate(BaseModel):
+class EngineSelectionInput(BaseModel):
+    deployment: Literal["any", "native", "docker"] = "any"
+    environment: Literal["production", "staging"] = "production"
+    engine_mode: Literal["auto", "manual"] = "auto"
+    preferred_engine: Literal["official_mtproxy", "official_docker", "telemt"] | None = None
+
+
+class ProxyNodeCreate(EngineSelectionInput):
     name: str = Field(min_length=1, max_length=100)
     host: str = Field(min_length=1, max_length=253)
     port: int = Field(ge=1, le=65535)
+
+
+def _engine_plan(payload: EngineSelectionInput) -> dict[str, Any]:
+    try:
+        return recommend_engine(**payload.model_dump(include={
+            "deployment", "environment", "engine_mode", "preferred_engine"
+        }))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/admin/proxy-engines", tags=["admin"])
+def list_proxy_engines(admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    return {"adapters": engine_catalog(), "changes_applied": False}
+
+
+@app.post("/api/v1/admin/proxy-engines/recommend", tags=["admin"])
+def recommend_proxy_engine(
+    payload: EngineSelectionInput,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    return _engine_plan(payload)
 
 
 class ProxyNodeStatus(BaseModel):
@@ -1073,15 +1105,19 @@ def create_proxy_node(
     if not name:
         raise HTTPException(status_code=422, detail="proxy_name_required")
     host = normalize_proxy_host(payload.host)
+    plan = _engine_plan(payload)
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             row = connection.execute(
                 """
-                INSERT INTO proxy_nodes (name, host, port)
-                VALUES (%s, %s, %s)
-                RETURNING id, name, host, port, status
+                INSERT INTO proxy_nodes (name, host, port, target_engine,
+                                         engine_selection_mode, deployment_profile)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id, name, host, port, status, target_engine,
+                          engine_selection_mode, deployment_profile
                 """,
-                (name, host, payload.port),
+                (name, host, payload.port, plan["engine"],
+                 plan["engine_mode"], plan["deployment"]),
             ).fetchone()
             connection.execute(
                 """
@@ -1094,7 +1130,7 @@ def create_proxy_node(
         raise HTTPException(status_code=409, detail="proxy_node_already_exists") from exc
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
-    return row
+    return {**row, "provisioning_verified": False, "changes_applied": False}
 
 
 @app.patch("/api/v1/admin/proxy-nodes/{node_id}/status", tags=["admin"])
@@ -1366,11 +1402,13 @@ def save_proxy_sponsor_registration(
             DATABASE_URL, connect_timeout=3, row_factory=dict_row
         ) as connection:
             node = connection.execute(
-                "SELECT id FROM proxy_nodes WHERE id = %s FOR UPDATE",
+                "SELECT id, target_engine FROM proxy_nodes WHERE id = %s FOR UPDATE",
                 (node_id,),
             ).fetchone()
             if node is None:
                 raise HTTPException(status_code=404, detail="proxy_node_not_found")
+            if node.get("target_engine") not in (None, payload.engine):
+                raise HTTPException(status_code=409, detail="sponsor_engine_mismatch")
             occupied = connection.execute(
                 """
                 SELECT 1 FROM campaigns
