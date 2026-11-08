@@ -237,6 +237,7 @@ class BotSubmitDraft(BaseModel):
 class BotSubmitResult(BaseModel):
     campaign_id: UUID
     moderation_status: str
+    verified_now: bool = False
 
 
 @router.post(
@@ -279,7 +280,7 @@ def submit_bot_campaign_draft(
     if campaign is None:
         raise HTTPException(status_code=404, detail="bot_draft_not_found")
     if campaign["moderation_status"] == "pending":
-        return BotSubmitResult(campaign_id=payload.campaign_id, moderation_status="pending")
+        return BotSubmitResult(campaign_id=payload.campaign_id, moderation_status="pending", verified_now=False)
     if campaign["moderation_status"] != "draft":
         raise HTTPException(status_code=409, detail="bot_draft_not_editable")
 
@@ -349,4 +350,4 @@ def submit_bot_campaign_draft(
             )
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
-    return BotSubmitResult(campaign_id=payload.campaign_id, moderation_status="pending")
+    return BotSubmitResult(campaign_id=payload.campaign_id, moderation_status="pending", verified_now=True)
