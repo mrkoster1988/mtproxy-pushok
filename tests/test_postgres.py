@@ -119,6 +119,60 @@ class PostgresIntegration(unittest.TestCase):
                 "SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE indexname = 'campaigns_bot_request_key_uq')"
             ).fetchone()[0])
 
+    def test_bot_submission_in_real_postgres(self):
+        """Бот не обходит владельца черновика; отправка оставляет запись в аудите."""
+        main.app.dependency_overrides.clear()
+        secret = "e" * 64
+        channel_id = -1001234000567
+        base = "/api/v1/internal/bot/"
+        headers = {"X-Pushok-Bot-Secret": secret}
+        new_draft = {
+            "telegram_user_id": 70006,
+            "channel_username": "MyChannelVerify",
+            "request_key": str(uuid4()),
+        }
+        with patch.dict(os.environ, {
+            "BOT_INTERNAL_SECRET": secret, "DATABASE_URL": self.dsn,
+        }), patch("app.bot_routes.verify_channel_admin",
+                  return_value=channel_id) as verifier:
+            draft = self.client.post(base + "campaign-drafts",
+                                     headers=headers, json=new_draft)
+            self.assertEqual(draft.status_code, 200, draft.text)
+            campaign_id = draft.json()["campaign_id"]
+            submit = {
+                "telegram_user_id": 70006, "campaign_id": campaign_id,
+            }
+            first = self.client.post(base + "campaign-drafts/submit",
+                                     headers=headers, json=submit)
+            self.assertEqual(first.status_code, 200, first.text)
+            self.assertEqual(first.json()["moderation_status"], "pending")
+            verifier.assert_called_once_with("mychannelverify", 70006)
+
+            again = self.client.post(base + "campaign-drafts/submit",
+                                     headers=headers, json=submit)
+            self.assertEqual(again.status_code, 200, again.text)
+            verifier.assert_called_once()  # идемпотентный повтор без Telegram API
+
+            foreign = self.client.post(base + "campaign-drafts/submit",
+                                       headers=headers, json={
+                                           **submit, "telegram_user_id": 70007,
+                                       })
+            self.assertEqual(foreign.status_code, 404)
+
+        with psycopg.connect(self.dsn) as connection:
+            row = connection.execute("""
+                SELECT c.moderation_status, c.payment_status,
+                       sc.telegram_channel_id
+                FROM campaigns c JOIN sponsor_channels sc ON sc.id = c.channel_id
+                WHERE c.id = %s
+            """, (campaign_id,)).fetchone()
+            self.assertEqual(row, ("pending", "not_required", channel_id))
+            audit_count = connection.execute("""
+                SELECT count(*) FROM audit_events
+                WHERE campaign_id = %s AND event_type = 'campaign_submitted_from_bot'
+            """, (campaign_id,)).fetchone()[0]
+            self.assertEqual(audit_count, 1)
+
     def test_campaign_lifecycle_and_slot_collision(self):
         owner, operator = uuid4(), uuid4()
         with psycopg.connect(self.dsn) as conn:
