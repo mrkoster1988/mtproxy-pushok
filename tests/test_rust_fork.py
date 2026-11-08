@@ -104,19 +104,20 @@ class RustForkPatchTests(unittest.TestCase):
     def test_patch_plan_does_not_create_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            shutil.copy2(SRC, root / "apply_pushok_core_patch.sh")
+            (root / "scripts").mkdir()
+            shutil.copy2(SRC, root / "scripts/apply_pushok_core_patch.sh")
             # Plan needs the fixed patch; copy project layout without executing anything.
             patchdir = root / "third_party/telemt/patches"
             patchdir.mkdir(parents=True)
             shutil.copy2(PATCH, patchdir / PATCH.name)
-            result = subprocess.run(["bash", str(root / "apply_pushok_core_patch.sh"),
+            result = subprocess.run(["bash", str(root / "scripts/apply_pushok_core_patch.sh"),
                                      "--plan"], input="", text=True,
                                     capture_output=True, timeout=5)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("ПЛАН:", result.stdout)
             self.assertEqual(
                 {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()},
-                {"apply_pushok_core_patch.sh",
+                {"scripts/apply_pushok_core_patch.sh",
                  "third_party/telemt/patches/0001-pushok-build-info.patch"},
             )
 
