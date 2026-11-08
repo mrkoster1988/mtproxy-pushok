@@ -104,6 +104,11 @@ function renderNodes(){
   box.append(el('h3',n.name),el('p',n.host+':'+n.port+' · '+(n.status==='active'?'Доступен для расписания':'На паузе')));
   box.append(el('p','План движка: '+(engineTitles[n.target_engine]||'Не выбран (старый узел)')+
     ' · '+(n.engine_selection_mode||'legacy')+'. Установка и доступность не проверены.','muted'));
+  box.append(button('Изменить план движка',async()=>{
+   if(!confirm('Изменить только план движка? Реальный прокси не будет переключён.'))return;
+   await api('/admin/proxy-nodes/'+n.id+'/engine-plan',{method:'PATCH',body:engineRequest()});
+   await refresh();notice('План сохранён. Проверка и установка выполняются отдельно.',true);
+  }));
   box.append(button(n.status==='active'?'Поставить на паузу':'Возобновить',async()=>{
    await api('/admin/proxy-nodes/'+n.id+'/status',{method:'PATCH',body:{status:n.status==='active'?'paused':'active'}});
    await refresh();notice('Состояние узла сохранено.',true);
