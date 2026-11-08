@@ -7,6 +7,7 @@ from uuid import UUID
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from .wizard import DraftWizard
+from .operator import OperatorMenu, notification_payload
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
@@ -131,6 +132,39 @@ def submission_reply(callback, submitter):
              ]}}, callback_id)
 
 
+def operator_queue(user_id):
+    return _internal_api("operator/queue", {"telegram_user_id": user_id})
+
+
+def operator_history(user_id):
+    return _internal_api("operator/history", {"telegram_user_id": user_id})
+
+
+def operator_review(user_id, campaign_id, decision, comment):
+    return _internal_api("operator/review", {
+        "telegram_user_id": user_id, "campaign_id": str(campaign_id),
+        "decision": decision, "comment": comment,
+    })
+
+
+def send_operator_notifications(token, operator_id):
+    """Уведомление с подтверждением после успешной отправки в Telegram.
+
+    Если между sendMessage и ACK произошёл сбой, возможна повторная доставка.
+    Успешное ACK хранится в PostgreSQL.
+    """
+    pending = _internal_api("operator/notifications", {
+        "telegram_user_id": operator_id,
+    })
+    if not isinstance(pending, list):
+        raise ValueError("Неверный формат очереди уведомлений")
+    for item in pending[:5]:
+        telegram_call(token, "sendMessage", notification_payload(item, operator_id))
+        _internal_api("operator/notifications/ack", {
+            "telegram_user_id": operator_id, "campaign_id": str(UUID(str(item["id"]))),
+        })
+
+
 def format_campaigns(campaigns):
     if not campaigns:
         return ("📋 Пока у вас нет заявок в рекламном кабинете.\n"
@@ -177,8 +211,12 @@ def command_text(command, actor, chat_id, campaign_loader=None):
         return "📋 Заявки временно недоступны. Попробуйте позже."
 
 
-def response_for(update, campaign_loader=None, wizard=None, submitter=None):
+def response_for(update, campaign_loader=None, wizard=None, submitter=None, operator_menu=None):
     """Вернуть (sendMessage_payload, callback_query_id) либо None."""
+    if operator_menu is not None:
+        operator_reply = operator_menu.handle(update)
+        if operator_reply is not None:
+            return operator_reply
     if wizard is not None:
         draft_reply = wizard.handle(update)
         if draft_reply is not None:
@@ -248,6 +286,14 @@ def run():
     secret = os.getenv("BOT_INTERNAL_SECRET", "")
     ready = len(secret) == 64 and all(c in "0123456789abcdef" for c in secret)
     wizard = DraftWizard(create_campaign_draft, enabled=ready)
+    operator_menu = OperatorMenu(operator_queue, operator_review, operator_history)
+    try:
+        operator_id = int(os.getenv("BOT_OPERATOR_TELEGRAM_ID", "") or "0")
+    except ValueError:
+        operator_id = 0
+    if operator_id < 1:
+        LOG.info("Уведомления оператору отключены: BOT_OPERATOR_TELEGRAM_ID не настроен")
+    next_notification_poll = time.monotonic()
     offset = None
     while True:
         try:
@@ -257,7 +303,8 @@ def run():
             for update in updates:
                 next_offset = update["update_id"] + 1
                 response = response_for(update, campaign_loader=fetch_campaigns, wizard=wizard,
-                                        submitter=submit_campaign_draft)
+                                        submitter=submit_campaign_draft,
+                                        operator_menu=operator_menu)
                 if response is not None:
                     payload, callback_id = response
                     if callback_id:
@@ -266,6 +313,14 @@ def run():
                     telegram_call(token, "sendMessage", payload)
                 # Не подтверждать update до завершения обработки.
                 offset = next_offset
+            # Уведомления — отдельная best-effort задача: ошибка не теряет update.
+            if operator_id > 0 and ready and time.monotonic() >= next_notification_poll:
+                next_notification_poll = time.monotonic() + 30
+                try:
+                    send_operator_notifications(token, operator_id)
+                except (HTTPError, URLError, OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+                    # Никогда не печатать repr(exc) — URL Telegram содержит токен.
+                    LOG.warning("Ошибка уведомлений: %s", type(exc).__name__)
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
             # Не включать str(exc): HTTPError содержит URL с секретным токеном.
             LOG.warning("Ошибка Telegram API: %s, повтор через 5 сек.", type(exc).__name__)
