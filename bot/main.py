@@ -103,10 +103,14 @@ def submission_reply(callback, submitter):
     if submitter is None:
         return ({"chat_id": chat_id, "text": "Проверка канала пока недоступна."}, callback_id)
     try:
-        submitter(telegram_id, campaign_id)
-        text = ("✅ Права администратора канала подтверждены.\n"
-                "Черновик отправлен на модерацию.\n"
-                "Оплату и размещение рекламы пока не выполняем.")
+        result = submitter(telegram_id, campaign_id)
+        if isinstance(result, dict) and result.get("verified_now") is True:
+            text = ("✅ Права администратора канала подтверждены.\n"
+                    "Черновик отправлен на модерацию.\n"
+                    "Оплату и размещение рекламы пока не выполняем.")
+        else:
+            text = ("✅ Заявка уже находится на модерации.\n"
+                    "Повторная проверка прав администратора не выполнялась.")
     except HTTPError as exc:
         if exc.code == 409:
             text = ("⚠️ Не удалось подтвердить права на канал.\n"
