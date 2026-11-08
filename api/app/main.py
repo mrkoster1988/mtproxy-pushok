@@ -24,13 +24,15 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from psycopg.errors import ExclusionViolation, UniqueViolation
 from psycopg.rows import dict_row
 from .bot_routes import router as bot_router
+from .bot_operator import router as operator_bot_router
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.017",
+    version="0.018",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
+app.include_router(operator_bot_router)
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 PAYMENT_PROOFS_DIR = os.getenv("PAYMENT_PROOFS_DIR", "/var/lib/mtproxy-pushok/payment-proofs")
