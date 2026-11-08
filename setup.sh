@@ -88,7 +88,7 @@ choose COMPONENTS "Что установить?" 3 "Только MTProxy" "То�
 # Выбор движка не меняет существующий прокси автоматически.
 PROXY_ENGINE=""
 if [[ "$COMPONENTS" != 2 ]]; then
-  choose PROXY_ENGINE "Какой движок установить для MTProxy?" 1     "Официальный MTProxy (Docker; отдельный тестовый проект)"     "Классический MTProxy (сборка из исходников + systemd)"
+  choose PROXY_ENGINE "Какой движок установить для MTProxy?" 3     "Официальный MTProxy (Docker; только тестовый стенд)"     "Классический MTProxy (сборка из исходников + systemd)"     "Автоматически: Classic (предпочтительно, без Telemt до проверки)"
 fi
 NEW_CONFIG=true
 HTTPS=1
@@ -167,6 +167,9 @@ if [[ "$COMPONENTS" != 2 ]]; then
     echo "Движок: telegrammessenger/proxy:latest (Docker, изолированный проект)." >&2
     echo "После подтверждения будут дополнительные вопросы о порте и TAG." >&2
   else
+    if [[ "$PROXY_ENGINE" == 3 ]]; then
+      echo "Автовыбор Pushok: Classic/native (без изменений работающих сервисов до подтверждения)." >&2
+    fi
     echo "Движок: классический Telegram MTProxy, systemd (текущий способ)." >&2
   fi
 fi
