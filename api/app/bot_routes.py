@@ -12,7 +12,7 @@ from uuid import UUID
 import psycopg
 from psycopg.errors import UniqueViolation
 from fastapi import APIRouter, Header, HTTPException, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from psycopg.rows import dict_row
 
 router = APIRouter()
@@ -89,9 +89,16 @@ DAY_TARIFF_ID = UUID("00000000-0000-4000-8000-000000000001")
 
 
 class BotDraftCreate(BaseModel):
-    telegram_user_id: int = Field(gt=0)
+    telegram_user_id: int = Field(gt=0, le=9223372036854775807)
     channel_username: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
     request_key: UUID
+
+    @field_validator("channel_username")
+    @classmethod
+    def prohibit_reserved_telegram_paths(cls, value: str) -> str:
+        if value.lower() in {"joinchat", "addstickers", "share", "proxy", "socks", "login"}:
+            raise ValueError("Это служебный путь Telegram, не имя канала")
+        return value
 
 
 class BotDraftResult(BaseModel):
