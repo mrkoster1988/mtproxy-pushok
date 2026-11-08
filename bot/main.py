@@ -7,6 +7,7 @@ from uuid import UUID
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from .wizard import DraftWizard
+from .operator_inbox import OperatorInbox
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
@@ -81,7 +82,68 @@ def submit_campaign_draft(telegram_user_id, campaign_id):
     })
     if not isinstance(result, dict) or result.get("moderation_status") != "pending":
         raise ValueError("API не подтвердил отправку на модерацию")
+    if result.get("verified_now") is True:
+        # Уведомление опционально: нельзя отменять уже сохранённую заявку.
+        notify_subscribed_operators(campaign_id)
     return result
+
+
+def operator_queue(user_id, subscribe=True):
+    result = _internal_api("operators/queue", {
+        "telegram_user_id": user_id, "subscribe": subscribe
+    })
+    if not isinstance(result, dict) or not isinstance(result.get("pending"), list):
+        raise ValueError("Неправильный формат очереди")
+    return result
+
+
+def operator_unsubscribe(user_id):
+    return _internal_api("operators/unsubscribe", {"telegram_user_id": user_id})
+
+
+def operator_decide(user_id, campaign_id, decision, comment=None):
+    result = _internal_api("operators/decide", {
+        "telegram_user_id": user_id,
+        "campaign_id": str(campaign_id),
+        "decision": decision,
+        "comment": comment,
+    })
+    if not isinstance(result, dict) or result.get("moderation_status") != decision:
+        raise ValueError("Модерация не подтверждена")
+    return result
+
+
+def notify_subscribed_operators(campaign_id):
+    """Лучшее усилие, не изменяющее статус кампании при отказе Telegram."""
+    token = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    try:
+        user_ids = _internal_api("operators/recipients", {})
+        if not isinstance(user_ids, list):
+            raise ValueError("Неверный список подписчиков")
+    except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+        LOG.warning("Не удалось прочитать подписчиков: %s", type(exc).__name__)
+        return
+    content = (
+        "📨 Новая заявка на модерацию MTProxy Pushok\n"
+        f"Заявка: {str(campaign_id)[:8]}\n"
+        "Тариф: 1 день — 300 ₽\n"
+        "Откройте /moderation для проверки."
+    )
+    for telegram_id in user_ids[:100]:
+        if type(telegram_id) is not int or telegram_id <= 0:
+            continue
+        try:
+            telegram_call(token, "sendMessage", {
+                "chat_id": telegram_id,
+                "text": content,
+                "reply_markup": {"inline_keyboard": [[
+                    {"text": "📋 Открыть очередь", "callback_data": "moderation"},
+                ]]},
+            })
+        except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+            # Администратор мог ещё не открыть диалог с ботом или заблокировать его.
+            # Не раскрываем токен или URL Telegram Bot API.
+            LOG.warning("Уведомление Telegram не доставлено: %s", type(exc).__name__)
 
 
 def submission_reply(callback, submitter):
@@ -177,8 +239,13 @@ def command_text(command, actor, chat_id, campaign_loader=None):
         return "📋 Заявки временно недоступны. Попробуйте позже."
 
 
-def response_for(update, campaign_loader=None, wizard=None, submitter=None):
+def response_for(update, campaign_loader=None, wizard=None, submitter=None,
+                 operator_inbox=None):
     """Вернуть (sendMessage_payload, callback_query_id) либо None."""
+    if operator_inbox is not None:
+        operator_reply = operator_inbox.handle(update)
+        if operator_reply is not None:
+            return operator_reply
     if wizard is not None:
         draft_reply = wizard.handle(update)
         if draft_reply is not None:
@@ -248,6 +315,7 @@ def run():
     secret = os.getenv("BOT_INTERNAL_SECRET", "")
     ready = len(secret) == 64 and all(c in "0123456789abcdef" for c in secret)
     wizard = DraftWizard(create_campaign_draft, enabled=ready)
+    operator_inbox = OperatorInbox(operator_queue, operator_decide, operator_unsubscribe)
     offset = None
     while True:
         try:
@@ -257,7 +325,8 @@ def run():
             for update in updates:
                 next_offset = update["update_id"] + 1
                 response = response_for(update, campaign_loader=fetch_campaigns, wizard=wizard,
-                                        submitter=submit_campaign_draft)
+                                        submitter=submit_campaign_draft,
+                                        operator_inbox=operator_inbox)
                 if response is not None:
                     payload, callback_id = response
                     if callback_id:
