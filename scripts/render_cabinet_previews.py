@@ -11,7 +11,6 @@ from datetime import datetime, timedelta, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
-from uuid import UUID
 
 from playwright.sync_api import sync_playwright
 
@@ -59,10 +58,6 @@ def demo_response(path: str, role: str) -> object:
             campaign("00000000-0000-4000-8000-000000000033",
                      "Дизайн и вдохновение", "approved", "verified", "scheduled"),
         ]
-    if path.endswith("/operator/proxy-nodes"):
-        return [{"id": NODE, "name": "Pushok · тестовый узел", "host": "proxy.example.org",
-                 "port": 8443, "status": "active", "target_engine": "official_mtproxy",
-                 "engine_selection_mode": "auto", "deployment_profile": "native"}]
     if path.endswith("/operator/campaigns"):
         return [
             campaign("00000000-0000-4000-8000-000000000034",
@@ -70,6 +65,10 @@ def demo_response(path: str, role: str) -> object:
             campaign("00000000-0000-4000-8000-000000000035",
                      "Дизайн и вдохновение", "approved", "proof_submitted", "not_scheduled"),
         ]
+    if path.endswith("/operator/proxy-nodes"):
+        return [{"id": NODE, "name": "Pushok · тестовый узел", "host": "proxy.example.org",
+                 "port": 8443, "status": "active", "target_engine": "official_mtproxy",
+                 "engine_selection_mode": "auto", "deployment_profile": "native"}]
     if path.endswith("/availability"):
         base = datetime.now(timezone.utc) + timedelta(days=1)
         return {"days": [
@@ -135,7 +134,6 @@ def main() -> None:
                   document.body.append(badge);
                 }""")
                 return page
-            errors = []
             try:
                 landing = create_page("guest", 1440, 900)
                 landing.screenshot(path=str(output / "01-landing.png"), full_page=True,
