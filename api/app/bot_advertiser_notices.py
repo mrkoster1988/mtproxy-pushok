@@ -101,7 +101,7 @@ def finish_advertiser_notice(
                 UPDATE bot_advertiser_notice_outbox
                 SET delivered_at = CASE WHEN NOT %s THEN now() ELSE delivered_at END,
                     abandoned_at = CASE WHEN %s THEN now() ELSE abandoned_at END,
-                    lease_token = NULL, lease_until = NULL
+                    claim_token = NULL, lease_until = NULL
                 WHERE id = %s AND claim_token = %s AND lease_until >= now()
                   AND delivered_at IS NULL AND abandoned_at IS NULL
                 RETURNING id
