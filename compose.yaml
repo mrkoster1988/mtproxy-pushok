@@ -46,6 +46,7 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       BOT_INTERNAL_SECRET: ${BOT_INTERNAL_SECRET:-}
+      BOT_OPERATOR_TELEGRAM_ID: ${BOT_OPERATOR_TELEGRAM_ID:-}
     read_only: true
     security_opt:
       - no-new-privileges:true
