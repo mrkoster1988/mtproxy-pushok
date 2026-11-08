@@ -246,6 +246,8 @@ EOF
   done
   "$ready" || { echo "PostgreSQL не готов. Проверьте docker compose logs db."; exit 1; }
   docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/002_telegram_auth.sql
+  # Идемпотентная миграция: сохраняет старые заявки и добавляет защиту от повторов.
+  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/003_bot_draft_idempotency.sql
   if [[ -n "$ADMIN_ID" ]]; then
     printf "INSERT INTO users (telegram_user_id, role) VALUES (%s, 'admin') ON CONFLICT (telegram_user_id) DO UPDATE SET role='admin';\n" "$ADMIN_ID" |
       docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
