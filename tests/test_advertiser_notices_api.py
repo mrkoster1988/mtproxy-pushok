@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "api"))
 os.environ.setdefault("DATABASE_URL", "postgresql://unused")
+os.environ.setdefault("SESSION_SIGNING_KEY", "a" * 64)
 from app import main
 
 PATH = "/api/v1/internal/bot/advertisers/outbox/"
