@@ -83,7 +83,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v0.023 — мастер настройки" >&2
+echo "MTProxy Pushok v0.024 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
 PROXY_ENGINE=""
@@ -95,12 +95,26 @@ HTTPS=1
 ADMIN_ID=""
 PAYMENT_CHANGED=false
 PAYMENT_B64=""
+BOT_LAUNCH=false
 if [[ "$COMPONENTS" != 1 ]]; then
   if [[ -f "$ROOT_DIR/.env" ]]; then
-    choose EXISTING "Найдена существующая настройка" 1 "Сохранить настройки и обновить сервисы" "Изменить инструкцию оплаты и обновить" "Завершить без изменений"
+    choose EXISTING "Найдена существующая настройка" 1 "Сохранить настройки и обновить сервисы" "Изменить инструкцию оплаты и обновить" "Завершить без изменений" "Запустить Telegram-бота из сохранённых настроек"
     [[ "$EXISTING" != 3 ]] || exit 0
     NEW_CONFIG=false
     if [[ "$EXISTING" == 2 ]]; then configure_payments; fi
+    if [[ "$EXISTING" == 4 ]]; then
+      saved_token="$(sed -n 's/^TELEGRAM_BOT_TOKEN=//p' "$ROOT_DIR/.env" | head -n 1)"
+      saved_username="$(sed -n 's/^TELEGRAM_BOT_USERNAME=//p' "$ROOT_DIR/.env" | head -n 1)"
+      saved_secret="$(sed -n 's/^BOT_INTERNAL_SECRET=//p' "$ROOT_DIR/.env" | head -n 1)"
+      if [[ ! "$saved_token" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]] ||
+         [[ ! "$saved_username" =~ ^[A-Za-z0-9_]+$ ]] ||
+         [[ ! "$saved_secret" =~ ^[0-9a-f]{64}$ ]]; then
+        echo "Для запуска бота в .env нужны TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME и 64-значный BOT_INTERNAL_SECRET. Файл не изменён." >&2
+        exit 1
+      fi
+      unset saved_token saved_username saved_secret
+      BOT_LAUNCH=true
+    fi
   else
     choose INSTALL_MODE "Назначение установки" 1 "Основная установка" "Приватный staging (только localhost)"
     PROJECT_DEFAULT=mtproxy-pushok
@@ -144,6 +158,7 @@ if [[ "$COMPONENTS" != 1 ]]; then
         done
       fi
     fi
+    if [[ "$TELEGRAM" == 1 ]]; then BOT_LAUNCH=true; fi
     configure_payments
   fi
 fi
@@ -173,6 +188,11 @@ if [[ "$COMPONENTS" != 1 ]]; then
     [[ -z "$ADMIN_ID" ]] || echo "Telegram ID владельца: $ADMIN_ID" >&2
   else
     echo "Существующие настройки и секреты будут сохранены." >&2
+  fi
+  if "$BOT_LAUNCH"; then
+    echo "Telegram-бот: запуск polling вместе с кабинетом (Compose-профиль bot)." >&2
+  else
+    echo "Telegram-бот: новый запуск не запланирован; уже запущенный бот не останавливается." >&2
   fi
 fi
 choose CONFIRM "Начать установку пакетов и запуск сервисов?" 2 "Начать" "Выйти без изменений"
@@ -250,7 +270,11 @@ EOF
     chmod 0600 "$payment_env"
     mv "$payment_env" .env
   fi
-  docker compose config --quiet
+  if "$BOT_LAUNCH"; then
+    docker compose --profile bot config --quiet
+  else
+    docker compose config --quiet
+  fi
   docker compose up -d db
   ready=false
   for attempt in $(seq 1 60); do
@@ -273,7 +297,11 @@ EOF
     printf "INSERT INTO users (telegram_user_id, role) VALUES (%s, 'admin') ON CONFLICT (telegram_user_id) DO UPDATE SET role='admin';\n" "$ADMIN_ID" |
       docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
   fi
-  docker compose up --build -d
+  if "$BOT_LAUNCH"; then
+    docker compose --profile bot up --build -d
+  else
+    docker compose up --build -d
+  fi
   port="$(sed -n 's/^API_BIND_PORT=//p' .env)"
   [[ -n "$port" ]] || port=8000
   ready=false
@@ -283,6 +311,13 @@ EOF
   done
   "$ready" || { echo "API не готов. Проверьте docker compose logs api."; exit 1; }
   echo "Кабинет отвечает: http://127.0.0.1:$port"
+  if "$BOT_LAUNCH"; then
+    if [[ -z "$(docker compose --profile bot ps -q --status running bot)" ]]; then
+      echo "Бот не работает. Проверьте: docker compose --profile bot ps bot; docker compose --profile bot logs --tail=50 bot. Не публикуйте секреты." >&2
+      exit 1
+    fi
+    echo "Контейнер Telegram-бота запущен. Проверьте /start в Telegram; связь с реальным Telegram и доставка сообщений ещё не подтверждены."
+  fi
   if [[ "$HTTPS" == 2 ]]; then echo "HTTPS: https://$CABINET_DOMAIN — проверьте DNS и доступ к 80/443."; fi
   if [[ "$HTTPS" == 1 && "$NEW_CONFIG" == true ]]; then echo "В существующем reverse proxy направьте https://$CABINET_DOMAIN на 127.0.0.1:$port."; fi
   echo "Домен входа Telegram зарегистрируйте у бота в BotFather."

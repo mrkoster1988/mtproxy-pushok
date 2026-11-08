@@ -32,7 +32,7 @@ from .sponsor_planner import build_readiness, normalize_ad_tag, render_config_fr
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.023",
+    version="0.024",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
