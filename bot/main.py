@@ -5,6 +5,7 @@ import os
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from .wizard import DraftWizard
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
@@ -40,22 +41,35 @@ def message_for(command):
     return "❓ Поддержка: напишите через сообщения каналу\n" + CHANNEL_URL
 
 
-def fetch_campaigns(telegram_user_id):
-    """Read-only запрос к внутреннему API по подтверждённому Telegram ID."""
+def _internal_api(route, payload):
     secret = os.getenv("BOT_INTERNAL_SECRET", "")
     if len(secret) != 64 or any(c not in "0123456789abcdef" for c in secret):
         raise RuntimeError("Интеграция с кабинетом не настроена")
-    body = json.dumps({"telegram_user_id": telegram_user_id}).encode("utf-8")
     request = Request(
-        "http://api:8000/api/v1/internal/bot/campaigns",
-        data=body,
+        "http://api:8000/api/v1/internal/bot/" + route,
+        data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json", "X-Pushok-Bot-Secret": secret},
         method="POST",
     )
     with urlopen(request, timeout=5) as stream:
-        result = json.load(stream)
+        return json.load(stream)
+
+
+def fetch_campaigns(telegram_user_id):
+    result = _internal_api("campaigns", {"telegram_user_id": telegram_user_id})
     if not isinstance(result, list):
         raise ValueError("Неверный формат ответа API")
+    return result
+
+
+def create_campaign_draft(telegram_user_id, channel_username, request_key):
+    result = _internal_api("campaign-drafts", {
+        "telegram_user_id": telegram_user_id,
+        "channel_username": channel_username,
+        "request_key": request_key,
+    })
+    if not isinstance(result, dict) or not result.get("campaign_id"):
+        raise ValueError("Неверный ответ о сохранении черновика")
     return result
 
 
@@ -105,8 +119,12 @@ def command_text(command, actor, chat_id, campaign_loader=None):
         return "📋 Заявки временно недоступны. Попробуйте позже."
 
 
-def response_for(update, campaign_loader=None):
+def response_for(update, campaign_loader=None, wizard=None):
     """Вернуть (sendMessage_payload, callback_query_id) либо None."""
+    if wizard is not None:
+        draft_reply = wizard.handle(update)
+        if draft_reply is not None:
+            return draft_reply
     callback = update.get("callback_query")
     if callback:
         chat = (callback.get("message") or {}).get("chat") or {}
@@ -167,6 +185,9 @@ def run():
     except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
         LOG.error("Проверка бота не пройдена: %s", type(exc).__name__)
         raise SystemExit("Не удалось запустить бота: проверьте токен, username и webhook.") from None
+    secret = os.getenv("BOT_INTERNAL_SECRET", "")
+    ready = len(secret) == 64 and all(c in "0123456789abcdef" for c in secret)
+    wizard = DraftWizard(create_campaign_draft, enabled=ready)
     offset = None
     while True:
         try:
@@ -175,7 +196,7 @@ def run():
                 "allowed_updates": ["message", "callback_query"]})
             for update in updates:
                 next_offset = update["update_id"] + 1
-                response = response_for(update, campaign_loader=fetch_campaigns)
+                response = response_for(update, campaign_loader=fetch_campaigns, wizard=wizard)
                 if response is not None:
                     payload, callback_id = response
                     if callback_id:
