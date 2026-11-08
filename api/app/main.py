@@ -28,6 +28,7 @@ from .bot_operator import router as operator_bot_router
 from .bot_advertiser_notices import router as advertiser_notices_router
 from .bot_outbox import router as bot_outbox_router
 from .bot_delivery_admin import router as bot_delivery_admin_router
+from .sponsor_planner import build_readiness, normalize_ad_tag, render_config_fragment
 
 app = FastAPI(
     title="MTProxy Pushok API",
@@ -1320,3 +1321,161 @@ app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
 @app.get("/", include_in_schema=False)
 def cabinet() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-store"})
+
+
+# v0.022 — Регистрация MTProxyBot и подготовка без реального изменения прокси.
+class SponsorRegistrationRequest(BaseModel):
+    engine: str = Field(pattern="^(telemt|official_mtproxy)$")
+    ad_tag: str = Field(min_length=32, max_length=32)
+
+    @field_validator("ad_tag")
+    @classmethod
+    def validate_ad_tag(cls, value: str) -> str:
+        try:
+            return normalize_ad_tag(value)
+        except ValueError as exc:
+            raise ValueError("Ожидается настоящий 32-символьный ad_tag из @MTProxyBot") from exc
+
+
+class SponsorRegistrationResponse(BaseModel):
+    proxy_node_id: UUID
+    engine: str
+    tag_ending: str
+    changes_applied: bool = False
+
+
+class SponsorConfigPreview(BaseModel):
+    engine: str
+    config_fragment: str
+    changes_applied: bool = False
+    warning: str = "Это только образец: MTProxy не изменён, Set promotion выполняется вручную."
+
+
+@app.put(
+    "/api/v1/admin/proxy-nodes/{node_id}/sponsor-registration",
+    response_model=SponsorRegistrationResponse, tags=["admin"],
+)
+def save_proxy_sponsor_registration(
+    node_id: UUID,
+    payload: SponsorRegistrationRequest,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> SponsorRegistrationResponse:
+    """Записать тег, полученный вручную через @MTProxyBot, без применения."""
+    try:
+        with psycopg.connect(
+            DATABASE_URL, connect_timeout=3, row_factory=dict_row
+        ) as connection:
+            node = connection.execute(
+                "SELECT id FROM proxy_nodes WHERE id = %s FOR UPDATE",
+                (node_id,),
+            ).fetchone()
+            if node is None:
+                raise HTTPException(status_code=404, detail="proxy_node_not_found")
+            occupied = connection.execute(
+                """
+                SELECT 1 FROM campaigns
+                WHERE proxy_node_id = %s AND placement_status IN ('scheduled', 'active')
+                LIMIT 1
+                """,
+                (node_id,),
+            ).fetchone()
+            if occupied:
+                raise HTTPException(status_code=409, detail="proxy_node_has_placements")
+            connection.execute(
+                """
+                INSERT INTO proxy_sponsor_registrations
+                    (proxy_node_id, engine, ad_tag, registered_by_user_id)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (proxy_node_id) DO UPDATE
+                SET engine = EXCLUDED.engine, ad_tag = EXCLUDED.ad_tag,
+                    registered_by_user_id = EXCLUDED.registered_by_user_id,
+                    registered_at = now()
+                """,
+                (node_id, payload.engine, payload.ad_tag, admin["id"]),
+            )
+            connection.execute(
+                """
+                INSERT INTO audit_events (actor_user_id, event_type, details_json)
+                VALUES (%s, 'sponsor_tag_registered',
+                        jsonb_build_object('proxy_node_id', %s::text,
+                                           'engine', %s::text))
+                """,
+                (admin["id"], str(node_id), payload.engine),
+            )
+    except UniqueViolation as exc:
+        raise HTTPException(status_code=409, detail="sponsor_tag_already_registered") from exc
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return SponsorRegistrationResponse(
+        proxy_node_id=node_id, engine=payload.engine, tag_ending=payload.ad_tag[-4:],
+    )
+
+
+@app.get(
+    "/api/v1/admin/proxy-nodes/{node_id}/sponsor-config-preview",
+    response_model=SponsorConfigPreview, tags=["admin"],
+)
+def preview_proxy_sponsor_config(
+    node_id: UUID,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> SponsorConfigPreview:
+    """Вернуть копируемый фрагмент только администратору; не менять файлы."""
+    try:
+        with psycopg.connect(
+            DATABASE_URL, connect_timeout=3, row_factory=dict_row
+        ) as connection:
+            row = connection.execute(
+                """
+                SELECT engine, ad_tag FROM proxy_sponsor_registrations
+                WHERE proxy_node_id = %s
+                """,
+                (node_id,),
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="sponsor_registration_not_found")
+    return SponsorConfigPreview(
+        engine=row["engine"],
+        config_fragment=render_config_fragment(row["engine"], row["ad_tag"]),
+    )
+
+
+@app.get(
+    "/api/v1/operator/campaigns/{campaign_id}/sponsor-readiness",
+    tags=["operator"],
+)
+def sponsor_placement_readiness(
+    campaign_id: UUID,
+    operator: dict[str, Any] = Depends(require_operator),
+) -> dict[str, Any]:
+    """Проверка кампании перед ручным Set promotion, без записи в БД."""
+    try:
+        with psycopg.connect(
+            DATABASE_URL, connect_timeout=3, row_factory=dict_row
+        ) as connection:
+            row = connection.execute(
+                """
+                SELECT c.id AS campaign_id, c.proxy_node_id,
+                       c.moderation_status, c.payment_status, c.placement_status,
+                       c.scheduled_start_at, c.scheduled_end_at,
+                       sc.telegram_url, sc.telegram_channel_id,
+                       n.host AS proxy_host, n.port AS proxy_port,
+                       n.status AS node_status,
+                       sr.engine, sr.ad_tag
+                FROM campaigns AS c
+                JOIN sponsor_channels AS sc ON sc.id = c.channel_id
+                LEFT JOIN proxy_nodes AS n ON n.id = c.proxy_node_id
+                LEFT JOIN proxy_sponsor_registrations AS sr
+                       ON sr.proxy_node_id = n.id
+                WHERE c.id = %s
+                """,
+                (campaign_id,),
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="campaign_not_found")
+    return build_readiness(row)
