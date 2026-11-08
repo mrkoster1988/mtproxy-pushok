@@ -92,6 +92,7 @@ class AdvertiserOutboxApiTests(unittest.TestCase):
                 self.assertEqual(response.json(), {"acknowledged": True})
                 sql, args = connection.__enter__.return_value.execute.call_args.args
                 self.assertIn("claim_token = %s", sql)
+                self.assertIn("claim_token = NULL", sql)
                 self.assertIn("lease_until >= now()", sql)
                 self.assertEqual(args, (permanent, permanent, UUID(NOTICE_ID), UUID(TOKEN)))
 
