@@ -1,11 +1,161 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><title>Pushok · Спонсорский кабинет</title><link rel="stylesheet" href="/assets/styles.css"><script src="/assets/app.js" defer></script></head>
-<body><header><a class="brand" href="/">✳ <strong>PUSHOK</strong><span>MTProxy</span></a><div class="account"><span id="identity">Кабинет спонсора</span><button id="logout" hidden>Выйти</button></div></header>
-<main><section class="hero"><div class="eyebrow">СПОНСОРСКИЙ КАНАЛ В TELEGRAM</div><h1>Ваш канал.<br><span>На виду.</span></h1><p>Подайте заявку на размещение, пройдите проверку и отслеживайте каждый этап в кабинете.</p><div class="steps"><a href="https://t.me/mtproxy_pushok_bot" target="_blank" rel="noopener noreferrer">Telegram-бот</a><a href="https://t.me/pushok_proxy" target="_blank" rel="noopener noreferrer">Наш канал</a></div><div class="steps"><span>01 · Канал</span><span>02 · Проверка</span><span>03 · Размещение</span></div></section>
-<div id="notice" role="status" aria-live="polite" hidden></div>
-<section id="login" class="panel"><h2>Войдите через Telegram</h2><p>После входа здесь появятся ваши каналы и заявки.</p><div id="telegram-login"></div><p class="muted" id="login-note">Загрузка настроек входа…</p></section>
-<section id="workspace" hidden><nav><button id="advertiser-tab" class="selected">Мои размещения</button><button id="operator-tab" hidden>Очередь оператора</button><button id="refresh">Обновить</button></nav>
-<div id="advertiser"><div class="grid"><section class="panel"><div class="eyebrow">ШАГ 01</div><h2>Добавить канал</h2><form id="channel-form"><label>Название<input name="title" required maxlength="255" placeholder="Мой Telegram-канал"></label><label>Ссылка<input name="telegram_url" required type="url" placeholder="https://t.me/channel"></label><button class="primary">Добавить канал</button></form></section>
-<section class="panel"><div class="eyebrow">ШАГ 02</div><h2>Новое размещение</h2><form id="campaign-form"><label>Канал<select id="channel-select" name="channel_id" required></select></label><label>Тариф<select id="tariff-select" name="tariff_id" required></select></label><div class="calendar"><h3>Желаемая дата размещения</h3><div class="calendar-controls"><label>Показать с<input id="calendar-from" type="date"></label><label>Время начала<input id="calendar-time" type="time" value="12:00"></label></div><p id="calendar-zone" class="muted"></p><div id="availability-days" class="calendar-days" aria-label="Доступные даты"></div><p id="calendar-selection" aria-live="polite">Дата пока не выбрана.</p><input id="requested-start" name="requested_start_at" type="hidden"><button id="calendar-clear" type="button">Не указывать дату</button><p class="muted">Выбор даты не бронирует слот. После одобрения и оплаты оператор подтвердит время и узел.</p></div><button class="primary">Создать черновик</button></form><p class="muted">Цена сохраняется при создании заявки. Оплата — после одобрения канала.</p></section></div><div class="section-title"><h2>Мои заявки</h2><span id="campaign-count"></span></div><div id="campaigns" class="cards"></div></div>
-<div id="operator" hidden><section id="node-admin" class="panel" hidden><h2>Pushok Unified Engine · Прокси-узлы</h2><p class="muted">Все движки в одной панели. Выбор — только план, не установка на VPS.</p><form id="node-form"><label>Название<input name="name" required maxlength="100" placeholder="Pushok · Финляндия"></label><label>Домен или IP<input name="host" required placeholder="mtproxy.pushok.shop"></label><label>TCP-порт<input name="port" type="number" min="1" max="65535" value="8443" required></label><label>Среда<select name="environment" id="engine-environment"><option value="production">Основной сервер</option><option value="staging">Тестовый стенд</option></select></label><label>Способ развёртывания<select name="deployment" id="engine-deployment"><option value="any">Автовыбор</option><option value="native">systemd / native</option><option value="docker">Docker</option></select></label><label>Выбор движка<select name="engine_mode" id="engine-mode"><option value="auto">Автоматически</option><option value="manual">Вручную</option></select></label><label id="preferred-engine-row" hidden>Движок<select name="preferred_engine" id="preferred-engine"><option value="">Выберите движок</option><option value="official_mtproxy">MTProxy Classic</option><option value="official_docker">MTProxy Docker (тест)</option><option value="telemt">Telemt (адаптер)</option></select></label><button type="button" id="engine-preview">Показать рекомендацию</button><p class="muted" id="engine-advice" role="status" aria-live="polite">Ни один прокси не запускается автоматически.</p><button class="primary">Добавить узел</button></form><div id="nodes-list" class="cards"></div></section><div class="section-title"><h2>Очередь оператора</h2><select id="queue-filter" aria-label="Фильтр очереди"><option value="">Все заявки</option><option value="moderation_status=pending">На модерации</option><option value="payment_status=proof_submitted">Проверка оплаты</option></select></div><p class="muted">Активацию и завершение фиксируйте после ручного изменения спонсорского тега на узле.</p><div id="queue" class="cards"></div></div>
-</section><footer><span>Pushok MTProxy</span><span>Спонсорские размещения · v0.027</span></footer></main></body></html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b1728">
+  <meta name="description" content="MTProxy Pushok — кабинет спонсорской рекламы в Telegram. Создание заявки, модерация, оплата и управление размещениями.">
+  <title>puShok · MTProxy — кабинет спонсора</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="/" aria-label="puShok MTProxy — на главную">
+        <span class="brand-mark" aria-hidden="true">✳</span>
+        <span class="brand-name"><strong>pu<span>S</span>hok</strong><small>MTProxy · рекламная платформа</small></span>
+      </a>
+      <div class="account">
+        <span class="header-caption"><span class="online-dot"></span> СПОНСОРСКИЙ КАБИНЕТ</span>
+        <span id="identity">Гость</span>
+        <button id="logout" type="button" hidden>Выйти <span aria-hidden="true">↗</span></button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="eyebrow-star" aria-hidden="true">✦</span> РЕКЛАМА TELEGRAM-КАНАЛОВ ЧЕРЕЗ MTPROXY</div>
+          <h1 id="hero-title">Ваш канал.<br><span>На виду.</span></h1>
+          <p class="hero-description">Станьте спонсором нашего прокси. Выберите дату, отправьте канал на проверку и отслеживайте каждый этап размещения в одном удобном кабинете.</p>
+          <div class="hero-links">
+            <a class="hero-link hero-link-primary" href="https://t.me/mtproxy_pushok_bot" target="_blank" rel="noopener noreferrer">Telegram-бот <span aria-hidden="true">↗</span></a>
+            <a class="hero-link hero-link-outline" href="https://t.me/pushok_proxy" target="_blank" rel="noopener noreferrer">Наш канал <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="hero-micro"><span class="micro-line"></span> Простой путь от заявки до размещения</div>
+        </div>
+        <div class="hero-visual">
+          <div class="hero-sketch hero-sketch-one" aria-hidden="true">✳</div>
+          <div class="hero-sketch hero-sketch-two" aria-hidden="true">✧</div>
+          <div class="mascot-orbit">
+            <div class="orbit-ring"></div>
+            <img class="mascot-img" src="/assets/pushok-mascot.svg" alt="Пушок — рыжий кот с бирюзовыми глазами, в бирюзовом худи со щитом">
+            <div class="mascot-caption">Пушок следит за порядком <span aria-hidden="true">✷</span></div>
+          </div>
+          <div class="tariff-note">
+            <span class="tariff-label">БАЗОВЫЙ ТАРИФ <span aria-hidden="true">↘</span></span>
+            <strong>300 ₽ <small>/ 1 день</small></strong>
+            <span class="tariff-subtitle">Стоимость одного размещения</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="how-it-works" aria-label="Как устроено размещение">
+      <div><span class="step-number">01</span><span><strong>Добавьте канал</strong><small>Ссылка и название</small></span></div>
+      <span class="step-join" aria-hidden="true">→</span>
+      <div><span class="step-number">02</span><span><strong>Пройдите проверку</strong><small>Модерация и оплата</small></span></div>
+      <span class="step-join" aria-hidden="true">→</span>
+      <div><span class="step-number">03</span><span><strong>Получите размещение</strong><small>Статус в кабинете</small></span></div>
+    </section>
+
+    <div id="notice" role="status" aria-live="polite" hidden></div>
+
+    <section id="login" class="panel login-panel">
+      <div class="login-icon" aria-hidden="true">↗</div>
+      <div class="login-content">
+        <div class="eyebrow">ЛИЧНЫЙ КАБИНЕТ</div>
+        <h2>Начнём с Telegram</h2>
+        <p>Войдите через Telegram, чтобы управлять своими каналами, заявками и оплатой. Без отдельного пароля.</p>
+        <div id="telegram-login"></div>
+        <p class="muted" id="login-note">Загрузка настроек входа…</p>
+      </div>
+    </section>
+
+    <section id="workspace" hidden>
+      <div class="workspace-heading">
+        <div><span class="eyebrow">ВАШЕ ПРОСТРАНСТВО</span><h2>Панель управления <span class="heading-star">✳</span></h2></div>
+        <span class="workspace-hint">Все действия по рекламе — здесь</span>
+      </div>
+      <nav class="workspace-nav" aria-label="Разделы кабинета">
+        <button id="advertiser-tab" type="button" class="selected">Мои размещения</button>
+        <button id="operator-tab" type="button" hidden>Очередь оператора</button>
+        <button id="refresh" type="button" class="refresh-button">Обновить <span aria-hidden="true">↻</span></button>
+      </nav>
+
+      <div id="advertiser">
+        <div class="grid form-grid">
+          <section class="panel form-panel">
+            <div class="panel-topline"><span class="eyebrow">ШАГ 01</span><span class="panel-symbol" aria-hidden="true">✎</span></div>
+            <h2>Ваш Telegram-канал</h2>
+            <p class="panel-lead">Расскажите, какой канал хотите продвигать.</p>
+            <form id="channel-form">
+              <label>Название канала<input name="title" required maxlength="255" placeholder="Например, Новости технологий"></label>
+              <label>Ссылка на канал<input name="telegram_url" required type="url" placeholder="https://t.me/channel"></label>
+              <button class="primary" type="submit">Добавить канал <span aria-hidden="true">↗</span></button>
+            </form>
+          </section>
+
+          <section class="panel form-panel campaign-panel">
+            <div class="panel-topline"><span class="eyebrow">ШАГ 02</span><span class="panel-symbol" aria-hidden="true">✦</span></div>
+            <h2>Новое размещение</h2>
+            <p class="panel-lead">Выберите тариф и удобный день для рекламы.</p>
+            <form id="campaign-form">
+              <label>Канал<select id="channel-select" name="channel_id" required></select></label>
+              <label>Тариф<select id="tariff-select" name="tariff_id" required></select></label>
+              <div class="calendar">
+                <h3>Желаемая дата <span aria-hidden="true">✳</span></h3>
+                <div class="calendar-controls">
+                  <label>Показать с<input id="calendar-from" type="date"></label>
+                  <label>Время начала<input id="calendar-time" type="time" value="12:00"></label>
+                </div>
+                <p id="calendar-zone" class="muted"></p>
+                <div id="availability-days" class="calendar-days" aria-label="Доступные даты"></div>
+                <p id="calendar-selection" aria-live="polite">Дата пока не выбрана.</p>
+                <input id="requested-start" name="requested_start_at" type="hidden">
+                <button id="calendar-clear" type="button" class="subtle-button">Не указывать дату</button>
+                <p class="muted">Выбор даты не бронирует слот. Оператор подтвердит время после проверки и оплаты.</p>
+              </div>
+              <button class="primary" type="submit">Создать черновик <span aria-hidden="true">↗</span></button>
+            </form>
+            <p class="panel-note">Цена фиксируется при создании заявки. Оплата — после одобрения канала.</p>
+          </section>
+        </div>
+        <div class="section-title"><div><span class="eyebrow">ИСТОРИЯ РАЗМЕЩЕНИЙ</span><h2>Мои заявки</h2></div><span id="campaign-count" class="count-pill"></span></div>
+        <div id="campaigns" class="cards"></div>
+      </div>
+
+      <div id="operator" hidden>
+        <section id="node-admin" class="panel node-panel" hidden>
+          <div class="node-heading"><div><div class="eyebrow">УПРАВЛЕНИЕ ИНФРАСТРУКТУРОЙ</div><h2>Pushok Unified Engine <span class="heading-star">✳</span></h2><p class="panel-lead">Классический MTProxy, Docker и план будущего Pushok Core — в едином месте.</p></div><span class="node-warning">Планирование · без запуска</span></div>
+          <p class="muted">Выбор движка сохраняет только план. Установка и доступность на VPS не подтверждаются.</p>
+          <form id="node-form">
+            <label>Название узла<input name="name" required maxlength="100" placeholder="Pushok · Финляндия"></label>
+            <label>Домен или IP<input name="host" required placeholder="mtproxy.example.org"></label>
+            <label>TCP-порт<input name="port" type="number" min="1" max="65535" value="8443" required></label>
+            <label>Среда<select name="environment" id="engine-environment"><option value="production">Основной сервер</option><option value="staging">Тестовый стенд</option></select></label>
+            <label>Способ развёртывания<select name="deployment" id="engine-deployment"><option value="any">Автовыбор</option><option value="native">systemd / native</option><option value="docker">Docker</option></select></label>
+            <label>Выбор движка<select name="engine_mode" id="engine-mode"><option value="auto">Автоматически</option><option value="manual">Вручную</option></select></label>
+            <label id="preferred-engine-row" hidden>Движок<select name="preferred_engine" id="preferred-engine"><option value="">Выберите движок</option><option value="official_mtproxy">MTProxy Classic</option><option value="official_docker">MTProxy Docker (тест)</option><option value="telemt">Telemt (адаптер)</option></select></label>
+            <button type="button" id="engine-preview" class="secondary-button">Показать рекомендацию</button>
+            <p class="muted" id="engine-advice" role="status" aria-live="polite">Ни один прокси не запускается автоматически.</p>
+            <button class="primary" type="submit">Добавить узел <span aria-hidden="true">↗</span></button>
+          </form>
+          <div class="section-title"><div><span class="eyebrow">ЗАРЕГИСТРИРОВАННЫЕ УЗЛЫ</span><h2>Мои прокси</h2></div></div>
+          <div id="nodes-list" class="cards"></div>
+        </section>
+
+        <div class="section-title operator-title"><div><span class="eyebrow">РАБОТА С ЗАЯВКАМИ</span><h2>Очередь оператора</h2></div><div class="queue-filter-wrap"><span id="queue-count" class="count-pill"></span><select id="queue-filter" aria-label="Фильтр очереди"><option value="">Все заявки</option><option value="moderation_status=pending">На модерации</option><option value="payment_status=proof_submitted">Проверка оплаты</option></select></div></div>
+        <p class="muted operator-note">Активируйте и завершайте размещение только после ручной проверки спонсорского тега на узле.</p>
+        <div id="queue" class="cards"></div>
+      </div>
+    </section>
+
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v0.028</span></footer>
+  </main>
+</body>
+</html>

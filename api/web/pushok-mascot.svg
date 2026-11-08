@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 430" role="img" aria-labelledby="title desc">
+<title id="title">Пушок — рыжий кот в бирюзовом худи</title>
+<desc id="desc">Упрощённая векторная иллюстрация фирменного кота Пушка, созданная для интерфейса MTProxy Pushok</desc>
+<defs>
+<linearGradient id="fur" x1="0" y1="0" x2=".8" y2="1"><stop stop-color="#ffcf88"/><stop offset=".52" stop-color="#f59c60"/><stop offset="1" stop-color="#d96e4a"/></linearGradient>
+<linearGradient id="hood" x1="0" y1="0" x2="1" y2=".9"><stop stop-color="#68e0d4"/><stop offset="1" stop-color="#168b91"/></linearGradient>
+<radialGradient id="eyes"><stop stop-color="#a4ffdf"/><stop offset=".65" stop-color="#46c9b8"/><stop offset="1" stop-color="#267f90"/></radialGradient>
+</defs>
+<g stroke="#213c4a" stroke-width="5" stroke-linejoin="round" stroke-linecap="round">
+<!-- hood behind head -->
+<path d="M93 277Q100 219 143 217Q200 201 252 218Q305 232 311 295L339 383Q205 418 59 382Z" fill="#26677a"/>
+<!-- ears -->
+<path d="M98 142Q70 77 100 46Q143 61 166 105Z" fill="url(#fur)"/>
+<path d="M305 142Q326 73 290 43Q245 55 233 102Z" fill="url(#fur)"/>
+<path d="M113 119Q94 79 104 70L143 104Z" fill="#f9b7a4" stroke-width="3"/>
+<path d="M290 121Q307 77 292 67L256 104Z" fill="#f9b7a4" stroke-width="3"/>
+<!-- fluffy head silhouette -->
+<path d="M108 104Q135 74 177 76L193 56L204 78L226 60L238 82Q302 87 311 154L327 187L312 205Q316 256 272 283Q236 315 200 310Q150 307 119 277Q85 256 87 208L72 189L92 172Q91 131 108 104Z" fill="url(#fur)"/>
+<!-- fur tufts -->
+<path d="M136 90L125 71L157 86M205 78L212 55L229 80M298 137L322 126L313 158M88 215L64 223L96 239" fill="none" stroke="#e88c59" stroke-width="8"/>
+<!-- cheek ruffs -->
+<path d="M112 219Q94 236 118 252L128 270M289 219Q310 239 285 259L277 270" fill="none" stroke="#f8b779" stroke-width="11"/>
+<!-- muzzle -->
+<path d="M158 218Q201 201 239 218Q265 231 248 268Q204 294 158 265Q141 243 158 218Z" fill="#fff0d8" stroke="#edcaab" stroke-width="3"/>
+<!-- eyes -->
+<ellipse cx="156" cy="184" rx="35" ry="42" fill="#fff9e9"/>
+<ellipse cx="244" cy="184" rx="35" ry="42" fill="#fff9e9"/>
+<ellipse cx="162" cy="187" rx="22" ry="32" fill="url(#eyes)" stroke-width="2"/>
+<ellipse cx="239" cy="187" rx="22" ry="32" fill="url(#eyes)" stroke-width="2"/>
+<ellipse cx="168" cy="186" rx="9" ry="24" fill="#193b45" stroke="none"/>
+<ellipse cx="234" cy="186" rx="9" ry="24" fill="#193b45" stroke="none"/>
+<ellipse cx="156" cy="175" rx="8" ry="10" fill="#fff" stroke="none"/>
+<ellipse cx="247" cy="175" rx="8" ry="10" fill="#fff" stroke="none"/>
+<!-- eyebrows and nose -->
+<path d="M133 136Q152 128 172 135M223 135Q245 126 266 137" fill="none" stroke="#c77c59" stroke-width="4"/>
+<path d="M187 238Q201 231 215 239L201 251Z" fill="#cf7982" stroke-width="2"/>
+<path d="M201 251L201 260M201 260Q190 270 181 258M201 260Q213 270 223 258" fill="none" stroke-width="3"/>
+<!-- cheek freckles -->
+<g fill="#dd8f62" stroke="none"><circle cx="148" cy="248" r="3"/><circle cx="135" cy="242" r="3"/><circle cx="253" cy="248" r="3"/><circle cx="265" cy="242" r="3"/></g>
+<path d="M168 246L107 238M169 255L104 260M232 246L294 238M231 255L298 260" fill="none" stroke="#e9c8ab" stroke-width="2.5"/>
+<!-- hoodie and strings -->
+<path d="M119 291Q148 317 201 323Q256 316 281 290L303 386Q201 415 97 386Z" fill="url(#hood)"/>
+<path d="M138 296Q152 345 200 346Q248 345 263 296L285 311Q253 365 200 367Q145 367 115 312Z" fill="#1a7c86"/>
+<path d="M159 324L163 364M240 323L237 364" fill="none" stroke="#d7f5e6" stroke-width="5"/>
+<!-- shield mark -->
+<path d="M201 352L224 360V377Q223 394 201 404Q179 392 178 377V360Z" fill="#d6fff0" stroke-width="3"/>
+<path d="M194 377V373A7 7 0 0 1 208 373V377M191 378H211V388H191Z" fill="none" stroke="#206978" stroke-width="3"/>
+</g>
+<!-- sketch marks -->
+<g stroke="#f7d69e" fill="none" stroke-width="3" stroke-linecap="round" opacity=".8"><path d="M58 135L40 126M55 154L32 156M342 145L360 133M346 166L369 168"/><path d="M62 325L41 330M339 320L359 327"/></g>
+</svg>

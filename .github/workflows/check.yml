@@ -73,3 +73,25 @@ jobs:
           sha256sum -c ./*.sha256
           test -s TELEMT-LICENSE
           test -s PATCHES.md
+
+  cabinet-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install isolated browser dependencies
+        run: |
+          python -m pip install playwright==1.56.0
+          python -m playwright install --with-deps chromium
+      - name: Capture real cabinet pages using a synthetic, localhost-only API
+        run: python scripts/render_cabinet_previews.py --out .build/ui-preview
+      - name: Attach private desktop and mobile design previews
+        uses: actions/upload-artifact@v4
+        with:
+          name: pushok-v0.028-cabinet-previews
+          path: .build/ui-preview/*.png
+          retention-days: 14
+          if-no-files-found: error
