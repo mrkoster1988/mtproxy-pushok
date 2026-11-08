@@ -225,3 +225,5 @@ python -m unittest tests.test_bot_delivery_admin_api tests.test_bot_delivery_inb
 ```
 
 Проверку на реальном Telegram и пользовательском VPS не проводили; зелёный CI сам по себе не означает, что пользователи получают уведомления.
+
+**Итог CI v0.021:** [GitHub Actions run](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42481696007) — 154 Python-теста и Docker Compose smoke-test успешны. Это проверка кода, а не живого Telegram и VPS.
