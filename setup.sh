@@ -268,6 +268,7 @@ EOF
   docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/006_advertiser_notice_outbox.sql
   # Реестр официальных MTProxyBot ad_tag без изменения живого прокси.
   docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/007_proxy_sponsor_registration.sql
+  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/008_official_docker_engine.sql
   if [[ -n "$ADMIN_ID" ]]; then
     printf "INSERT INTO users (telegram_user_id, role) VALUES (%s, 'admin') ON CONFLICT (telegram_user_id) DO UPDATE SET role='admin';\n" "$ADMIN_ID" |
       docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
