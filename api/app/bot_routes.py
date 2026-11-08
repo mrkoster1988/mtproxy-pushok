@@ -8,12 +8,17 @@ import hmac
 import os
 from datetime import datetime
 from uuid import UUID
+from urllib.parse import urlparse
+import re
 
 import psycopg
 from psycopg.errors import UniqueViolation
 from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 from psycopg.rows import dict_row
+from .channel_verification import (
+    ChannelNotVerified, TelegramUnavailable, verify_channel_admin,
+)
 
 router = APIRouter()
 
@@ -222,3 +227,126 @@ def create_bot_campaign_draft(
         currency=tariff["currency"].strip(),
         moderation_status="draft",
     )
+
+
+class BotSubmitDraft(BaseModel):
+    telegram_user_id: int = Field(gt=0, le=9223372036854775807)
+    campaign_id: UUID
+
+
+class BotSubmitResult(BaseModel):
+    campaign_id: UUID
+    moderation_status: str
+
+
+@router.post(
+    "/api/v1/internal/bot/campaign-drafts/submit",
+    response_model=BotSubmitResult,
+    include_in_schema=False,
+)
+def submit_bot_campaign_draft(
+    payload: BotSubmitDraft,
+    response: Response,
+    x_pushok_bot_secret: str | None = Header(default=None),
+) -> BotSubmitResult:
+    """Проверить права на канал и отправить собственный черновик на модерацию.
+
+    Данные о статусах и принадлежности проверяются снова в БД при UPDATE.
+    Telegram API не меняет права канала и не запускает рекламу.
+    """
+    _verify_bot_secret(x_pushok_bot_secret)
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        with psycopg.connect(
+            os.environ["DATABASE_URL"], connect_timeout=3, row_factory=dict_row
+        ) as connection:
+            campaign = connection.execute(
+                """
+                SELECT c.id, c.moderation_status, c.advertiser_user_id,
+                       sc.id AS channel_id, sc.telegram_url,
+                       sc.telegram_channel_id
+                FROM campaigns AS c
+                JOIN users AS u ON u.id = c.advertiser_user_id
+                JOIN sponsor_channels AS sc ON sc.id = c.channel_id
+                                            AND sc.owner_user_id = u.id
+                WHERE c.id = %s AND u.telegram_user_id = %s
+                """,
+                (payload.campaign_id, payload.telegram_user_id),
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="bot_draft_not_found")
+    if campaign["moderation_status"] == "pending":
+        return BotSubmitResult(campaign_id=payload.campaign_id, moderation_status="pending")
+    if campaign["moderation_status"] != "draft":
+        raise HTTPException(status_code=409, detail="bot_draft_not_editable")
+
+    parsed = urlparse(campaign["telegram_url"])
+    name = parsed.path.strip("/")
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname not in {"t.me", "telegram.me"}
+        or parsed.query or parsed.fragment
+        or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", name)
+    ):
+        raise HTTPException(status_code=409, detail="invalid_channel_reference")
+
+    try:
+        telegram_channel_id = verify_channel_admin(name, payload.telegram_user_id)
+    except ChannelNotVerified as exc:
+        raise HTTPException(status_code=409, detail="channel_admin_verification_failed") from exc
+    except TelegramUnavailable as exc:
+        raise HTTPException(status_code=503, detail="telegram_verification_unavailable") from exc
+    if (
+        campaign["telegram_channel_id"] is not None
+        and campaign["telegram_channel_id"] != telegram_channel_id
+    ):
+        raise HTTPException(status_code=409, detail="channel_id_changed")
+
+    try:
+        with psycopg.connect(
+            os.environ["DATABASE_URL"], connect_timeout=3, row_factory=dict_row
+        ) as connection:
+            updated_channel = connection.execute(
+                """
+                UPDATE sponsor_channels
+                SET telegram_channel_id = %s
+                WHERE id = %s AND owner_user_id = %s AND telegram_url = %s
+                  AND (telegram_channel_id IS NULL OR telegram_channel_id = %s)
+                RETURNING id
+                """,
+                (
+                    telegram_channel_id, campaign["channel_id"],
+                    campaign["advertiser_user_id"], campaign["telegram_url"],
+                    telegram_channel_id,
+                ),
+            ).fetchone()
+            if updated_channel is None:
+                raise HTTPException(status_code=409, detail="channel_changed")
+            updated_campaign = connection.execute(
+                """
+                UPDATE campaigns SET moderation_status = 'pending', updated_at = now()
+                WHERE id = %s AND advertiser_user_id = %s
+                  AND channel_id = %s AND moderation_status = 'draft'
+                RETURNING id
+                """,
+                (
+                    payload.campaign_id, campaign["advertiser_user_id"],
+                    campaign["channel_id"],
+                ),
+            ).fetchone()
+            if updated_campaign is None:
+                raise HTTPException(status_code=409, detail="draft_already_changed")
+            connection.execute(
+                """
+                INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
+                VALUES (%s, %s, 'campaign_submitted_from_bot',
+                        jsonb_build_object('telegram_channel_id', %s::bigint))
+                """,
+                (campaign["advertiser_user_id"], payload.campaign_id, telegram_channel_id),
+            )
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return BotSubmitResult(campaign_id=payload.campaign_id, moderation_status="pending")
