@@ -146,11 +146,13 @@ class PostgresIntegration(unittest.TestCase):
                                      headers=headers, json=submit)
             self.assertEqual(first.status_code, 200, first.text)
             self.assertEqual(first.json()["moderation_status"], "pending")
+            self.assertTrue(first.json()["verified_now"])
             verifier.assert_called_once_with("mychannelverify", 70006)
 
             again = self.client.post(base + "campaign-drafts/submit",
                                      headers=headers, json=submit)
             self.assertEqual(again.status_code, 200, again.text)
+            self.assertFalse(again.json()["verified_now"])
             verifier.assert_called_once()  # идемпотентный повтор без Telegram API
 
             foreign = self.client.post(base + "campaign-drafts/submit",
