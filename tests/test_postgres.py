@@ -62,6 +62,101 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(result.status_code, expected, result.text)
         return result.json() if expected != 204 else None
 
+    def test_mtproxy_sponsor_registration_and_readiness_in_real_postgres(self):
+        """Регистрация ad_tag, платёжный барьер и защита живого слота."""
+        main.app.dependency_overrides.clear()
+        admin_id, advertiser_id = uuid4(), uuid4()
+        node_id, channel_id, campaign_id = uuid4(), uuid4(), uuid4()
+        tag = "aabbccdd11223344556677889900aabb"
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(
+                """INSERT INTO users(id, telegram_user_id, role)
+                   VALUES (%s, 99022, 'admin'), (%s, 99023, 'advertiser')""",
+                (admin_id, advertiser_id),
+            )
+            connection.execute(
+                """INSERT INTO proxy_nodes(id, name, host, port)
+                   VALUES (%s, 'Test sponsor node', 'test-sponsor.example', 443)""",
+                (node_id,),
+            )
+            connection.execute(
+                """INSERT INTO sponsor_channels(
+                       id, owner_user_id, telegram_url, telegram_channel_id, title
+                   ) VALUES (%s, %s, 'https://t.me/SponsorTestChannel', -100555555,
+                             'Sponsor test')""",
+                (channel_id, advertiser_id),
+            )
+        main.app.dependency_overrides[main.require_admin] = lambda: {
+            "id": admin_id, "role": "admin",
+        }
+        admin_base = f"/api/v1/admin/proxy-nodes/{node_id}"
+        registration = self.client.put(admin_base + "/sponsor-registration", json={
+            "engine": "telemt", "ad_tag": tag.upper(),
+        })
+        self.assertEqual(registration.status_code, 200, registration.text)
+        self.assertEqual(registration.json()["tag_ending"], tag[-4:])
+        self.assertNotIn(tag, registration.text)
+        preview = self.client.get(admin_base + "/sponsor-config-preview")
+        self.assertEqual(preview.status_code, 200, preview.text)
+        self.assertIn(f'ad_tag = "{tag}"', preview.json()["config_fragment"])
+        self.assertFalse(preview.json()["changes_applied"])
+
+        future = datetime.now(timezone.utc) + timedelta(minutes=30)
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(
+                """INSERT INTO campaigns (
+                       id, advertiser_user_id, channel_id, tariff_id, proxy_node_id,
+                       tariff_name_snapshot, duration_seconds_snapshot,
+                       price_kopecks_snapshot, currency_snapshot,
+                       moderation_status, payment_status, placement_status,
+                       scheduled_start_at, scheduled_end_at
+                   ) VALUES (
+                       %s, %s, %s, %s, %s, '1 день', 86400, 30000, 'RUB',
+                       'approved', 'verified', 'scheduled',
+                       %s, %s
+                   )""",
+                (campaign_id, advertiser_id, channel_id, node_id,
+                 "00000000-0000-4000-8000-000000000001",
+                 future, future + timedelta(days=1)),
+            )
+        # Нельзя незаметно поменять тег, когда место уже запланировано.
+        busy = self.client.put(admin_base + "/sponsor-registration", json={
+            "engine": "official_mtproxy", "ad_tag": "b" * 32,
+        })
+        self.assertEqual(busy.status_code, 409)
+
+        main.app.dependency_overrides[main.require_operator] = lambda: {
+            "id": admin_id, "role": "operator",
+        }
+        route = f"/api/v1/operator/campaigns/{campaign_id}/sponsor-readiness"
+        report = self.client.get(route)
+        self.assertEqual(report.status_code, 200, report.text)
+        self.assertTrue(report.json()["ready_for_manual_preparation"])
+        self.assertFalse(report.json()["changes_applied"])
+        self.assertEqual(report.json()["tag_ending"], tag[-4:])
+        self.assertNotIn(tag, report.text)
+        self.assertTrue(all(report.json()["checks"].values()))
+
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(
+                "UPDATE campaigns SET payment_status = 'awaiting_payment' WHERE id = %s",
+                (campaign_id,),
+            )
+        unpaid = self.client.get(route)
+        self.assertEqual(unpaid.status_code, 200, unpaid.text)
+        self.assertFalse(unpaid.json()["ready_for_manual_preparation"])
+        self.assertFalse(unpaid.json()["checks"]["payment_verified"])
+
+        with psycopg.connect(self.dsn) as connection:
+            audit = connection.execute(
+                """SELECT count(*) FROM audit_events
+                   WHERE event_type = 'sponsor_tag_registered'
+                     AND actor_user_id = %s""", (admin_id,),
+            ).fetchone()[0]
+            self.assertEqual(audit, 1)
+
+        main.app.dependency_overrides.clear()
+
     def test_delivery_admin_diagnostics_and_retry_in_real_postgres(self):
         """Роль admin, статистика отказов, ограничение повторов и аудит."""
         main.app.dependency_overrides.clear()
