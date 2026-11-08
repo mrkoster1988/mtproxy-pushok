@@ -1325,7 +1325,7 @@ def cabinet() -> FileResponse:
 
 # v0.022 — Регистрация MTProxyBot и подготовка без реального изменения прокси.
 class SponsorRegistrationRequest(BaseModel):
-    engine: str = Field(pattern="^(telemt|official_mtproxy)$")
+    engine: str = Field(pattern="^(telemt|official_mtproxy|official_docker)$")
     ad_tag: str = Field(min_length=32, max_length=32)
 
     @field_validator("ad_tag")
