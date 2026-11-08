@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS bot_advertiser_notice_outbox (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
     next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    lease_token UUID,
+    claim_token UUID,
     lease_until TIMESTAMPTZ,
     delivered_at TIMESTAMPTZ,
     abandoned_at TIMESTAMPTZ,
