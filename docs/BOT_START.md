@@ -197,3 +197,5 @@ docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d 
 **Безопасность:** маршруты уведомлений доступны только с `BOT_INTERNAL_SECRET`, не включаются в OpenAPI; получатель выводится из владельца кампании на стороне БД, а не присылается ботом. Комментарий модератора перед отправкой очищается от управляющих символов и ограничивается по длине; Telegram Markdown/HTML отключены.
 
 Проверки кода: `python -m unittest tests.test_advertiser_notices_api tests.test_advertiser_notices_bot tests.test_postgres -v` с отдельной тестовой PostgreSQL. Проверка работоспособности на VPS требует отдельного запуска, пользовательский сервер в ходе разработки не менялся.
+
+**Итог CI v0.020:** [GitHub Actions run](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42468407813) — 134 Python-теста и Docker Compose smoke-test успешны. Интеграция с живым Telegram и пользовательским VPS ещё не подтверждена.
