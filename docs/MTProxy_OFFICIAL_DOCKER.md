@@ -56,3 +56,7 @@ Docker-администратор может видеть SECRET в переме
     python3 -m unittest tests.test_official_docker_install tests.test_sponsor_planner tests.test_sponsor_api -v
 
 GitHub Actions проверяет синтаксис, диалоги, валидацию Compose без скачивания образа и миграцию PostgreSQL. Настоящие подключения клиентов, рекламный TAG и обновления официального Docker-образа на VPS не проверялись.
+
+## Проверки v0.023
+
+[GitHub Actions, PR №9](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42488971166): **181 Python-тест и Docker Compose smoke-test успешны**. Синхронизированы GitHub и приватный GitLab. Установка на VPS, реальное подключение к Telegram и аудит старого образа не выполнялись.
