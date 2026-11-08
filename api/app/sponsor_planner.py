@@ -23,12 +23,16 @@ def normalize_ad_tag(tag: str) -> str:
 def parse_public_channel(url: str) -> str | None:
     if not isinstance(url, str):
         return None
-    parts = urlsplit(url)
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return None
     username = parts.path.strip("/")
     if (
         parts.scheme != "https" or parts.hostname not in ("t.me", "telegram.me")
         or parts.query or parts.fragment or parts.username or parts.password
-        or parts.port is not None or not _USERNAME.fullmatch(username)
+        or port is not None or not _USERNAME.fullmatch(username)
     ):
         return None
     if username.lower() in {"joinchat", "addstickers", "share", "proxy", "socks", "login"}:
