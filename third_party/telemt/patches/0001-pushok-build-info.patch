@@ -1,0 +1,56 @@
+diff --git a/src/main.rs b/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -26,6 +26,7 @@
+ mod protocol;
+ mod proxy;
+ mod quota_state;
++mod pushok_build;
+ mod service;
+ mod slot_budget;
+ mod startup;
+@@ -38,10 +39,19 @@
+ mod web;
+ 
+ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
++    let args: Vec<String> = std::env::args().skip(1).collect();
++    if args.iter().any(|arg| arg == "--pushok-build-info") {
++        if args.len() != 1 {
++            eprintln!("--pushok-build-info must be used without other arguments");
++            std::process::exit(2);
++        }
++        println!("{}", pushok_build::BUILD_INFO_JSON);
++        return Ok(());
++    }
++
+     // Install rustls crypto provider early
+     let _ = rustls::crypto::ring::default_provider().install_default();
+ 
+-    let args: Vec<String> = std::env::args().skip(1).collect();
+     let cmd = cli::parse_command(&args);
+ 
+     // Handle subcommands that don't need the server (stop, reload, status, init)
+diff --git a/src/pushok_build.rs b/src/pushok_build.rs
+new file mode 100644
+--- /dev/null
++++ b/src/pushok_build.rs
+@@ -0,0 +1,19 @@
++//! Pushok-specific non-network build provenance. Modification of Telemt upstream.
++//!
++//! Base: Telemt 3.5.17, commit 66708d2866f3f3a4541c4fa67984d408e71a8af4.
++//! Pushok patch: cli-build-info-001. No request processing, proxy or network changes.
++
++pub const BUILD_INFO_JSON: &str = r#"{"product":"Pushok Source Core","version":"0.027","based_on":"Telemt 3.5.17","upstream_commit":"66708d2866f3f3a4541c4fa67984d408e71a8af4","patch":"cli-build-info-001","proxy_started":false}"#;
++
++#[cfg(test)]
++mod tests {
++    use super::BUILD_INFO_JSON;
++
++    #[test]
++    fn provenance_contains_explicit_fork_marker() {
++        assert!(BUILD_INFO_JSON.contains("Pushok Source Core"));
++        assert!(BUILD_INFO_JSON.contains("cli-build-info-001"));
++        assert!(BUILD_INFO_JSON.contains("66708d2866f3f3a4541c4fa67984d408e71a8af4"));
++        assert!(BUILD_INFO_JSON.contains("\"proxy_started\":false"));
++    }
++}
