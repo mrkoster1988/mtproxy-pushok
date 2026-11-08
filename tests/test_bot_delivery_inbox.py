@@ -72,7 +72,7 @@ class DeliveryBotTests(unittest.TestCase):
         self.assertFalse(self.calls)
 
     def test_regular_non_delivery_message_ignored(self):
-        self.assertIsNone(self.respond(message(content="/start")))
+        self.assertIsNone(self.inbox.handle(message(content="/start")))
         self.assertFalse(self.calls)
 
     def test_operator_role_denied_by_server(self):
