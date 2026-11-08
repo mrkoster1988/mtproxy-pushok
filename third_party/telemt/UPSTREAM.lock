@@ -1,0 +1,6 @@
+# Pushok Core upstream source lock (not an installer)
+repository=https://github.com/telemt/telemt.git
+tag=3.5.17
+commit=66708d2866f3f3a4541c4fa67984d408e71a8af4
+upstream_license=TELEMT Public License 3.3
+# Verified against GitHub annotated tag 3.5.17. Never resolve HEAD/latest at install time.

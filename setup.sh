@@ -2,7 +2,15 @@
 set -Eeuo pipefail
 # Диалог читает терминал отдельно от потока загрузки скрипта.
 if [[ "$*" == "--help" ]]; then
-  echo "sudo bash setup.sh [--plan] — мастер установки MTProxy Pushok"
+  echo "sudo bash setup.sh [--plan|--core-plan] — мастер установки MTProxy Pushok"
+  echo "--core-plan: только план получения и сборки Pushok Core (без установки)."
+  exit 0
+fi
+if [[ "$*" == "--core-plan" ]]; then
+  ROOT="$(cd -- "$(dirname -- "$0")" && pwd)"
+  echo "Pushok Source Core v0.026 — без изменений VPS"
+  bash "$ROOT/scripts/fetch_pushok_core.sh" --plan
+  bash "$ROOT/scripts/build_pushok_core.sh" --plan
   exit 0
 fi
 PLAN=false
@@ -83,7 +91,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v0.025 — мастер настройки" >&2
+echo "MTProxy Pushok v0.026 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
 PROXY_ENGINE=""

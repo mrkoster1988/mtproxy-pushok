@@ -33,7 +33,7 @@ from .engine_adapters import recommend_engine, engine_catalog
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.025",
+    version="0.026",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
