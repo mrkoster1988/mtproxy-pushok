@@ -285,3 +285,5 @@ bash scripts/build_pushok_core.sh --build
 - Сохранены существующие HTML id и все API-вызовы; добавлены цветовые состояния статусов и счётчик очереди.
 
 Визуальные изменения **не являются проверкой оплаты, реального спонсорского показа или развёртывания на VPS**. Дизайн проверяется на тестовых данных и в CI. VPN, Remnawave и RemnaShop не затрагиваются.
+
+**Проверка v0.028:** GitHub [Actions](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42526159730) — 222 Python-теста, Compose smoke, Rust build и браузерная проверка пяти реальных экранов; [скачать приватные скриншоты](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42526159730/artifacts/13635143990). Они созданы с искусственными данными, не подтверждают работу на VPS.
