@@ -103,6 +103,20 @@ class WizardTests(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(calls[0], calls[1])
 
+    def test_two_people_cannot_mix_pending_drafts(self):
+        self.handle(message(42, "/advertise"))
+        self.handle(message(43, "/advertise"))
+        self.handle(message(42, "@ChannelA"))
+        self.handle(message(43, "@ChannelB"))
+        forged = self.handle(callback(42, "draft:confirm", chat_id=43))
+        self.assertIsNone(forged)
+        self.assertEqual(len(self.created), 0)
+        self.handle(callback(43, "draft:confirm"))
+        self.handle(callback(42, "draft:confirm"))
+        self.assertEqual([(user, channel) for user, channel, _ in self.created],
+                         [(43, "channelb"), (42, "channela")])
+        self.assertNotEqual(self.created[0][2], self.created[1][2])
+
     def test_unconfigured_instance_does_not_take_orders(self):
         wizard = DraftWizard(self.wizard.creator, enabled=False, clock=lambda: self.now)
         result = response_for(message(42, "/advertise"), wizard=wizard)
