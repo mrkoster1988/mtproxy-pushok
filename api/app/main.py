@@ -30,7 +30,7 @@ from .bot_outbox import router as bot_outbox_router
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.019",
+    version="0.020",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
