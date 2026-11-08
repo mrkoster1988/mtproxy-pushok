@@ -75,6 +75,7 @@ class RustForkPatchTests(unittest.TestCase):
         self.assertIn("--pushok-build-info", patch)
         self.assertIn("proxy_started", patch)
 
+    @unittest.skipUnless(shutil.which("git"), "git отсутствует в минимальном smoke-контейнере")
     def test_patch_applies_and_reverses_against_pinned_excerpt(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
