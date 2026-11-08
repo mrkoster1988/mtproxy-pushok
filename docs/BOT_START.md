@@ -133,3 +133,7 @@ docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d 
 Обновлённый мастер `setup.sh` также применяет её к существующей базе. Никакие действующие данные и платежи не удаляются. Не выполняйте `docker compose down -v` при обновлении.
 
 Проверки: `python3 -m unittest tests.test_bot_operator tests.test_bot_operator_api tests.test_postgres -v` с отдельной PostgreSQL для последнего набора. Бот и сервисы **не развёрнуты на пользовательском VPS** в рамках этой разработки.
+
+### Подтверждённая CI-приёмка кода v0.018
+
+GitHub Actions PR #3: 110 автоматических Python-тестов (включая настоящую PostgreSQL, проверку ролей, модерацию и аудит) и Docker Compose smoke-test завершились успешно. Код интегрирован в GitHub `main` и приватное зеркало GitLab. **Это не проверка работы Telegram-бота или уведомлений на VPS**.
