@@ -140,6 +140,28 @@ class DraftAPITests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         connect.assert_not_called()
 
+    def test_reserved_username_refused(self):
+        with patch.dict(os.environ, {"BOT_INTERNAL_SECRET": SECRET}):
+            with patch("app.bot_routes.psycopg.connect") as connect:
+                response = self.request(payload={
+                    "telegram_user_id": 123,
+                    "channel_username": "joinchat",
+                    "request_key": KEY,
+                })
+        self.assertEqual(response.status_code, 422)
+        connect.assert_not_called()
+
+    def test_telegram_id_must_fit_postgres_bigint(self):
+        with patch.dict(os.environ, {"BOT_INTERNAL_SECRET": SECRET}):
+            with patch("app.bot_routes.psycopg.connect") as connect:
+                response = self.request(payload={
+                    "telegram_user_id": 2**63,
+                    "channel_username": "MyChannel",
+                    "request_key": KEY,
+                })
+        self.assertEqual(response.status_code, 422)
+        connect.assert_not_called()
+
     def test_migration_is_repeatable_and_non_destructive(self):
         migration = (ROOT / "database/003_bot_draft_idempotency.sql").read_text()
         self.assertIn("ADD COLUMN IF NOT EXISTS bot_request_key UUID", migration)
