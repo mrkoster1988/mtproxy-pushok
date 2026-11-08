@@ -1,13 +1,13 @@
 # История изменений MTProxy Pushok
 
-## [0.026] — 2026-11-08 (код в проверочной ветке, CI ожидается)
+## [0.026] — 2026-11-08 (код проверен CI, VPS не развёрнут)
 
 - Подготовлен Pushok Source Core: закреплён исходный Rust-код Telemt `3.5.17` (immutable commit `66708d2866f3f3a4541c4fa67984d408e71a8af4`).
 - Полная upstream-лицензия `TELEMT Public License 3.3`, copyright и уведомления сохранены в `third_party/telemt/`.
 - Добавлены `fetch_pushok_core.sh` и `build_pushok_core.sh` с проверкой SHA, Cargo.lock и лицензии; явные режимы `--fetch`/`--build`, без sudo, systemd и Docker.
 - Offline TOML-генератор тестового стенда: секрет создаётся локально, API выключен, `127.0.0.1`, права 0600, защита от перезаписи.
 - `setup.sh --core-plan` встроен в единый мастер как безопасный dry-run; нормальная установка пока не подменяет работающий Classic.
-- Новые unit/CLI проверки, секреты и исходники сборки исключены из Git. Производственные испытания, реальная Rust-сборка и модификация upstream Rust-кода пока не подтверждены.
+- **Приёмка кода:** GitHub PR #12 объединён в main после **211 Python-тестов и успешного Docker Compose smoke-test** ([Actions](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42503610004)); исходники и релизный код зеркалированы в GitLab main. Секреты и результаты сборки исключены из Git. Реальная Rust-сборка, подключение клиента Telegram и модификация upstream Rust-кода пока не подтверждены.
 - MTProxy Pushok автономен; никаких связей с VPN, Remnawave и RemnaShop.
 
 
