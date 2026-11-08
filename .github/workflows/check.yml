@@ -37,6 +37,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash -n setup.sh
+      - run: bash -n install_official_docker.sh
+      - name: Validate isolated official MTProxy Compose without pulling image
+        run: |
+          tmp="$(mktemp -d)"
+          trap 'rm -rf "$tmp"' EXIT
+          printf 'SECRET=%s\nWORKERS=2\n' "1234567890abcdef1234567890abcdef" > "$tmp/secret.env"
+          printf 'MTPROXY_SECRET_FILE=%s\nMTPROXY_PORT=19443\nMTPROXY_BIND_IP=127.0.0.1\n' "$tmp/secret.env" > "$tmp/settings"
+          docker compose --project-name mtproxy-pushok-official-test --env-file "$tmp/settings" -f compose.proxy-official.yaml config --quiet
       - run: bash -n scripts/staging_preflight.sh
       - run: bash -n scripts/smoke.sh
       - run: sh -n scripts/check_backup_restore.sh

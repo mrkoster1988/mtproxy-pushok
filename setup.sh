@@ -83,8 +83,13 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v0.022 — мастер настройки" >&2
+echo "MTProxy Pushok v0.023 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
+# Выбор движка не меняет существующий прокси автоматически.
+PROXY_ENGINE=""
+if [[ "$COMPONENTS" != 2 ]]; then
+  choose PROXY_ENGINE "Какой движок установить для MTProxy?" 1     "Официальный MTProxy (Docker; отдельный тестовый проект)"     "Классический MTProxy (сборка из исходников + systemd)"
+fi
 NEW_CONFIG=true
 HTTPS=1
 ADMIN_ID=""
@@ -140,6 +145,14 @@ if [[ "$COMPONENTS" != 1 ]]; then
       fi
     fi
     configure_payments
+  fi
+fi
+if [[ "$COMPONENTS" != 2 ]]; then
+  if [[ "$PROXY_ENGINE" == 1 ]]; then
+    echo "Движок: telegrammessenger/proxy:latest (Docker, изолированный проект)." >&2
+    echo "После подтверждения будут дополнительные вопросы о порте и TAG." >&2
+  else
+    echo "Движок: классический Telegram MTProxy, systemd (текущий способ)." >&2
   fi
 fi
 case "$COMPONENTS" in
@@ -255,6 +268,7 @@ EOF
   docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/006_advertiser_notice_outbox.sql
   # Реестр официальных MTProxyBot ad_tag без изменения живого прокси.
   docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/007_proxy_sponsor_registration.sql
+  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/008_official_docker_engine.sql
   if [[ -n "$ADMIN_ID" ]]; then
     printf "INSERT INTO users (telegram_user_id, role) VALUES (%s, 'admin') ON CONFLICT (telegram_user_id) DO UPDATE SET role='admin';\n" "$ADMIN_ID" |
       docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
@@ -274,7 +288,17 @@ EOF
   echo "Домен входа Telegram зарегистрируйте у бота в BotFather."
 fi
 if [[ "$COMPONENTS" != 2 ]]; then
-  echo "Далее: домен, TCP-порт и необязательный тег спонсора MTProxy."
-  bash "$ROOT_DIR/install.sh" <&3
+  if [[ "$PROXY_ENGINE" == 1 ]]; then
+    install_docker
+    if ! command -v ss >/dev/null 2>&1; then
+      apt-get update
+      apt-get install -y iproute2
+    fi
+    echo "Далее: официальный Docker MTProxy, отдельный проект и подтверждение." >&2
+    bash "$ROOT_DIR/install_official_docker.sh" <&3
+  else
+    echo "Далее: классический MTProxy, домен, порт и необязательный тег." >&2
+    bash "$ROOT_DIR/install.sh" <&3
+  fi
 fi
 echo "Настройка завершена. .env содержит секреты; права доступа 0600."

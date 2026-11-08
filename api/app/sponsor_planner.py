@@ -93,4 +93,6 @@ def render_config_fragment(engine: str, tag: str) -> str:
         return '[general]\nuse_middle_proxy = true\nad_tag = "' + tag + '"'
     if engine == "official_mtproxy":
         return "-P " + tag
+    if engine == "official_docker":
+        return "TAG=" + tag
     raise ValueError("Неизвестный движок MTProxy")

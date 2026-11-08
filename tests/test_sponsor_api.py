@@ -118,6 +118,21 @@ class SponsorEndpointsTests(unittest.TestCase):
         self.assertFalse(result.json()["changes_applied"])
         self.assertEqual(db.__enter__.return_value.execute.call_count, 1)
 
+    def test_official_docker_engine_accepts_tag_and_renders_env(self):
+        main.app.dependency_overrides[main.require_admin] = lambda: self.admin
+        db = fake_connection({"id": NODE}, None, None, None)
+        with patch("app.main.psycopg.connect", return_value=db):
+            registered = self.register(engine="official_docker")
+        self.assertEqual(registered.status_code, 200, registered.text)
+        self.assertEqual(registered.json()["engine"], "official_docker")
+        preview_db = fake_connection({"engine": "official_docker", "ad_tag": TAG})
+        with patch("app.main.psycopg.connect", return_value=preview_db):
+            preview = self.client.get(
+                f"/api/v1/admin/proxy-nodes/{NODE}/sponsor-config-preview"
+            )
+        self.assertEqual(preview.status_code, 200, preview.text)
+        self.assertEqual(preview.json()["config_fragment"], "TAG=" + TAG)
+
     def test_operator_preview_redacts_tag_and_never_writes(self):
         main.app.dependency_overrides[main.require_operator] = lambda: self.operator
         db = fake_connection(prepared_row())

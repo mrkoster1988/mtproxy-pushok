@@ -57,6 +57,11 @@ class SponsorPlannerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             render_config_fragment("unknown_engine", TAG)
 
+    def test_official_docker_tag_is_env_value_not_native_flag(self):
+        fragment = render_config_fragment("official_docker", TAG)
+        self.assertEqual(fragment, "TAG=" + TAG)
+        self.assertNotIn("-P ", fragment)
+
     def test_public_channel_link_validation(self):
         self.assertEqual(parse_public_channel("https://t.me/ExampleChannel"),
                          "ExampleChannel")

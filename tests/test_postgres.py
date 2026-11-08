@@ -62,6 +62,47 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(result.status_code, expected, result.text)
         return result.json() if expected != 204 else None
 
+    def test_official_docker_engine_migration_and_real_postgres(self):
+        """Новый тип не ломает старые записи, config preview только текст."""
+        main.app.dependency_overrides.clear()
+        admin_id, node_id = uuid4(), uuid4()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute(
+                "INSERT INTO users(id, telegram_user_id, role) VALUES (%s, 99401, 'admin')",
+                (admin_id,),
+            )
+            conn.execute(
+                """INSERT INTO proxy_nodes(id, name, host, port)
+                   VALUES (%s, 'Docker Test', 'docker-test.example', 18443)""",
+                (node_id,),
+            )
+            # Миграция не должна удалять существующие регистрации и допускает повтор.
+            migration = (ROOT / "database/008_official_docker_engine.sql").read_text()
+            conn.execute(migration)
+            conn.execute(migration)
+
+        main.app.dependency_overrides[main.require_admin] = lambda: {
+            "id": admin_id, "role": "admin",
+        }
+        tag = "abcdefff00112233445566778899aabb"
+        base = f"/api/v1/admin/proxy-nodes/{node_id}"
+        registered = self.client.put(base + "/sponsor-registration", json={
+            "engine": "official_docker", "ad_tag": tag,
+        })
+        self.assertEqual(registered.status_code, 200, registered.text)
+        preview = self.client.get(base + "/sponsor-config-preview")
+        self.assertEqual(preview.status_code, 200, preview.text)
+        self.assertEqual(preview.json()["config_fragment"], "TAG=" + tag)
+        self.assertFalse(preview.json()["changes_applied"])
+        with psycopg.connect(self.dsn) as conn:
+            row = conn.execute(
+                """SELECT engine, ad_tag FROM proxy_sponsor_registrations
+                   WHERE proxy_node_id = %s""",
+                (node_id,),
+            ).fetchone()
+            self.assertEqual(row, ("official_docker", tag))
+        main.app.dependency_overrides.clear()
+
     def test_mtproxy_sponsor_registration_and_readiness_in_real_postgres(self):
         """Регистрация ad_tag, платёжный барьер и защита живого слота."""
         main.app.dependency_overrides.clear()
