@@ -9,6 +9,7 @@ import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 from uuid import uuid4
 
 import psycopg
@@ -60,6 +61,63 @@ class PostgresIntegration(unittest.TestCase):
         result = self.client.request(method, "/api/v1" + path, **kwargs)
         self.assertEqual(result.status_code, expected, result.text)
         return result.json() if expected != 204 else None
+
+    def test_bot_draft_in_real_postgres_with_retry(self):
+        """В PostgreSQL один request_key создаёт ровно один черновик."""
+        main.app.dependency_overrides.clear()
+        secret = "d" * 64
+        key = str(uuid4())
+        url = "/api/v1/internal/bot/campaign-drafts"
+        headers = {"X-Pushok-Bot-Secret": secret}
+        payload = {
+            "telegram_user_id": 70004,
+            "channel_username": "TestMyChannel",
+            "request_key": key,
+        }
+        with patch.dict(os.environ, {
+            "BOT_INTERNAL_SECRET": secret, "DATABASE_URL": self.dsn,
+        }):
+            first = self.client.post(url, json=payload, headers=headers)
+            self.assertEqual(first.status_code, 200, first.text)
+            self.assertEqual(first.json()["moderation_status"], "draft")
+            self.assertEqual(first.json()["price_kopecks"], 30000)
+
+            replay = self.client.post(url, json=payload, headers=headers)
+            self.assertEqual(replay.status_code, 200, replay.text)
+            self.assertEqual(replay.json()["campaign_id"], first.json()["campaign_id"])
+
+            forbidden = self.client.post(
+                url, json={**payload, "telegram_user_id": 70005},
+                headers=headers,
+            )
+            self.assertEqual(forbidden.status_code, 409, forbidden.text)
+
+        with psycopg.connect(self.dsn) as connection:
+            count = connection.execute(
+                "SELECT count(*) FROM campaigns WHERE bot_request_key = %s",
+                (key,),
+            ).fetchone()[0]
+            self.assertEqual(count, 1)
+            row = connection.execute(
+                """SELECT moderation_status, payment_status,
+                          price_kopecks_snapshot, currency_snapshot
+                   FROM campaigns WHERE id = %s""",
+                (first.json()["campaign_id"],),
+            ).fetchone()
+            self.assertEqual(row, ("draft", "not_required", 30000, "RUB"))
+            self.assertIsNone(connection.execute(
+                "SELECT id FROM users WHERE telegram_user_id = 70005"
+            ).fetchone())
+
+    def test_bot_draft_migration_is_idempotent(self):
+        """Повторная миграция не удаляет данные и не рушит индекс."""
+        migration = (ROOT / "database/003_bot_draft_idempotency.sql").read_text()
+        with psycopg.connect(self.dsn) as connection:
+            connection.execute(migration)
+            connection.execute(migration)
+            self.assertTrue(connection.execute(
+                "SELECT EXISTS(SELECT 1 FROM pg_indexes WHERE indexname = 'campaigns_bot_request_key_uq')"
+            ).fetchone()[0])
 
     def test_campaign_lifecycle_and_slot_collision(self):
         owner, operator = uuid4(), uuid4()
