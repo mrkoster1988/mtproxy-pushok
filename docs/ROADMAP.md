@@ -227,6 +227,6 @@
 - Реализованы `/moderation` и `/moderation_off` для operator/admin с проверкой Telegram ID и текущей роли на стороне PostgreSQL.
 - Очередь до 5 ожидающих заявок; подтверждаемое одобрение и отклонение/запрос исправлений с обязательной причиной. Меняется `moderation_status`, при одобрении — `payment_status=awaiting_payment`; каждое решение атомарно журналируется.
 - Добровольная подписка оператора в таблице `bot_operator_subscriptions`; оповещения после нового `draft → pending` ограничены, отправляются без гарантии повтора после сбоя (best effort). Отзыв роли немедленно исключает оператора из списка адресатов.
-- Миграция `004_operator_bot_subscriptions.sql`, проверки API/бота/PostgreSQL. Основной критерий: GitHub Actions test + Compose smoke зелёные на финальном PR.
+- Миграция `004_operator_bot_subscriptions.sql`, проверки API/бота/PostgreSQL. Критерий кода выполнен: GitHub Actions PR #3 — **110 Python-тестов и Compose smoke успешны** (https://github.com/mrkoster1988/mtproxy-pushok/pull/3).
 - Не реализовано: надёжная outbox-рассылка, Telegram Stars, автоматическая смена MTProxy Sponsor, развёртывание на VPS. В перспективе отдельный Telegram Serverless прототип после допуска в Beta.
 - Следующий этап после успешного CI: пользовательские уведомления о решениях модератора, транзакционный outbox и тесты доставки, а затем платежи.
