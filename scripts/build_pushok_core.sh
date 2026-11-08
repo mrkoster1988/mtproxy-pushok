@@ -16,6 +16,9 @@ if [[ "$MODE" == "--plan" ]]; then
   exit 0
 fi
 if (( EUID == 0 )); then echo "Запустите сборку без sudo." >&2; exit 1; fi
+[[ ! -L "$ROOT/.build" && ! -L "$ROOT/.build/pushok-core" && ! -L "$SRC" ]] || {
+  echo "Символьные ссылки в каталоге сборки запрещены." >&2; exit 1;
+}
 [[ -d "$SRC/.git" ]] || { echo "Сначала: bash scripts/fetch_pushok_core.sh --fetch" >&2; exit 1; }
 [[ "$(git -C "$SRC" rev-parse HEAD)" == "$SHA" ]] || { echo "Upstream commit не совпадает." >&2; exit 1; }
 cmp -s "$ROOT/third_party/telemt/LICENSE" "$SRC/LICENSE" || { echo "Upstream license не совпадает." >&2; exit 1; }
