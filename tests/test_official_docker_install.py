@@ -82,7 +82,7 @@ class OfficialDockerInstallerTests(unittest.TestCase):
         self.assertIn("chmod 0600", script)
         self.assertIn("openssl rand -hex 16", script)
         self.assertIn("config --quiet", script)
-        self.assertIn("Не публикуйте docker logs/inspect", script)
+        self.assertIn("не публикуйте docker logs/inspect", script.lower())
         for unsafe in ("docker compose down", "docker rm", "docker volume rm",
                        "systemctl stop", "systemctl restart", "docker compose --force-recreate",
                        "docker compose config\n"):
