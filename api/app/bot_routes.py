@@ -7,8 +7,10 @@
 import hmac
 import os
 from datetime import datetime
+from uuid import UUID
 
 import psycopg
+from psycopg.errors import UniqueViolation
 from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 from psycopg.rows import dict_row
@@ -79,3 +81,137 @@ def list_bot_campaigns(
         )
         for row in rows
     ]
+
+
+# MVP: один действующий тариф. Любое изменение цены требует отдельного
+# решения владельца, поэтому не продаём его автоматически по другой цене.
+DAY_TARIFF_ID = UUID("00000000-0000-4000-8000-000000000001")
+
+
+class BotDraftCreate(BaseModel):
+    telegram_user_id: int = Field(gt=0)
+    channel_username: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
+    request_key: UUID
+
+
+class BotDraftResult(BaseModel):
+    campaign_id: UUID
+    channel_url: str
+    tariff_name: str
+    price_kopecks: int
+    currency: str
+    moderation_status: str
+
+
+@router.post(
+    "/api/v1/internal/bot/campaign-drafts",
+    response_model=BotDraftResult,
+    include_in_schema=False,
+)
+def create_bot_campaign_draft(
+    payload: BotDraftCreate,
+    response: Response,
+    x_pushok_bot_secret: str | None = Header(default=None),
+) -> BotDraftResult:
+    """Создать только черновик с устойчивым ключом запроса — без списания денег.
+
+    При повторной доставке Telegram update операция возвращает тот же ID.
+    Защита от повторного заказа действует в базе, не в памяти бота.
+    """
+    _verify_bot_secret(x_pushok_bot_secret)
+    response.headers["Cache-Control"] = "no-store"
+    channel_url = "https://t.me/" + payload.channel_username.lower()
+    try:
+        with psycopg.connect(
+            os.environ["DATABASE_URL"], connect_timeout=3, row_factory=dict_row
+        ) as connection:
+            tariff = connection.execute(
+                """
+                SELECT id, name, duration_seconds, price_kopecks, currency
+                FROM tariffs
+                WHERE id = %s AND is_active = TRUE
+                  AND duration_seconds = 86400 AND price_kopecks = 30000
+                  AND btrim(currency) = 'RUB'
+                """,
+                (DAY_TARIFF_ID,),
+            ).fetchone()
+            if tariff is None:
+                raise HTTPException(status_code=409, detail="bot_tariff_not_available")
+
+            connection.execute(
+                """
+                INSERT INTO users (telegram_user_id)
+                VALUES (%s)
+                ON CONFLICT (telegram_user_id) DO NOTHING
+                """,
+                (payload.telegram_user_id,),
+            )
+            user = connection.execute(
+                "SELECT id FROM users WHERE telegram_user_id = %s",
+                (payload.telegram_user_id,),
+            ).fetchone()
+            connection.execute(
+                """
+                INSERT INTO sponsor_channels (owner_user_id, telegram_url, title)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (owner_user_id, telegram_url) DO NOTHING
+                """,
+                (user["id"], channel_url, "@" + payload.channel_username.lower()),
+            )
+            channel = connection.execute(
+                """
+                SELECT id FROM sponsor_channels
+                WHERE owner_user_id = %s AND telegram_url = %s
+                """,
+                (user["id"], channel_url),
+            ).fetchone()
+
+            created = connection.execute(
+                """
+                INSERT INTO campaigns (
+                    advertiser_user_id, channel_id, tariff_id,
+                    tariff_name_snapshot, duration_seconds_snapshot,
+                    price_kopecks_snapshot, currency_snapshot, bot_request_key
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (bot_request_key)
+                    WHERE bot_request_key IS NOT NULL
+                DO NOTHING
+                RETURNING id
+                """,
+                (
+                    user["id"], channel["id"], tariff["id"],
+                    tariff["name"], tariff["duration_seconds"],
+                    tariff["price_kopecks"], tariff["currency"],
+                    payload.request_key,
+                ),
+            ).fetchone()
+            if created is not None:
+                campaign_id = created["id"]
+            else:
+                existing = connection.execute(
+                    """
+                    SELECT id, advertiser_user_id, channel_id FROM campaigns
+                    WHERE bot_request_key = %s
+                    """,
+                    (payload.request_key,),
+                ).fetchone()
+                if (
+                    existing is None
+                    or existing["advertiser_user_id"] != user["id"]
+                    or existing["channel_id"] != channel["id"]
+                ):
+                    raise HTTPException(status_code=409, detail="bot_request_key_conflict")
+                campaign_id = existing["id"]
+    except UniqueViolation as exc:
+        raise HTTPException(status_code=409, detail="bot_draft_conflict") from exc
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return BotDraftResult(
+        campaign_id=campaign_id,
+        channel_url=channel_url,
+        tariff_name=tariff["name"],
+        price_kopecks=tariff["price_kopecks"],
+        currency=tariff["currency"].strip(),
+        moderation_status="draft",
+    )
