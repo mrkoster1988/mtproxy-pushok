@@ -348,6 +348,21 @@ def submit_bot_campaign_draft(
                 """,
                 (campaign["advertiser_user_id"], payload.campaign_id, telegram_channel_id),
             )
+            # Отметка о будущем уведомлении фиксируется в той же транзакции,
+            # что и статус pending. Если Telegram недоступен, запись не теряется.
+            connection.execute(
+                """
+                INSERT INTO bot_operator_notice_outbox (campaign_id, operator_user_id)
+                SELECT %s, s.operator_user_id
+                FROM bot_operator_subscriptions AS s
+                JOIN users AS u ON u.id = s.operator_user_id
+                WHERE u.role IN ('admin', 'operator')
+                ORDER BY s.subscribed_at
+                LIMIT 5
+                ON CONFLICT (campaign_id, operator_user_id) DO NOTHING
+                """,
+                (payload.campaign_id,),
+            )
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return BotSubmitResult(campaign_id=payload.campaign_id, moderation_status="pending", verified_now=True)
