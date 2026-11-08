@@ -21,7 +21,7 @@ function date(v){return v?new Date(v).toLocaleString('ru-RU'):'Не назнач
 function operatorView(on){$('advertiser').hidden=on;$('operator').hidden=!on;$('advertiser-tab').classList.toggle('selected',!on);$('operator-tab').classList.toggle('selected',on);}
 function card(c,op){
  const box=el('article',undefined,'card'),head=el('div',undefined,'cardhead');
- head.append(el('h3',(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||'Заявка')+' · '+c.id.slice(0,8)),el('span',labels[c.placement_status]||c.placement_status,'badge'));box.append(head);
+ head.append(el('h3',(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||'Заявка')+' · '+c.id.slice(0,8)),el('span',labels[c.placement_status]||c.placement_status,'badge badge--'+c.placement_status));box.append(head);
  if(c.channel_url){try{const u=new URL(c.channel_url);if(u.protocol==='https:'&&['t.me','telegram.me'].includes(u.hostname)){const link=el('a','Открыть канал');link.href=u.href;link.target='_blank';link.rel='noopener noreferrer';box.append(link);}}catch{}}
  const meta=el('div',undefined,'meta');
  [labels[c.moderation_status],labels[c.payment_status],c.tariff_name_snapshot+' · '+money(c.price_kopecks_snapshot),'Желаемое начало: '+date(c.requested_start_at),'Назначено: '+date(c.scheduled_start_at)].forEach(t=>meta.append(el('span',t)));box.append(meta);
@@ -127,6 +127,7 @@ async function refresh(){
  if(me&&['operator','admin'].includes(me.role)){
   nodes=await api('/operator/proxy-nodes');renderNodes();
   const queue=await api('/operator/campaigns'+($('queue-filter').value?'?'+$('queue-filter').value:''));
+  $('queue-count').textContent=queue.length+' заявок';
   $('queue').replaceChildren(...queue.map(c=>card(c,true)));if(!queue.length)$('queue').append(el('div','В этой очереди пока нет заявок.','empty'));
  }
 }
