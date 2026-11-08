@@ -50,3 +50,26 @@ jobs:
       - run: sh -n scripts/check_backup_restore.sh
       - run: sh -n scripts/compose_checks.sh
       - run: bash scripts/smoke.sh
+
+  rust-core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+      - name: Fetch exact upstream source with license validation
+        run: bash scripts/fetch_pushok_core.sh --fetch
+      - name: Check pinned Rust patch without changing source
+        run: bash scripts/apply_pushok_core_patch.sh --check
+      - name: Build modified Rust core, run module tests and verify offline CLI
+        run: bash scripts/build_pushok_core.sh --build
+      - name: Verify resulting artifact checksum
+        run: |
+          cd .build/pushok-core/output
+          sha256sum -c ./*.sha256
+          test -s TELEMT-LICENSE
+          test -s PATCHES.md
