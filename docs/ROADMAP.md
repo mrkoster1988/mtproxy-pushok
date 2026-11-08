@@ -278,3 +278,9 @@
 - `scripts/staging_preflight.sh` проверяет Docker Compose и локальные секреты **без раскрытия значений и действий на VPS**. Безопасность сценария проверяется unit-тестом и bash -n в CI.
 - Критерий приёмки кода: все unit-тесты и PostgreSQL интеграция + Compose smoke-test зелёные; код синхронизирован в приватных GitHub/GitLab.
 - Впереди: собственно staging-деплой с правами пользователя, проверка реального Bot API и доставки после сбоя; Telegram Stars и управление спонсором MTProxy — независимые последующие этапы.
+
+### Приёмка кода v0.021 — CI (2026-11-08)
+
+- PR #7: https://github.com/mrkoster1988/mtproxy-pushok/pull/7 — объединён в `main` после успешного прогона.
+- GitHub Actions: https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42481696007 — **154 Python-теста и Docker Compose smoke-test успешно**. Проверены real PostgreSQL, роли admin/operator, повтор отложенной отправки, аудит и read-only staging-скрипт.
+- Изменения зеркалируются в приватный GitLab. Реальный Telegram-бот, VPS, MTProxy Sponsor и коммерческие платежи пока не запускались.
