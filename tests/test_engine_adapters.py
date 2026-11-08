@@ -133,6 +133,61 @@ class UnifiedEngineTests(unittest.TestCase):
         self.assertEqual(result.json()["detail"], "sponsor_engine_mismatch")
         self.assertEqual(conn.execute.call_count, 1)
 
+    def test_legacy_node_plan_update_is_audited_and_does_not_start_runtime(self):
+        self.as_admin()
+        updated = {"id": NODE, "name": "Old node", "host": "legacy.example.org",
+                   "port": 8443, "status": "active", "target_engine": "official_mtproxy",
+                   "engine_selection_mode": "auto", "deployment_profile": "native"}
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.side_effect = [
+            {"id": NODE}, None, None, updated, None
+        ]
+        with patch("app.main.psycopg.connect") as db:
+            db.return_value.__enter__.return_value = conn
+            response = self.client.patch(
+                f"/api/v1/admin/proxy-nodes/{NODE}/engine-plan",
+                json={"engine_mode": "auto", "deployment": "native"})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["target_engine"], "official_mtproxy")
+        self.assertFalse(response.json()["changes_applied"])
+        self.assertFalse(response.json()["provisioning_verified"])
+        self.assertIn("proxy_engine_plan_updated", conn.execute.call_args_list[4].args[0])
+        self.assertEqual(len(conn.execute.call_args_list), 5)
+
+    def test_occupied_node_cannot_change_engine_plan(self):
+        self.as_admin()
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.side_effect = [{"id": NODE}, {"exists": True}]
+        with patch("app.main.psycopg.connect") as db:
+            db.return_value.__enter__.return_value = conn
+            result = self.client.patch(
+                f"/api/v1/admin/proxy-nodes/{NODE}/engine-plan",
+                json={"deployment": "native"})
+        self.assertEqual(result.status_code, 409)
+        self.assertEqual(result.json()["detail"], "proxy_node_has_placements")
+        self.assertEqual(conn.execute.call_count, 2)
+
+    def test_registered_tag_engine_must_match_plan(self):
+        self.as_admin()
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.side_effect = [
+            {"id": NODE}, None, {"engine": "telemt"}
+        ]
+        with patch("app.main.psycopg.connect") as db:
+            db.return_value.__enter__.return_value = conn
+            response = self.client.patch(
+                f"/api/v1/admin/proxy-nodes/{NODE}/engine-plan", json={})
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json()["detail"], "sponsor_engine_mismatch")
+        self.assertEqual(conn.execute.call_count, 3)
+
+    def test_unauthenticated_cannot_change_plan(self):
+        with patch("app.main.psycopg.connect") as db:
+            response = self.client.patch(
+                f"/api/v1/admin/proxy-nodes/{NODE}/engine-plan", json={})
+        self.assertEqual(response.status_code, 401)
+        db.assert_not_called()
+
     def test_legacy_nodes_remain_unassigned(self):
         migration = (ROOT / "database/009_unified_engine_selection.sql").read_text()
         self.assertIn("ADD COLUMN IF NOT EXISTS target_engine", migration)
