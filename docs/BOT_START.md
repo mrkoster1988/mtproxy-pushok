@@ -1,4 +1,4 @@
-# Telegram-бот MTProxy Pushok — v0.018 (код, не развёрнут)
+# Telegram-бот MTProxy Pushok — v0.019 (код, не развёрнут)
 
 Бот: https://t.me/mtproxy_pushok_bot · канал: https://t.me/pushok_proxy.
 
@@ -137,3 +137,41 @@ docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d 
 ### Подтверждённая CI-приёмка кода v0.018
 
 GitHub Actions PR #3: 110 автоматических Python-тестов (включая настоящую PostgreSQL, проверку ролей, модерацию и аудит) и Docker Compose smoke-test завершились успешно. Код интегрирован в GitHub `main` и приватное зеркало GitLab. **Это не проверка работы Telegram-бота или уведомлений на VPS**.
+
+
+## v0.019 — повторяемые уведомления с PostgreSQL outbox
+
+После успешного перевода собственного черновика в `pending` в **той же
+транзакции** появляются записи в `bot_operator_notice_outbox` для максимум
+пяти подписанных операторов с действующими ролями `admin/operator`.
+Отправка выполняется только ботом, без доступных публике HTTP-маршрутов.
+
+Внутренний маршрут `operators/outbox/claim` выбирает до пяти сообщений,
+блокирует строки на время транзакции (`FOR UPDATE SKIP LOCKED`), отмечает
+время попытки и предотвращает следующий claim на протяжении минимум 2 минут.
+После успешного `sendMessage` бот вызывает `operators/outbox/ack`, который
+сохраняет `delivered_at`. Если Telegram отказал или бот перезапустился,
+неподтверждённые сообщения остаются в БД и будут повторены. После
+`sendMessage` и до ACK сообщение могло быть получено пользователем:
+**дубликаты возможны**.
+
+Команда `/moderation_off` отключает подписку; смена роли также запрещает
+дальнейшую выдачу отложенных уведомлений. Нельзя обещать, что Telegram
+получил сообщение, только по факту формирования outbox.
+
+Миграция (на старой установке только после резервной копии):
+
+```bash
+docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/005_operator_notice_outbox.sql
+```
+
+Для новых БД миграция выполняется при инициализации Docker PostgreSQL.
+`setup.sh` применяет миграцию и при обновлении существующего кабинета.
+**Не использовать `docker compose down -v` для обновления**: том с БД
+будет удалён.
+
+Проверки `tests/test_bot_outbox_api.py` и
+`test_operator_outbox_survives_retries_and_role_revocation` в
+`tests/test_postgres.py` проверяют проверку секрета, отозванную роль,
+таймауты попыток, ACK и отсутствие второй записи аудита.
+Реальный запуск на VPS остаётся отдельным этапом.
