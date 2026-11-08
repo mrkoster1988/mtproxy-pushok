@@ -155,11 +155,21 @@ def main() -> None:
                 operator.close()
 
                 mobile = create_page("advertiser", 390, 844)
-                overflow = mobile.evaluate(
-                    "() => document.documentElement.scrollWidth > innerWidth + 2"
-                )
-                if overflow:
-                    raise AssertionError("Mobile interface has horizontal overflow")
+                overflow = mobile.evaluate("""() => ({
+                  viewport: window.innerWidth,
+                  scroll: document.documentElement.scrollWidth,
+                  offenders: [...document.querySelectorAll('body *')]
+                    .filter(e => {
+                      const box=e.getBoundingClientRect();
+                      return box.right > innerWidth + 2 || box.left < -2;
+                    })
+                    .slice(0, 10)
+                    .map(e => ({tag: e.tagName, id: e.id,
+                                className: typeof e.className === 'string' ? e.className : '',
+                                right: Math.round(e.getBoundingClientRect().right)}))
+                })""")
+                if overflow["scroll"] > overflow["viewport"] + 2:
+                    raise AssertionError(f"Mobile horizontal overflow: {overflow}")
                 mobile.screenshot(path=str(output / "05-mobile.png"), full_page=True,
                                   animations="disabled")
                 mobile.close()
