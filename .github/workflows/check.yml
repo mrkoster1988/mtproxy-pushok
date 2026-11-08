@@ -37,6 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: bash -n setup.sh
+      - run: bash -n scripts/staging_preflight.sh
       - run: bash -n scripts/smoke.sh
       - run: sh -n scripts/check_backup_restore.sh
       - run: sh -n scripts/compose_checks.sh
