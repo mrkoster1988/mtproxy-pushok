@@ -65,6 +65,22 @@ class OfficialDockerInstallerTests(unittest.TestCase):
                     self.assertIn(expected, result.stdout + result.stderr)
             self.assertEqual([p.name for p in root.iterdir()], ["setup.sh"])
 
+    def test_main_master_defaults_to_safe_auto_classic(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shutil.copy2(ROOT / "setup.sh", root / "setup.sh")
+            # Прокси -> Enter (автовыбор) -> Начать, но только в --plan.
+            result = subprocess.run(
+                ["bash", str(root / "setup.sh"), "--plan"],
+                input="1\\n\\n1\\n".replace("\\\\n", "\\n"), text=True,
+                capture_output=True, timeout=10,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            output = result.stdout + result.stderr
+            self.assertIn("Автовыбор Pushok: Classic/native", output)
+            self.assertIn("изменения не выполнялись", output)
+            self.assertEqual([p.name for p in root.iterdir()], ["setup.sh"])
+
     def test_compose_secrets_are_in_explicit_root_file_not_api_env(self):
         compose = COMPOSE.read_text(encoding="utf-8")
         self.assertIn("telegrammessenger/proxy:latest", compose)
