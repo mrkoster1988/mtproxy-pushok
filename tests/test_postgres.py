@@ -138,11 +138,15 @@ class PostgresIntegration(unittest.TestCase):
                                       headers=headers)
             self.assertEqual(report.status_code, 200, report.text)
             stats = report.json()
-            self.assertEqual(stats["advertiser"], {
-                "waiting": 1, "in_flight": 1, "delivered": 1, "abandoned": 1,
-            })
-            self.assertEqual(stats["operator"]["waiting"], 1)
-            self.assertEqual(len(stats["recent_undelivered"]), 3)
+            # Общая БД класса уже содержит уведомления из других тестов.
+            # Здесь проверяем, что наши новые состояния не пропали из отчёта.
+            for state in ("waiting", "in_flight", "delivered", "abandoned"):
+                self.assertGreaterEqual(stats["advertiser"][state], 1)
+            self.assertGreaterEqual(stats["operator"]["waiting"], 1)
+            recent_ids = {item["notice_id"] for item in stats["recent_undelivered"]}
+            self.assertIn(str(delayed), recent_ids)
+            self.assertIn(str(inflight), recent_ids)
+            self.assertIn(str(abandoned), recent_ids)
             self.assertNotIn("telegram_user_id", report.text)
 
             blocked = self.client.post(path + "retry-advertiser-notice",
