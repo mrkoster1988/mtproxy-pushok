@@ -25,6 +25,7 @@ from psycopg.errors import ExclusionViolation, UniqueViolation
 from psycopg.rows import dict_row
 from .bot_routes import router as bot_router
 from .bot_operator import router as operator_bot_router
+from .bot_advertiser_notices import router as advertiser_notices_router
 from .bot_outbox import router as bot_outbox_router
 
 app = FastAPI(
@@ -34,6 +35,7 @@ app = FastAPI(
 )
 app.include_router(bot_router)
 app.include_router(operator_bot_router)
+app.include_router(advertiser_notices_router)
 app.include_router(bot_outbox_router)
 
 DATABASE_URL = os.environ["DATABASE_URL"]
