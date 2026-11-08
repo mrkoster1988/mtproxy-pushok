@@ -20,7 +20,11 @@ def main() -> int:
     args = parser.parse_args()
     try:
         domain = validate_domain(args.tls_domain)
-        # Do not read or generate a secret when only displaying the plan.
+        # Dry-run validates parameters with a deterministic fake token, never writes secrets.
+        render_staging_config(
+            tls_domain=domain, port=args.port, username=args.username,
+            secret="1" * 32,
+        )
         if not args.write:
             print(f"ПЛАН: staging 127.0.0.1:{args.port}, tls_domain={domain}, API отключён.")
             print("Никаких сетевых запросов, файлов, Docker или systemd действий.")
@@ -31,8 +35,14 @@ def main() -> int:
             tls_domain=domain, port=args.port, username=args.username,
             ad_tag=os.environ.get("PUSHOK_CORE_AD_TAG") or None,
         )
-        base = (ROOT / ".build" / "pushok-core").resolve()
-        base.mkdir(parents=True, exist_ok=True)
+        cache = ROOT / ".build"
+        staged = cache / "pushok-core"
+        if cache.is_symlink() or staged.is_symlink():
+            raise ValueError("build_cache_symlink_not_allowed")
+        staged.mkdir(parents=True, exist_ok=True)
+        base = staged.resolve()
+        if not base.is_relative_to(ROOT.resolve()):
+            raise ValueError("build_cache_outside_project")
         target = base / "staging.toml"
         fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as out:
