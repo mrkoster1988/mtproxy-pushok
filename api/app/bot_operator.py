@@ -153,7 +153,7 @@ def operator_recipients(
                 JOIN users u ON u.id = s.operator_user_id
                 WHERE u.role IN ('admin', 'operator') AND u.telegram_user_id > 0
                 ORDER BY s.subscribed_at ASC
-                LIMIT 100
+                LIMIT 5
                 """
             ).fetchall()
     except psycopg.Error as exc:
