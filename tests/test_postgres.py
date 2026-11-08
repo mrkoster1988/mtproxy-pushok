@@ -175,6 +175,113 @@ class PostgresIntegration(unittest.TestCase):
             """, (campaign_id,)).fetchone()[0]
             self.assertEqual(audit_count, 1)
 
+    def test_operator_bot_inbox_and_decision_in_real_postgres(self):
+        """Подписка, очередь и решение проверяют роль и аудит в PostgreSQL."""
+        main.app.dependency_overrides.clear()
+        secret = "e" * 64
+        headers = {"X-Pushok-Bot-Secret": secret}
+        owner_id, op_id, channel_id, campaign_id = uuid4(), uuid4(), uuid4(), uuid4()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute(
+                """
+                INSERT INTO users(id, telegram_user_id, role)
+                VALUES (%s, 79002, 'advertiser'), (%s, 79001, 'operator')
+                """, (owner_id, op_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO sponsor_channels(id, owner_user_id, telegram_url, title)
+                VALUES (%s, %s, 'https://t.me/inbox_test', 'InboxTest')
+                """, (channel_id, owner_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO campaigns(
+                    id, advertiser_user_id, channel_id, tariff_id,
+                    tariff_name_snapshot, duration_seconds_snapshot,
+                    price_kopecks_snapshot, currency_snapshot,
+                    moderation_status
+                )
+                VALUES (%s, %s, %s, %s, '1 день', 86400, 30000, 'RUB', 'pending')
+                """, (
+                    campaign_id, owner_id, channel_id,
+                    "00000000-0000-4000-8000-000000000001",
+                ),
+            )
+
+        root = "/api/v1/internal/bot/operators/"
+        with patch.dict(os.environ, {"BOT_INTERNAL_SECRET": secret,
+                                     "DATABASE_URL": self.dsn}):
+            denied = self.client.post(root + "queue", headers=headers,
+                                      json={"telegram_user_id": 79002})
+            self.assertEqual(denied.status_code, 403)
+            queue = self.client.post(root + "queue", headers=headers,
+                                     json={"telegram_user_id": 79001, "subscribe": True})
+            self.assertEqual(queue.status_code, 200, queue.text)
+            self.assertTrue(queue.json()["subscribed"])
+            self.assertIn(str(campaign_id),
+                          [entry["campaign_id"] for entry in queue.json()["pending"]])
+
+            users = self.client.post(root + "recipients", headers=headers)
+            self.assertEqual(users.status_code, 200)
+            self.assertIn(79001, users.json())
+
+            invalid = self.client.post(root + "decide", headers=headers, json={
+                "telegram_user_id": 79001,
+                "campaign_id": str(campaign_id),
+                "decision": "rejected",
+                "comment": "",
+            })
+            self.assertEqual(invalid.status_code, 422)
+
+            other = self.client.post(root + "decide", headers=headers, json={
+                "telegram_user_id": 79002,
+                "campaign_id": str(campaign_id), "decision": "approved",
+            })
+            self.assertEqual(other.status_code, 403)
+
+            approved = self.client.post(root + "decide", headers=headers, json={
+                "telegram_user_id": 79001,
+                "campaign_id": str(campaign_id), "decision": "approved",
+            })
+            self.assertEqual(approved.status_code, 200, approved.text)
+            self.assertEqual(approved.json()["payment_status"], "awaiting_payment")
+
+            repeated = self.client.post(root + "decide", headers=headers, json={
+                "telegram_user_id": 79001,
+                "campaign_id": str(campaign_id), "decision": "approved",
+            })
+            self.assertEqual(repeated.status_code, 409)
+
+            with psycopg.connect(self.dsn) as conn:
+                record = conn.execute(
+                    "SELECT moderation_status, payment_status FROM campaigns WHERE id = %s",
+                    (campaign_id,),
+                ).fetchone()
+                self.assertEqual(record, ("approved", "awaiting_payment"))
+                audit = conn.execute(
+                    """SELECT count(*) FROM audit_events
+                       WHERE campaign_id = %s AND actor_user_id = %s
+                         AND event_type = 'campaign_moderated'""",
+                    (campaign_id, op_id),
+                ).fetchone()[0]
+                self.assertEqual(audit, 1)
+
+                # Отозванная роль сразу лишает подписчика права получать уведомления.
+                conn.execute("UPDATE users SET role = 'advertiser' WHERE id = %s", (op_id,))
+            revoked = self.client.post(root + "recipients", headers=headers)
+            self.assertNotIn(79001, revoked.json())
+
+            stopped = self.client.post(root + "unsubscribe", headers=headers,
+                                       json={"telegram_user_id": 79001})
+            self.assertEqual(stopped.status_code, 200)
+            with psycopg.connect(self.dsn) as conn:
+                count = conn.execute(
+                    "SELECT count(*) FROM bot_operator_subscriptions WHERE operator_user_id = %s",
+                    (op_id,),
+                ).fetchone()[0]
+                self.assertEqual(count, 0)
+
     def test_campaign_lifecycle_and_slot_collision(self):
         owner, operator = uuid4(), uuid4()
         with psycopg.connect(self.dsn) as conn:
