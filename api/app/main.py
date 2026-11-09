@@ -41,7 +41,7 @@ from .launch_readiness import build_launch_readiness
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.045",
+    version="0.046",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -169,6 +169,12 @@ class PaymentProofResponse(BaseModel):
 class ModerationRequest(BaseModel):
     decision: str = Field(pattern="^(approved|rejected|changes_requested)$")
     comment: str | None = Field(default=None, max_length=2000)
+
+
+class PlacementCompletionRequest(BaseModel):
+    """Явное ручное подтверждение удаления тега; не результат Telegram API."""
+    tag_removed_confirmed: Literal[True]
+    verification_method: Literal["separate_unsubscribed_client"]
 
 
 class PlacementObservationRequest(BaseModel):
@@ -1485,6 +1491,7 @@ def activate_placement(
 @app.post("/api/v1/operator/campaigns/{campaign_id}/complete", response_model=CampaignResponse, tags=["operator"])
 def complete_placement(
     campaign_id: UUID,
+    payload: PlacementCompletionRequest,
     operator: dict[str, Any] = Depends(require_operator),
 ) -> CampaignResponse:
     try:
@@ -1508,8 +1515,11 @@ def complete_placement(
                     raise HTTPException(status_code=404, detail="campaign_not_found")
                 raise HTTPException(status_code=409, detail="placement_not_active")
             connection.execute(
-                "INSERT INTO audit_events (actor_user_id, campaign_id, event_type) VALUES (%s, %s, 'placement_completed_manually')",
-                (operator["id"], campaign_id),
+                """INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
+                   VALUES (%s, %s, 'placement_completed_manually',
+                           jsonb_build_object('tag_removed_confirmed', true,
+                                              'verification_method', %s::text))""",
+                (operator["id"], campaign_id, payload.verification_method),
             )
     except HTTPException:
         raise

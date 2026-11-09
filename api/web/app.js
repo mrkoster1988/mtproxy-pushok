@@ -286,7 +286,10 @@ function card(c,op){
     }
     panel.append(button('Закрыть',()=>panel.remove()));box.append(panel);
    }));
-  if(c.placement_status==='active')actions.append(button('Тег выключен — завершить',async()=>{if(confirm('Спонсорский тег выключен на узле?'))await change('complete');}));
+  if(c.placement_status==='active')actions.append(button('Тег выключен — завершить',async()=>{
+   if(!confirm('Вы вручную выключили спонсорский тег и проверили в отдельном Telegram-клиенте, не подписанном на канал, что спонсор отсутствует?'))return;
+   await change('complete',{tag_removed_confirmed:true,verification_method:'separate_unsubscribed_client'});
+  }));
  }
  return box;
 }

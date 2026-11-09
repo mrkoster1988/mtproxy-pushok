@@ -940,7 +940,24 @@ class PostgresIntegration(unittest.TestCase):
         self.assertNotIn("note", public_report)
         actor = {"id": operator, "role": "admin"}
         self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/activate")["placement_status"], "active")
-        self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/complete")["placement_status"], "completed")
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 422)
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 422,
+                     json={"tag_removed_confirmed": False,
+                           "verification_method": "separate_unsubscribed_client"})
+        self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/complete",
+                         json={"tag_removed_confirmed": True,
+                               "verification_method": "separate_unsubscribed_client"})["placement_status"], "completed")
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 409,
+                     json={"tag_removed_confirmed": True,
+                           "verification_method": "separate_unsubscribed_client"})
+        with psycopg.connect(self.dsn) as conn:
+            completed_event = conn.execute(
+                """SELECT details_json FROM audit_events
+                   WHERE campaign_id=%s AND event_type='placement_completed_manually'""",
+                (cid,),
+            ).fetchone()[0]
+        self.assertIs(completed_event["tag_removed_confirmed"], True)
+        self.assertEqual(completed_event["verification_method"], "separate_unsubscribed_client")
         self.request("PATCH", "/admin/proxy-nodes/" + node["id"] + "/status", json={"status": "paused"})
         with psycopg.connect(self.dsn) as conn:
             self.assertGreaterEqual(conn.execute("SELECT count(*) FROM audit_events WHERE campaign_id=%s", (cid,)).fetchone()[0], 8)
