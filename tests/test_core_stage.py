@@ -119,9 +119,9 @@ class LocalCoreStageTests(unittest.TestCase):
         old_digest = core_stage.load_state()["active"]["sha256"]
         # Model a second candidate with the same pinned CLI identity but
         # different bytes; original build can no longer be restored.
-        self.core.write_text(self.core.read_text() + "# changed candidate\\n")
+        self.core.write_text(self.core.read_text() + "# changed candidate\n")
         new_digest = hashlib.sha256(self.core.read_bytes()).hexdigest()
-        self.checksum.write_text(new_digest + "  " + core_stage.NAME + "\\n")
+        self.checksum.write_text(new_digest + "  " + core_stage.NAME + "\n")
         with patch.object(sys, "argv", ["core_stage.py", "--activate"]):
             self.assertEqual(core_stage.main(), 0)
         self.assertEqual(core_stage.load_state()["previous"]["sha256"], old_digest)
