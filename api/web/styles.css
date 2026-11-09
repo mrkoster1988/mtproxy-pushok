@@ -336,3 +336,7 @@ footer { margin-top: 64px; padding: 26px 0 34px; border-top: 1px solid #33495a; 
 .observation-panel h4 {color: #bff1df; margin: 0 0 11px; font-size: 14px;}
 .observation-panel p {margin: 9px 0; font-size: 12px; line-height: 1.5;}
 .observation-panel button {margin-top: 9px;}
+
+/* v0.038 — загрузка скриншотов ручной проверки */
+.observation-panel input[type=file] {width:min(100%,330px);margin:7px 9px 7px 0;display:inline-block;}
+.observation-panel button {margin:7px 9px 7px 0;}

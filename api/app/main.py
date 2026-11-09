@@ -38,7 +38,7 @@ from .placement_evidence import sanitize_image, store_image
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.037",
+    version="0.038",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)

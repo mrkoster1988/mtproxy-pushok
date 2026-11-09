@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 let token=sessionStorage.getItem('pushok-session')||'',me=null,channels=[],tariffs=[],nodes=[];
 const labels={draft:'Черновик',pending:'На модерации',approved:'Канал одобрен',rejected:'Отклонено',changes_requested:'Нужны исправления',not_required:'Оплата после одобрения',awaiting_payment:'Ожидается оплата',proof_submitted:'Чек на проверке',verified:'Оплата подтверждена',refunded:'Возврат',not_scheduled:'Слот не назначен',scheduled:'Запланировано',active:'Размещение активно',completed:'Завершено',cancelled:'Отменено'};
-const errors={placement_not_ready_for_observation:'Проверять показ можно только в запланированный период после подтверждённой оплаты.',observation_timezone_required:'Для проверки нужен часовой пояс.',observation_outside_placement_window:'Время наблюдения должно быть внутри рекламного периода.',observation_not_recent:'Наблюдение должно быть выполнено не более 10 минут назад.',observation_note_too_short:'Укажите подробности проверки (от 12 символов).',active_slot_hold_not_found:'Активной брони нет.',slot_start_requires_timezone:'Укажите время с часовым поясом.',slot_start_out_of_range:'Выберите время в пределах ближайших 90 дней.',campaign_not_holdable:'Бронирование доступно только после модерации и до подтверждения оплаты.',slot_held_by_another_campaign:'Место занято другой бронью.',slot_hold_conflict:'Бронь уже существует. Обновите состояние.',invalid_calendar_range:'Выберите период в пределах ближайших 90 дней, не больше 31 дня.',invalid_calendar_timezone:'Часовой пояс не поддерживается.',active_tariff_not_found:'Тариф больше недоступен. Обновите страницу.',payment_instructions_not_configured:'Реквизиты ещё не настроены. Дождитесь инструкции администратора перед оплатой.',campaign_not_editable:'Заявку сейчас нельзя редактировать или отправить повторно.',channel_in_review_or_approved:'Этот канал связан с заявкой на проверке или одобренным размещением. Его изменение заблокировано.',admin_role_required:'Действие доступно владельцу.',invalid_proxy_host:'Укажите домен или IP без протокола и порта.',proxy_node_already_exists:'Этот адрес и порт уже добавлены.',proxy_node_has_placements:'На узле есть запланированное или активное размещение. Сначала завершите его.',authentication_required:'Войдите через Telegram.',session_revoked_or_expired:'Сессия завершена. Войдите снова.',telegram_login_expired:'Данные входа устарели. Повторите вход.',telegram_login_replayed:'Повторите вход через Telegram.',telegram_login_invalid_signature:'Telegram не подтвердил вход.',database_unavailable:'База данных временно недоступна.',invalid_telegram_channel_url:'Укажите ссылку вида https://t.me/channel.',channel_title_required:'Введите название канала.',channel_already_added:'Этот канал уже добавлен.',payment_proof_too_large:'Файл должен быть меньше 5 МБ.',unsupported_payment_proof_format:'Загрузите JPEG, PNG или PDF.',payment_proof_content_type_mismatch:'Тип файла не соответствует содержимому.',payment_proof_storage_unavailable:'Хранилище чеков временно недоступно.',proxy_node_slot_unavailable:'Этот слот уже занят. Выберите другое время или узел.',placement_not_in_active_window:'Активация доступна только в назначенное время.',campaign_not_ready_for_placement:'Для размещения нужны одобрение канала и подтверждённая оплата.',operator_role_required:'Нужны права оператора.',payment_proof_not_expected:'Заявка сейчас не ожидает чек.',campaign_not_draft:'Эта заявка уже отправлена.',campaign_not_pending:'Заявка уже обработана.',payment_proof_not_pending_review:'Оплата уже обработана.',channel_or_active_tariff_not_found:'Выберите свой канал и действующий тариф.',schedule_start_must_be_future:'Выберите время в будущем.'};
+const errors={evidence_empty:'Выберите изображение.',evidence_too_large:'Скриншот должен быть меньше 5 МБ.',evidence_corrupt_image:'Не удалось прочитать изображение.',unsupported_evidence_format:'Поддерживаются только PNG и JPEG.',evidence_format_mismatch:'Тип файла не соответствует изображению.',evidence_dimensions_invalid:'Изображение слишком велико.',evidence_already_attached:'У этого отчёта уже есть скриншот.',evidence_observation_unavailable:'Добавить файл можно только к собственному отчёту за последние сутки.',evidence_storage_unavailable:'Хранилище скриншотов временно недоступно.',placement_not_ready_for_observation:'Проверять показ можно только в запланированный период после подтверждённой оплаты.',observation_timezone_required:'Для проверки нужен часовой пояс.',observation_outside_placement_window:'Время наблюдения должно быть внутри рекламного периода.',observation_not_recent:'Наблюдение должно быть выполнено не более 10 минут назад.',observation_note_too_short:'Укажите подробности проверки (от 12 символов).',active_slot_hold_not_found:'Активной брони нет.',slot_start_requires_timezone:'Укажите время с часовым поясом.',slot_start_out_of_range:'Выберите время в пределах ближайших 90 дней.',campaign_not_holdable:'Бронирование доступно только после модерации и до подтверждения оплаты.',slot_held_by_another_campaign:'Место занято другой бронью.',slot_hold_conflict:'Бронь уже существует. Обновите состояние.',invalid_calendar_range:'Выберите период в пределах ближайших 90 дней, не больше 31 дня.',invalid_calendar_timezone:'Часовой пояс не поддерживается.',active_tariff_not_found:'Тариф больше недоступен. Обновите страницу.',payment_instructions_not_configured:'Реквизиты ещё не настроены. Дождитесь инструкции администратора перед оплатой.',campaign_not_editable:'Заявку сейчас нельзя редактировать или отправить повторно.',channel_in_review_or_approved:'Этот канал связан с заявкой на проверке или одобренным размещением. Его изменение заблокировано.',admin_role_required:'Действие доступно владельцу.',invalid_proxy_host:'Укажите домен или IP без протокола и порта.',proxy_node_already_exists:'Этот адрес и порт уже добавлены.',proxy_node_has_placements:'На узле есть запланированное или активное размещение. Сначала завершите его.',authentication_required:'Войдите через Telegram.',session_revoked_or_expired:'Сессия завершена. Войдите снова.',telegram_login_expired:'Данные входа устарели. Повторите вход.',telegram_login_replayed:'Повторите вход через Telegram.',telegram_login_invalid_signature:'Telegram не подтвердил вход.',database_unavailable:'База данных временно недоступна.',invalid_telegram_channel_url:'Укажите ссылку вида https://t.me/channel.',channel_title_required:'Введите название канала.',channel_already_added:'Этот канал уже добавлен.',payment_proof_too_large:'Файл должен быть меньше 5 МБ.',unsupported_payment_proof_format:'Загрузите JPEG, PNG или PDF.',payment_proof_content_type_mismatch:'Тип файла не соответствует содержимому.',payment_proof_storage_unavailable:'Хранилище чеков временно недоступно.',proxy_node_slot_unavailable:'Этот слот уже занят. Выберите другое время или узел.',placement_not_in_active_window:'Активация доступна только в назначенное время.',campaign_not_ready_for_placement:'Для размещения нужны одобрение канала и подтверждённая оплата.',operator_role_required:'Нужны права оператора.',payment_proof_not_expected:'Заявка сейчас не ожидает чек.',campaign_not_draft:'Эта заявка уже отправлена.',campaign_not_pending:'Заявка уже обработана.',payment_proof_not_pending_review:'Оплата уже обработана.',channel_or_active_tariff_not_found:'Выберите свой канал и действующий тариф.',schedule_start_must_be_future:'Выберите время в будущем.'};
 function notice(message,ok=false){$('notice').textContent=message;$('notice').className=ok?'ok':'';$('notice').hidden=false;}
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x;}
 function button(text,fn){const b=el('button',text);b.type='button';b.addEventListener('click',()=>run(fn,b));return b;}
@@ -161,13 +161,22 @@ function card(c,op){
    actions.append(select,start,button('Назначить слот',async()=>{if(!select.value||!start.value)throw Error('Выберите узел и время начала.');await change('schedule',{proxy_node_id:select.value,start_at:new Date(start.value).toISOString()});}));
   }
   if(c.placement_status==='scheduled'){
+   const screenshot=el('input');screenshot.type='file';
+   screenshot.accept='image/png,image/jpeg';
+   screenshot.setAttribute('aria-label','Скриншот ручной проверки (необязательно)');
+   actions.append(screenshot);
    for(const [result,label] of [['visible','Показ виден — записать'],['not_visible','Показ не обнаружен']]){
     actions.append(button(label,async()=>{
      const note=prompt('Опишите проверку в отдельном аккаунте Telegram, не подписанном на канал (не менее 12 символов):');
      if(note===null)return;if(note.trim().length<12)throw Error('Опишите наблюдение подробнее (не менее 12 символов).');
-     await api('/operator/campaigns/'+c.id+'/display-observations',{method:'POST',body:{
+     const report=await api('/operator/campaigns/'+c.id+'/display-observations',{method:'POST',body:{
       result,method:'separate_unsubscribed_client',observed_at:new Date().toISOString(),note:note.trim()
      }});
+     if(screenshot.files[0]){
+      const form=new FormData();form.append('file',screenshot.files[0]);
+      try{await api('/operator/campaigns/'+c.id+'/display-observations/'+report.id+'/evidence',{method:'POST',body:form});}
+      catch(e){await refresh();notice('Отчёт записан, но скриншот не прикреплён: '+e.message);return;}
+     }
      await refresh();notice(result==='visible'?'Отчёт оператора сохранён. Проверьте статус перед активацией.':'Отрицательное наблюдение записано. Активация заблокирована.',true);
     }));
    }
@@ -181,8 +190,30 @@ function card(c,op){
     const panel=el('section',undefined,'observation-panel');
     panel.append(el('h4','Отчёты оператора (не автоматическая проверка Telegram)'));
     if(!rows.length)panel.append(el('p','Проверок пока нет.','muted'));
-    for(const report of rows)panel.append(el('p',(report.result==='visible'?'Показ виден':'Показ не найден')+
-     ' · '+date(report.observed_at)+' · '+report.note));
+    for(const report of rows){
+     panel.append(el('p',(report.result==='visible'?'Показ виден':'Показ не найден')+
+      ' · '+date(report.observed_at)+' · '+report.note));
+     if(report.evidence_id){
+      panel.append(button('Скачать скриншот №'+report.id,async()=>{
+       const path='/api/v1/operator/campaigns/'+c.id+'/display-observations/'+report.id+'/evidence';
+       const response=await fetch(path,{headers:{Authorization:'Bearer '+token}});
+       if(!response.ok)throw Error('Не удалось скачать скриншот.');
+       const url=URL.createObjectURL(await response.blob()),a=el('a');
+       a.href=url;
+       a.download='sponsor-evidence-'+report.id+(response.headers.get('content-type')?.includes('jpeg')?'.jpg':'.png');
+       a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+      }));
+     }else if(report.observer_user_id===me.id){
+      const input=el('input');input.type='file';input.accept='image/png,image/jpeg';
+      input.setAttribute('aria-label','Добавить скриншот к отчёту '+report.id);
+      panel.append(input,button('Прикрепить скриншот №'+report.id,async()=>{
+       if(!input.files[0])throw Error('Выберите PNG или JPEG.');
+       const form=new FormData();form.append('file',input.files[0]);
+       await api('/operator/campaigns/'+c.id+'/display-observations/'+report.id+'/evidence',{method:'POST',body:form});
+       panel.remove();notice('Скриншот сохранён, отчёт неизменен.',true);
+      }));
+     }
+    }
     panel.append(button('Закрыть',()=>panel.remove()));box.append(panel);
    }));
   if(c.placement_status==='active')actions.append(button('Тег выключен — завершить',async()=>{if(confirm('Спонсорский тег выключен на узле?'))await change('complete');}));

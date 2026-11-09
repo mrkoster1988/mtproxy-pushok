@@ -1,4 +1,4 @@
-"""Контракт фирменного интерфейса v0.037: старые формы и API не теряются."""
+"""Контракт фирменного интерфейса v0.038: старые формы и API не теряются."""
 import re
 import unittest
 import xml.etree.ElementTree as ET
@@ -105,9 +105,9 @@ class CabinetDesignTests(unittest.TestCase):
     def test_version_and_standalone_boundary(self):
         main = (ROOT / "api/app/main.py").read_text(encoding="utf-8")
         setup = (ROOT / "setup.sh").read_text(encoding="utf-8")
-        self.assertIn('version="0.037"', main)
-        self.assertIn("v0.037", setup)
-        self.assertIn("v0.037", self.html)
+        self.assertIn('version="0.038"', main)
+        self.assertIn("v0.038", setup)
+        self.assertIn("v0.038", self.html)
         self.assertIn("Pushok VPN", (ROOT / "README.md").read_text(encoding="utf-8"))
 
 
