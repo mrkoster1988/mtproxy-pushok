@@ -34,7 +34,7 @@ from .core_readiness import core_readiness, core_diagnostic_plan
 from .slot_calendar import slot_status
 from .slot_holds import normalize_hold_window
 from .placement_verification import validate_observation_window
-from .placement_evidence import sanitize_image, store_image
+from .placement_evidence import sanitize_image, store_image, read_verified_image, EvidenceReadError
 
 app = FastAPI(
     title="MTProxy Pushok API",
@@ -1227,12 +1227,12 @@ def download_placement_evidence(
     campaign_id: UUID,
     observation_id: int,
     operator: dict[str, Any] = Depends(require_operator),
-) -> FileResponse:
+) -> Response:
     """Доступно только оператору с действующей сессией."""
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             row = connection.execute(
-                """SELECT e.storage_key, e.content_type FROM placement_evidence AS e
+                """SELECT e.storage_key, e.content_type, e.sha256, e.size_bytes FROM placement_evidence AS e
                    JOIN placement_observations AS o ON o.id = e.observation_id
                    WHERE o.campaign_id = %s AND o.id = %s""",
                 (campaign_id, observation_id),
@@ -1241,16 +1241,62 @@ def download_placement_evidence(
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if row is None:
         raise HTTPException(status_code=404, detail="evidence_not_found")
+    try:
+        data = read_verified_image(
+            PLACEMENT_EVIDENCE_DIR, row["storage_key"], row["sha256"],
+            row["size_bytes"], row["content_type"],
+        )
+    except EvidenceReadError as exc:
+        code = str(exc)
+        status_code = 404 if code == "evidence_file_missing" else 503 if code == "evidence_storage_unavailable" else 409
+        raise HTTPException(status_code=status_code, detail=code) from exc
     key = row["storage_key"]
-    if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{32}\.(?:jpg|png)", key):
-        raise HTTPException(status_code=404, detail="evidence_not_found")
-    path = os.path.join(PLACEMENT_EVIDENCE_DIR, key)
-    if os.path.islink(path) or not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail="evidence_file_missing")
-    return FileResponse(
-        path, media_type=row["content_type"], filename="sponsor-observation-" + key,
-        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    return Response(
+        content=data, media_type=row["content_type"],
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Disposition": 'attachment; filename="sponsor-observation-' + key + '"',
+        },
     )
+
+
+@app.get("/api/v1/admin/placement-evidence/integrity", tags=["admin"])
+def inspect_placement_evidence(
+    limit: int = 50,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """Сверить последние файлы с БД без изменения хранилища."""
+    if not 1 <= limit <= 100:
+        raise HTTPException(status_code=422, detail="invalid_integrity_limit")
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            rows = connection.execute(
+                """SELECT id, observation_id, storage_key, content_type, sha256, size_bytes
+                   FROM placement_evidence ORDER BY created_at DESC, id DESC LIMIT %s""",
+                (limit,),
+            ).fetchall()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    issues = []
+    for row in rows:
+        try:
+            read_verified_image(
+                PLACEMENT_EVIDENCE_DIR, row["storage_key"], row["sha256"],
+                row["size_bytes"], row["content_type"],
+            )
+        except EvidenceReadError as exc:
+            issues.append({
+                "evidence_id": row["id"],
+                "observation_id": row["observation_id"],
+                "issue": str(exc),
+            })
+    return {
+        "checked": len(rows), "healthy": len(rows) - len(issues),
+        "issues": issues, "limit": limit,
+        "changes_applied": False, "telegram_api_verified": False,
+        "scope": "stored_file_integrity_only",
+    }
 
 
 @app.get("/api/v1/operator/campaigns/{campaign_id}/display-observations", tags=["operator"])

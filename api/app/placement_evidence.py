@@ -57,3 +57,47 @@ def store_image(data, suffix, directory):
             os.unlink(filename)
         raise
     return key, filename
+
+
+class EvidenceReadError(ValueError):
+    """Безопасная ошибка проверки файла: без возврата содержимого."""
+
+
+def read_verified_image(directory, key, expected_digest, expected_size, mime):
+    """Проверить файл по SHA256 и размеру, не следуя symlink. Не проверяет Telegram."""
+    import hmac
+    import re
+    import stat
+
+    if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{32}\.(?:png|jpg)", key):
+        raise EvidenceReadError("evidence_invalid_metadata")
+    if not isinstance(expected_digest, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_digest):
+        raise EvidenceReadError("evidence_invalid_metadata")
+    if not isinstance(expected_size, int) or not 1 <= expected_size <= MAX_BYTES:
+        raise EvidenceReadError("evidence_invalid_metadata")
+    if mime != ("image/png" if key.endswith(".png") else "image/jpeg"):
+        raise EvidenceReadError("evidence_invalid_metadata")
+    path = os.path.join(directory, key)
+    try:
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except FileNotFoundError as exc:
+        raise EvidenceReadError("evidence_file_missing") from exc
+    except OSError as exc:
+        raise EvidenceReadError("evidence_storage_unavailable") from exc
+    try:
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size != expected_size:
+                raise EvidenceReadError("evidence_integrity_failed")
+            data = stream.read(MAX_BYTES + 1)
+    except OSError as exc:
+        raise EvidenceReadError("evidence_storage_unavailable") from exc
+    if len(data) != expected_size or len(data) > MAX_BYTES:
+        raise EvidenceReadError("evidence_integrity_failed")
+    if not hmac.compare_digest(hashlib.sha256(data).hexdigest(), expected_digest):
+        raise EvidenceReadError("evidence_integrity_failed")
+    if mime == "image/png" and not data.startswith(bytes([137, 80, 78, 71, 13, 10, 26, 10])):
+        raise EvidenceReadError("evidence_integrity_failed")
+    if mime == "image/jpeg" and not data.startswith(bytes([255, 216, 255])):
+        raise EvidenceReadError("evidence_integrity_failed")
+    return data

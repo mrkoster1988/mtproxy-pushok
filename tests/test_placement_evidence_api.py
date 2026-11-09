@@ -114,8 +114,11 @@ class EvidenceTests(unittest.TestCase):
         self.login()
         conn = MagicMock()
         key = "b" * 32 + ".png"
+        import hashlib
+        raw = image_bytes()
         conn.__enter__.return_value.execute.return_value.fetchone.return_value = {
             "storage_key": key, "content_type": "image/png",
+            "sha256": hashlib.sha256(raw).hexdigest(), "size_bytes": len(raw),
         }
         with tempfile.TemporaryDirectory() as directory:
             Path(directory, key).write_bytes(image_bytes())
