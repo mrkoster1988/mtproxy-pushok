@@ -41,7 +41,7 @@ from .launch_readiness import build_launch_readiness
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.046",
+    version="0.047",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
