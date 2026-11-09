@@ -30,11 +30,11 @@ from .bot_outbox import router as bot_outbox_router
 from .bot_delivery_admin import router as bot_delivery_admin_router
 from .sponsor_planner import build_readiness, normalize_ad_tag, render_config_fragment
 from .engine_adapters import recommend_engine, engine_catalog
-from .core_readiness import core_readiness
+from .core_readiness import core_readiness, core_diagnostic_plan
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.030",
+    version="0.031",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1072,6 +1072,14 @@ def read_pushok_core_readiness(
 ) -> dict[str, Any]:
     """Only describes source/build capabilities. Never executes the proxy on API host."""
     return core_readiness()
+
+
+@app.get("/api/v1/admin/pushok-core/diagnostic-plan", tags=["admin"])
+def read_pushok_core_diagnostic_plan(
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """Read-only checklist; never executes Docker, SSH or proxy actions."""
+    return core_diagnostic_plan()
 
 
 @app.get("/api/v1/admin/proxy-engines", tags=["admin"])

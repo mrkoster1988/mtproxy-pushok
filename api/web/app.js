@@ -106,8 +106,14 @@ async function renderCoreReadiness(){
    '. Работа MTProxy: '+(report.runtime_status==='not_checked'?'не проверялась':report.runtime_status)+
    '. Подключение Telegram и показ спонсора не подтверждены. Никаких действий на сервере.';
   $('core-readiness').textContent=message;
+  const plan=await api('/admin/pushok-core/diagnostic-plan');
+  $('core-test-plan').replaceChildren(...plan.steps.map(step =>
+   el('li',(step.verification==='ci_only'?'Проверка в CI: ':'Ещё не подтверждено: ')+step.title,
+      step.verification==='ci_only'?'core-check-ci':'core-check-pending')));
+
  }catch{
   $('core-readiness').textContent='Не удалось получить состояние подготовки ядра. Это не означает, что прокси работает.';
+  $('core-test-plan').replaceChildren();
  }
 }
 function renderNodes(){

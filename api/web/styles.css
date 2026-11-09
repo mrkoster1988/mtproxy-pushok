@@ -206,6 +206,11 @@ button:disabled { opacity: .46; cursor: not-allowed; transform: none; }
   gap: 12px 22px; margin: 18px 0 6px; padding: 17px 20px; border-radius: 15px;
   border: 1px solid rgba(105,224,209,.34); background: rgba(14,54,65,.42); }
 .core-health h3 { margin: 6px 0 0; font-size: 17px; }
+.core-checklist { flex: 1 0 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; list-style: none; padding: 0; margin: 5px 0 0; }
+.core-checklist li { padding: 9px 11px; border: 1px solid #456373; border-radius: 10px; font-size: 12px; line-height: 1.45; background: rgba(9,30,48,.5); }
+.core-check-ci { color: #c3efe1; }
+.core-check-pending { color: #e5ceb0; }
+
 .core-health p { max-width: 680px; margin: 0; font-size: 12px; color: #c0dcdf; }
 
 .node-heading { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 18px; }
