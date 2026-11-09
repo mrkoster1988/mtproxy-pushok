@@ -91,6 +91,57 @@ function addHoldAction(c,box,actions){
  }));
 }
 
+function showCampaignReport(c, box){
+ const old=box.querySelector('.campaign-report');
+ if(old){old.remove();return;}
+ const panel=el('section',undefined,'campaign-report');
+ panel.setAttribute('aria-label','Отчёт о рекламной кампании');
+ box.append(panel);
+ panel.append(el('p','Загружаем подтверждённые сведения…','muted'));
+ return api('/campaigns/'+c.id+'/report').then(data=>{
+  panel.replaceChildren();
+  const h=el('h4','Отчёт о размещении · '+data.channel.title);
+  panel.append(h);
+  const pairs=[
+   ['Тариф',data.tariff.name+' · '+money(data.tariff.price_kopecks)],
+   ['Модерация',labels[data.moderation_status]||data.moderation_status],
+   ['Оплата',labels[data.payment_status]||data.payment_status],
+   ['Размещение',labels[data.placement_status]||data.placement_status],
+   ['Начало',date(data.scheduled_start_at)],
+   ['Окончание',date(data.scheduled_end_at)]
+  ];
+  const grid=el('div',undefined,'report-grid');
+  for(const [key,value] of pairs){
+   const row=el('div',undefined,'report-cell');
+   row.append(el('span',key,'muted'),el('strong',value));
+   grid.append(row);
+  }
+  panel.append(grid);
+  panel.append(el('h4','Проверки оператора'));
+  const checks=data.operator_observations;
+  panel.append(el('p','Показ виден: '+checks.visible+' · Показ не найден: '+checks.not_visible));
+  panel.append(el('p','Последний результат: '+
+   (checks.latest_result==='visible'?'оператор сообщил, что показ виден':checks.latest_result==='not_visible'?
+    'оператор сообщил, что показ не найден':'нет отчёта оператора')+
+   (checks.latest_observed_at?' · '+date(checks.latest_observed_at):'')));
+  panel.append(el('p','Приватных скриншотов в журнале: '+checks.private_screenshot_count+
+   '. Файлы доступны только операторам.','muted'));
+  panel.append(el('h4','История действий'));
+  const eventNames={campaign_submitted:'Заявка отправлена',campaign_moderated:'Модерация',
+   payment_proof_submitted:'Чек отправлен',payment_reviewed:'Проверка оплаты',
+   placement_scheduled:'Время назначено',placement_activated_manually:'Оператор активировал',
+   placement_completed_manually:'Оператор завершил'};
+  if(data.timeline.length){
+   const history=el('ol',undefined,'report-history');
+   for(const event of data.timeline)history.append(el('li',(eventNames[event.event]||'Событие')+
+      ' · '+date(event.at)));
+   panel.append(history);
+  }else panel.append(el('p','История пока пуста.','muted'));
+  panel.append(el('p','Проверки выполнены вручную. Количество показов Telegram API не подтверждено.','muted'));
+  panel.append(button('Закрыть отчёт',()=>panel.remove()));
+ }).catch(error=>{panel.remove();throw error;});
+}
+
 function card(c,op){
  const box=el('article',undefined,'card'),head=el('div',undefined,'cardhead');
  head.append(el('h3',(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||'Заявка')+' · '+c.id.slice(0,8)),el('span',labels[c.placement_status]||c.placement_status,'badge badge--'+c.placement_status));box.append(head);
@@ -102,6 +153,7 @@ function card(c,op){
  const actions=el('div',undefined,'actions');box.append(actions);
  const change=async(path,body)=>{await api('/operator/campaigns/'+c.id+'/'+path,{method:'POST',body});notice('Изменения сохранены.',true);await refresh();};
  if(!op){
+  actions.append(button('Отчёт по кампании',()=>showCampaignReport(c,box)));
   if(['scheduled','active','completed'].includes(c.placement_status)){
    actions.append(button('Статус проверки показа',async()=>{
     const data=await api('/campaigns/'+c.id+'/display-observation');

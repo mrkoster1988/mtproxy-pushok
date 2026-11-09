@@ -35,10 +35,11 @@ from .slot_calendar import slot_status
 from .slot_holds import normalize_hold_window
 from .placement_verification import validate_observation_window
 from .placement_evidence import sanitize_image, store_image, read_verified_image, EvidenceReadError
+from .placement_report import build_campaign_report, PUBLIC_EVENTS
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.039",
+    version="0.040",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1328,6 +1329,56 @@ def list_placement_observations(
         {**dict(row), "operator_report_only": True, "telegram_api_verified": False}
         for row in rows
     ]
+
+
+@app.get("/api/v1/campaigns/{campaign_id}/report", tags=["campaigns"])
+def get_campaign_report(
+    campaign_id: UUID,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Отчёт для владельца кампании: только whitelist событий и сводка наблюдений."""
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            campaign = connection.execute(
+                """SELECT c.id, sc.title AS channel_title, sc.telegram_url AS channel_url,
+                          c.tariff_name_snapshot, c.duration_seconds_snapshot,
+                          c.price_kopecks_snapshot, c.currency_snapshot,
+                          c.moderation_status, c.payment_status, c.placement_status,
+                          c.requested_start_at, c.scheduled_start_at, c.scheduled_end_at
+                   FROM campaigns AS c
+                   JOIN sponsor_channels AS sc ON sc.id = c.channel_id
+                   WHERE c.id = %s AND c.advertiser_user_id = %s""",
+                (campaign_id, user["id"]),
+            ).fetchone()
+            if campaign is None:
+                raise HTTPException(status_code=404, detail="campaign_not_found")
+            observation = connection.execute(
+                """SELECT COUNT(*) FILTER (WHERE o.result = 'visible') AS visible_count,
+                          COUNT(*) FILTER (WHERE o.result = 'not_visible') AS not_visible_count,
+                          COUNT(e.id) AS private_screenshot_count,
+                          (SELECT newest.result FROM placement_observations AS newest
+                           WHERE newest.campaign_id = %s ORDER BY newest.id DESC LIMIT 1)
+                             AS latest_result,
+                          (SELECT newest.observed_at FROM placement_observations AS newest
+                           WHERE newest.campaign_id = %s ORDER BY newest.id DESC LIMIT 1)
+                             AS latest_observed_at
+                   FROM placement_observations AS o
+                   LEFT JOIN placement_evidence AS e ON e.observation_id = o.id
+                   WHERE o.campaign_id = %s""",
+                (campaign_id, campaign_id, campaign_id),
+            ).fetchone()
+            timeline = connection.execute(
+                """SELECT event_type, created_at
+                   FROM audit_events
+                   WHERE campaign_id = %s AND event_type = ANY(%s::text[])
+                   ORDER BY created_at ASC, id ASC LIMIT 100""",
+                (campaign_id, sorted(PUBLIC_EVENTS)),
+            ).fetchall()
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return build_campaign_report(campaign, observation or {}, timeline)
 
 
 @app.get("/api/v1/campaigns/{campaign_id}/display-observation", tags=["campaigns"])

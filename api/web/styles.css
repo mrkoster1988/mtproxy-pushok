@@ -340,3 +340,15 @@ footer { margin-top: 64px; padding: 26px 0 34px; border-top: 1px solid #33495a; 
 /* v0.038 — загрузка скриншотов ручной проверки */
 .observation-panel input[type=file] {width:min(100%,330px);margin:7px 9px 7px 0;display:inline-block;}
 .observation-panel button {margin:7px 9px 7px 0;}
+
+/* v0.040 — приватный отчёт рекламодателя */
+.campaign-report{margin-top:17px;padding:20px;border-radius:16px;background:rgba(9,37,51,.74);
+ border:1px solid rgba(105,224,209,.38);overflow-wrap:anywhere;}
+.campaign-report h4{margin:0 0 14px;font-size:16px;color:#bff3e6;}
+.campaign-report h4:not(:first-child){margin-top:18px;}
+.campaign-report p{font-size:12px;line-height:1.6;}
+.report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+.report-cell{display:grid;gap:5px;padding:10px 12px;border:1px solid rgba(125,188,193,.23);border-radius:10px;}
+.report-cell strong{font-size:12px;}
+.report-history{padding-left:22px;font-size:12px;line-height:1.8;}
+@media(max-width:520px){.report-grid{grid-template-columns:1fr;}}
