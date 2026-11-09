@@ -31,10 +31,11 @@ from .bot_delivery_admin import router as bot_delivery_admin_router
 from .sponsor_planner import build_readiness, normalize_ad_tag, render_config_fragment
 from .engine_adapters import recommend_engine, engine_catalog
 from .core_readiness import core_readiness, core_diagnostic_plan
+from .slot_calendar import slot_status
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.031",
+    version="0.033",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1377,7 +1378,7 @@ def get_availability(
     now = datetime.now(timezone.utc)
     starts = [datetime.combine(date_from + timedelta(days=i), start_time, tzinfo=zone) for i in range(days)]
     # В дни перехода часов не предлагаем несуществующее локальное время.
-    valid = [dt for dt in starts if dt > now and dt.astimezone(timezone.utc).astimezone(zone).replace(tzinfo=None) == dt.replace(tzinfo=None)]
+    valid = [dt for dt in starts if slot_status(dt, now, 1) == "available"]
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             tariff = connection.execute(
@@ -1414,7 +1415,8 @@ def get_availability(
         "days": [
             {"date": dt.date().isoformat(), "start_at": dt.isoformat(),
              "end_at": (dt.astimezone(timezone.utc) + duration).isoformat(),
-             "available_nodes": counts.get(dt, 0)}
+             "available_nodes": counts.get(dt, 0) if dt in valid else 0,
+             "status": slot_status(dt, now, int(counts.get(dt, 0)) if dt in valid else 0)}
             for dt in starts
         ],
     }
