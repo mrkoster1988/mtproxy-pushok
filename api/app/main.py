@@ -38,6 +38,7 @@ from .placement_evidence import sanitize_image, store_image, read_verified_image
 from .placement_report import build_campaign_report, PUBLIC_EVENTS
 from .report_export import render_campaign_csv
 from .launch_readiness import build_launch_readiness
+from .network_promotion import register_network_routes
 
 app = FastAPI(
     title="MTProxy Pushok API",
@@ -1637,6 +1638,9 @@ def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str,
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="admin_role_required")
     return user
+
+
+register_network_routes(app, require_admin, DATABASE_URL)
 
 
 class EngineSelectionInput(BaseModel):

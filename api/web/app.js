@@ -310,6 +310,28 @@ $('engine-preview').addEventListener('click',()=>run(async()=>{
  $('engine-advice').textContent='План: '+plan.title+' · '+plan.availability+
   '. Не установлено и не проверено. Смена работающего прокси не выполняется.';
 }));
+async function renderNetworkPlan(){
+ if(me?.role!=='admin')return;
+ const target=$('network-plan');target.replaceChildren(el('p','Читаем состояние расписания…','muted'));
+ try{
+  const data=await api('/admin/network/promotion-plan');
+  target.replaceChildren(el('p','Узлов: '+data.node_count+' · свой канал: '+data.summary.own_channel_planned+
+   ' · платные слоты: '+data.summary.paid_channel_planned+
+   ' · без тегов: '+data.summary.tag_registration_required+
+   ' · конфликтов: '+data.summary.overlap_conflict+'.','muted'));
+  const captions={own_channel_planned:'Свой канал (план)',paid_channel_planned:'Коммерческий слот (план)',
+    paid_placement_not_approved:'Платёж/модерация требуют проверки',
+    tag_registration_required:'Тег не зарегистрирован',node_paused:'Узел приостановлен',
+    overlap_conflict:'Конфликт расписания'};
+  const list=el('ul',undefined,'core-checklist');
+  for(const n of data.nodes){
+   list.append(el('li',n.name+' · '+(captions[n.state]||n.state)+
+    (n.target_channel_url?' · '+n.target_channel_url:'')));
+  }
+  target.append(list,el('p','Ни один спонсор не переключён программно; наличие тега и записи не подтверждает реальные показы.','muted'));
+ }catch(e){target.replaceChildren(el('p','План сети недоступен: '+e.message,'muted'));}
+}
+$('network-refresh').addEventListener('click',()=>run(renderNetworkPlan));
 async function renderLaunchReadiness(){
  if(me?.role!=='admin')return;
  const target=$('launch-readiness');
@@ -394,7 +416,7 @@ async function refresh(){
  const own=await api('/campaigns');$('campaigns').replaceChildren(...own.map(c=>card(c,false)));$('campaign-count').textContent=own.length+' заявок';
  if(!own.length)$('campaigns').append(el('div','Заявок пока нет. Добавьте канал и создайте первое размещение.','empty'));
  if(me&&['operator','admin'].includes(me.role)){
-  nodes=await api('/operator/proxy-nodes');renderNodes();if(me.role==='admin'){await renderCoreReadiness();await renderLaunchReadiness();}
+  nodes=await api('/operator/proxy-nodes');renderNodes();if(me.role==='admin'){await renderCoreReadiness();await renderLaunchReadiness();await renderNetworkPlan();}
   const queue=await api('/operator/campaigns'+($('queue-filter').value?'?'+$('queue-filter').value:''));
   $('queue-count').textContent=queue.length+' заявок';
   $('queue').replaceChildren(...queue.map(c=>card(c,true)));if(!queue.length)$('queue').append(el('div','В этой очереди пока нет заявок.','empty'));
