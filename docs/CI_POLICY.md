@@ -48,3 +48,11 @@ Identity verification is required in order to run CI jobs
 - Отдельные тесты: python -m unittest discover -s tests -p 'test_placement_evidence_*.py' -v.
 - Требуемая верификация: успешный GitHub Actions на SHA v0.039, PostgreSQL интеграция и Compose backup/restore. Пока этого нет, v0.039 не принят.
 - По предыдущему SHA GitHub runner не назначался, steps=[]; GitLab pipeline не создал job. Проверить биллинг/разрешения/лимиты CI и настройки GitLab, не отключать защиту из репозитория.
+
+
+## Проверка v0.041 — CSV-выгрузка
+- Без внешних сервисов: `python -m unittest discover -s tests -p 'test_campaign_report_export.py' -v` (зависимости из `api/requirements-dev.txt`).
+- В полном CI: `python -m unittest discover -s tests -v`, интеграция PostgreSQL и Compose smoke/backup restore.
+- По последней проверке v0.040 GitHub run 42659651060: задачи завершились без шагов и исполнителя; GitLab pipeline 3046147626: failed без jobs. Это блокировка запуска, а не доказательство провала тестов исходников.
+- При запуске локально не вставлять секреты в отчёт, не публиковать исходные CSV с реальными клиентскими данными в публичные issue.
+- Для устранения внешней блокировки нужно проверить настройки и ограничения GitHub Actions/биллинг и выполнить GitLab identity verification, если требование остаётся активным.

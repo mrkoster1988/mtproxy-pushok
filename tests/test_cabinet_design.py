@@ -1,4 +1,4 @@
-"""Контракт фирменного интерфейса v0.040: старые формы и API не теряются."""
+"""Контракт фирменного интерфейса проект: старые формы и API не теряются."""
 import re
 import unittest
 import xml.etree.ElementTree as ET
@@ -105,9 +105,13 @@ class CabinetDesignTests(unittest.TestCase):
     def test_version_and_standalone_boundary(self):
         main = (ROOT / "api/app/main.py").read_text(encoding="utf-8")
         setup = (ROOT / "setup.sh").read_text(encoding="utf-8")
-        self.assertIn('version="0.040"', main)
-        self.assertIn("v0.040", setup)
-        self.assertIn("v0.040", self.html)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        match = re.search(r"Версия проекта: v(\\d+\\.\\d+)\\.", readme)
+        self.assertIsNotNone(match)
+        release = match.group(1)
+        self.assertIn('version="' + release + '"', main)
+        self.assertIn("v" + release, setup)
+        self.assertIn("v" + release, self.html)
         self.assertIn("Pushok VPN", (ROOT / "README.md").read_text(encoding="utf-8"))
 
 

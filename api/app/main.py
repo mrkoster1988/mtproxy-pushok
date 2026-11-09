@@ -36,10 +36,11 @@ from .slot_holds import normalize_hold_window
 from .placement_verification import validate_observation_window
 from .placement_evidence import sanitize_image, store_image, read_verified_image, EvidenceReadError
 from .placement_report import build_campaign_report, PUBLIC_EVENTS
+from .report_export import render_campaign_csv
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.040",
+    version="0.041",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1379,6 +1380,25 @@ def get_campaign_report(
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return build_campaign_report(campaign, observation or {}, timeline)
+
+
+@app.get("/api/v1/campaigns/{campaign_id}/report.csv", tags=["campaigns"])
+def download_campaign_report_csv(
+    campaign_id: UUID,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> Response:
+    """Приватная выгрузка: повторно используем проверку владельца JSON-отчёта."""
+    report = get_campaign_report(campaign_id, user)
+    body = render_campaign_csv(report)
+    return Response(
+        content=body, media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="mtproxy-pushok-report-' + str(campaign_id) + '.csv"',
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+            "X-Robots-Tag": "noindex",
+        },
+    )
 
 
 @app.get("/api/v1/campaigns/{campaign_id}/display-observation", tags=["campaigns"])

@@ -91,6 +91,22 @@ function addHoldAction(c,box,actions){
  }));
 }
 
+async function downloadCampaignCsv(c){
+ const result=await fetch('/api/v1/campaigns/'+c.id+'/report.csv',{
+  headers:{Authorization:'Bearer '+token}
+ });
+ if(!result.ok){
+  if(result.status===401)throw Error('Войдите повторно для скачивания отчёта.');
+  if(result.status===404)throw Error('Кампания не найдена или недоступна.');
+  throw Error('Не удалось скачать отчёт. Попробуйте снова.');
+ }
+ const url=URL.createObjectURL(await result.blob());
+ const link=el('a');
+ link.href=url;link.download='mtproxy-pushok-report-'+c.id+'.csv';
+ link.click();
+ setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+
 function showCampaignReport(c, box){
  const old=box.querySelector('.campaign-report');
  if(old){old.remove();return;}
@@ -138,6 +154,7 @@ function showCampaignReport(c, box){
    panel.append(history);
   }else panel.append(el('p','История пока пуста.','muted'));
   panel.append(el('p','Проверки выполнены вручную. Количество показов Telegram API не подтверждено.','muted'));
+  panel.append(button('Скачать CSV',()=>downloadCampaignCsv(c)));
   panel.append(button('Закрыть отчёт',()=>panel.remove()));
  }).catch(error=>{panel.remove();throw error;});
 }
@@ -154,6 +171,7 @@ function card(c,op){
  const change=async(path,body)=>{await api('/operator/campaigns/'+c.id+'/'+path,{method:'POST',body});notice('Изменения сохранены.',true);await refresh();};
  if(!op){
   actions.append(button('Отчёт по кампании',()=>showCampaignReport(c,box)));
+  actions.append(button('Выгрузить CSV',()=>downloadCampaignCsv(c)));
   if(['scheduled','active','completed'].includes(c.placement_status)){
    actions.append(button('Статус проверки показа',async()=>{
     const data=await api('/campaigns/'+c.id+'/display-observation');
