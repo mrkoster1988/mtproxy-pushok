@@ -30,10 +30,11 @@ from .bot_outbox import router as bot_outbox_router
 from .bot_delivery_admin import router as bot_delivery_admin_router
 from .sponsor_planner import build_readiness, normalize_ad_tag, render_config_fragment
 from .engine_adapters import recommend_engine, engine_catalog
+from .core_readiness import core_readiness
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.028",
+    version="0.029",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1063,6 +1064,14 @@ def _engine_plan(payload: EngineSelectionInput) -> dict[str, Any]:
         }))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/admin/pushok-core/readiness", tags=["admin"])
+def read_pushok_core_readiness(
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """Only describes source/build capabilities. Never executes the proxy on API host."""
+    return core_readiness()
 
 
 @app.get("/api/v1/admin/proxy-engines", tags=["admin"])
