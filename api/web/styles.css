@@ -318,3 +318,10 @@ footer { margin-top: 64px; padding: 26px 0 34px; border-top: 1px solid #33495a; 
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+/* v0.032: доступный мастер подтверждения ручной активации */
+.activation-review { display:grid; gap:12px; width:100%; padding:16px; border:1px solid rgba(49,212,194,.4); border-radius:14px; background:rgba(13,32,56,.72); }
+.activation-review ol { margin:0; padding-left:22px; }
+.activation-review li { margin:7px 0; }
+.activation-review .activation-confirm { display:flex; align-items:flex-start; gap:10px; font-size:13px; }
+.activation-review input[type=checkbox] { width:19px; height:19px; flex:none; accent-color:#31d4c2; }
+.activation-review textarea { width:100%; min-height:88px; box-sizing:border-box; }

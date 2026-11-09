@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 let token=sessionStorage.getItem('pushok-session')||'',me=null,channels=[],tariffs=[],nodes=[];
 const labels={draft:'Черновик',pending:'На модерации',approved:'Канал одобрен',rejected:'Отклонено',changes_requested:'Нужны исправления',not_required:'Оплата после одобрения',awaiting_payment:'Ожидается оплата',proof_submitted:'Чек на проверке',verified:'Оплата подтверждена',refunded:'Возврат',not_scheduled:'Слот не назначен',scheduled:'Запланировано',active:'Размещение активно',completed:'Завершено',cancelled:'Отменено'};
-const errors={invalid_calendar_range:'Выберите период в пределах ближайших 90 дней, не больше 31 дня.',invalid_calendar_timezone:'Часовой пояс не поддерживается.',active_tariff_not_found:'Тариф больше недоступен. Обновите страницу.',payment_instructions_not_configured:'Реквизиты ещё не настроены. Дождитесь инструкции администратора перед оплатой.',campaign_not_editable:'Заявку сейчас нельзя редактировать или отправить повторно.',channel_in_review_or_approved:'Этот канал связан с заявкой на проверке или одобренным размещением. Его изменение заблокировано.',admin_role_required:'Действие доступно владельцу.',invalid_proxy_host:'Укажите домен или IP без протокола и порта.',proxy_node_already_exists:'Этот адрес и порт уже добавлены.',proxy_node_has_placements:'На узле есть запланированное или активное размещение. Сначала завершите его.',authentication_required:'Войдите через Telegram.',session_revoked_or_expired:'Сессия завершена. Войдите снова.',telegram_login_expired:'Данные входа устарели. Повторите вход.',telegram_login_replayed:'Повторите вход через Telegram.',telegram_login_invalid_signature:'Telegram не подтвердил вход.',database_unavailable:'База данных временно недоступна.',invalid_telegram_channel_url:'Укажите ссылку вида https://t.me/channel.',channel_title_required:'Введите название канала.',channel_already_added:'Этот канал уже добавлен.',payment_proof_too_large:'Файл должен быть меньше 5 МБ.',unsupported_payment_proof_format:'Загрузите JPEG, PNG или PDF.',payment_proof_content_type_mismatch:'Тип файла не соответствует содержимому.',payment_proof_storage_unavailable:'Хранилище чеков временно недоступно.',proxy_node_slot_unavailable:'Этот слот уже занят. Выберите другое время или узел.',placement_not_in_active_window:'Активация доступна только в назначенное время.',campaign_not_ready_for_placement:'Для размещения нужны одобрение канала и подтверждённая оплата.',operator_role_required:'Нужны права оператора.',payment_proof_not_expected:'Заявка сейчас не ожидает чек.',campaign_not_draft:'Эта заявка уже отправлена.',campaign_not_pending:'Заявка уже обработана.',payment_proof_not_pending_review:'Оплата уже обработана.',channel_or_active_tariff_not_found:'Выберите свой канал и действующий тариф.',schedule_start_must_be_future:'Выберите время в будущем.'};
+const errors={invalid_calendar_range:'Выберите период в пределах ближайших 90 дней, не больше 31 дня.',invalid_calendar_timezone:'Часовой пояс не поддерживается.',active_tariff_not_found:'Тариф больше недоступен. Обновите страницу.',payment_instructions_not_configured:'Реквизиты ещё не настроены. Дождитесь инструкции администратора перед оплатой.',campaign_not_editable:'Заявку сейчас нельзя редактировать или отправить повторно.',channel_in_review_or_approved:'Этот канал связан с заявкой на проверке или одобренным размещением. Его изменение заблокировано.',admin_role_required:'Действие доступно владельцу.',invalid_proxy_host:'Укажите домен или IP без протокола и порта.',proxy_node_already_exists:'Этот адрес и порт уже добавлены.',proxy_node_has_placements:'На узле есть запланированное или активное размещение. Сначала завершите его.',authentication_required:'Войдите через Telegram.',session_revoked_or_expired:'Сессия завершена. Войдите снова.',telegram_login_expired:'Данные входа устарели. Повторите вход.',telegram_login_replayed:'Повторите вход через Telegram.',telegram_login_invalid_signature:'Telegram не подтвердил вход.',database_unavailable:'База данных временно недоступна.',invalid_telegram_channel_url:'Укажите ссылку вида https://t.me/channel.',channel_title_required:'Введите название канала.',channel_already_added:'Этот канал уже добавлен.',payment_proof_too_large:'Файл должен быть меньше 5 МБ.',unsupported_payment_proof_format:'Загрузите JPEG, PNG или PDF.',payment_proof_content_type_mismatch:'Тип файла не соответствует содержимому.',payment_proof_storage_unavailable:'Хранилище чеков временно недоступно.',proxy_node_slot_unavailable:'Этот слот уже занят. Выберите другое время или узел.',placement_not_in_active_window:'Активация доступна только в назначенное время.',placement_not_ready_or_outside_window:'Проверьте оплату, канал, тег, узел и время слота. Запуск не зафиксирован.',campaign_not_ready_for_placement:'Для размещения нужны одобрение канала и подтверждённая оплата.',operator_role_required:'Нужны права оператора.',payment_proof_not_expected:'Заявка сейчас не ожидает чек.',campaign_not_draft:'Эта заявка уже отправлена.',campaign_not_pending:'Заявка уже обработана.',payment_proof_not_pending_review:'Оплата уже обработана.',channel_or_active_tariff_not_found:'Выберите свой канал и действующий тариф.',schedule_start_must_be_future:'Выберите время в будущем.'};
 function notice(message,ok=false){$('notice').textContent=message;$('notice').className=ok?'ok':'';$('notice').hidden=false;}
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x;}
 function button(text,fn){const b=el('button',text);b.type='button';b.addEventListener('click',()=>run(fn,b));return b;}
@@ -75,7 +75,44 @@ function card(c,op){
    const start=el('input');start.type='datetime-local';if(c.requested_start_at){const d=new Date(c.requested_start_at);start.value=localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}start.setAttribute('aria-label','Начало размещения');
    actions.append(select,start,button('Назначить слот',async()=>{if(!select.value||!start.value)throw Error('Выберите узел и время начала.');await change('schedule',{proxy_node_id:select.value,start_at:new Date(start.value).toISOString()});}));
   }
-  if(c.placement_status==='scheduled')actions.append(button('Тег включён — активировать',async()=>{if(confirm('Спонсорский тег вручную применён на узле и проверен?'))await change('activate');}));
+  if(c.placement_status==='scheduled')actions.append(button('Проверить спонсора и активировать',async()=>{
+   if(box.querySelector('.activation-review'))return;
+   const review=await api('/operator/campaigns/'+c.id+'/sponsor-readiness');
+   const panel=el('form',undefined,'activation-review');
+   panel.append(el('h3','Ручная проверка спонсора'));
+   panel.append(el('p','Статус активации подтверждает оператор. API не проверяет фактический показ через Telegram.','muted'));
+   if(!review.ready_for_manual_preparation){
+    const names={moderation_approved:'модерация',payment_verified:'оплата',placement_scheduled:'слот',node_active:'узел',channel_verified:'канал',tag_registered:'тег',window_not_expired:'срок'};
+    const missing=Object.entries(review.checks).filter(([,ok])=>!ok).map(([k])=>names[k]||k);
+    panel.append(el('p','Запуск заблокирован. Не выполнено: '+missing.join(', ')+'.'));
+    panel.append(button('Закрыть',async()=>panel.remove()));
+    box.append(panel);return;
+   }
+   const steps=el('ol');for(const step of review.manual_steps)steps.append(el('li',step));panel.append(steps);
+   const flags=[
+    ['tag_applied_on_node','Тег применён в конфигурации нужного узла'],
+    ['mtproxybot_promotion_selected','В @MTProxyBot выбран нужный спонсор (Set promotion)'],
+    ['independent_client_checked','Показ проверен с отдельного Telegram-клиента'],
+   ];
+   const marks={};
+   for(const [key,description] of flags){
+    const label=el('label',undefined,'activation-confirm');
+    const input=el('input');input.type='checkbox';input.required=true;
+    marks[key]=input;label.append(input,document.createTextNode(description));panel.append(label);
+   }
+   const note=el('textarea');note.required=true;note.minLength=20;note.maxLength=500;note.rows=3;
+   note.placeholder='На каком Telegram-клиенте и как проверен спонсор (20–500 символов)';
+   note.setAttribute('aria-label','Комментарий о ручной проверке спонсора');
+   panel.append(note,el('p','Начало согласованного слота: '+date(c.scheduled_start_at),'muted'));
+   const submit=el('button','Зафиксировать ручную активацию');submit.type='submit';
+   const cancel=el('button','Отмена');cancel.type='button';cancel.addEventListener('click',()=>panel.remove());
+   panel.append(submit,cancel);
+   panel.addEventListener('submit',e=>{e.preventDefault();run(async()=>{
+    if(Object.values(marks).some(t=>!t.checked))throw Error('Подтвердите все три проверки.');
+    await change('activate',{tag_applied_on_node:true,mtproxybot_promotion_selected:true,independent_client_checked:true,verification_note:note.value});
+   },submit);});
+   box.append(panel);note.focus();
+  }));
   if(c.placement_status==='active')actions.append(button('Тег выключен — завершить',async()=>{if(confirm('Спонсорский тег выключен на узле?'))await change('complete');}));
  }
  return box;
