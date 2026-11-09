@@ -106,8 +106,8 @@ class CabinetDesignTests(unittest.TestCase):
         main = (ROOT / "api/app/main.py").read_text(encoding="utf-8")
         setup = (ROOT / "setup.sh").read_text(encoding="utf-8")
         self.assertIn('version="0.030"', main)
-        self.assertIn("v0.029", setup)
-        self.assertIn("v0.029", self.html)
+        self.assertIn("v0.030", setup)
+        self.assertIn("v0.030", self.html)
         self.assertIn("Pushok VPN", (ROOT / "README.md").read_text(encoding="utf-8"))
 
 
