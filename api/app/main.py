@@ -33,10 +33,11 @@ from .engine_adapters import recommend_engine, engine_catalog
 from .core_readiness import core_readiness, core_diagnostic_plan
 from .slot_calendar import slot_status
 from .slot_holds import normalize_hold_window
+from .placement_verification import validate_observation_window
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.036",
+    version="0.037",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -163,6 +164,21 @@ class PaymentProofResponse(BaseModel):
 class ModerationRequest(BaseModel):
     decision: str = Field(pattern="^(approved|rejected|changes_requested)$")
     comment: str | None = Field(default=None, max_length=2000)
+
+
+class PlacementObservationRequest(BaseModel):
+    result: Literal["visible", "not_visible"]
+    method: Literal["separate_unsubscribed_client"]
+    observed_at: datetime
+    note: str = Field(min_length=12, max_length=2000)
+
+    @field_validator("note")
+    @classmethod
+    def normalize_observation_note(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 12:
+            raise ValueError("observation_note_too_short")
+        return value
 
 
 def _required_secret(value: str, name: str) -> bytes:
@@ -1090,6 +1106,127 @@ def schedule_placement(
     return _campaign_response(row)
 
 
+@app.post("/api/v1/operator/campaigns/{campaign_id}/display-observations", status_code=201, tags=["operator"])
+def report_placement_observation(
+    campaign_id: UUID,
+    payload: PlacementObservationRequest,
+    operator: dict[str, Any] = Depends(require_operator),
+) -> dict[str, Any]:
+    """Заявление оператора о визуальной проверке в независимом клиенте Telegram."""
+    if payload.observed_at.tzinfo is None or payload.observed_at.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="observation_timezone_required")
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            campaign = connection.execute(
+                """SELECT id, moderation_status, payment_status, placement_status,
+                          scheduled_start_at, scheduled_end_at
+                   FROM campaigns WHERE id = %s FOR UPDATE""",
+                (campaign_id,),
+            ).fetchone()
+            if campaign is None:
+                raise HTTPException(status_code=404, detail="campaign_not_found")
+            now = datetime.now(timezone.utc)
+            if (
+                campaign["moderation_status"] != "approved"
+                or campaign["payment_status"] != "verified"
+                or campaign["placement_status"] != "scheduled"
+                or campaign["scheduled_start_at"] is None
+                or campaign["scheduled_end_at"] is None
+                or not (campaign["scheduled_start_at"] <= now < campaign["scheduled_end_at"])
+            ):
+                raise HTTPException(status_code=409, detail="placement_not_ready_for_observation")
+            try:
+                validate_observation_window(
+                    campaign["scheduled_start_at"], campaign["scheduled_end_at"],
+                    payload.observed_at, now,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            report = connection.execute(
+                """INSERT INTO placement_observations
+                     (campaign_id, observer_user_id, result, method, observed_at, note)
+                   VALUES (%s, %s, %s, %s, %s, %s)
+                   RETURNING id, result, method, observed_at, recorded_at""",
+                (campaign_id, operator["id"], payload.result, payload.method,
+                 payload.observed_at, payload.note),
+            ).fetchone()
+            connection.execute(
+                """INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
+                   VALUES (%s, %s, 'placement_observation_recorded',
+                           jsonb_build_object('observation_id', %s::bigint, 'result', %s::text))""",
+                (operator["id"], campaign_id, report["id"], payload.result),
+            )
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return {
+        "id": report["id"], "campaign_id": campaign_id,
+        "result": report["result"], "method": report["method"],
+        "observed_at": report["observed_at"], "recorded_at": report["recorded_at"],
+        "operator_report_only": True, "telegram_api_verified": False,
+    }
+
+
+@app.get("/api/v1/operator/campaigns/{campaign_id}/display-observations", tags=["operator"])
+def list_placement_observations(
+    campaign_id: UUID,
+    operator: dict[str, Any] = Depends(require_operator),
+) -> list[dict[str, Any]]:
+    """Последние 50 отчётов: полный журнал доступен только оператору."""
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            campaign = connection.execute(
+                "SELECT id FROM campaigns WHERE id = %s", (campaign_id,),
+            ).fetchone()
+            if campaign is None:
+                raise HTTPException(status_code=404, detail="campaign_not_found")
+            rows = connection.execute(
+                """SELECT id, observer_user_id, result, method, observed_at, note, recorded_at
+                   FROM placement_observations
+                   WHERE campaign_id = %s ORDER BY id DESC LIMIT 50""",
+                (campaign_id,),
+            ).fetchall()
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return [
+        {**dict(row), "operator_report_only": True, "telegram_api_verified": False}
+        for row in rows
+    ]
+
+
+@app.get("/api/v1/campaigns/{campaign_id}/display-observation", tags=["campaigns"])
+def get_campaign_placement_observation(
+    campaign_id: UUID,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Рекламодатель видит только публичное резюме последнего отчёта по своей заявке."""
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            row = connection.execute(
+                """SELECT c.id, obs.result, obs.observed_at, obs.recorded_at
+                   FROM campaigns AS c
+                   LEFT JOIN LATERAL (
+                     SELECT result, observed_at, recorded_at
+                     FROM placement_observations
+                     WHERE campaign_id = c.id ORDER BY id DESC LIMIT 1
+                   ) AS obs ON TRUE
+                   WHERE c.id = %s AND c.advertiser_user_id = %s""",
+                (campaign_id, user["id"]),
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="campaign_not_found")
+    return {
+        "campaign_id": campaign_id, "result": row["result"] or "not_reported",
+        "observed_at": row["observed_at"], "recorded_at": row["recorded_at"],
+        "operator_report_only": bool(row["result"]), "telegram_api_verified": False,
+    }
+
+
 @app.post("/api/v1/operator/campaigns/{campaign_id}/activate", response_model=CampaignResponse, tags=["operator"])
 def activate_placement(
     campaign_id: UUID,
@@ -1099,10 +1236,23 @@ def activate_placement(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             row = connection.execute(
                 """
-                UPDATE campaigns
+                UPDATE campaigns AS c
                 SET placement_status = 'active', updated_at = now()
-                WHERE id = %s AND placement_status = 'scheduled'
-                  AND scheduled_start_at <= now() AND scheduled_end_at > now()
+                WHERE c.id = %s AND c.placement_status = 'scheduled'
+                  AND c.moderation_status = 'approved' AND c.payment_status = 'verified'
+                  AND c.scheduled_start_at <= now() AND c.scheduled_end_at > now()
+                  AND EXISTS (
+                    SELECT 1 FROM placement_observations AS o
+                    WHERE o.id = (
+                      SELECT newest.id FROM placement_observations AS newest
+                      WHERE newest.campaign_id = c.id ORDER BY newest.id DESC LIMIT 1
+                    )
+                      AND o.result = 'visible'
+                      AND o.method = 'separate_unsubscribed_client'
+                      AND o.observed_at >= c.scheduled_start_at
+                      AND o.observed_at <= now()
+                      AND o.recorded_at >= now() - interval '10 minutes'
+                  )
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
                           duration_seconds_snapshot, price_kopecks_snapshot,
                           currency_snapshot, moderation_status, payment_status,

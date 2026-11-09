@@ -329,3 +329,10 @@ footer { margin-top: 64px; padding: 26px 0 34px; border-top: 1px solid #33495a; 
  .slot-hold-panel { flex-direction: column; align-items: stretch; }
  .slot-hold-panel input, .slot-hold-panel select, .slot-hold-panel button { width: 100%; max-width: none; }
 }
+
+/* v0.037 — журнал ручной проверки показа */
+.observation-panel {margin-top: 16px; padding: 16px 18px; border: 1px solid rgba(105,224,209,.37);
+ border-radius: 13px; background: rgba(9,31,47,.75); overflow-wrap: anywhere;}
+.observation-panel h4 {color: #bff1df; margin: 0 0 11px; font-size: 14px;}
+.observation-panel p {margin: 9px 0; font-size: 12px; line-height: 1.5;}
+.observation-panel button {margin-top: 9px;}

@@ -864,8 +864,9 @@ class PostgresIntegration(unittest.TestCase):
         params = {"tariff_id": tariff["id"], "date_from": start.date().isoformat(), "start_time": start.strftime("%H:%M:%S"), "timezone_name": "UTC", "days": 2}
         before = self.request("GET", "/availability", params=params)
         self.assertEqual(before["days"][0]["available_nodes"], 1)
-        self.assertFalse(before["reservation"])
-        self.assertEqual(set(before["days"][0]), {"date", "start_at", "end_at", "available_nodes"})
+        self.assertTrue(before["reservation"])
+        self.assertEqual(before["hold_ttl_seconds"], 900)
+        self.assertEqual(set(before["days"][0]), {"date", "start_at", "end_at", "available_nodes", "status"})
         scheduled = self.request("POST", "/operator/campaigns/" + cid + "/schedule", json={"proxy_node_id": node["id"], "start_at": start.isoformat()})
         self.assertEqual(scheduled["placement_status"], "scheduled")
         busy = self.request("GET", "/availability", params=params)
@@ -886,6 +887,29 @@ class PostgresIntegration(unittest.TestCase):
         self.request("POST", "/operator/campaigns/" + str(second) + "/schedule", 409, json={"proxy_node_id": node["id"], "start_at": start.isoformat()})
         with psycopg.connect(self.dsn) as conn:
             conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '1 minute', scheduled_end_at=now()+interval '1 hour' WHERE id=%s", (cid,))
+        # Активация не может полагаться только на нажатие кнопки оператора.
+        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409)
+        observation_url = "/operator/campaigns/" + cid + "/display-observations"
+        negative = self.request("POST", observation_url, 201, json={
+            "result": "not_visible", "method": "separate_unsubscribed_client",
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "note": "Показ в отдельном клиенте не обнаружен",
+        })
+        self.assertEqual(negative["result"], "not_visible")
+        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409)
+        positive = self.request("POST", observation_url, 201, json={
+            "result": "visible", "method": "separate_unsubscribed_client",
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "note": "Показ вручную виден во втором аккаунте",
+        })
+        self.assertEqual(positive["result"], "visible")
+        reports = self.request("GET", observation_url)
+        self.assertEqual([r["result"] for r in reports[:2]], ["visible", "not_visible"])
+        actor = {"id": owner, "role": "advertiser"}
+        public_report = self.request("GET", "/campaigns/" + cid + "/display-observation")
+        self.assertEqual(public_report["result"], "visible")
+        self.assertNotIn("note", public_report)
+        actor = {"id": operator, "role": "admin"}
         self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/activate")["placement_status"], "active")
         self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/complete")["placement_status"], "completed")
         self.request("PATCH", "/admin/proxy-nodes/" + node["id"] + "/status", json={"status": "paused"})
