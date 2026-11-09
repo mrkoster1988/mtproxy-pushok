@@ -52,7 +52,8 @@ jobs:
       - run: bash scripts/smoke.sh
 
   rust-core:
-    runs-on: ubuntu-latest
+    # Same glibc family as the isolated ubuntu:24.04 smoke container.
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
@@ -80,6 +81,13 @@ jobs:
           python3 scripts/core_stage.py --activate
           python3 scripts/core_stage.py --rollback
           python3 -c 'import json; from pathlib import Path; x=json.loads(Path(".build/pushok-core/staging-state.json").read_text()); assert x["active"] is None and x["previous"] is None'
+
+
+      - name: Stage a loopback-only, no-network real TCP listener in disposable Docker
+        run: |
+          python3 scripts/core_tcp_smoke.py --plan
+          docker pull ubuntu:24.04
+          python3 scripts/core_tcp_smoke.py --run
 
 
   cabinet-preview:
