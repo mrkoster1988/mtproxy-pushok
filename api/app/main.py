@@ -36,7 +36,7 @@ from .slot_holds import normalize_hold_window
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.034",
+    version="0.035",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -877,6 +877,39 @@ def create_slot_hold(
             "starts_at": hold["starts_at"], "ends_at": hold["ends_at"],
             "expires_at": hold["expires_at"], "payment_verified": False,
             "placement_started": False}
+
+
+@app.get("/api/v1/campaigns/{campaign_id}/slot-hold", tags=["calendar"])
+def get_slot_hold(
+    campaign_id: UUID,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Статус личной брони: 404 для чужой кампании и истекшего удержания."""
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            row = connection.execute(
+                """SELECT h.id, h.campaign_id, h.proxy_node_id,
+                          h.starts_at, h.ends_at, h.expires_at,
+                          GREATEST(0, CEIL(EXTRACT(EPOCH FROM (h.expires_at - now()))))::int
+                              AS remaining_seconds
+                   FROM slot_holds AS h
+                   JOIN campaigns AS c ON c.id = h.campaign_id
+                   WHERE h.campaign_id = %s AND c.advertiser_user_id = %s
+                     AND h.expires_at > now()""",
+                (campaign_id, user["id"]),
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="active_slot_hold_not_found")
+    return {
+        "id": row["id"], "campaign_id": row["campaign_id"],
+        "proxy_node_id": row["proxy_node_id"],
+        "starts_at": row["starts_at"], "ends_at": row["ends_at"],
+        "expires_at": row["expires_at"],
+        "remaining_seconds": max(0, int(row["remaining_seconds"])),
+        "payment_verified": False, "placement_started": False,
+    }
 
 
 @app.delete("/api/v1/campaigns/{campaign_id}/slot-hold", status_code=204, tags=["calendar"])
