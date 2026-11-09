@@ -34,6 +34,7 @@ from .core_readiness import core_readiness, core_diagnostic_plan
 from .slot_calendar import slot_status
 from .slot_holds import normalize_hold_window
 from .placement_verification import validate_observation_window
+from .placement_evidence import sanitize_image, store_image
 
 app = FastAPI(
     title="MTProxy Pushok API",
@@ -48,6 +49,7 @@ app.include_router(bot_delivery_admin_router)
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 PAYMENT_PROOFS_DIR = os.getenv("PAYMENT_PROOFS_DIR", "/var/lib/mtproxy-pushok/payment-proofs")
+PLACEMENT_EVIDENCE_DIR = os.path.join(PAYMENT_PROOFS_DIR, "placement-evidence")
 MAX_PAYMENT_PROOF_BYTES = 5 * 1024 * 1024
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 SESSION_SIGNING_KEY = os.getenv("SESSION_SIGNING_KEY", "")
@@ -1168,6 +1170,89 @@ def report_placement_observation(
     }
 
 
+@app.post("/api/v1/operator/campaigns/{campaign_id}/display-observations/{observation_id}/evidence", status_code=201, tags=["operator"])
+def upload_placement_evidence(
+    campaign_id: UUID,
+    observation_id: int,
+    file: UploadFile = File(...),
+    operator: dict[str, Any] = Depends(require_operator),
+) -> dict[str, Any]:
+    """Фото может прикрепить только автор своего отчёта в течение 24 часов."""
+    try:
+        data, content_type, suffix, digest = sanitize_image(file)
+    except ValueError as exc:
+        code = str(exc)
+        status_code = 413 if code == "evidence_too_large" else 415 if code in ("unsupported_evidence_format", "evidence_format_mismatch") else 422
+        raise HTTPException(status_code=status_code, detail=code) from exc
+    stored_path = None
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            row = connection.execute(
+                """SELECT id FROM placement_observations
+                   WHERE id = %s AND campaign_id = %s AND observer_user_id = %s
+                     AND recorded_at > now() - interval '24 hours' FOR UPDATE""",
+                (observation_id, campaign_id, operator["id"]),
+            ).fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="evidence_observation_unavailable")
+            key, stored_path = store_image(data, suffix, PLACEMENT_EVIDENCE_DIR)
+            recorded = connection.execute(
+                """INSERT INTO placement_evidence
+                    (observation_id, uploader_user_id, storage_key, content_type, size_bytes, sha256)
+                   VALUES (%s, %s, %s, %s, %s, %s)
+                   RETURNING id, observation_id, size_bytes, sha256, created_at""",
+                (observation_id, operator["id"], key, content_type, len(data), digest),
+            ).fetchone()
+            connection.execute(
+                """INSERT INTO audit_events(actor_user_id, campaign_id, event_type, details_json)
+                   VALUES (%s, %s, 'placement_evidence_uploaded',
+                           jsonb_build_object('observation_id', %s::bigint, 'sha256', %s::text))""",
+                (operator["id"], campaign_id, observation_id, digest),
+            )
+    except (HTTPException, OSError, psycopg.Error) as exc:
+        if stored_path and os.path.isfile(stored_path):
+            os.unlink(stored_path)
+        if isinstance(exc, HTTPException):
+            raise
+        if isinstance(exc, UniqueViolation):
+            raise HTTPException(status_code=409, detail="evidence_already_attached") from exc
+        if isinstance(exc, psycopg.Error):
+            raise HTTPException(status_code=503, detail="database_unavailable") from exc
+        raise HTTPException(status_code=503, detail="evidence_storage_unavailable") from exc
+    return {**dict(recorded), "operator_provided": True, "telegram_api_verified": False}
+
+
+@app.get("/api/v1/operator/campaigns/{campaign_id}/display-observations/{observation_id}/evidence", tags=["operator"])
+def download_placement_evidence(
+    campaign_id: UUID,
+    observation_id: int,
+    operator: dict[str, Any] = Depends(require_operator),
+) -> FileResponse:
+    """Доступно только оператору с действующей сессией."""
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            row = connection.execute(
+                """SELECT e.storage_key, e.content_type FROM placement_evidence AS e
+                   JOIN placement_observations AS o ON o.id = e.observation_id
+                   WHERE o.campaign_id = %s AND o.id = %s""",
+                (campaign_id, observation_id),
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="evidence_not_found")
+    key = row["storage_key"]
+    if not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{32}\.(?:jpg|png)", key):
+        raise HTTPException(status_code=404, detail="evidence_not_found")
+    path = os.path.join(PLACEMENT_EVIDENCE_DIR, key)
+    if os.path.islink(path) or not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="evidence_file_missing")
+    return FileResponse(
+        path, media_type=row["content_type"], filename="sponsor-observation-" + key,
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
 @app.get("/api/v1/operator/campaigns/{campaign_id}/display-observations", tags=["operator"])
 def list_placement_observations(
     campaign_id: UUID,
@@ -1182,9 +1267,11 @@ def list_placement_observations(
             if campaign is None:
                 raise HTTPException(status_code=404, detail="campaign_not_found")
             rows = connection.execute(
-                """SELECT id, observer_user_id, result, method, observed_at, note, recorded_at
-                   FROM placement_observations
-                   WHERE campaign_id = %s ORDER BY id DESC LIMIT 50""",
+                """SELECT o.id, o.observer_user_id, o.result, o.method, o.observed_at,
+                          o.note, o.recorded_at, e.id AS evidence_id, e.sha256 AS evidence_sha256
+                   FROM placement_observations AS o
+                   LEFT JOIN placement_evidence AS e ON e.observation_id = o.id
+                   WHERE o.campaign_id = %s ORDER BY o.id DESC LIMIT 50""",
                 (campaign_id,),
             ).fetchall()
     except HTTPException:
