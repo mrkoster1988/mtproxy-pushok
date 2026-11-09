@@ -40,7 +40,7 @@ from .report_export import render_campaign_csv
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.041",
+    version="0.042",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)

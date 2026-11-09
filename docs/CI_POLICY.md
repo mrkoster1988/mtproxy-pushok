@@ -56,3 +56,11 @@ Identity verification is required in order to run CI jobs
 - По последней проверке v0.040 GitHub run 42659651060: задачи завершились без шагов и исполнителя; GitLab pipeline 3046147626: failed без jobs. Это блокировка запуска, а не доказательство провала тестов исходников.
 - При запуске локально не вставлять секреты в отчёт, не публиковать исходные CSV с реальными клиентскими данными в публичные issue.
 - Для устранения внешней блокировки нужно проверить настройки и ограничения GitHub Actions/биллинг и выполнить GitLab identity verification, если требование остаётся активным.
+
+
+## v0.042 — автономный preflight при заблокированных runners
+- Из корня репозитория: `python3 scripts/preflight.py`, для автоматизации — `python3 scripts/preflight.py --json`.
+- Автономный набор: `python3 -m unittest discover -s tests -p 'test_preflight.py' -v`. Только стандартная библиотека и временные тестовые файлы; **не проверяет** Python API, PostgreSQL, MTProxy и сеть.
+- После восстановления runners preflight должен выполняться до `pip install`, затем полный `python -m unittest discover -s tests -v` и Compose/Rust/browser проверки. Не отключать существующие задания ради зелёного статуса.
+- При проверке v0.041 GitHub run 42664270637 job test/rust-core/cabinet-preview закончились без назначенного runner (steps=0), скачать logs не удалось (404 BlobNotFound). GitLab pipeline 3046257763: started_at=null и jobs=[].
+- GitHub Actions permissions/billing/runner API через подключённый GitHub-инструмент недоступны, поэтому точная причина блокировки GitHub не установлена. Пользователю нужен доступ к настройкам Actions/исполнителей/биллинга аккаунта. В GitLab ранее возвращалось `Identity verification is required in order to run CI jobs`.

@@ -13,5 +13,6 @@ variables:
 
 test:
   script:
+    - python3 scripts/preflight.py
     - pip install -r api/requirements-dev.txt
     - python -m unittest discover -s tests -v
