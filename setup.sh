@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 # Диалог читает терминал отдельно от потока загрузки скрипта.
 if [[ "$*" == "--help" ]]; then
-  echo "sudo bash setup.sh [--plan|--core-plan] — мастер установки MTProxy Pushok"
+  echo "sudo bash setup.sh [--plan|--core-plan|--core-tcp-plan] — мастер установки MTProxy Pushok"
   echo "--core-plan: только план получения и сборки Pushok Core (без установки)."
   exit 0
 fi
@@ -13,6 +13,11 @@ if [[ "$*" == "--core-plan" ]]; then
   bash "$ROOT/scripts/apply_pushok_core_patch.sh" --plan
   bash "$ROOT/scripts/build_pushok_core.sh" --plan
   if command -v python3 >/dev/null 2>&1; then python3 "$ROOT/scripts/core_stage.py" --plan; else echo "Python3 нужен только для последующей диагностики."; fi
+  exit 0
+fi
+if [[ "$*" == "--core-tcp-plan" ]]; then
+  ROOT="$(cd -- "$(dirname -- "$0")" && pwd)"
+  python3 "$ROOT/scripts/core_tcp_smoke.py" --plan
   exit 0
 fi
 PLAN=false
@@ -93,7 +98,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v0.029 — мастер настройки" >&2
+echo "MTProxy Pushok v0.030 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
 PROXY_ENGINE=""
