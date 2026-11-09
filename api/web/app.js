@@ -307,6 +307,36 @@ $('engine-preview').addEventListener('click',()=>run(async()=>{
  $('engine-advice').textContent='План: '+plan.title+' · '+plan.availability+
   '. Не установлено и не проверено. Смена работающего прокси не выполняется.';
 }));
+async function renderLaunchReadiness(){
+ if(me?.role!=='admin')return;
+ const target=$('launch-readiness');
+ target.replaceChildren(el('p','Загрузка сведений из БД…','muted'));
+ try{
+  const data=await api('/admin/launch-readiness');
+  target.replaceChildren();
+  const s=data.statistics;
+  target.append(el('p','Узлы: '+s.nodes_total+' (активных в реестре: '+s.nodes_active+
+   ', с зарегистрированным тегом: '+s.nodes_with_registered_tag+'). Заявки: '+
+   s.campaigns_total+', на модерации: '+s.moderation_pending+
+   ', чеки на проверке: '+s.payments_pending+'.','muted'));
+  target.append(el('p','Оплата подтверждена оператором: '+s.payments_verified+
+   ' · Размещений запланировано: '+s.placements_scheduled+
+   ' · Вручную отмечено активными: '+s.placements_active+
+   ' · Завершено: '+s.placements_completed+
+   ' · Ручных проверок: '+s.manual_observations+'.','muted'));
+  const list=el('ul',undefined,'core-checklist');
+  for(const step of data.checks){
+   const state=step.status==='data_present'?'Данные в реестре: ':step.status==='missing'?
+    'Нет данных в реестре: ':'Пока не проверено: ';
+   list.append(el('li',state+step.title+(step.status==='data_present'?' ('+step.count+')':''),
+     step.status==='not_verified'?'core-check-pending':'core-check-ci'));
+  }
+  target.append(list,el('p','Готовность к публичному запуску: НЕ ПОДТВЕРЖДЕНА. Наличие узла или тега в БД не означает, что прокси работает.','muted'));
+ }catch(e){
+  target.replaceChildren(el('p','Не удалось собрать сводку готовности: '+e.message,'muted'));
+ }
+}
+
 async function renderCoreReadiness(){
  if(me?.role!=='admin')return;
  try{
@@ -361,7 +391,7 @@ async function refresh(){
  const own=await api('/campaigns');$('campaigns').replaceChildren(...own.map(c=>card(c,false)));$('campaign-count').textContent=own.length+' заявок';
  if(!own.length)$('campaigns').append(el('div','Заявок пока нет. Добавьте канал и создайте первое размещение.','empty'));
  if(me&&['operator','admin'].includes(me.role)){
-  nodes=await api('/operator/proxy-nodes');renderNodes();if(me.role==='admin')await renderCoreReadiness();
+  nodes=await api('/operator/proxy-nodes');renderNodes();if(me.role==='admin'){await renderCoreReadiness();await renderLaunchReadiness();}
   const queue=await api('/operator/campaigns'+($('queue-filter').value?'?'+$('queue-filter').value:''));
   $('queue-count').textContent=queue.length+' заявок';
   $('queue').replaceChildren(...queue.map(c=>card(c,true)));if(!queue.length)$('queue').append(el('div','В этой очереди пока нет заявок.','empty'));

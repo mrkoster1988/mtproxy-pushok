@@ -37,10 +37,11 @@ from .placement_verification import validate_observation_window
 from .placement_evidence import sanitize_image, store_image, read_verified_image, EvidenceReadError
 from .placement_report import build_campaign_report, PUBLIC_EVENTS
 from .report_export import render_campaign_csv
+from .launch_readiness import build_launch_readiness
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.044",
+    version="0.045",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1648,6 +1649,35 @@ def _engine_plan(payload: EngineSelectionInput) -> dict[str, Any]:
         }))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@app.get("/api/v1/admin/launch-readiness", tags=["admin"])
+def read_launch_readiness(
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """Только агрегаты БД: не сканировать сеть, не читать рекламные теги и секреты."""
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            counts = connection.execute(
+                """SELECT
+                  (SELECT count(*) FROM proxy_nodes) AS nodes_total,
+                  (SELECT count(*) FROM proxy_nodes WHERE status = 'active') AS nodes_active,
+                  (SELECT count(*) FROM proxy_sponsor_registrations AS r
+                   JOIN proxy_nodes AS n ON n.id = r.proxy_node_id
+                   WHERE n.status = 'active') AS nodes_with_registered_tag,
+                  (SELECT count(*) FROM campaigns) AS campaigns_total,
+                  (SELECT count(*) FROM campaigns WHERE moderation_status = 'pending') AS moderation_pending,
+                  (SELECT count(*) FROM campaigns WHERE payment_status = 'proof_submitted') AS payments_pending,
+                  (SELECT count(*) FROM campaigns WHERE payment_status = 'verified') AS payments_verified,
+                  (SELECT count(*) FROM campaigns WHERE placement_status = 'scheduled') AS placements_scheduled,
+                  (SELECT count(*) FROM campaigns WHERE placement_status = 'active') AS placements_active,
+                  (SELECT count(*) FROM campaigns WHERE placement_status = 'completed') AS placements_completed,
+                  (SELECT count(*) FROM placement_observations) AS manual_observations
+                """
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return build_launch_readiness(counts or {})
 
 
 @app.get("/api/v1/admin/pushok-core/readiness", tags=["admin"])

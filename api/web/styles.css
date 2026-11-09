@@ -352,3 +352,8 @@ footer { margin-top: 64px; padding: 26px 0 34px; border-top: 1px solid #33495a; 
 .report-cell strong{font-size:12px;}
 .report-history{padding-left:22px;font-size:12px;line-height:1.8;}
 @media(max-width:520px){.report-grid{grid-template-columns:1fr;}}
+
+/* v0.045 — контрольные данные до запуска без ложных live-статусов */
+#launch-readiness{display:grid;gap:10px;}
+#launch-readiness .core-checklist{margin:4px 0 10px;}
+#launch-readiness .core-checklist li{line-height:1.55;}
