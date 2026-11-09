@@ -153,7 +153,7 @@ class CoreReadinessAPITests(unittest.TestCase):
 
     def test_non_admin_rejected_and_admin_route_never_touches_host(self):
         with patch("app.main.psycopg.connect") as db, \
-                patch("app.main.subprocess.Popen", create=True) as proc:
+                patch.object(core_stage.subprocess, "Popen") as proc:
             response = self.client.get("/api/v1/admin/pushok-core/readiness")
             self.assertEqual(response.status_code, 401)
             main.app.dependency_overrides[main.require_admin] = lambda: {
