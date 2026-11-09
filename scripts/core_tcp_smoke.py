@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""v0.030: check a real Pushok Core TCP listener in a disposable no-network Docker container.
+"""v0.031: verify a real Pushok Core TCP listener survives malformed MTProxy input in a disposable no-network Docker container.
 
 The host's proxy is NEVER started, stopped or switched. No ports published.
-Container has a private loopback namespace; TCP success is NOT Telegram success.
+Container has a private loopback namespace; Malformed input survival is NOT a valid MTProxy handshake or Telegram success.
 """
 import argparse
 import json
@@ -38,7 +38,22 @@ for i in $(seq 1 48); do
     exit 3
   fi
   if timeout 1 bash -c ': > /dev/tcp/127.0.0.1/18443' 2>/dev/null; then
-    echo pushok_core_loopback_tcp_ready
+    # 64 zero bytes are an intentionally INVALID MTProxy obfuscation header.
+    # Sending malformed input exercises fail-closed handling, NOT a valid handshake.
+    if ! timeout 3 bash -c 'exec 3<>/dev/tcp/127.0.0.1/18443; head -c 64 /dev/zero >&3' >/dev/null 2>&1; then
+      echo malformed_header_injection_failed
+      exit 5
+    fi
+    sleep 0.25
+    if ! kill -0 "$pid" 2>/dev/null; then
+      echo core_exited_after_malformed_header
+      exit 6
+    fi
+    if ! timeout 1 bash -c ': > /dev/tcp/127.0.0.1/18443' 2>/dev/null; then
+      echo core_unresponsive_after_malformed_header
+      exit 7
+    fi
+    echo pushok_core_invalid_handshake_survived
     exit 0
   fi
   sleep 0.25
@@ -118,7 +133,7 @@ def run_probe() -> dict:
         try:
             child = subprocess.run(cmd, capture_output=True, timeout=PROBE_TIMEOUT)
             if (child.returncode != 0
-                    or child.stdout.strip() != b"pushok_core_loopback_tcp_ready"):
+                    or child.stdout.strip() != b"pushok_core_invalid_handshake_survived"):
                 # Never echo stderr/stdout; upstream logs can contain sensitive data.
                 raise ProbeError("isolated_tcp_probe_failed")
         except subprocess.TimeoutExpired as exc:
@@ -132,7 +147,10 @@ def run_probe() -> dict:
             if cleanup.returncode != 0 and b"No such container" not in cleanup.stderr:
                 raise ProbeError("staging_container_cleanup_not_confirmed")
     return {
-        "status": "isolated_tcp_accept_verified",
+        "status": "isolated_invalid_handshake_survived",
+        "invalid_header_bytes": 64,
+        "listener_survived_malformed_header": True,
+        "reconnect_after_malformed_header": True,
         "network_mode": "none",
         "public_ports": 0,
         "container_removed": True,
@@ -141,6 +159,7 @@ def run_probe() -> dict:
         "mtproxy_handshake_verified": False,
         "sponsor_verified": False,
         "rollback_type": "automatic_process_termination",
+        "mtproxy_valid_handshake_verified": False,
     }
 
 
@@ -152,8 +171,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.plan:
         print("ПЛАН: только Docker --network none, локальный 127.0.0.1:18443, без опубликованных портов.")
-        print("Проверяем реальный TCP accept; Telegram, MTProxy handshake и спонсор не проверяются.")
-        print("Процесс завершится с автоматическим удалением контейнера. VPS и systemd не затрагиваются.")
+        print("Проверяем TCP accept, отправляем заведомо неверный 64-байтный заголовок и проверяем повторное подключение.")
+        print("Настоящее MTProxy-рукопожатие, Telegram и спонсор НЕ проверяются. Контейнер удаляется автоматически; VPS не затрагивается.")
         return 0
     try:
         print(json.dumps(run_probe(), ensure_ascii=False, sort_keys=True))
