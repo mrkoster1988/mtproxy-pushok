@@ -33,12 +33,17 @@ def validate_hex(value: str, label: str) -> str:
 def render_staging_config(
     *, tls_domain: str, port: int = 8443, username: str = "pushok",
     secret: str | None = None, ad_tag: str | None = None,
+    offline_smoke: bool = False,
 ) -> str:
     """Create a staging-only configuration bound to 127.0.0.1.
 
     Return value includes a client secret. NEVER log it, expose via API or commit it.
     Upstream compatibility still requires an actual binary smoke test.
     """
+    if type(offline_smoke) is not bool:
+        raise ValueError("invalid_offline_smoke")
+    if offline_smoke and ad_tag is not None:
+        raise ValueError("ad_tag_forbidden_in_offline_smoke")
     domain = validate_domain(tls_domain)
     if type(port) is not int or not 1 <= port <= 65535:
         raise ValueError("invalid_port")
@@ -50,7 +55,7 @@ def render_staging_config(
     return (
         "# Pushok Core: LOCAL TEST CONFIG ONLY. Do not publish or commit this file.\n"
         "[general]\n"
-        "use_middle_proxy = true\n"
+        f"use_middle_proxy = {'{'}str(not offline_smoke).lower(){'}'}\n"
         "log_level = \"normal\"\n"
         + adline +
         "\n[general.modes]\n"
@@ -66,8 +71,8 @@ def render_staging_config(
         'ip = "127.0.0.1"\n'
         "\n[censorship]\n"
         f'tls_domain = "{domain}"\n'
-        "mask = true\n"
-        "tls_emulation = true\n"
+        f"mask = {'{'}str(not offline_smoke).lower(){'}'}\n"
+        f"tls_emulation = {'{'}str(not offline_smoke).lower(){'}'}\n"
         "\n[access.users]\n"
         f'{username} = "{user_secret}"\n'
     )
