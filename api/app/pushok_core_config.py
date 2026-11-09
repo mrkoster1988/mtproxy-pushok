@@ -55,7 +55,7 @@ def render_staging_config(
     return (
         "# Pushok Core: LOCAL TEST CONFIG ONLY. Do not publish or commit this file.\n"
         "[general]\n"
-        f"use_middle_proxy = {'{'}str(not offline_smoke).lower(){'}'}\n"
+        f"use_middle_proxy = {str(not offline_smoke).lower()}\n"
         "log_level = \"normal\"\n"
         + adline +
         "\n[general.modes]\n"
@@ -71,8 +71,8 @@ def render_staging_config(
         'ip = "127.0.0.1"\n'
         "\n[censorship]\n"
         f'tls_domain = "{domain}"\n'
-        f"mask = {'{'}str(not offline_smoke).lower(){'}'}\n"
-        f"tls_emulation = {'{'}str(not offline_smoke).lower(){'}'}\n"
+        f"mask = {str(not offline_smoke).lower()}\n"
+        f"tls_emulation = {str(not offline_smoke).lower()}\n"
         "\n[access.users]\n"
         f'{username} = "{user_secret}"\n'
     )
