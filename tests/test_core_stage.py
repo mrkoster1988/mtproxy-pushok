@@ -113,6 +113,22 @@ class LocalCoreStageTests(unittest.TestCase):
         with patch.object(sys, "argv", ["core_stage.py", "--rollback"]):
             self.assertEqual(core_stage.main(), 2)
 
+    def test_rollback_refuses_missing_previous_binary(self):
+        with patch.object(sys, "argv", ["core_stage.py", "--activate"]):
+            self.assertEqual(core_stage.main(), 0)
+        old_digest = core_stage.load_state()["active"]["sha256"]
+        # Model a second candidate with the same pinned CLI identity but
+        # different bytes; original build can no longer be restored.
+        self.core.write_text(self.core.read_text() + "# changed candidate\\n")
+        new_digest = hashlib.sha256(self.core.read_bytes()).hexdigest()
+        self.checksum.write_text(new_digest + "  " + core_stage.NAME + "\\n")
+        with patch.object(sys, "argv", ["core_stage.py", "--activate"]):
+            self.assertEqual(core_stage.main(), 0)
+        self.assertEqual(core_stage.load_state()["previous"]["sha256"], old_digest)
+        with patch.object(sys, "argv", ["core_stage.py", "--rollback"]):
+            self.assertEqual(core_stage.main(), 2)
+        self.assertEqual(core_stage.load_state()["active"]["sha256"], new_digest)
+
     def test_plan_has_no_disk_writes(self):
         with patch.object(sys, "argv", ["core_stage.py", "--plan"]):
             self.assertEqual(core_stage.main(), 0)
