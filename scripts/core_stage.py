@@ -15,7 +15,6 @@ import subprocess
 import sys
 import tempfile
 from contextlib import contextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -208,6 +207,12 @@ def main() -> int:
             else:
                 if current["active"] is None:
                     raise StageError("no_staging_candidate_to_rollback")
+                # Never point a marker to a disappeared previous binary.
+                # Only this single pinned artifact is supported in v0.029.
+                if current["previous"] is not None:
+                    verified = inspect()
+                    if verified["sha256"] != current["previous"]["sha256"]:
+                        raise StageError("previous_staging_binary_not_present")
                 # Revert only the manifest. Never touch running processes or switch proxy.
                 current = {"schema_version": 1, "active": current["previous"],
                            "previous": None}
