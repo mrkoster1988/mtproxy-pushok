@@ -4,6 +4,7 @@ set -Eeuo pipefail
 if [[ "$*" == "--help" ]]; then
   echo "sudo bash setup.sh [--plan|--core-plan|--core-tcp-plan] — мастер установки MTProxy Pushok"
   echo "--core-plan: только план получения и сборки Pushok Core (без установки)."
+  echo "--core-tcp-plan: план TCP и проверки некорректного рукопожатия в Docker без сети."
   exit 0
 fi
 if [[ "$*" == "--core-plan" ]]; then
@@ -98,7 +99,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v0.030 — мастер настройки" >&2
+echo "MTProxy Pushok v0.031 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
 PROXY_ENGINE=""
