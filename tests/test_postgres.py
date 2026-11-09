@@ -39,10 +39,13 @@ class PostgresIntegration(unittest.TestCase):
                     raise
                 time.sleep(1)
         cls.dsn = make_conninfo(cls.admin_dsn, dbname=cls.dbname)
-        cls.old_dsn, cls.old_storage = main.DATABASE_URL, main.PAYMENT_PROOFS_DIR
+        cls.old_dsn, cls.old_storage, cls.old_evidence_storage = (
+            main.DATABASE_URL, main.PAYMENT_PROOFS_DIR, main.PLACEMENT_EVIDENCE_DIR
+        )
         cls.storage = tempfile.TemporaryDirectory()
         main.DATABASE_URL = cls.dsn
         main.PAYMENT_PROOFS_DIR = cls.storage.name
+        main.PLACEMENT_EVIDENCE_DIR = str(Path(cls.storage.name) / "placement-evidence")
         with psycopg.connect(cls.dsn) as conn:
             for migration in sorted((ROOT / "database").glob("*.sql")):
                 conn.execute(migration.read_text())
@@ -52,7 +55,9 @@ class PostgresIntegration(unittest.TestCase):
     def tearDownClass(cls):
         cls.client.close()
         main.app.dependency_overrides.clear()
-        main.DATABASE_URL, main.PAYMENT_PROOFS_DIR = cls.old_dsn, cls.old_storage
+        main.DATABASE_URL, main.PAYMENT_PROOFS_DIR, main.PLACEMENT_EVIDENCE_DIR = (
+            cls.old_dsn, cls.old_storage, cls.old_evidence_storage
+        )
         cls.storage.cleanup()
         with psycopg.connect(cls.admin_dsn, autocommit=True) as conn:
             conn.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(cls.dbname)))

@@ -64,3 +64,11 @@ Identity verification is required in order to run CI jobs
 - После восстановления runners preflight должен выполняться до `pip install`, затем полный `python -m unittest discover -s tests -v` и Compose/Rust/browser проверки. Не отключать существующие задания ради зелёного статуса.
 - При проверке v0.041 GitHub run 42664270637 job test/rust-core/cabinet-preview закончились без назначенного runner (steps=0), скачать logs не удалось (404 BlobNotFound). GitLab pipeline 3046257763: started_at=null и jobs=[].
 - GitHub Actions permissions/billing/runner API через подключённый GitHub-инструмент недоступны, поэтому точная причина блокировки GitHub не установлена. Пользователю нужен доступ к настройкам Actions/исполнителей/биллинга аккаунта. В GitLab ранее возвращалось `Identity verification is required in order to run CI jobs`.
+
+
+## v0.043 — режимы безопасной локальной проверки
+- `python3 scripts/verify_release.py --mode offline --json`: AST-синтаксис, preflight, юнит-тесты preflight. Не требует PostgreSQL, Docker, VPS, секретов и не означает приёмку релиза.
+- `python3 scripts/verify_release.py --mode full --allow-test-db`: ТОЛЬКО с тестовым TEST_ADMIN_DSN и подтверждённым временным PostgreSQL. Тест может создавать/удалять временные базы. Запрещён на рабочем сервере с производственной БД.
+- В режиме full DATABASE_URL из окружения подменяется безопасным TEST_ADMIN_DSN. Для окружения `postgres` требуется флаг CI; с localhost разрешение оператора обязательно.
+- Новая группа `tests/test_verify_release.py`: 8 проверок на синтетических временных файлах и имитации базы, выполнены локально; полная интеграция API/PostgreSQL не выполнялась.
+- Раннеры GitHub и GitLab по последним проверкам не запускают jobs. Не отключать контроль качества ради зелёного статуса. Релиз v0.043 не считать принятым.
