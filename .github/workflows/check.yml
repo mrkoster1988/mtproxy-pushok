@@ -52,7 +52,8 @@ jobs:
       - run: bash scripts/smoke.sh
 
   rust-core:
-    runs-on: ubuntu-latest
+    # Same glibc family as the isolated ubuntu:24.04 smoke container.
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
