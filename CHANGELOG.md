@@ -1,12 +1,13 @@
 # История изменений MTProxy Pushok
 
-## [0.029] — 2026-11-09 (проверка кода в CI, VPS не затронут)
+## [0.029] — 2026-11-09 (код проверен CI; VPS не затронут)
 
 - Безопасный локальный инструмент `scripts/core_stage.py`: проверка реального Rust-бинарника перед исполнением `--pushok-build-info` (SHA256, лицензия, NOTICE/PATCHES, зафиксированная версия и commit). Никакого proxy-listener или Telegram.
 - Атомарный **локальный тестовый маркер** активного кандидата, режимы `--activate` и `--rollback`, файловая блокировка и отказ при повреждённом состоянии. **Это не переключение живого MTProxy.**
 - Вход только от обычного пользователя, запрет символических ссылок и перезаписи чужих путей. Скрипт не раскрывает секреты прокси.
 - Административный read-only API `GET /api/v1/admin/pushok-core/readiness`, отдельный блок в Unified Engine. Статус runtime всегда `not_checked` без фактического наблюдения.
 - Тесты CLI/RBAC, CI после Rust release build проверяет локальную аттестацию, тестовую активацию и откат; проект без VPN/RemnaShop.
+- **Приёмка:** GitHub PR #15 объединён в `main` после **234 успешных Python-тестов, Compose smoke, Chromium-снимков и настоящей Rust release-сборки с offline inspect → staging activation → marker rollback** ([GitHub Actions](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42558212091)). GitLab `main` синхронизирован; реальный MTProxy и VPS не запускались.
 
 
 ## [0.028] — 2026-11-09 (код проверен CI, VPS не развёрнут)
