@@ -42,6 +42,14 @@ def demo_response(path: str, role: str) -> object:
     path = urlsplit(path).path
     if path.endswith("/public-config"):
         return {"telegram_bot_username": None}
+    if path.endswith("/admin/pushok-core/diagnostic-plan"):
+        return {"project_version": "0.031", "execution": "not_started_by_api",
+                "steps": [
+                    {"title": "Локальный TCP", "verification": "ci_only"},
+                    {"title": "Некорректный 64-байтный заголовок", "verification": "ci_only"},
+                    {"title": "Подключение Telegram", "verification": "not_verified"},
+                    {"title": "Показ спонсора", "verification": "not_verified"},
+                ]}
     if path.endswith("/admin/pushok-core/readiness"):
         return {"source_pinned": True, "local_build_verified": None,
                 "runtime_status": "not_checked", "changes_applied": False,
