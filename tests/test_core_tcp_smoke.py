@@ -1,4 +1,4 @@
-"""v0.030: no-network real TCP smoke planning and fail-closed cleanup."""
+"""v0.031: invalid MTProxy handshake resilience without external networks planning and fail-closed cleanup."""
 import json
 import os
 import subprocess
@@ -70,6 +70,17 @@ class IsolatedTCPTests(unittest.TestCase):
             core_tcp_smoke.docker_command(probe_dir=Path("/tmp/x"),
                                           name="other-container")
 
+    def test_malformed_handshake_is_intentionally_invalid_and_bounded(self):
+        shell = core_tcp_smoke.SHELL_PROBE
+        self.assertIn("head -c 64 /dev/zero", shell)
+        self.assertIn("timeout 3 bash -c", shell)
+        self.assertIn('kill -0 "$pid"', shell)
+        self.assertIn("core_unresponsive_after_malformed_header", shell)
+        self.assertIn("pushok_core_invalid_handshake_survived", shell)
+        self.assertNotIn("curl ", shell)
+        self.assertNotIn("telegram.org", shell)
+        self.assertNotIn("MTProxybot", shell)
+
     def test_plan_has_no_side_effects_and_requires_no_docker(self):
         with patch.object(sys, "argv", ["core_tcp_smoke.py", "--plan"]), \
              patch.object(core_tcp_smoke.subprocess, "run",
@@ -95,7 +106,7 @@ class IsolatedTCPTests(unittest.TestCase):
                     self.assertEqual(config.stat().st_mode & 0o777, 0o600)
                     config_contents.append(config.read_text())
                     return subprocess.CompletedProcess(
-                        cmd, 0, b"pushok_core_loopback_tcp_ready\n", b"")
+                        cmd, 0, b"pushok_core_invalid_handshake_survived\n", b"")
                 if cmd[:3] == ["docker", "rm", "--force"]:
                     return subprocess.CompletedProcess(
                         cmd, 1, b"", b"Error: No such container")
@@ -108,6 +119,10 @@ class IsolatedTCPTests(unittest.TestCase):
                               side_effect=fake_docker):
                 report = core_tcp_smoke.run_probe()
             self.assertTrue(report["container_removed"])
+            self.assertTrue(report["listener_survived_malformed_header"])
+            self.assertTrue(report["reconnect_after_malformed_header"])
+            self.assertEqual(report["invalid_header_bytes"], 64)
+            self.assertFalse(report["mtproxy_valid_handshake_verified"])
             self.assertFalse(report["telegram_verified"])
             self.assertFalse(report["mtproxy_handshake_verified"])
             self.assertFalse(report["host_runtime_changed"])
