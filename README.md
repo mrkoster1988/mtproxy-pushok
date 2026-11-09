@@ -1,6 +1,6 @@
 # MTProxy Pushok
 
-Версия проекта: v0.028.
+Версия проекта: v0.029.
 
 Отдельный проект для установки MTProxy и управления спонсорским каналом. Он полностью независим от Pushok VPN, Remnawave и RemnaShop; никаких интеграций с ними в текущем плане нет.
 
@@ -287,3 +287,20 @@ bash scripts/build_pushok_core.sh --build
 Визуальные изменения **не являются проверкой оплаты, реального спонсорского показа или развёртывания на VPS**. Дизайн проверяется на тестовых данных и в CI. VPN, Remnawave и RemnaShop не затрагиваются.
 
 **Проверка v0.028:** GitHub [Actions](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42526159730) — 222 Python-теста, Compose smoke, Rust build и браузерная проверка пяти реальных экранов; [скачать приватные скриншоты](https://github.com/mrkoster1988/mtproxy-pushok/actions/runs/42526159730/artifacts/13635143990). Они созданы с искусственными данными, не подтверждают работу на VPS.
+
+## v0.029 — диагностика и безопасный тестовый кандидат Pushok Core
+
+Механизм `python3 scripts/core_stage.py` работает **только с локальными файлами сборки**, не запускает прокси как сервер, не меняет порты, systemd, Docker, PostgreSQL или MTProxy Sponsor. Он проверяет SHA256 бинарника `pushok-core-0.027-<upstream-commit>`, его неизменённую лицензию и безопасную Rust-команду `--pushok-build-info`. Проверка CLI запускает отдельный короткоживущий процесс, без прокси-соединений.
+
+```bash
+bash setup.sh --core-plan
+python3 scripts/core_stage.py --plan
+# Только после локальной сборки Rust из v0.027:
+python3 scripts/core_stage.py --inspect
+python3 scripts/core_stage.py --activate
+python3 scripts/core_stage.py --rollback
+```
+
+**Откат в этой версии — только атомарный локальный маркер тестового кандидата** (`.build/pushok-core/staging-state.json`, права 0600). Это **не откат работающего прокси**. Веб-кабинет администратора получил блок готовности ядра и только читающий `GET /api/v1/admin/pushok-core/readiness`; API не выполняет бинарники, не читает секреты и не заявляет доступности узлов. Собранный Rust-компонент по-прежнему имеет версию 0.027: в v0.029 меняется управляющий слой, не сам Rust-код.
+
+**Не проверено:** фактический запуск MTProxy TCP на стенде, подключение Telegram, реклама спонсора, переключение действующей службы и rollback сервиса. Любые реальные переключения требуют отдельной реализации и испытаний, без VPS сейчас. Проект не связан с VPN, Remnawave и RemnaShop.
