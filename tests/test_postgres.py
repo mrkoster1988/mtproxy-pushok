@@ -23,7 +23,31 @@ os.environ.setdefault("DATABASE_URL", "postgresql://unused")
 from app import main
 
 
-@unittest.skipUnless(os.getenv("TEST_ADMIN_DSN"), "Нужен отдельный тестовый PostgreSQL: TEST_ADMIN_DSN")
+def _approved_test_postgres():
+    """Интеграция создаёт и удаляет БД; запрещена без явного opt-in.
+
+    Предостережение: локальный порт может быть туннелем к production.
+    Проверяйте сам сервер PostgreSQL перед включением маркера.
+    """
+    from urllib.parse import urlsplit
+    dsn = os.getenv("TEST_ADMIN_DSN", "")
+    if os.getenv("PUSHOK_TEST_DB_ALLOWED") != "1":
+        return False
+    if not dsn.startswith(("postgresql://", "postgres://")):
+        return False
+    try:
+        parsed = urlsplit(dsn)
+        local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+        ci = (os.getenv("CI") == "true" or os.getenv("GITLAB_CI") == "true")
+        return ((local or (ci and parsed.hostname == "postgres"))
+                and parsed.path == "/postgres" and bool(parsed.username)
+                and parsed.password is not None and not parsed.fragment)
+    except ValueError:
+        return False
+
+
+@unittest.skipUnless(_approved_test_postgres(),
+    "Только тестовый PostgreSQL с PUSHOK_TEST_DB_ALLOWED=1 и TEST_ADMIN_DSN")
 class PostgresIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

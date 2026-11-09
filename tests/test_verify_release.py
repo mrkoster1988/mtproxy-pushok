@@ -63,6 +63,8 @@ class VerifyReleaseTests(unittest.TestCase):
         self.assertFalse(verify_release.allowed_test_dsn("postgresql://u:p@127.0.0.1/"))
         self.assertFalse(verify_release.allowed_test_dsn("postgresql://u:p@postgres/postgres"))
         self.assertTrue(verify_release.allowed_test_dsn("postgresql://u:p@localhost/postgres"))
+        self.assertFalse(verify_release.allowed_test_dsn("postgresql://u:p@localhost/production"))
+        self.assertFalse(verify_release.allowed_test_dsn("postgresql://u:p@localhost/mtproxy_pushok"))
         self.assertTrue(verify_release.allowed_test_dsn("postgresql://u:p@postgres/postgres", ci=True))
 
     def test_full_does_not_inherit_production_db_url(self):
@@ -74,6 +76,7 @@ class VerifyReleaseTests(unittest.TestCase):
         with patch.object(verify_release, "run_command", side_effect=fake):
             report = verify_release.verify(self.root, "full", allow_test_db=True,
                 env={"TEST_ADMIN_DSN": "postgresql://u:p@localhost/postgres",
+                     "PUSHOK_TEST_DB_ALLOWED": "1",
                      "DATABASE_URL": "postgresql://prod.example.com/live"})
         self.assertTrue(report["checks_passed"], report)
         self.assertEqual(calls[-1][1]["DATABASE_URL"], "postgresql://u:p@localhost/postgres")
@@ -88,10 +91,34 @@ class VerifyReleaseTests(unittest.TestCase):
     def test_full_fixture_tests_do_not_claim_release_acceptance(self):
         (self.root / "tests/test_postgres.py").write_text("import unittest\nclass T(unittest.TestCase):\n def test_fake(self): self.assertTrue(True)\n")
         report = verify_release.verify(self.root, "full", allow_test_db=True,
-                                       env={"TEST_ADMIN_DSN": "postgresql://u:p@localhost/postgres"})
+                                       env={"TEST_ADMIN_DSN": "postgresql://u:p@localhost/postgres",
+                                            "PUSHOK_TEST_DB_ALLOWED": "1"})
         self.assertTrue(report["checks_passed"], report)
         self.assertFalse(report["release_accepted"])
         self.assertEqual(report["checks"][-1]["name"], "all_python_tests_with_postgresql")
+
+    def test_full_refuses_unmarked_database(self):
+        (self.root / "tests/test_postgres.py").write_text("import unittest\n")
+        with patch.object(verify_release, "run_command") as command:
+            command.return_value = {"name": "cmd", "passed": True, "detail": "ok"}
+            report = verify_release.verify(
+                self.root, "full", allow_test_db=True,
+                env={"TEST_ADMIN_DSN": "postgresql://u:p@localhost/postgres"}
+            )
+        self.assertFalse(report["checks_passed"])
+        self.assertEqual(command.call_count, 2)
+
+    def test_full_rejects_local_production_dbname_even_with_marker(self):
+        (self.root / "tests/test_postgres.py").write_text("import unittest\n")
+        with patch.object(verify_release, "run_command") as command:
+            command.return_value = {"name": "cmd", "passed": True, "detail": "ok"}
+            report = verify_release.verify(
+                self.root, "full", allow_test_db=True,
+                env={"TEST_ADMIN_DSN": "postgresql://u:p@localhost/pushok_prod",
+                     "PUSHOK_TEST_DB_ALLOWED": "1"}
+            )
+        self.assertFalse(report["checks_passed"])
+        self.assertEqual(command.call_count, 2)
 
 
 if __name__ == "__main__":

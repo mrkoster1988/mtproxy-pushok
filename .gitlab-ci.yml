@@ -9,6 +9,7 @@ variables:
   POSTGRES_USER: postgres
   POSTGRES_PASSWORD: ci-test-only
   TEST_ADMIN_DSN: "postgresql://postgres:ci-test-only@postgres:5432/postgres"
+  PUSHOK_TEST_DB_ALLOWED: "1"
   DATABASE_URL: "postgresql://postgres:ci-test-only@postgres:5432/postgres"
 
 test:

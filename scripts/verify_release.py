@@ -19,7 +19,11 @@ LOOPBACK_HOSTS = frozenset(("localhost", "127.0.0.1", "::1"))
 
 
 def allowed_test_dsn(dsn, *, ci=False):
-    """Риск CREATE/DROP DATABASE: только локальная тестовая БД/CI service."""
+    """Только явный тестовый endpoint; localhost сам по себе не гарантия.
+
+    Защищает от случайной ошибки адреса, но не от намеренно
+    перенаправленного порта. Перед запуском проверить инстанс PostgreSQL.
+    """
     if not isinstance(dsn, str) or not dsn.startswith(("postgresql://", "postgres://")):
         return False
     try:
@@ -27,10 +31,15 @@ def allowed_test_dsn(dsn, *, ci=False):
         host = (url.hostname or "").lower()
         if host not in LOOPBACK_HOSTS and not (ci and host == "postgres"):
             return False
-        return bool(url.path and url.path != "/") and bool(url.username)
+        if url.port is not None and not 1 <= url.port <= 65535:
+            return False
+        if url.path != "/postgres" or not url.username or url.password is None:
+            return False
+        if url.fragment:
+            return False
+        return True
     except ValueError:
         return False
-
 
 def result(name, passed, detail):
     return {"name": name, "passed": bool(passed), "detail": detail}
@@ -85,16 +94,21 @@ def verify(root, mode="offline", *, allow_test_db=False, env=None):
 
     if mode == "full":
         dsn = env.get("TEST_ADMIN_DSN", "")
-        allowed = allow_test_db and allowed_test_dsn(dsn, ci=env.get("CI") == "true"
-                                                     or env.get("GITLAB_CI") == "true")
+        allowed = (
+            allow_test_db
+            and env.get("PUSHOK_TEST_DB_ALLOWED") == "1"
+            and allowed_test_dsn(dsn, ci=env.get("CI") == "true"
+                                 or env.get("GITLAB_CI") == "true")
+        )
         checks.append(result("isolated_test_database", allowed,
-                             "explicit_opt_in_and_loopback_or_CI_service_required"))
+                             "explicit_opt_in_marker_and_test_postgres_required"))
         suite_exists = (root / "tests/test_postgres.py").is_file()
         checks.append(result("postgres_integration_suite_present", suite_exists,
                              "tests/test_postgres.py must exist"))
         if allowed and suite_exists and all(item["passed"] for item in checks):
             safe_env = dict(env)
             safe_env["DATABASE_URL"] = dsn
+            safe_env["PUSHOK_TEST_DB_ALLOWED"] = "1"
             full = run_command([sys.executable, "-m", "unittest", "discover", "-s",
                                 "tests", "-v"], root=root, env=safe_env, timeout=1200)
             full["name"] = "all_python_tests_with_postgresql"
@@ -116,7 +130,7 @@ def main():
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--mode", choices=("offline", "full"), default="offline")
     parser.add_argument("--allow-test-db", action="store_true",
-                        help="Явно разрешить создание и удаление тестовой БД")
+                        help="Явно разрешить создание и удаление временной базы на проверенном тестовом PostgreSQL")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
     report = verify(args.root, mode=args.mode, allow_test_db=args.allow_test_db)
