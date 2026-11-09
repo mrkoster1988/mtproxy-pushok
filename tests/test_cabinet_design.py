@@ -106,7 +106,7 @@ class CabinetDesignTests(unittest.TestCase):
         main = (ROOT / "api/app/main.py").read_text(encoding="utf-8")
         setup = (ROOT / "setup.sh").read_text(encoding="utf-8")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        match = re.search(r"Версия проекта: v(\\d+\\.\\d+)\\.", readme)
+        match = re.search(r"Версия проекта: v(\d+\.\d+)\.", readme)
         self.assertIsNotNone(match)
         release = match.group(1)
         self.assertIn('version="' + release + '"', main)
