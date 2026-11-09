@@ -145,6 +145,24 @@ class PlacementScheduleRequest(BaseModel):
     start_at: datetime
 
 
+class PlacementActivationRequest(BaseModel):
+    """Ручная аттестация оператора, а не проверка через Telegram API."""
+
+    model_config = ConfigDict(extra="forbid")
+    tag_applied_on_node: Literal[True]
+    mtproxybot_promotion_selected: Literal[True]
+    independent_client_checked: Literal[True]
+    verification_note: str = Field(min_length=20, max_length=500)
+
+    @field_validator("verification_note")
+    @classmethod
+    def normalize_verification_note(cls, value: str) -> str:
+        note = value.strip()
+        if len(note) < 20:
+            raise ValueError("Опишите результат ручной проверки (не менее 20 символов)")
+        return note
+
+
 class PaymentProofResponse(BaseModel):
     id: UUID
     original_file_name: str
@@ -863,32 +881,56 @@ def schedule_placement(
 @app.post("/api/v1/operator/campaigns/{campaign_id}/activate", response_model=CampaignResponse, tags=["operator"])
 def activate_placement(
     campaign_id: UUID,
+    payload: PlacementActivationRequest,
     operator: dict[str, Any] = Depends(require_operator),
 ) -> CampaignResponse:
+    """Атомарная проверка готовности и фиксация ручного подтверждения оператора.
+
+    Здесь нет вызовов Telegram и MTProxy; аттестация не является телеметрией.
+    """
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             row = connection.execute(
                 """
-                UPDATE campaigns
+                UPDATE campaigns AS c
                 SET placement_status = 'active', updated_at = now()
-                WHERE id = %s AND placement_status = 'scheduled'
-                  AND scheduled_start_at <= now() AND scheduled_end_at > now()
-                RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
-                          duration_seconds_snapshot, price_kopecks_snapshot,
-                          currency_snapshot, moderation_status, payment_status,
-                          placement_status, requested_start_at, scheduled_start_at,
-                          scheduled_end_at, moderator_comment
+                FROM proxy_nodes AS n, sponsor_channels AS sc,
+                     proxy_sponsor_registrations AS sr
+                WHERE c.id = %s AND c.placement_status = 'scheduled'
+                  AND c.moderation_status = 'approved'
+                  AND c.payment_status = 'verified'
+                  AND c.scheduled_start_at <= now() AND c.scheduled_end_at > now()
+                  AND n.id = c.proxy_node_id AND n.status = 'active'
+                  AND sc.id = c.channel_id AND sc.telegram_channel_id IS NOT NULL
+                  AND sr.proxy_node_id = n.id
+                  AND (n.target_engine IS NULL OR sr.engine = n.target_engine)
+                RETURNING c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
+                          c.duration_seconds_snapshot, c.price_kopecks_snapshot,
+                          c.currency_snapshot, c.moderation_status, c.payment_status,
+                          c.placement_status, c.requested_start_at, c.scheduled_start_at,
+                          c.scheduled_end_at, c.moderator_comment
                 """,
                 (campaign_id,),
             ).fetchone()
             if row is None:
-                exists = connection.execute("SELECT 1 FROM campaigns WHERE id = %s", (campaign_id,)).fetchone()
+                exists = connection.execute(
+                    "SELECT 1 FROM campaigns WHERE id = %s", (campaign_id,)
+                ).fetchone()
                 if exists is None:
                     raise HTTPException(status_code=404, detail="campaign_not_found")
-                raise HTTPException(status_code=409, detail="placement_not_in_active_window")
+                raise HTTPException(status_code=409, detail="placement_not_ready_or_outside_window")
             connection.execute(
-                "INSERT INTO audit_events (actor_user_id, campaign_id, event_type) VALUES (%s, %s, 'placement_activated_manually')",
-                (operator["id"], campaign_id),
+                """
+                INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
+                VALUES (%s, %s, 'placement_activated_manually',
+                        jsonb_build_object(
+                            'source', 'operator_attestation',
+                            'tag_applied_on_node', true,
+                            'mtproxybot_promotion_selected', true,
+                            'independent_client_checked', true,
+                            'verification_note', %s::text))
+                """,
+                (operator["id"], campaign_id, payload.verification_note),
             )
     except HTTPException:
         raise
