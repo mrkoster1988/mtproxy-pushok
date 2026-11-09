@@ -34,7 +34,7 @@ from .core_readiness import core_readiness, core_diagnostic_plan
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.031",
+    version="0.032",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
