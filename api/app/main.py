@@ -32,10 +32,11 @@ from .sponsor_planner import build_readiness, normalize_ad_tag, render_config_fr
 from .engine_adapters import recommend_engine, engine_catalog
 from .core_readiness import core_readiness, core_diagnostic_plan
 from .slot_calendar import slot_status
+from .slot_holds import normalize_hold_window
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.033",
+    version="0.034",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -142,6 +143,11 @@ class PaymentReviewRequest(BaseModel):
 
 
 class PlacementScheduleRequest(BaseModel):
+    proxy_node_id: UUID
+    start_at: datetime
+
+
+class SlotHoldRequest(BaseModel):
     proxy_node_id: UUID
     start_at: datetime
 
@@ -793,6 +799,111 @@ def review_payment(
     return _campaign_response(row)
 
 
+@app.post("/api/v1/campaigns/{campaign_id}/slot-hold", status_code=201, tags=["calendar"])
+def create_slot_hold(
+    campaign_id: UUID,
+    payload: SlotHoldRequest,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """15-минутная бронь перед оплатой, без списания или изменения MTProxy."""
+    if payload.start_at.tzinfo is None or payload.start_at.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="slot_start_requires_timezone")
+    if payload.start_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=422, detail="slot_start_must_be_future")
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            campaign = connection.execute(
+                """SELECT id, duration_seconds_snapshot, moderation_status,
+                          payment_status, placement_status
+                   FROM campaigns WHERE id = %s AND advertiser_user_id = %s FOR UPDATE""",
+                (campaign_id, user["id"]),
+            ).fetchone()
+            if campaign is None:
+                raise HTTPException(status_code=404, detail="campaign_not_found")
+            if (
+                campaign["moderation_status"] != "approved"
+                or campaign["payment_status"] not in ("awaiting_payment", "proof_submitted", "rejected")
+                or campaign["placement_status"] != "not_scheduled"
+            ):
+                raise HTTPException(status_code=409, detail="campaign_not_holdable")
+            start, end, expires = normalize_hold_window(
+                payload.start_at, campaign["duration_seconds_snapshot"]
+            )
+            node = connection.execute(
+                "SELECT id FROM proxy_nodes WHERE id = %s AND status = 'active' FOR UPDATE",
+                (payload.proxy_node_id,),
+            ).fetchone()
+            if node is None:
+                raise HTTPException(status_code=404, detail="active_proxy_node_not_found")
+            connection.execute(
+                "DELETE FROM slot_holds WHERE proxy_node_id = %s AND expires_at <= now()",
+                (payload.proxy_node_id,),
+            )
+            occupied = connection.execute(
+                """SELECT 1 FROM campaigns
+                   WHERE proxy_node_id = %s AND placement_status IN ('scheduled','active')
+                     AND tstzrange(scheduled_start_at, scheduled_end_at, '[)')
+                         && tstzrange(%s, %s, '[)')
+                   LIMIT 1""",
+                (payload.proxy_node_id, start, end),
+            ).fetchone()
+            if occupied is not None:
+                raise HTTPException(status_code=409, detail="proxy_node_slot_unavailable")
+            # Старую бронь этого рекламодателя разрешено заменить атомарно.
+            connection.execute("DELETE FROM slot_holds WHERE campaign_id = %s", (campaign_id,))
+            hold = connection.execute(
+                """INSERT INTO slot_holds
+                     (campaign_id, proxy_node_id, starts_at, ends_at, expires_at)
+                   VALUES (%s, %s, %s, %s, %s)
+                   RETURNING id, starts_at, ends_at, expires_at""",
+                (campaign_id, payload.proxy_node_id, start, end, expires),
+            ).fetchone()
+            connection.execute(
+                """INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
+                   VALUES (%s, %s, 'slot_hold_created',
+                           jsonb_build_object('proxy_node_id', %s::text,
+                                              'expires_at', %s::text))""",
+                (user["id"], campaign_id, str(payload.proxy_node_id), expires.isoformat()),
+            )
+    except ExclusionViolation as exc:
+        raise HTTPException(status_code=409, detail="slot_held_by_another_campaign") from exc
+    except UniqueViolation as exc:
+        raise HTTPException(status_code=409, detail="slot_hold_conflict") from exc
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return {"id": hold["id"], "campaign_id": campaign_id, "proxy_node_id": payload.proxy_node_id,
+            "starts_at": hold["starts_at"], "ends_at": hold["ends_at"],
+            "expires_at": hold["expires_at"], "payment_verified": False,
+            "placement_started": False}
+
+
+@app.delete("/api/v1/campaigns/{campaign_id}/slot-hold", status_code=204, tags=["calendar"])
+def cancel_slot_hold(
+    campaign_id: UUID,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> Response:
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            campaign = connection.execute(
+                "SELECT id FROM campaigns WHERE id = %s AND advertiser_user_id = %s FOR UPDATE",
+                (campaign_id, user["id"]),
+            ).fetchone()
+            if campaign is None:
+                raise HTTPException(status_code=404, detail="campaign_not_found")
+            connection.execute("DELETE FROM slot_holds WHERE campaign_id = %s", (campaign_id,))
+            connection.execute(
+                "INSERT INTO audit_events (actor_user_id, campaign_id, event_type) VALUES (%s, %s, 'slot_hold_cancelled')",
+                (user["id"], campaign_id),
+            )
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return Response(status_code=204)
+
+
 @app.post("/api/v1/operator/campaigns/{campaign_id}/schedule", response_model=CampaignResponse, tags=["operator"])
 def schedule_placement(
     campaign_id: UUID,
@@ -829,6 +940,21 @@ def schedule_placement(
             if node is None:
                 raise HTTPException(status_code=404, detail="active_proxy_node_not_found")
             end_at = start_at + timedelta(seconds=campaign["duration_seconds_snapshot"])
+            connection.execute(
+                "DELETE FROM slot_holds WHERE proxy_node_id = %s AND expires_at <= now()",
+                (payload.proxy_node_id,),
+            )
+            other_hold = connection.execute(
+                """SELECT 1 FROM slot_holds
+                   WHERE proxy_node_id = %s AND campaign_id <> %s AND expires_at > now()
+                     AND tstzrange(starts_at, ends_at, '[)')
+                         && tstzrange(%s, %s, '[)')
+                   LIMIT 1""",
+                (payload.proxy_node_id, campaign_id, start_at, end_at),
+            ).fetchone()
+            if other_hold is not None:
+                raise HTTPException(status_code=409, detail="slot_held_by_another_campaign")
+            connection.execute("DELETE FROM slot_holds WHERE campaign_id = %s", (campaign_id,))
             row = connection.execute(
                 """
                 UPDATE campaigns
@@ -1401,6 +1527,12 @@ def get_availability(
                       AND tstzrange(c.scheduled_start_at, c.scheduled_end_at, '[)')
                           && tstzrange(w.starts_at, w.ends_at, '[)')
                   )
+                  AND NOT EXISTS (
+                    SELECT 1 FROM slot_holds AS h
+                    WHERE h.proxy_node_id = n.id AND h.expires_at > now()
+                      AND tstzrange(h.starts_at, h.ends_at, '[)')
+                          && tstzrange(w.starts_at, w.ends_at, '[)')
+                  )
                 GROUP BY w.starts_at ORDER BY w.starts_at
                 """, (valid, ends),
             ).fetchall() if valid else []
@@ -1411,7 +1543,8 @@ def get_availability(
     counts = {row["starts_at"]: row["available_nodes"] for row in rows}
     return {
         "tariff_id": tariff_id, "timezone": timezone_name,
-        "duration_seconds": tariff["duration_seconds"], "reservation": False,
+        "duration_seconds": tariff["duration_seconds"], "reservation": True,
+        "hold_ttl_seconds": 900,
         "days": [
             {"date": dt.date().isoformat(), "start_at": dt.isoformat(),
              "end_at": (dt.astimezone(timezone.utc) + duration).isoformat(),
