@@ -318,3 +318,14 @@ footer { margin-top: 64px; padding: 26px 0 34px; border-top: 1px solid #33495a; 
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+/* v0.036 — бронирование рекламного слота внутри карточки кампании. */
+.slot-hold-panel { margin-top: 17px; padding: 18px; border: 1px solid rgba(105,224,209,.45);
+  border-radius: 14px; background: rgba(10,43,52,.52); display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.slot-hold-panel h4 { width: 100%; margin: 0; font-size: 15px; color: #bdf3e5; }
+.slot-hold-panel p { width: 100%; margin: 0; }
+.slot-hold-panel input, .slot-hold-panel select { width: min(100%, 280px); }
+.slot-hold-panel .hold-timer { font-size: 19px; font-weight: 850; color: #a5f8d3; }
+@media (max-width: 520px) {
+ .slot-hold-panel { flex-direction: column; align-items: stretch; }
+ .slot-hold-panel input, .slot-hold-panel select, .slot-hold-panel button { width: 100%; max-width: none; }
+}

@@ -36,7 +36,7 @@ from .slot_holds import normalize_hold_window
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.035",
+    version="0.036",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -877,6 +877,76 @@ def create_slot_hold(
             "starts_at": hold["starts_at"], "ends_at": hold["ends_at"],
             "expires_at": hold["expires_at"], "payment_verified": False,
             "placement_started": False}
+
+
+
+@app.get("/api/v1/campaigns/{campaign_id}/slot-options", tags=["calendar"])
+def list_campaign_slot_options(
+    campaign_id: UUID,
+    start_at: datetime,
+    user: dict[str, Any] = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Read-only подбор узлов для своего заказа; адреса и секреты не выдаются.
+
+    Итоговую бронь проверяет POST /slot-hold под блокировкой узла.
+    """
+    if start_at.tzinfo is None or start_at.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="slot_start_requires_timezone")
+    start_utc = start_at.astimezone(timezone.utc)
+    now = datetime.now(timezone.utc)
+    if start_utc <= now or start_utc > now + timedelta(days=90):
+        raise HTTPException(status_code=422, detail="slot_start_out_of_range")
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            campaign = connection.execute(
+                """SELECT duration_seconds_snapshot, moderation_status,
+                          payment_status, placement_status
+                   FROM campaigns
+                   WHERE id = %s AND advertiser_user_id = %s""",
+                (campaign_id, user["id"]),
+            ).fetchone()
+            if campaign is None:
+                raise HTTPException(status_code=404, detail="campaign_not_found")
+            if (
+                campaign["moderation_status"] != "approved"
+                or campaign["payment_status"] not in ("awaiting_payment", "proof_submitted", "rejected")
+                or campaign["placement_status"] != "not_scheduled"
+            ):
+                raise HTTPException(status_code=409, detail="campaign_not_holdable")
+            end_utc = start_utc + timedelta(seconds=campaign["duration_seconds_snapshot"])
+            rows = connection.execute(
+                """SELECT n.id FROM proxy_nodes AS n
+                   WHERE n.status = 'active'
+                     AND NOT EXISTS (
+                        SELECT 1 FROM campaigns AS c
+                        WHERE c.proxy_node_id = n.id
+                          AND c.placement_status IN ('scheduled', 'active')
+                          AND tstzrange(c.scheduled_start_at, c.scheduled_end_at, '[)')
+                              && tstzrange(%s, %s, '[)')
+                     )
+                     AND NOT EXISTS (
+                        SELECT 1 FROM slot_holds AS h
+                        WHERE h.proxy_node_id = n.id AND h.expires_at > now()
+                          AND h.campaign_id <> %s
+                          AND tstzrange(h.starts_at, h.ends_at, '[)')
+                              && tstzrange(%s, %s, '[)')
+                     )
+                   ORDER BY n.id LIMIT 20""",
+                (start_utc, end_utc, campaign_id, start_utc, end_utc),
+            ).fetchall()
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return {
+        "campaign_id": campaign_id,
+        "start_at": start_utc,
+        "end_at": end_utc,
+        "nodes": [{"id": row["id"], "title": f"Прокси №{index + 1}"}
+                  for index, row in enumerate(rows)],
+        "reservation_created": False,
+        "note": "Доступность справочная; при удержании слот проверяется повторно.",
+    }
 
 
 @app.get("/api/v1/campaigns/{campaign_id}/slot-hold", tags=["calendar"])

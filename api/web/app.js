@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 let token=sessionStorage.getItem('pushok-session')||'',me=null,channels=[],tariffs=[],nodes=[];
 const labels={draft:'Черновик',pending:'На модерации',approved:'Канал одобрен',rejected:'Отклонено',changes_requested:'Нужны исправления',not_required:'Оплата после одобрения',awaiting_payment:'Ожидается оплата',proof_submitted:'Чек на проверке',verified:'Оплата подтверждена',refunded:'Возврат',not_scheduled:'Слот не назначен',scheduled:'Запланировано',active:'Размещение активно',completed:'Завершено',cancelled:'Отменено'};
-const errors={invalid_calendar_range:'Выберите период в пределах ближайших 90 дней, не больше 31 дня.',invalid_calendar_timezone:'Часовой пояс не поддерживается.',active_tariff_not_found:'Тариф больше недоступен. Обновите страницу.',payment_instructions_not_configured:'Реквизиты ещё не настроены. Дождитесь инструкции администратора перед оплатой.',campaign_not_editable:'Заявку сейчас нельзя редактировать или отправить повторно.',channel_in_review_or_approved:'Этот канал связан с заявкой на проверке или одобренным размещением. Его изменение заблокировано.',admin_role_required:'Действие доступно владельцу.',invalid_proxy_host:'Укажите домен или IP без протокола и порта.',proxy_node_already_exists:'Этот адрес и порт уже добавлены.',proxy_node_has_placements:'На узле есть запланированное или активное размещение. Сначала завершите его.',authentication_required:'Войдите через Telegram.',session_revoked_or_expired:'Сессия завершена. Войдите снова.',telegram_login_expired:'Данные входа устарели. Повторите вход.',telegram_login_replayed:'Повторите вход через Telegram.',telegram_login_invalid_signature:'Telegram не подтвердил вход.',database_unavailable:'База данных временно недоступна.',invalid_telegram_channel_url:'Укажите ссылку вида https://t.me/channel.',channel_title_required:'Введите название канала.',channel_already_added:'Этот канал уже добавлен.',payment_proof_too_large:'Файл должен быть меньше 5 МБ.',unsupported_payment_proof_format:'Загрузите JPEG, PNG или PDF.',payment_proof_content_type_mismatch:'Тип файла не соответствует содержимому.',payment_proof_storage_unavailable:'Хранилище чеков временно недоступно.',proxy_node_slot_unavailable:'Этот слот уже занят. Выберите другое время или узел.',placement_not_in_active_window:'Активация доступна только в назначенное время.',campaign_not_ready_for_placement:'Для размещения нужны одобрение канала и подтверждённая оплата.',operator_role_required:'Нужны права оператора.',payment_proof_not_expected:'Заявка сейчас не ожидает чек.',campaign_not_draft:'Эта заявка уже отправлена.',campaign_not_pending:'Заявка уже обработана.',payment_proof_not_pending_review:'Оплата уже обработана.',channel_or_active_tariff_not_found:'Выберите свой канал и действующий тариф.',schedule_start_must_be_future:'Выберите время в будущем.'};
+const errors={active_slot_hold_not_found:'Активной брони нет.',slot_start_requires_timezone:'Укажите время с часовым поясом.',slot_start_out_of_range:'Выберите время в пределах ближайших 90 дней.',campaign_not_holdable:'Бронирование доступно только после модерации и до подтверждения оплаты.',slot_held_by_another_campaign:'Место занято другой бронью.',slot_hold_conflict:'Бронь уже существует. Обновите состояние.',invalid_calendar_range:'Выберите период в пределах ближайших 90 дней, не больше 31 дня.',invalid_calendar_timezone:'Часовой пояс не поддерживается.',active_tariff_not_found:'Тариф больше недоступен. Обновите страницу.',payment_instructions_not_configured:'Реквизиты ещё не настроены. Дождитесь инструкции администратора перед оплатой.',campaign_not_editable:'Заявку сейчас нельзя редактировать или отправить повторно.',channel_in_review_or_approved:'Этот канал связан с заявкой на проверке или одобренным размещением. Его изменение заблокировано.',admin_role_required:'Действие доступно владельцу.',invalid_proxy_host:'Укажите домен или IP без протокола и порта.',proxy_node_already_exists:'Этот адрес и порт уже добавлены.',proxy_node_has_placements:'На узле есть запланированное или активное размещение. Сначала завершите его.',authentication_required:'Войдите через Telegram.',session_revoked_or_expired:'Сессия завершена. Войдите снова.',telegram_login_expired:'Данные входа устарели. Повторите вход.',telegram_login_replayed:'Повторите вход через Telegram.',telegram_login_invalid_signature:'Telegram не подтвердил вход.',database_unavailable:'База данных временно недоступна.',invalid_telegram_channel_url:'Укажите ссылку вида https://t.me/channel.',channel_title_required:'Введите название канала.',channel_already_added:'Этот канал уже добавлен.',payment_proof_too_large:'Файл должен быть меньше 5 МБ.',unsupported_payment_proof_format:'Загрузите JPEG, PNG или PDF.',payment_proof_content_type_mismatch:'Тип файла не соответствует содержимому.',payment_proof_storage_unavailable:'Хранилище чеков временно недоступно.',proxy_node_slot_unavailable:'Этот слот уже занят. Выберите другое время или узел.',placement_not_in_active_window:'Активация доступна только в назначенное время.',campaign_not_ready_for_placement:'Для размещения нужны одобрение канала и подтверждённая оплата.',operator_role_required:'Нужны права оператора.',payment_proof_not_expected:'Заявка сейчас не ожидает чек.',campaign_not_draft:'Эта заявка уже отправлена.',campaign_not_pending:'Заявка уже обработана.',payment_proof_not_pending_review:'Оплата уже обработана.',channel_or_active_tariff_not_found:'Выберите свой канал и действующий тариф.',schedule_start_must_be_future:'Выберите время в будущем.'};
 function notice(message,ok=false){$('notice').textContent=message;$('notice').className=ok?'ok':'';$('notice').hidden=false;}
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x;}
 function button(text,fn){const b=el('button',text);b.type='button';b.addEventListener('click',()=>run(fn,b));return b;}
@@ -19,6 +19,78 @@ function option(select,value,text){const o=el('option',text);o.value=value;selec
 function money(n){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(n/100);}
 function date(v){return v?new Date(v).toLocaleString('ru-RU'):'Не назначено';}
 function operatorView(on){$('advertiser').hidden=on;$('operator').hidden=!on;$('advertiser-tab').classList.toggle('selected',!on);$('operator-tab').classList.toggle('selected',on);}
+
+const holdEligibility=c=>c.moderation_status==='approved' &&
+ ['awaiting_payment','proof_submitted','rejected'].includes(c.payment_status) &&
+ c.placement_status==='not_scheduled';
+
+async function renderHoldPanel(c,panel){
+ panel.replaceChildren(el('h4','Резервирование слота'),el('p','Бронь действует 15 минут. Оплату проверяет оператор; размещение не начинается автоматически.','muted'));
+ let hold=null;
+ try{hold=await api('/campaigns/'+c.id+'/slot-hold');}
+ catch(e){
+  if(e.message!==errors.active_slot_hold_not_found){
+   panel.append(el('p',e.message,'muted'));
+   panel.append(button('Повторить проверку',()=>renderHoldPanel(c,panel)));return;
+  }
+ }
+ if(hold){
+  const status=el('p',undefined,'hold-timer');
+  panel.append(status,el('p','Назначенный период: '+date(hold.starts_at)+' — '+date(hold.ends_at),'muted'));
+  const initial=Math.max(0,Number(hold.remaining_seconds)||0),since=performance.now();
+  const update=()=>{
+   const seconds=Math.max(0,Math.ceil(initial-(performance.now()-since)/1000));
+   status.textContent=seconds?'До освобождения слота: '+Math.floor(seconds/60)+' мин '+String(seconds%60).padStart(2,'0')+' сек':'Срок брони истёк. Обновите состояние.';
+   return seconds;
+  };
+  update();
+  const ticker=setInterval(()=>{if(!panel.isConnected||!update())clearInterval(ticker);},1000);
+  panel.append(button('Обновить состояние',()=>renderHoldPanel(c,panel)));
+  panel.append(button('Отменить бронь',async()=>{
+   if(!confirm('Освободить временно зарезервированный слот?'))return;
+   await api('/campaigns/'+c.id+'/slot-hold',{method:'DELETE'});
+   await renderHoldPanel(c,panel);await loadAvailability();notice('Бронь отменена.',true);
+  }));
+  return;
+ }
+ const start=el('input');start.type='datetime-local';start.required=true;start.setAttribute('aria-label','Начало брони');
+ const candidate=c.requested_start_at?new Date(c.requested_start_at):new Date(Date.now()+24*3600*1000);
+ const proposed=candidate.getTime()>Date.now()?candidate:new Date(Date.now()+24*3600*1000);
+ start.value=localDay(proposed)+'T'+String(proposed.getHours()).padStart(2,'0')+':'+String(proposed.getMinutes()).padStart(2,'0');
+ const select=el('select');select.setAttribute('aria-label','Свободный прокси');
+ option(select,'','Сначала найдите свободные прокси');
+ select.disabled=true;
+ start.addEventListener('change',()=>{select.replaceChildren();option(select,'','Обновите список свободных прокси');select.disabled=true;});
+ const hint=el('p','Выберите время, затем проверьте наличие свободного прокси.','muted');
+ const find=button('Найти свободные прокси',async()=>{
+  if(!start.value)throw Error('Укажите начало размещения.');
+  const requested=new Date(start.value);
+  if(Number.isNaN(requested.getTime()))throw Error('Неверные дата или время.');
+  const data=await api('/campaigns/'+c.id+'/slot-options?'+new URLSearchParams({start_at:requested.toISOString()}));
+  select.replaceChildren();option(select,'','Выберите прокси');
+  data.nodes.forEach(n=>option(select,n.id,n.title));
+  select.disabled=!data.nodes.length;
+  hint.textContent=data.nodes.length?'Найдено свободных прокси: '+data.nodes.length+'. Доступность проверится ещё раз при брони.':'На это время свободных прокси нет.';
+ });
+ const book=button('Забронировать на 15 минут',async()=>{
+  if(!select.value||!start.value)throw Error('Сначала выберите свободный прокси и время.');
+  await api('/campaigns/'+c.id+'/slot-hold',{method:'POST',body:{
+   proxy_node_id:select.value,start_at:new Date(start.value).toISOString()
+  }});
+  await renderHoldPanel(c,panel);await loadAvailability();notice('Слот временно забронирован. Оплата ещё не подтверждена.',true);
+ });
+ panel.append(start,find,select,hint,book);
+}
+function addHoldAction(c,box,actions){
+ if(!holdEligibility(c))return;
+ actions.append(button('Бронь на 15 минут',async()=>{
+  let panel=box.querySelector('.slot-hold-panel');
+  if(panel){panel.remove();return;}
+  panel=el('section',undefined,'slot-hold-panel');
+  box.append(panel);await renderHoldPanel(c,panel);
+ }));
+}
+
 function card(c,op){
  const box=el('article',undefined,'card'),head=el('div',undefined,'cardhead');
  head.append(el('h3',(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||'Заявка')+' · '+c.id.slice(0,8)),el('span',labels[c.placement_status]||c.placement_status,'badge badge--'+c.placement_status));box.append(head);
@@ -30,6 +102,7 @@ function card(c,op){
  const actions=el('div',undefined,'actions');box.append(actions);
  const change=async(path,body)=>{await api('/operator/campaigns/'+c.id+'/'+path,{method:'POST',body});notice('Изменения сохранены.',true);await refresh();};
  if(!op){
+  addHoldAction(c,box,actions);
   if(c.moderation_status==='approved'&&['awaiting_payment','rejected','proof_submitted','verified'].includes(c.payment_status)){
    actions.append(button('Реквизиты и сумма',async()=>{
     if(box.querySelector('.payment-instructions'))return;
@@ -172,9 +245,10 @@ async function loadAvailability(){
   const data=await api('/availability?'+params);
   if(request!==calendarRequest)return;
   $('availability-days').replaceChildren(...data.days.map(day=>{
-   const b=button(new Date(day.start_at).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})+' · '+(day.available_nodes?'Свободно: '+day.available_nodes:'Нет мест'),async()=>{
+   const calendarLabels={available:'Свободно: '+day.available_nodes,occupied:'Нет мест',past:'Время прошло',invalid_local_time:'Нет такого времени',ambiguous_local_time:'Неоднозначное время'};
+   const b=button(new Date(day.start_at).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})+' · '+(calendarLabels[day.status]||'Недоступно'),async()=>{
     clearRequestedDate();b.setAttribute('aria-pressed','true');$('requested-start').value=day.start_at;$('calendar-selection').textContent='Желаемое начало: '+date(day.start_at);
-   });b.disabled=day.available_nodes<1;b.setAttribute('aria-pressed','false');return b;
+   });b.disabled=day.status!=='available'||day.available_nodes<1;b.setAttribute('aria-pressed','false');return b;
   }));
  }catch(e){if(request===calendarRequest){$('availability-days').replaceChildren(el('p','Не удалось получить доступные даты.','muted'));throw e;}}
 }
