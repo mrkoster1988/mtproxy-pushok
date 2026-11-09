@@ -97,6 +97,19 @@ $('engine-preview').addEventListener('click',()=>run(async()=>{
  $('engine-advice').textContent='План: '+plan.title+' · '+plan.availability+
   '. Не установлено и не проверено. Смена работающего прокси не выполняется.';
 }));
+async function renderCoreReadiness(){
+ if(me?.role!=='admin')return;
+ try{
+  const report=await api('/admin/pushok-core/readiness');
+  const message=(report.source_pinned?'Исходный код закреплён. ':'Источник не подтверждён. ')+
+   'Проверка бинарника на этом сервере: '+(report.local_build_verified===true?'подтверждена':'не проводилась')+
+   '. Работа MTProxy: '+(report.runtime_status==='not_checked'?'не проверялась':report.runtime_status)+
+   '. Подключение Telegram и показ спонсора не подтверждены. Никаких действий на сервере.';
+  $('core-readiness').textContent=message;
+ }catch{
+  $('core-readiness').textContent='Не удалось получить состояние подготовки ядра. Это не означает, что прокси работает.';
+ }
+}
 function renderNodes(){
  $('node-admin').hidden=me?.role!=='admin';
  $('nodes-list').replaceChildren(...nodes.map(n=>{
@@ -125,7 +138,7 @@ async function refresh(){
  const own=await api('/campaigns');$('campaigns').replaceChildren(...own.map(c=>card(c,false)));$('campaign-count').textContent=own.length+' заявок';
  if(!own.length)$('campaigns').append(el('div','Заявок пока нет. Добавьте канал и создайте первое размещение.','empty'));
  if(me&&['operator','admin'].includes(me.role)){
-  nodes=await api('/operator/proxy-nodes');renderNodes();
+  nodes=await api('/operator/proxy-nodes');renderNodes();if(me.role==='admin')await renderCoreReadiness();
   const queue=await api('/operator/campaigns'+($('queue-filter').value?'?'+$('queue-filter').value:''));
   $('queue-count').textContent=queue.length+' заявок';
   $('queue').replaceChildren(...queue.map(c=>card(c,true)));if(!queue.length)$('queue').append(el('div','В этой очереди пока нет заявок.','empty'));
