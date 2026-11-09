@@ -17,6 +17,13 @@ from scripts import core_stage, core_tcp_smoke
 
 
 class IsolatedTCPTests(unittest.TestCase):
+    def setUp(self):
+        # The Compose smoke harness runs unit tests as root, but real staging
+        # explicitly refuses root. Simulate the regular developer UID here.
+        user = patch.object(core_tcp_smoke.os, "geteuid", return_value=1001)
+        user.start()
+        self.addCleanup(user.stop)
+
     def test_config_is_loopback_only_and_never_registers_sponsor(self):
         config = core_tcp_smoke.safe_config()
         parsed = tomllib.loads(config)
