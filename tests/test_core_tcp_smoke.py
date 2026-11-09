@@ -81,7 +81,8 @@ class IsolatedTCPTests(unittest.TestCase):
                 if cmd[:3] == ["docker", "image", "inspect"]:
                     return subprocess.CompletedProcess(cmd, 0, b"", b"")
                 if cmd[:2] == ["docker", "run"]:
-                    mount = cmd[cmd.index("--mount")+2]
+                    mounts = [cmd[i + 1] for i, flag in enumerate(cmd[:-1]) if flag == "--mount"]
+                    mount = mounts[1]
                     config_dir = Path(mount.split("source=")[1].split(",target=")[0])
                     config = config_dir / "probe.toml"
                     self.assertEqual(config.stat().st_mode & 0o777, 0o600)
