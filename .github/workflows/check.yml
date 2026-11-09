@@ -73,6 +73,14 @@ jobs:
           sha256sum -c ./*.sha256
           test -s TELEMT-LICENSE
           test -s PATCHES.md
+      - name: Verify offline CLI, stage the candidate and roll back the marker
+        run: |
+          python3 scripts/core_stage.py --plan
+          python3 scripts/core_stage.py --inspect
+          python3 scripts/core_stage.py --activate
+          python3 scripts/core_stage.py --rollback
+          python3 -c 'import json; from pathlib import Path; x=json.loads(Path(".build/pushok-core/staging-state.json").read_text()); assert x["active"] is None and x["previous"] is None'
+
 
   cabinet-preview:
     runs-on: ubuntu-latest
