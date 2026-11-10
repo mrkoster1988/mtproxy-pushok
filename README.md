@@ -328,6 +328,7 @@ python3 scripts/core_tcp_smoke.py --run
 - Закрытые операции `stars/prepare`, `stars/precheckout`, `stars/settle`: создают XTR invoice intent, проверяют сумму/покупателя/одобренную кампанию и после подтверждённого Telegram successful_payment переводят платёж в verified.
 - Таблица `stars_payment_receipts` сохраняет входящий charge даже при несоответствии сумм и отправляет аномалии на сверку (requires_review). Повторный charge идемпотентен, новая оплата не запускает спонсорский тег.
 - Миграция `015_stars_checkout.sql`; настройка Stars используется из тарифа, отдельная от RUB. До подключения бота и тестов в Telegram Test Environment это только серверный код, не рабочий приём денег.
+- Бот подключён к закрытым операциям: список собственных кампаний показывает кнопку XTR, callback выставляет sendInvoice; polling принимает pre_checkout_query и successful_payment. `/paysupport` даёт контакт поддержки. Проверки на настоящем Telegram пока нет; вызовы refundStarPayment не реализованы.
 - Поддержка /paysupport и возврат refundStarPayment должны быть проверены до открытой продажи. СБП — следующий отдельный этап.
 
 ## v0.048 — гибкие тарифы 300 ₽ по умолчанию, независимая цена Stars

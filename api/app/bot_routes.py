@@ -28,6 +28,8 @@ class BotCampaignLookup(BaseModel):
 
 
 class BotCampaignSummary(BaseModel):
+    campaign_id: UUID | None = None
+    stars_price_xtr: int | None = None
     channel_title: str
     tariff_name_snapshot: str
     price_kopecks_snapshot: int
@@ -64,7 +66,8 @@ def list_bot_campaigns(
         ) as connection:
             rows = connection.execute(
                 """
-                SELECT sc.title AS channel_title,
+                SELECT c.id AS campaign_id, t.stars_price_xtr,
+                       sc.title AS channel_title,
                        c.tariff_name_snapshot, c.price_kopecks_snapshot,
                        c.currency_snapshot, c.moderation_status,
                        c.payment_status, c.placement_status,
@@ -72,6 +75,7 @@ def list_bot_campaigns(
                 FROM users AS u
                 JOIN campaigns AS c ON c.advertiser_user_id = u.id
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
+                JOIN tariffs AS t ON t.id = c.tariff_id
                 WHERE u.telegram_user_id = %s
                 ORDER BY c.created_at DESC
                 LIMIT 10

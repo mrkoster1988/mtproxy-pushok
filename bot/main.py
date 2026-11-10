@@ -13,7 +13,7 @@ from .delivery_inbox import DeliveryInbox
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
-COMMANDS = frozenset(("start", "advertise", "campaigns", "tariffs", "channels", "help"))
+COMMANDS = frozenset(("start", "advertise", "campaigns", "tariffs", "channels", "help", "paysupport"))
 LOG = logging.getLogger("pushok.bot")
 
 
@@ -39,6 +39,9 @@ def message_for(command):
         return "📋 Просмотр личных кампаний через бота ещё не подключён."
     if command == "tariffs":
         return "💎 Актуальная стоимость тарифа доступна в кабинете. Оплата пока не подключена."
+    if command == "paysupport":
+        return ("💬 Помощь с оплатой Stars и возвратами: " + CHANNEL_URL +
+                ". Укажите номер заявки и дату платежа. Не передавайте никому токены.")
     if command == "channels":
         return "📣 Официальный канал:\n" + CHANNEL_URL
     return "❓ Поддержка: напишите через сообщения каналу\n" + CHANNEL_URL
@@ -279,6 +282,154 @@ def command_text(command, actor, chat_id, campaign_loader=None, tariff_loader=No
         return "📋 Заявки временно недоступны. Попробуйте позже."
 
 
+
+def campaign_payment_keyboard(campaigns):
+    """Кнопки XTR только для ожидающих оплаты одобренных кампаний."""
+    markup = keyboard()
+    for item in campaigns[:10]:
+        if (item.get("moderation_status") != "approved"
+            or item.get("payment_status") != "awaiting_payment"
+            or item.get("placement_status") != "not_scheduled"):
+            continue
+        stars = item.get("stars_price_xtr")
+        if type(stars) is not int or not 1 <= stars <= 1000000:
+            continue
+        try:
+            campaign = UUID(str(item["campaign_id"]))
+        except (KeyError, TypeError, ValueError, AttributeError):
+            continue
+        markup["inline_keyboard"].insert(-2, [{
+            "text": "⭐ Оплатить " + str(stars) + " XTR · " + str(campaign)[:8],
+            "callback_data": "stars:" + str(campaign),
+        }])
+    return markup
+
+
+def command_reply(command, actor, chat_id, campaign_loader=None, tariff_loader=None):
+    """Одно чтение кампаний: текст и кнопки из одной версии данных."""
+    sender = (actor or {}).get("id")
+    if command == "campaigns" and campaign_loader is not None:
+        if type(sender) is not int or sender <= 0 or sender != chat_id:
+            return {"chat_id": chat_id,
+                    "text": "Откройте личный чат с ботом для просмотра ваших заявок.",
+                    "reply_markup": keyboard()}
+        try:
+            campaigns = campaign_loader(sender)
+            return {"chat_id": chat_id, "text": format_campaigns(campaigns),
+                    "reply_markup": campaign_payment_keyboard(campaigns)}
+        except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+            LOG.warning("Не удалось получить кампании: %s", type(exc).__name__)
+            return {"chat_id": chat_id,
+                    "text": "📋 Заявки временно недоступны. Попробуйте позже.",
+                    "reply_markup": keyboard()}
+    return {"chat_id": chat_id,
+            "text": command_text(command, actor, chat_id, campaign_loader, tariff_loader),
+            "reply_markup": keyboard()}
+
+
+def process_stars_update(update, token, internal_api=None, send=None):
+    """Обработка trusted update от Telegram Bot API. Вернуть True если обработан.
+
+    Если receipt не записан в БД — выбрасываем исключение и не двигаем offset.
+    """
+    internal_api = internal_api or _internal_api
+    send = send or telegram_call
+    pre = update.get("pre_checkout_query")
+    if pre is not None:
+        query_id = pre.get("id")
+        sender = (pre.get("from") or {}).get("id")
+        try:
+            if not query_id or type(sender) is not int or sender <= 0:
+                raise ValueError("bad_precheckout")
+            approval = internal_api("stars/precheckout", {
+                "query_id": query_id, "telegram_user_id": sender,
+                "invoice_payload": pre.get("invoice_payload"),
+                "currency": pre.get("currency"),
+                "total_amount": pre.get("total_amount"),
+            })
+            ok = approval.get("ok") is True
+        except (HTTPError, URLError, OSError, RuntimeError, ValueError,
+                TypeError, AttributeError):
+            ok = False
+        answer = {"pre_checkout_query_id": query_id, "ok": ok}
+        if not ok:
+            answer["error_message"] = "Не удалось подтвердить заказ. Создайте новый счёт."
+        send(token, "answerPreCheckoutQuery", answer, timeout=4)
+        return True
+
+    message = update.get("message") or {}
+    paid = message.get("successful_payment")
+    if paid is not None:
+        sender = (message.get("from") or {}).get("id")
+        chat = message.get("chat") or {}
+        if (type(sender) is not int or sender <= 0
+            or chat.get("id") != sender or chat.get("type") != "private"):
+            raise RuntimeError("payment_sender_invalid")
+        confirmation = internal_api("stars/settle", {
+            "telegram_user_id": sender,
+            "invoice_payload": paid.get("invoice_payload"),
+            "currency": paid.get("currency"),
+            "total_amount": paid.get("total_amount"),
+            "telegram_payment_charge_id": paid.get("telegram_payment_charge_id"),
+        })
+        state = confirmation.get("status")
+        if state not in ("applied", "already_processed", "requires_review"):
+            raise RuntimeError("receipt_not_persisted")
+        text = (
+            "✅ Оплата Stars подтверждена. Ожидайте назначения рекламного размещения."
+            if state in ("applied", "already_processed")
+            else "⚠️ Платёж поступил, но требует сверки. Напишите /paysupport."
+        )
+        send(token, "sendMessage", {"chat_id": sender, "text": text}, timeout=5)
+        return True
+
+    callback = update.get("callback_query") or {}
+    action = callback.get("data")
+    if not isinstance(action, str) or not action.startswith("stars:"):
+        return False
+    sender = (callback.get("from") or {}).get("id")
+    chat = (callback.get("message") or {}).get("chat") or {}
+    if (type(sender) is not int or sender <= 0
+        or chat.get("id") != sender or chat.get("type") != "private"):
+        return True
+    try:
+        campaign_id = UUID(action[6:])
+        if action != "stars:" + str(campaign_id):
+            raise ValueError("bad_campaign_id")
+    except (TypeError, AttributeError, ValueError):
+        return True
+    send(token, "answerCallbackQuery", {"callback_query_id": callback["id"]}, timeout=4)
+    try:
+        invoice = internal_api("stars/prepare", {
+            "telegram_user_id": sender, "campaign_id": str(campaign_id),
+        })
+        amount = invoice["stars_amount"]
+        if (type(amount) is not int or not 1 <= amount <= 1000000
+            or not isinstance(invoice["invoice_payload"], str)
+            or not invoice["invoice_payload"].startswith("stars:")):
+            raise ValueError("bad_invoice")
+        # provider_token для Stars не передаётся. start_parameter не даёт
+        # использовать пересланную кнопку Pay посторонним пользователям.
+        send(token, "sendInvoice", {
+            "chat_id": sender,
+            "title": str(invoice["title"])[:32],
+            "description": str(invoice["description"])[:255],
+            "payload": invoice["invoice_payload"],
+            "currency": "XTR",
+            "prices": [{"label": "Спонсорство MTProxy", "amount": amount}],
+            "start_parameter": "pay_" + str(campaign_id).replace("-", ""),
+        }, timeout=10)
+    except (HTTPError, URLError, OSError, RuntimeError, ValueError,
+            KeyError, TypeError) as exc:
+        LOG.warning("Не удалось выставить Stars invoice: %s", type(exc).__name__)
+        send(token, "sendMessage", {
+            "chat_id": sender,
+            "text": "Счёт пока недоступен. Проверьте одобрение канала, "
+                    "стоимость в Stars и отсутствие предыдущей оплаты.",
+        }, timeout=5)
+    return True
+
+
 def response_for(update, campaign_loader=None, wizard=None, submitter=None,
                  operator_inbox=None, delivery_inbox=None, tariff_loader=None):
     """Вернуть (sendMessage_payload, callback_query_id) либо None."""
@@ -304,9 +455,8 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
             return None
         if not isinstance(chat.get("id"), int):
             return None
-        return ({"chat_id": chat["id"], "text": command_text(
-            command, callback.get("from"), chat["id"], campaign_loader, tariff_loader),
-                 "reply_markup": keyboard()}, callback.get("id"))
+        return (command_reply(command, callback.get("from"), chat["id"],
+                              campaign_loader, tariff_loader), callback.get("id"))
     message = update.get("message") or {}
     chat = message.get("chat") or {}
     content = message.get("text")
@@ -320,9 +470,8 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
     command = parts[0].lower()
     if command not in COMMANDS:
         return None
-    return ({"chat_id": chat["id"], "text": command_text(
-        command, message.get("from"), chat["id"], campaign_loader, tariff_loader),
-             "reply_markup": keyboard()}, None)
+    return (command_reply(command, message.get("from"), chat["id"],
+                          campaign_loader, tariff_loader), None)
 
 
 def telegram_call(token, method, payload, timeout=40):
@@ -367,9 +516,12 @@ def run():
         try:
             updates = telegram_call(token, "getUpdates", {
                 "offset": offset, "timeout": 25,
-                "allowed_updates": ["message", "callback_query"]})
+                "allowed_updates": ["message", "callback_query", "pre_checkout_query"]})
             for update in updates:
                 next_offset = update["update_id"] + 1
+                if process_stars_update(update, token):
+                    offset = next_offset
+                    continue
                 response = response_for(update, campaign_loader=fetch_campaigns, wizard=wizard,
                                         tariff_loader=fetch_current_tariff,
                                         submitter=submit_campaign_draft,

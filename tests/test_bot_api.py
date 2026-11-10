@@ -60,6 +60,8 @@ class BotCampaignApiTests(unittest.TestCase):
 
     def test_only_requested_telegram_user_campaigns(self):
         row = {
+            "campaign_id": "00000000-0000-4000-8000-000000000991",
+            "stars_price_xtr": 180,
             "channel_title": "Тестовый канал",
             "tariff_name_snapshot": "1 день",
             "price_kopecks_snapshot": 30000,
@@ -80,6 +82,7 @@ class BotCampaignApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(response.json()[0]["channel_title"], "Тестовый канал")
+        self.assertEqual(response.json()[0]["stars_price_xtr"], 180)
         self.assertEqual(response.json()[0]["currency_snapshot"], "RUB")
         sql_query, params = db.execute.call_args.args
         self.assertIn("WHERE u.telegram_user_id = %s", sql_query)
