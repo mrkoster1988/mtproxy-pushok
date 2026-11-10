@@ -88,7 +88,11 @@ class PlacementCompletionTests(unittest.TestCase):
         self.assertEqual(response.json()["placement_status"], "completed")
         commands = conn.__enter__.return_value.execute.call_args_list
         self.assertEqual(len(commands), 2)
-        self.assertIn("placement_status = 'active'", commands[0].args[0])
+        self.assertIn("c.placement_status = 'active'", commands[0].args[0])
+        self.assertIn("o.result = 'not_visible'", commands[0].args[0])
+        self.assertIn("newest.id DESC", commands[0].args[0])
+        self.assertIn("a.event_type = 'placement_activated_manually'", commands[0].args[0])
+        self.assertIn("o.observed_at >= now() - interval '10 minutes'", commands[0].args[0])
         self.assertIn("placement_completed_manually", commands[1].args[0])
         self.assertIn("tag_removed_confirmed", commands[1].args[0])
         self.assertIn("own_channel_restored_confirmed", commands[1].args[0])
@@ -123,6 +127,7 @@ class PlacementCompletionTests(unittest.TestCase):
         self.assertIn("tag_removed_confirmed:true", js)
         self.assertIn("separate_unsubscribed_client", js)
         self.assertIn("own_channel_restored_confirmed:true", js)
+        self.assertIn("Платный канал не виден — записать проверку", js)
         self.assertIn("восстановили СОБСТВЕННЫЙ канал Pushok", js)
 
 

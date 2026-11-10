@@ -979,6 +979,10 @@ class PostgresIntegration(unittest.TestCase):
         self.request("POST", "/operator/campaigns/" + cid + "/complete", 422,
                      json={"tag_removed_confirmed": False,
                            "verification_method": "separate_unsubscribed_client"})
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 409,
+                     json={"tag_removed_confirmed": True,
+                           "own_channel_restored_confirmed": True,
+                           "verification_method": "separate_unsubscribed_client"})
         self.request("POST", "/operator/campaigns/" + cid + "/complete", 422,
                      json={"tag_removed_confirmed": True,
                            "verification_method": "separate_unsubscribed_client"})
@@ -986,6 +990,12 @@ class PostgresIntegration(unittest.TestCase):
                      json={"tag_removed_confirmed": True,
                            "own_channel_restored_confirmed": False,
                            "verification_method": "separate_unsubscribed_client"})
+        removed = self.request("POST", observation_url, 201, json={
+            "result": "not_visible", "method": "separate_unsubscribed_client",
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "note": "Платный канал после ручного снятия не виден в клиенте",
+        })
+        self.assertEqual(removed["result"], "not_visible")
         self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/complete",
                          json={"tag_removed_confirmed": True,
                                "own_channel_restored_confirmed": True,

@@ -359,11 +359,21 @@ function card(c,op){
     }
     panel.append(button('Закрыть',()=>panel.remove()));box.append(panel);
    }));
-  if(c.placement_status==='active')actions.append(button('Снять рекламу и завершить',async()=>{
-   if(!confirm('Вы вручную сняли платный канал в @MTProxyBot и проверили в отдельном неподписанном Telegram-клиенте, что он больше не показывается?'))return;
+  if(c.placement_status==='active'){
+   actions.append(button('Платный канал не виден — записать проверку',async()=>{
+    const note=prompt('После снятия платного спонсора опишите проверку отдельным неподписанным Telegram-клиентом (не менее 12 символов):');
+    if(note===null)return;if(note.trim().length<12)throw Error('Опишите проверку подробнее.');
+    await api('/operator/campaigns/'+c.id+'/display-observations',{method:'POST',body:{
+     result:'not_visible',method:'separate_unsubscribed_client',observed_at:new Date().toISOString(),note:note.trim()
+    }});
+    await refresh();notice('Отрицательная проверка записана. Восстановите собственный канал.',true);
+   }));
+   actions.append(button('Снять рекламу и завершить',async()=>{
+   if(!confirm('Вы вручную сняли платный канал в @MTProxyBot, записали свежее отрицательное наблюдение (не старше 10 минут) и проверили, что реклама исчезла?'))return;
    if(!confirm('Вы вручную восстановили СОБСТВЕННЫЙ канал Pushok через Set promotion и подтвердили показ отдельным неподписанным Telegram-клиентом?'))return;
    await change('complete',{tag_removed_confirmed:true,own_channel_restored_confirmed:true,verification_method:'separate_unsubscribed_client'});
   }));
+  }
  }
  return box;
 }

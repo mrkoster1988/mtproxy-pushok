@@ -34,7 +34,7 @@ from .engine_adapters import recommend_engine, engine_catalog
 from .core_readiness import core_readiness, core_diagnostic_plan
 from .slot_calendar import slot_status
 from .slot_holds import normalize_hold_window
-from .placement_verification import validate_observation_window
+from .placement_verification import validate_observation_window, validate_recent_observation
 from .placement_evidence import sanitize_image, store_image, read_verified_image, EvidenceReadError
 from .placement_report import build_campaign_report, PUBLIC_EVENTS
 from .report_export import render_campaign_csv
@@ -1191,20 +1191,27 @@ def report_placement_observation(
             if campaign is None:
                 raise HTTPException(status_code=404, detail="campaign_not_found")
             now = datetime.now(timezone.utc)
-            if (
-                campaign["moderation_status"] != "approved"
-                or campaign["payment_status"] != "verified"
-                or campaign["placement_status"] != "scheduled"
-                or campaign["scheduled_start_at"] is None
-                or campaign["scheduled_end_at"] is None
-                or not (campaign["scheduled_start_at"] <= now < campaign["scheduled_end_at"])
-            ):
+            state = campaign["placement_status"]
+            start = campaign["scheduled_start_at"]
+            end = campaign["scheduled_end_at"]
+            if state == "scheduled":
+                if (campaign["moderation_status"] != "approved"
+                    or campaign["payment_status"] != "verified"
+                    or start is None or end is None or not (start <= now < end)):
+                    raise HTTPException(status_code=409, detail="placement_not_ready_for_observation")
+            elif state == "active":
+                # Разрешаем отчёт о снятии платного спонсора после конца слота.
+                if start is None or end is None or now < start:
+                    raise HTTPException(status_code=409, detail="placement_not_ready_for_observation")
+            else:
                 raise HTTPException(status_code=409, detail="placement_not_ready_for_observation")
             try:
-                validate_observation_window(
-                    campaign["scheduled_start_at"], campaign["scheduled_end_at"],
-                    payload.observed_at, now,
-                )
+                if state == "scheduled":
+                    validate_observation_window(start, end, payload.observed_at, now)
+                else:
+                    validate_recent_observation(payload.observed_at, now)
+                    if payload.observed_at < start:
+                        raise ValueError("observation_outside_placement_window")
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             report = connection.execute(
@@ -1568,9 +1575,27 @@ def complete_placement(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             row = connection.execute(
                 """
-                UPDATE campaigns
+                UPDATE campaigns AS c
                 SET placement_status = 'completed', updated_at = now()
-                WHERE id = %s AND placement_status = 'active'
+                WHERE c.id = %s AND c.placement_status = 'active'
+                  AND EXISTS (
+                    SELECT 1 FROM placement_observations AS o
+                    WHERE o.id = (
+                      SELECT newest.id FROM placement_observations AS newest
+                      WHERE newest.campaign_id = c.id ORDER BY newest.id DESC LIMIT 1
+                    )
+                      AND o.result = 'not_visible'
+                      AND o.method = 'separate_unsubscribed_client'
+                      AND o.observed_at <= now()
+                      AND o.observed_at >= now() - interval '10 minutes'
+                      AND o.recorded_at >= now() - interval '10 minutes'
+                      AND EXISTS (
+                        SELECT 1 FROM audit_events AS a
+                        WHERE a.campaign_id = c.id
+                          AND a.event_type = 'placement_activated_manually'
+                          AND a.created_at <= o.observed_at
+                      )
+                  )
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
                           duration_seconds_snapshot, price_kopecks_snapshot,
                           currency_snapshot, moderation_status, payment_status,
@@ -1583,7 +1608,7 @@ def complete_placement(
                 exists = connection.execute("SELECT 1 FROM campaigns WHERE id = %s", (campaign_id,)).fetchone()
                 if exists is None:
                     raise HTTPException(status_code=404, detail="campaign_not_found")
-                raise HTTPException(status_code=409, detail="placement_not_active")
+                raise HTTPException(status_code=409, detail="placement_completion_requires_fresh_negative_observation")
             connection.execute(
                 """INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
                    VALUES (%s, %s, 'placement_completed_manually',
