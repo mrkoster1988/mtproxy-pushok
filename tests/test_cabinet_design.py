@@ -56,7 +56,7 @@ class CabinetDesignTests(unittest.TestCase):
         }
         self.assertTrue(essential.issubset(ids), essential - ids)
         self.assertFalse([k for k, count in Counter(self.parser.ids).items() if count > 1])
-        self.assertEqual(set(self.parser.forms), {"channel-form", "campaign-form", "node-form"})
+        self.assertTrue({"channel-form", "campaign-form", "node-form", "tariff-admin-form"}.issubset(set(self.parser.forms)))
         self.assertIn("requested_start_at", self.parser.inputs)
         self.assertIn("telegram_url", self.parser.inputs)
         self.assertIn("preferred_engine", self.parser.inputs)

@@ -78,7 +78,7 @@ def test_incorrect_invoice_response_fails(monkeypatch):
     "https://", "https://user:pass@pay.example/checkout",
     "https://pay.example:8443/checkout",
     "https://pay.example/#fragment",
-    "https://pay.example/checkout\\n", "https://pay.example/checkout\\t",
+    "https://pay.example/checkout\n", "https://pay.example/checkout\t",
     "https://pay.example./checkout", "http://pay.example/checkout",
     "https://pay.example/checkout with spaces",
 ])
