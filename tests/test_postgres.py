@@ -889,6 +889,16 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1" + download).status_code, 200)
         self.request("POST", "/operator/campaigns/" + cid + "/payment-review", json={"decision": "verified"})
         node = self.request("POST", "/admin/proxy-nodes", 201, json={"name": "Тестовый узел", "host": "proxy.example.org", "port": 8443})
+        # Перед активацией нужны подтверждённый канал и реестр MTProxy tag.
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute(
+                "UPDATE sponsor_channels SET telegram_channel_id=-1001234567 WHERE id=%s",
+                (channel["id"],),
+            )
+        self.request(
+            "PUT", "/admin/proxy-nodes/" + node["id"] + "/sponsor-registration",
+            json={"engine": "official_mtproxy", "ad_tag": "1234567890abcdef1234567890abcdef"},
+        )
         start = desired
         params = {"tariff_id": tariff["id"], "date_from": start.date().isoformat(), "start_time": start.strftime("%H:%M:%S"), "timezone_name": "UTC", "days": 2}
         before = self.request("GET", "/availability", params=params)
