@@ -37,7 +37,8 @@ def test_dry_run_does_not_change_database():
     assert result["expired_holds"] == 1
     assert result["deleted_holds"] == 0
     assert result["overdue_campaign_ids"] == ["campaign-1"]
-    assert all("DELETE" not in sql and "UPDATE" not in sql for sql, _ in db.sql)
+    assert all(not sql.lstrip().upper().startswith(("DELETE ", "UPDATE ", "INSERT "))
+               for sql, _ in db.sql)
 
 
 def test_apply_deletes_only_holds_not_campaigns():
