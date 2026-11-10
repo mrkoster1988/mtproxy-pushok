@@ -109,7 +109,25 @@ def create_sbp_payment(*, campaign_id: str, amount_kopecks: int,
     url = confirmation.get("confirmation_url") if isinstance(confirmation, dict) else None
     if result.get("status") != "pending" or not isinstance(url, str):
         raise SBPProviderError("sbp_unexpected_invoice_response")
-    if not url.startswith("https://"):
+    # URL приходит от эквайринга, но перед редиректом браузера его
+    # обязательно разбираем структурно: строковый startswith пропускает
+    # управляющие символы, userinfo и некорректные hostname.
+    try:
+        destination = urlsplit(url)
+        url_valid = (
+            destination.scheme == "https"
+            and bool(destination.hostname)
+            and destination.hostname.strip(".") == destination.hostname
+            and destination.username is None
+            and destination.password is None
+            and destination.port in (None, 443)
+            and not destination.fragment
+            and not any(ord(char) < 32 or ord(char) == 127 for char in url)
+            and not any(char.isspace() for char in url)
+        )
+    except ValueError:
+        url_valid = False
+    if not url_valid:
         raise SBPProviderError("sbp_invalid_confirmation_url")
     if not isinstance(result.get("id"), str) or not _PAYMENT_ID.fullmatch(result["id"]):
         raise SBPProviderError("sbp_invalid_provider_payment_id")
