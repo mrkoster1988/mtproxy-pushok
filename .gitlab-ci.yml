@@ -9,9 +9,12 @@ variables:
   POSTGRES_USER: postgres
   POSTGRES_PASSWORD: ci-test-only
   TEST_ADMIN_DSN: "postgresql://postgres:ci-test-only@postgres:5432/postgres"
+  PUSHOK_TEST_DB_ALLOWED: "1"
   DATABASE_URL: "postgresql://postgres:ci-test-only@postgres:5432/postgres"
 
 test:
   script:
+    - python3 scripts/preflight.py
+    - python3 scripts/verify_release.py --mode offline
     - pip install -r api/requirements-dev.txt
     - python -m unittest discover -s tests -v

@@ -83,6 +83,29 @@ class SponsorPlannerTests(unittest.TestCase):
         self.assertNotIn(TAG, str(report))
         self.assertIn("Set promotion", str(report["manual_steps"]))
 
+    def test_malformed_tag_and_invalid_schedule_block_manual_preparation(self):
+        base = scheduled_row()
+        cases = [
+            ("placeholder tag", {"ad_tag": "0" * 32}, "tag_registered"),
+            ("short tag", {"ad_tag": "abc"}, "tag_registered"),
+            ("reversed period", {
+                "scheduled_start_at": base["scheduled_end_at"] + timedelta(hours=1)
+            }, "window_order_valid"),
+            ("naive start", {
+                "scheduled_start_at": datetime(2026, 11, 9, 12, 0)
+            }, "window_order_valid"),
+            ("naive end", {
+                "scheduled_end_at": datetime(2026, 11, 10, 12, 0)
+            }, "window_order_valid"),
+            ("missing start", {"scheduled_start_at": None}, "window_order_valid"),
+        ]
+        for label, changes, failed in cases:
+            with self.subTest(label=label):
+                report = build_readiness({**base, **changes})
+                self.assertFalse(report["checks"][failed])
+                self.assertFalse(report["ready_for_manual_preparation"])
+                self.assertFalse(report["changes_applied"])
+
     def test_missing_prerequisites_never_claim_ready(self):
         overrides = [
             ("moderation_status", "pending", "moderation_approved"),

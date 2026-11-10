@@ -16,6 +16,7 @@ from psycopg.errors import UniqueViolation
 from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 from psycopg.rows import dict_row
+from .payment_gate import stars_invoices_enabled
 from .channel_verification import (
     ChannelNotVerified, TelegramUnavailable, verify_channel_admin,
 )
@@ -28,6 +29,8 @@ class BotCampaignLookup(BaseModel):
 
 
 class BotCampaignSummary(BaseModel):
+    campaign_id: UUID | None = None
+    stars_price_xtr: int | None = None
     channel_title: str
     tariff_name_snapshot: str
     price_kopecks_snapshot: int
@@ -64,7 +67,8 @@ def list_bot_campaigns(
         ) as connection:
             rows = connection.execute(
                 """
-                SELECT sc.title AS channel_title,
+                SELECT c.id AS campaign_id, t.stars_price_xtr,
+                       sc.title AS channel_title,
                        c.tariff_name_snapshot, c.price_kopecks_snapshot,
                        c.currency_snapshot, c.moderation_status,
                        c.payment_status, c.placement_status,
@@ -72,6 +76,7 @@ def list_bot_campaigns(
                 FROM users AS u
                 JOIN campaigns AS c ON c.advertiser_user_id = u.id
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
+                JOIN tariffs AS t ON t.id = c.tariff_id
                 WHERE u.telegram_user_id = %s
                 ORDER BY c.created_at DESC
                 LIMIT 10
@@ -82,15 +87,55 @@ def list_bot_campaigns(
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [
         BotCampaignSummary(
-            **{**row, "currency_snapshot": row["currency_snapshot"].strip()}
+            **{**row,
+               "currency_snapshot": row["currency_snapshot"].strip(),
+               "stars_price_xtr": row["stars_price_xtr"] if stars_invoices_enabled() else None}
         )
         for row in rows
     ]
 
 
-# MVP: один действующий тариф. Любое изменение цены требует отдельного
-# решения владельца, поэтому не продаём его автоматически по другой цене.
+# В MVP продаём один тариф по его ТЕКУЩИМ настройкам.
+# Цена и длительность берутся из БД; уже созданная заявка хранит снимок.
 DAY_TARIFF_ID = UUID("00000000-0000-4000-8000-000000000001")
+
+
+class BotCurrentTariff(BaseModel):
+    name: str
+    duration_seconds: int
+    price_kopecks: int
+    currency: str
+    stars_price_xtr: int | None = None
+
+
+@router.post(
+    "/api/v1/internal/bot/tariff-quote",
+    response_model=BotCurrentTariff,
+    include_in_schema=False,
+)
+def get_bot_tariff_quote(
+    response: Response,
+    x_pushok_bot_secret: str | None = Header(default=None),
+) -> BotCurrentTariff:
+    """Бот показывает актуальную цену, а не устаревшую цифру из кода."""
+    _verify_bot_secret(x_pushok_bot_secret)
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        with psycopg.connect(
+            os.environ["DATABASE_URL"], connect_timeout=3, row_factory=dict_row
+        ) as connection:
+            row = connection.execute(
+                """SELECT name, duration_seconds, price_kopecks,
+                          currency, stars_price_xtr
+                   FROM tariffs WHERE id = %s AND is_active = TRUE
+                     AND price_kopecks > 0 AND btrim(currency) = 'RUB'""",
+                (DAY_TARIFF_ID,),
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    if row is None:
+        raise HTTPException(status_code=409, detail="bot_tariff_not_available")
+    return BotCurrentTariff(**{**row, "currency": row["currency"].strip()})
 
 
 class BotDraftCreate(BaseModel):
@@ -142,7 +187,7 @@ def create_bot_campaign_draft(
                 SELECT id, name, duration_seconds, price_kopecks, currency
                 FROM tariffs
                 WHERE id = %s AND is_active = TRUE
-                  AND duration_seconds = 86400 AND price_kopecks = 30000
+                  AND duration_seconds > 0 AND price_kopecks > 0
                   AND btrim(currency) = 'RUB'
                 """,
                 (DAY_TARIFF_ID,),

@@ -1,4 +1,4 @@
-"""Проверка API черновиков: фиксированный тариф, секрет, изоляция, повторы."""
+"""Проверка API черновиков: гибкая цена, секрет, изоляция, повторы."""
 import os
 import sys
 import unittest
@@ -120,7 +120,7 @@ class DraftAPITests(unittest.TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(len(db.calls), 1)
         self.assertIn("is_active = TRUE", db.calls[0][0])
-        self.assertIn("price_kopecks = 30000", db.calls[0][0])
+        self.assertIn("price_kopecks > 0", db.calls[0][0])
 
     def test_secret_checked_before_db_access(self):
         with patch.dict(os.environ, {"BOT_INTERNAL_SECRET": SECRET}):

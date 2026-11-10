@@ -318,3 +318,55 @@ footer { margin-top: 64px; padding: 26px 0 34px; border-top: 1px solid #33495a; 
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+/* v0.036 — бронирование рекламного слота внутри карточки кампании. */
+.slot-hold-panel { margin-top: 17px; padding: 18px; border: 1px solid rgba(105,224,209,.45);
+  border-radius: 14px; background: rgba(10,43,52,.52); display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.slot-hold-panel h4 { width: 100%; margin: 0; font-size: 15px; color: #bdf3e5; }
+.slot-hold-panel p { width: 100%; margin: 0; }
+.slot-hold-panel input, .slot-hold-panel select { width: min(100%, 280px); }
+.slot-hold-panel .hold-timer { font-size: 19px; font-weight: 850; color: #a5f8d3; }
+@media (max-width: 520px) {
+ .slot-hold-panel { flex-direction: column; align-items: stretch; }
+ .slot-hold-panel input, .slot-hold-panel select, .slot-hold-panel button { width: 100%; max-width: none; }
+}
+
+/* v0.037 — журнал ручной проверки показа */
+.observation-panel {margin-top: 16px; padding: 16px 18px; border: 1px solid rgba(105,224,209,.37);
+ border-radius: 13px; background: rgba(9,31,47,.75); overflow-wrap: anywhere;}
+.observation-panel h4 {color: #bff1df; margin: 0 0 11px; font-size: 14px;}
+.observation-panel p {margin: 9px 0; font-size: 12px; line-height: 1.5;}
+.observation-panel button {margin-top: 9px;}
+
+/* v0.038 — загрузка скриншотов ручной проверки */
+.observation-panel input[type=file] {width:min(100%,330px);margin:7px 9px 7px 0;display:inline-block;}
+.observation-panel button {margin:7px 9px 7px 0;}
+
+/* v0.040 — приватный отчёт рекламодателя */
+.campaign-report{margin-top:17px;padding:20px;border-radius:16px;background:rgba(9,37,51,.74);
+ border:1px solid rgba(105,224,209,.38);overflow-wrap:anywhere;}
+.campaign-report h4{margin:0 0 14px;font-size:16px;color:#bff3e6;}
+.campaign-report h4:not(:first-child){margin-top:18px;}
+.campaign-report p{font-size:12px;line-height:1.6;}
+.report-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;}
+.report-cell{display:grid;gap:5px;padding:10px 12px;border:1px solid rgba(125,188,193,.23);border-radius:10px;}
+.report-cell strong{font-size:12px;}
+.report-history{padding-left:22px;font-size:12px;line-height:1.8;}
+@media(max-width:520px){.report-grid{grid-template-columns:1fr;}}
+
+/* v0.045 — контрольные данные до запуска без ложных live-статусов */
+#launch-readiness{display:grid;gap:10px;}
+#launch-readiness .core-checklist{margin:4px 0 10px;}
+#launch-readiness .core-checklist li{line-height:1.55;}
+
+/* v0.050 — раздел настроек только для администратора */
+.settings-nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px;}
+.settings-nav button{padding:11px 15px;border:1px solid rgba(120,203,200,.27);
+ background:rgba(16,38,56,.85);color:var(--text);border-radius:12px;cursor:pointer;}
+.settings-nav button.selected{background:var(--mint);color:#122e3b;font-weight:750;}
+.settings-panel{margin-bottom:24px;}
+.settings-payment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+.settings-method{border:1px solid rgba(120,203,200,.26);border-radius:15px;
+ padding:19px;background:rgba(10,31,48,.65);}
+.settings-method h3{margin:0 0 12px;}
+.settings-method p{line-height:1.55;}
+@media(max-width:650px){.settings-payment-grid{grid-template-columns:1fr;}}

@@ -48,7 +48,7 @@
           </div>
           <div class="tariff-note">
             <span class="tariff-label">БАЗОВЫЙ ТАРИФ <span aria-hidden="true">↘</span></span>
-            <strong>300 ₽ <small>/ 1 день</small></strong>
+            <strong><span id="hero-tariff-price">300 ₽</span> <small id="hero-tariff-duration">/ 1 день</small></strong>
             <span class="tariff-subtitle">Стоимость одного размещения</span>
           </div>
         </div>
@@ -84,6 +84,7 @@
       <nav class="workspace-nav" aria-label="Разделы кабинета">
         <button id="advertiser-tab" type="button" class="selected">Мои размещения</button>
         <button id="operator-tab" type="button" hidden>Очередь оператора</button>
+        <button id="settings-tab" type="button" hidden>Настройки</button>
         <button id="refresh" type="button" class="refresh-button">Обновить <span aria-hidden="true">↻</span></button>
       </nav>
 
@@ -133,11 +134,6 @@
         <section id="node-admin" class="panel node-panel" hidden>
           <div class="node-heading"><div><div class="eyebrow">УПРАВЛЕНИЕ ИНФРАСТРУКТУРОЙ</div><h2>Pushok Unified Engine <span class="heading-star">✳</span></h2><p class="panel-lead">Классический MTProxy, Docker и план будущего Pushok Core — в едином месте.</p></div><span class="node-warning">Планирование · без запуска</span></div>
           <p class="muted">Выбор движка сохраняет только план. Установка и доступность на VPS не подтверждаются.</p>
-          <div class="core-health" aria-label="Готовность Pushok Core">
-            <div><span class="eyebrow">PUSHOK SOURCE CORE · v0.027</span><h3>Диагностика ядра</h3></div>
-            <p id="core-readiness" role="status" aria-live="polite">Локальный статус ещё не запрошен. API не запускает прокси.</p>
-            <ul id="core-test-plan" class="core-checklist" aria-label="План проверки Pushok Core"></ul>
-          </div>
           <form id="node-form">
             <label>Название узла<input name="name" required maxlength="100" placeholder="Pushok · Финляндия"></label>
             <label>Домен или IP<input name="host" required placeholder="mtproxy.example.org"></label>
@@ -158,9 +154,66 @@
         <p class="muted operator-note">Активируйте и завершайте размещение только после ручной проверки спонсорского тега на узле.</p>
         <div id="queue" class="cards"></div>
       </div>
+      <div id="settings" hidden>
+        <div class="section-title">
+          <div><span class="eyebrow">ЦЕНТРАЛЬНАЯ ПАНЕЛЬ</span><h2>Настройки MTProxy Pushok</h2></div>
+          <span class="workspace-hint">Доступно только администратору</span>
+        </div>
+        <nav class="settings-nav" aria-label="Разделы настроек">
+          <button id="settings-payments-tab" type="button" class="selected">Платежи</button>
+          <button id="settings-tariffs-tab" type="button">Тарифы</button>
+          <button id="settings-system-tab" type="button">Система и готовность</button>
+        </nav>
+        <section id="settings-payments" class="panel settings-panel">
+          <div class="eyebrow">ПЛАТЁЖНЫЕ КАНАЛЫ</div><h2>Telegram Stars и СБП</h2>
+          <p class="muted">Здесь показывается состояние подключения, а не обещание успешного списания. Ключи и токены в браузере не запрашиваются.</p>
+          <div class="settings-payment-grid">
+            <article class="settings-method">
+              <h3>⭐ Telegram Stars · XTR</h3>
+              <p id="settings-stars-status" role="status">Состояние запрашивается...</p>
+              <p id="settings-stars-counts" class="muted"></p>
+              <p class="muted">Цена Stars устанавливается во вкладке «Тарифы». Выдача реальных счетов дополнительно запрещена серверным переключателем до приёмки.</p>
+            </article>
+            <article class="settings-method">
+              <h3>СБП · рубли</h3>
+              <p id="settings-sbp-status" role="status">СБП не подключена: интеграция эквайринга ещё не реализована.</p>
+              <p class="muted">Цена в рублях устанавливается во вкладке «Тарифы». Банковские ключи появятся только после реализации серверного подключения эквайринга.</p>
+            </article>
+          </div>
+          <p id="settings-payments-note" class="muted" role="status">Не сохраняйте реквизиты и секреты в комментариях или полях тарифов.</p>
+        </section>
+        <div id="settings-tariffs" class="settings-panel" hidden>
+          <section class="core-health" aria-label="Настройки тарифов MTProxy Pushok">
+            <div><span class="eyebrow">ЦЕНЫ И ТАРИФЫ</span><h3>Настройки стоимости рекламы</h3></div>
+            <p class="muted">Базовая цена — 300 ₽ за день. Изменения действуют для новых заказов; ранее созданные сохраняют свою цену. Стоимость в Stars указывается отдельно, без выдуманного курса.</p>
+            <form id="tariff-admin-form">
+              <label>Выберите тариф<select id="tariff-admin-select" required></select></label>
+              <label>Название<input id="tariff-admin-name" maxlength="100" required></label>
+              <label>Длительность, часы<input id="tariff-admin-hours" type="number" min="1" max="8760" step="0.25" required></label>
+              <label>Цена для СБП, ₽<input id="tariff-admin-rub" type="number" min="1" max="1000000" step="0.01" required></label>
+              <label>Цена в Telegram Stars, XTR<input id="tariff-admin-stars" type="number" min="1" max="1000000" step="1" placeholder="Не настроено"></label>
+              <label><input id="tariff-admin-active" type="checkbox"> Тариф активен для новых заказов</label>
+              <button class="primary" type="submit">Сохранить настройки тарифа</button>
+            </form>
+            <p id="tariff-admin-status" class="muted" role="status">Настройки читаются из базы. Оплата Stars и СБП пока не подключена.</p>
+          </section>
+        </div>
+        <div id="settings-system" class="settings-panel" hidden>
+          <div class="core-health" aria-label="Готовность к запуску MTProxy Pushok">
+            <div><span class="eyebrow">ГОТОВНОСТЬ ПЛАТФОРМЫ</span><h3>Что осталось до запуска</h3></div>
+            <p class="muted">Инвентаризация базы, не проверка доступности MTProxy и показов Telegram.</p>
+            <div id="launch-readiness" role="status" aria-live="polite">Проверка данных ещё не запускалась.</div>
+          </div>
+          <div class="core-health" aria-label="Готовность Pushok Core">
+            <div><span class="eyebrow">PUSHOK SOURCE CORE · v0.027</span><h3>Диагностика ядра</h3></div>
+            <p id="core-readiness" role="status" aria-live="polite">Локальный статус ещё не запрошен. API не запускает прокси.</p>
+            <ul id="core-test-plan" class="core-checklist" aria-label="План проверки Pushok Core"></ul>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v0.031</span></footer>
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v0.050</span></footer>
   </main>
 </body>
 </html>

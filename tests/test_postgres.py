@@ -23,7 +23,31 @@ os.environ.setdefault("DATABASE_URL", "postgresql://unused")
 from app import main
 
 
-@unittest.skipUnless(os.getenv("TEST_ADMIN_DSN"), "Нужен отдельный тестовый PostgreSQL: TEST_ADMIN_DSN")
+def _approved_test_postgres():
+    """Интеграция создаёт и удаляет БД; запрещена без явного opt-in.
+
+    Предостережение: локальный порт может быть туннелем к production.
+    Проверяйте сам сервер PostgreSQL перед включением маркера.
+    """
+    from urllib.parse import urlsplit
+    dsn = os.getenv("TEST_ADMIN_DSN", "")
+    if os.getenv("PUSHOK_TEST_DB_ALLOWED") != "1":
+        return False
+    if not dsn.startswith(("postgresql://", "postgres://")):
+        return False
+    try:
+        parsed = urlsplit(dsn)
+        local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+        ci = (os.getenv("CI") == "true" or os.getenv("GITLAB_CI") == "true")
+        return ((local or (ci and parsed.hostname == "postgres"))
+                and parsed.path == "/postgres" and bool(parsed.username)
+                and parsed.password is not None and not parsed.fragment)
+    except ValueError:
+        return False
+
+
+@unittest.skipUnless(_approved_test_postgres(),
+    "Только тестовый PostgreSQL с PUSHOK_TEST_DB_ALLOWED=1 и TEST_ADMIN_DSN")
 class PostgresIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -39,10 +63,13 @@ class PostgresIntegration(unittest.TestCase):
                     raise
                 time.sleep(1)
         cls.dsn = make_conninfo(cls.admin_dsn, dbname=cls.dbname)
-        cls.old_dsn, cls.old_storage = main.DATABASE_URL, main.PAYMENT_PROOFS_DIR
+        cls.old_dsn, cls.old_storage, cls.old_evidence_storage = (
+            main.DATABASE_URL, main.PAYMENT_PROOFS_DIR, main.PLACEMENT_EVIDENCE_DIR
+        )
         cls.storage = tempfile.TemporaryDirectory()
         main.DATABASE_URL = cls.dsn
         main.PAYMENT_PROOFS_DIR = cls.storage.name
+        main.PLACEMENT_EVIDENCE_DIR = str(Path(cls.storage.name) / "placement-evidence")
         with psycopg.connect(cls.dsn) as conn:
             for migration in sorted((ROOT / "database").glob("*.sql")):
                 conn.execute(migration.read_text())
@@ -52,7 +79,9 @@ class PostgresIntegration(unittest.TestCase):
     def tearDownClass(cls):
         cls.client.close()
         main.app.dependency_overrides.clear()
-        main.DATABASE_URL, main.PAYMENT_PROOFS_DIR = cls.old_dsn, cls.old_storage
+        main.DATABASE_URL, main.PAYMENT_PROOFS_DIR, main.PLACEMENT_EVIDENCE_DIR = (
+            cls.old_dsn, cls.old_storage, cls.old_evidence_storage
+        )
         cls.storage.cleanup()
         with psycopg.connect(cls.admin_dsn, autocommit=True) as conn:
             conn.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(cls.dbname)))
@@ -864,8 +893,9 @@ class PostgresIntegration(unittest.TestCase):
         params = {"tariff_id": tariff["id"], "date_from": start.date().isoformat(), "start_time": start.strftime("%H:%M:%S"), "timezone_name": "UTC", "days": 2}
         before = self.request("GET", "/availability", params=params)
         self.assertEqual(before["days"][0]["available_nodes"], 1)
-        self.assertFalse(before["reservation"])
-        self.assertEqual(set(before["days"][0]), {"date", "start_at", "end_at", "available_nodes"})
+        self.assertTrue(before["reservation"])
+        self.assertEqual(before["hold_ttl_seconds"], 900)
+        self.assertEqual(set(before["days"][0]), {"date", "start_at", "end_at", "available_nodes", "status"})
         scheduled = self.request("POST", "/operator/campaigns/" + cid + "/schedule", json={"proxy_node_id": node["id"], "start_at": start.isoformat()})
         self.assertEqual(scheduled["placement_status"], "scheduled")
         busy = self.request("GET", "/availability", params=params)
@@ -886,8 +916,48 @@ class PostgresIntegration(unittest.TestCase):
         self.request("POST", "/operator/campaigns/" + str(second) + "/schedule", 409, json={"proxy_node_id": node["id"], "start_at": start.isoformat()})
         with psycopg.connect(self.dsn) as conn:
             conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '1 minute', scheduled_end_at=now()+interval '1 hour' WHERE id=%s", (cid,))
+        # Активация не может полагаться только на нажатие кнопки оператора.
+        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409)
+        observation_url = "/operator/campaigns/" + cid + "/display-observations"
+        negative = self.request("POST", observation_url, 201, json={
+            "result": "not_visible", "method": "separate_unsubscribed_client",
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "note": "Показ в отдельном клиенте не обнаружен",
+        })
+        self.assertEqual(negative["result"], "not_visible")
+        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409)
+        positive = self.request("POST", observation_url, 201, json={
+            "result": "visible", "method": "separate_unsubscribed_client",
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "note": "Показ вручную виден во втором аккаунте",
+        })
+        self.assertEqual(positive["result"], "visible")
+        reports = self.request("GET", observation_url)
+        self.assertEqual([r["result"] for r in reports[:2]], ["visible", "not_visible"])
+        actor = {"id": owner, "role": "advertiser"}
+        public_report = self.request("GET", "/campaigns/" + cid + "/display-observation")
+        self.assertEqual(public_report["result"], "visible")
+        self.assertNotIn("note", public_report)
+        actor = {"id": operator, "role": "admin"}
         self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/activate")["placement_status"], "active")
-        self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/complete")["placement_status"], "completed")
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 422)
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 422,
+                     json={"tag_removed_confirmed": False,
+                           "verification_method": "separate_unsubscribed_client"})
+        self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/complete",
+                         json={"tag_removed_confirmed": True,
+                               "verification_method": "separate_unsubscribed_client"})["placement_status"], "completed")
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 409,
+                     json={"tag_removed_confirmed": True,
+                           "verification_method": "separate_unsubscribed_client"})
+        with psycopg.connect(self.dsn) as conn:
+            completed_event = conn.execute(
+                """SELECT details_json FROM audit_events
+                   WHERE campaign_id=%s AND event_type='placement_completed_manually'""",
+                (cid,),
+            ).fetchone()[0]
+        self.assertIs(completed_event["tag_removed_confirmed"], True)
+        self.assertEqual(completed_event["verification_method"], "separate_unsubscribed_client")
         self.request("PATCH", "/admin/proxy-nodes/" + node["id"] + "/status", json={"status": "paused"})
         with psycopg.connect(self.dsn) as conn:
             self.assertGreaterEqual(conn.execute("SELECT count(*) FROM audit_events WHERE campaign_id=%s", (cid,)).fetchone()[0], 8)

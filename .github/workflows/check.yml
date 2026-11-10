@@ -21,12 +21,17 @@ jobs:
           --health-retries 20
     env:
       TEST_ADMIN_DSN: postgresql://postgres:ci-test-only@localhost:5432/postgres
+      PUSHOK_TEST_DB_ALLOWED: '1'
       DATABASE_URL: postgresql://postgres:ci-test-only@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Offline repository preflight (no network or secrets)
+        run: python3 scripts/preflight.py
+      - name: Verify release sources without network or database
+        run: python3 scripts/verify_release.py --mode offline
       - run: pip install -r api/requirements-dev.txt
       - run: python -m unittest discover -s tests -v
 
