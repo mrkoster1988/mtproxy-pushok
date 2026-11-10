@@ -25,6 +25,7 @@ def node(**overrides):
     item = dict(
         node_id=NODE, node_name="Pushok-1", node_status="active",
         target_engine="official_mtproxy", tag_registered=True,
+        registration_engine="official_mtproxy",
         campaign_id=None, campaign_channel_url=None,
         moderation_status=None, payment_status=None, placement_status=None,
         telegram_channel_id=None,
@@ -86,6 +87,23 @@ class NetworkPlanTests(unittest.TestCase):
                 result = self.plan([node(**kwargs)])["nodes"][0]
                 self.assertIsNone(result["target_channel_url"])
                 self.assertNotEqual(result["state"], "own_channel_planned")
+
+    def test_engine_tag_mismatch_blocks_own_and_paid_sponsor(self):
+        own = self.plan([node(registration_engine="telemt")])["nodes"][0]
+        self.assertEqual(own["state"], "engine_tag_mismatch")
+        self.assertIsNone(own["target_channel_url"])
+        paid = self.plan([node(
+            campaign_id=CAMPAIGN, campaign_channel_url="https://t.me/AdvertiserOne",
+            moderation_status="approved", payment_status="verified",
+            placement_status="scheduled", telegram_channel_id=12345,
+            registration_engine="telemt",
+        )])["nodes"][0]
+        self.assertEqual(paid["state"], "engine_tag_mismatch")
+        self.assertIsNone(paid["target_channel_url"])
+
+    def test_legacy_node_with_null_engine_can_still_be_planned(self):
+        result = self.plan([node(target_engine=None, registration_engine="telemt")])["nodes"][0]
+        self.assertEqual(result["state"], "own_channel_planned")
 
     def test_conflicting_campaigns_fail_closed(self):
         result = self.plan([

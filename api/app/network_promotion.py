@@ -35,6 +35,8 @@ def build_network_plan(rows, *, at, own_channel_url):
                 "node_status": row["node_status"],
                 "target_engine": row.get("target_engine"),
                 "tag_registered": bool(row["tag_registered"]),
+                "engine_tag_matches": (row.get("target_engine") is None
+                                       or row.get("registration_engine") == row.get("target_engine")),
                 "_campaigns": {},
             }
         if row.get("campaign_id") is not None:
@@ -54,7 +56,8 @@ def build_network_plan(rows, *, at, own_channel_url):
         node["campaign_id"] = campaign["campaign_id"] if campaign else None
         # Own fallback is only a proposal for an active, registered node.
         node["target_channel_url"] = (own_channel_url
-            if not campaigns and node["node_status"] == "active" and node["tag_registered"]
+            if not campaigns and node["node_status"] == "active"
+               and node["tag_registered"] and node["engine_tag_matches"]
             else None)
         node["channel_kind"] = "paid" if campaign else ("own" if not campaigns else "conflict")
         if len(campaigns) > 1:
@@ -63,6 +66,8 @@ def build_network_plan(rows, *, at, own_channel_url):
             state, action = "node_paused", "inspect_node_before_any_sponsor"
         elif not node["tag_registered"]:
             state, action = "tag_registration_required", "register_proxy_with_mtproxybot"
+        elif not node["engine_tag_matches"]:
+            state, action = "engine_tag_mismatch", "reconcile_registered_tag_engine"
         elif campaign and (campaign["moderation_status"] != "approved" or campaign["payment_status"] != "verified"
                            or not campaign["channel_verified"]
                            or parse_public_channel(campaign["channel_url"]) is None):
@@ -83,7 +88,7 @@ def build_network_plan(rows, *, at, own_channel_url):
     counts = {key: 0 for key in (
         "own_channel_planned", "paid_channel_planned",
         "paid_placement_not_approved", "tag_registration_required",
-        "node_paused", "overlap_conflict"
+        "node_paused", "overlap_conflict", "engine_tag_mismatch"
     )}
     for node in result:
         counts[node["state"]] += 1
@@ -127,6 +132,7 @@ def register_network_routes(app, require_admin, database_url):
                     SELECT n.id AS node_id, n.name AS node_name,
                            n.status AS node_status, n.target_engine,
                            (r.proxy_node_id IS NOT NULL) AS tag_registered,
+                           r.engine AS registration_engine,
                            c.id AS campaign_id,
                            c.moderation_status, c.payment_status, c.placement_status,
                            sc.telegram_url AS campaign_channel_url,

@@ -391,10 +391,11 @@ async function renderNetworkPlan(){
   target.replaceChildren(el('p','Узлов: '+data.node_count+' · свой канал: '+data.summary.own_channel_planned+
    ' · платные слоты: '+data.summary.paid_channel_planned+
    ' · без тегов: '+data.summary.tag_registration_required+
+   ' · несоответствие движка: '+data.summary.engine_tag_mismatch+
    ' · конфликтов: '+data.summary.overlap_conflict+'.','muted'));
   const captions={own_channel_planned:'Свой канал (план)',paid_channel_planned:'Коммерческий слот (план)',
     paid_placement_not_approved:'Платёж/модерация требуют проверки',
-    tag_registration_required:'Тег не зарегистрирован',node_paused:'Узел приостановлен',
+    tag_registration_required:'Тег не зарегистрирован',engine_tag_mismatch:'Тег зарегистрирован для другого движка',node_paused:'Узел приостановлен',
     overlap_conflict:'Конфликт расписания'};
   const list=el('ul',undefined,'core-checklist');
   for(const n of data.nodes){
