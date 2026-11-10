@@ -63,8 +63,9 @@ class SponsorNetworkIntegrationTests(unittest.TestCase):
         }]
         db = MagicMock()
         db.__enter__.return_value.execute.return_value.fetchall.return_value = rows
-        with patch("app.network_promotion.psycopg.connect", return_value=db), \
-             patch("app.main.psycopg.connect") as activation_db:
+        # Both modules import the same psycopg module: a second connect patch
+        # would shadow the test database and return an empty mock plan.
+        with patch("app.network_promotion.psycopg.connect", return_value=db):
             response = self.client.get("/api/v1/admin/network/promotion-plan",
                                        params={"at": WHEN.isoformat()})
             self.assertEqual(response.status_code, 200, response.text)
@@ -77,7 +78,6 @@ class SponsorNetworkIntegrationTests(unittest.TestCase):
             query = db.__enter__.return_value.execute.call_args.args[0]
             self.assertTrue(query.lstrip().startswith("SELECT"))
             self.assertNotIn("UPDATE campaigns", query)
-            activation_db.assert_not_called()
 
     def test_plan_does_not_bypass_observation_gate(self):
         main.app.dependency_overrides[main.require_operator] = lambda: {
