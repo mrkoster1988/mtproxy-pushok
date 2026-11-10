@@ -46,7 +46,7 @@ class TelegramBotTests(unittest.TestCase):
         }}, campaign_loader=load)
         self.assertEqual(seen, [123])
         self.assertIn("Мой канал", response[0]["text"])
-        self.assertIn("Актуальная", response[0]["text"])
+        self.assertIn("300 ₽", response[0]["text"])
         self.assertIn("На модерации", response[0]["text"])
 
     def test_foreign_sender_cannot_fetch_campaigns(self):
@@ -120,7 +120,7 @@ class TelegramBotTests(unittest.TestCase):
             "id": "callback1", "data": "tariffs",
             "message": {"chat": {"id": 17, "type": "private"}}}})
         self.assertEqual(response[1], "callback1")
-        self.assertIn("300 ₽", response[0]["text"])
+        self.assertIn("Актуальная", response[0]["text"])
         self.assertEqual(keyboard()["inline_keyboard"][2][0]["url"], CHANNEL_URL)
 
 
