@@ -12,6 +12,7 @@ from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 from .bot_routes import _verify_bot_secret
 from .payment_contract import validate_settlement, PaymentContractError
+from .payment_gate import stars_invoices_enabled
 
 router = APIRouter()
 CHECKOUT_ERROR = "Заказ или цена изменились. Откройте «Мои кампании» и получите новый счёт."
@@ -108,6 +109,8 @@ def prepare_invoice(
     x_pushok_bot_secret: str | None = Header(default=None),
 ) -> StarsPrepareOutput:
     authorize(x_pushok_bot_secret, response)
+    if not stars_invoices_enabled():
+        raise HTTPException(409, "stars_checkout_disabled_until_acceptance")
     try:
         with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=3,
                              row_factory=dict_row) as conn:
@@ -187,6 +190,8 @@ def precheckout(
     x_pushok_bot_secret: str | None = Header(default=None),
 ) -> StarsPrecheckoutOutput:
     authorize(x_pushok_bot_secret, response)
+    if not stars_invoices_enabled():
+        return StarsPrecheckoutOutput(ok=False, error_message="Оплата Stars ещё не включена.")
     attempt = parse_attempt(payload.invoice_payload)
     if attempt is None:
         return StarsPrecheckoutOutput(ok=False, error_message=CHECKOUT_ERROR)

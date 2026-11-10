@@ -18,7 +18,53 @@ async function run(fn,b){if(b)b.disabled=true;try{await fn();}catch(e){notice(e.
 function option(select,value,text){const o=el('option',text);o.value=value;select.append(o);}
 function money(n){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(n/100);}
 function date(v){return v?new Date(v).toLocaleString('ru-RU'):'Не назначено';}
-function operatorView(on){$('advertiser').hidden=on;$('operator').hidden=!on;$('advertiser-tab').classList.toggle('selected',!on);$('operator-tab').classList.toggle('selected',on);}
+function showWorkspace(view){
+ const admin=me?.role==='admin';
+ const selected=(view==='settings'&&admin)?'settings':view==='operator'?'operator':'advertiser';
+ for(const part of ['advertiser','operator','settings']){
+  $(part).hidden=part!==selected;
+  const tab=$(part+'-tab');tab.classList.toggle('selected',part===selected);
+  tab.setAttribute('aria-pressed',String(part===selected));
+ }
+}
+function operatorView(on){showWorkspace(on?'operator':'advertiser');}
+function showSettingsPane(pane){
+ const selected=['payments','tariffs','system'].includes(pane)?pane:'payments';
+ for(const name of ['payments','tariffs','system']){
+  $('settings-'+name).hidden=name!==selected;
+  $('settings-'+name+'-tab').classList.toggle('selected',name===selected);
+  $('settings-'+name+'-tab').setAttribute('aria-pressed',String(name===selected));
+ }
+}
+async function renderPaymentSettings(){
+ if(me?.role!=='admin')return;
+ const target=$('settings-payments-note');
+ target.textContent='Получение фактических данных из базы...';
+ try{
+  const report=await api('/admin/payments/status');
+  const stars=report.stars,sbp=report.sbp;
+  $('settings-stars-status').textContent=stars.invoice_enabled_in_server_config?
+   'Выставление счетов разрешено серверной конфигурацией; реальные испытания НЕ ПОДТВЕРЖДЕНЫ.':
+   'Реальные счета заблокированы серверной конфигурацией.';
+  $('settings-stars-counts').textContent=
+   'Тарифов с ценой XTR: '+stars.priced_active_tariffs+
+   ' · Оплат зарегистрировано в БД: '+stars.recorded_successes+
+   ' · Нужна ручная сверка: '+stars.needs_manual_review;
+  $('settings-sbp-status').textContent=sbp.checkout_enabled?
+   'СБП разрешена сервером (приёмка отдельно).':
+   'СБП не подключена: оплату провести нельзя.';
+  target.textContent='Данные БД и конфигурации не подтверждают приёмку Telegram, возвраты и банковский эквайринг. Секреты не отображаются.';
+ }catch(e){
+  $('settings-stars-status').textContent='Не удалось получить состояние Stars.';
+  $('settings-sbp-status').textContent='Нет подтверждения подключения СБП.';
+  target.textContent='Статус платежей недоступен: '+e.message;
+ }
+}
+async function loadAdminSettings(){
+ if(me?.role!=='admin')return;
+ await Promise.all([renderPaymentSettings(),renderTariffAdmin(),
+                    renderCoreReadiness(),renderLaunchReadiness()]);
+}
 
 const holdEligibility=c=>c.moderation_status==='approved' &&
  ['awaiting_payment','proof_submitted','rejected'].includes(c.payment_status) &&
@@ -396,7 +442,7 @@ async function renderTariffAdmin(){
   adminTariffs.forEach(t=>option(select,t.id,t.name+' · '+money(t.price_kopecks)));
   if(adminTariffs.some(t=>t.id===previous))select.value=previous;
   fillTariffAdmin();
-  $('tariff-admin-status').textContent='Изменения применяются только к новым заявкам. Настоящие списания Stars/СБП не активны.';
+  $('tariff-admin-status').textContent='Изменения тарифа применяются к новым заявкам. Доступность выставления счетов Stars проверяйте в разделе «Платежи».';
  }catch(e){$('tariff-admin-status').textContent='Не удалось прочитать тарифы: '+e.message;}
 }
 $('tariff-admin-select').addEventListener('change',fillTariffAdmin);
@@ -419,6 +465,7 @@ $('tariff-admin-form').addEventListener('submit',e=>{e.preventDefault();run(asyn
  $('tariff-select').replaceChildren();
  tariffs.forEach(t=>option($('tariff-select'),t.id,t.name+' · '+money(t.price_kopecks)));
  await loadAvailability();
+ await renderPaymentSettings();
  notice('Настройки тарифа сохранены. Старые заказы не изменены. Платежи не запущены.',true);
 },e.submitter);});
 
@@ -450,7 +497,8 @@ async function refresh(){
  const own=await api('/campaigns');$('campaigns').replaceChildren(...own.map(c=>card(c,false)));$('campaign-count').textContent=own.length+' заявок';
  if(!own.length)$('campaigns').append(el('div','Заявок пока нет. Добавьте канал и создайте первое размещение.','empty'));
  if(me&&['operator','admin'].includes(me.role)){
-  nodes=await api('/operator/proxy-nodes');renderNodes();if(me.role==='admin'){await renderCoreReadiness();await renderLaunchReadiness();await renderTariffAdmin();}
+  nodes=await api('/operator/proxy-nodes');renderNodes();
+  if(me.role==='admin'&&!$('settings').hidden)await loadAdminSettings();
   const queue=await api('/operator/campaigns'+($('queue-filter').value?'?'+$('queue-filter').value:''));
   $('queue-count').textContent=queue.length+' заявок';
   $('queue').replaceChildren(...queue.map(c=>card(c,true)));if(!queue.length)$('queue').append(el('div','В этой очереди пока нет заявок.','empty'));
@@ -459,7 +507,9 @@ async function refresh(){
 async function enter(){
  me=await api('/me');channels=await api('/channels');tariffs=await api('/tariffs');updatePublicPrice();
  const isOperator=['operator','admin'].includes(me.role);nodes=isOperator?await api('/operator/proxy-nodes'):[];
- $('identity').textContent=me.first_name||'Рекламодатель';$('logout').hidden=false;$('login').hidden=true;$('workspace').hidden=false;$('operator-tab').hidden=!isOperator;
+ $('identity').textContent=me.first_name||'Рекламодатель';$('logout').hidden=false;
+ $('login').hidden=true;$('workspace').hidden=false;$('operator-tab').hidden=!isOperator;
+ $('settings-tab').hidden=me.role!=='admin';showWorkspace('advertiser');showSettingsPane('payments');
  $('channel-select').replaceChildren();option($('channel-select'),'','Выберите канал');channels.forEach(c=>option($('channel-select'),c.id,c.title));
  $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,t.name+' · '+money(t.price_kopecks)));
  await refresh();await loadAvailability();
@@ -498,6 +548,14 @@ $('refresh').addEventListener('click',()=>run(async()=>{await refresh();await lo
 $('queue-filter').addEventListener('change',()=>run(refresh));
 $('advertiser-tab').addEventListener('click',()=>operatorView(false));
 $('operator-tab').addEventListener('click',()=>operatorView(true));
+$('settings-tab').addEventListener('click',()=>run(async()=>{
+ if(me?.role!=='admin')return;
+ showWorkspace('settings');
+ await loadAdminSettings();
+}));
+for(const pane of ['payments','tariffs','system']){
+ $('settings-'+pane+'-tab').addEventListener('click',()=>showSettingsPane(pane));
+}
 run(async()=>{
  try{tariffs=await api('/tariffs');updatePublicPrice();}catch(e){$('hero-tariff-price').textContent='Цена временно недоступна';}
  const config=await api('/public-config');if(config.telegram_bot_username&&/^[A-Za-z0-9_]+$/.test(config.telegram_bot_username)){

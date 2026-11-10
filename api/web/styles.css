@@ -357,3 +357,16 @@ footer { margin-top: 64px; padding: 26px 0 34px; border-top: 1px solid #33495a; 
 #launch-readiness{display:grid;gap:10px;}
 #launch-readiness .core-checklist{margin:4px 0 10px;}
 #launch-readiness .core-checklist li{line-height:1.55;}
+
+/* v0.050 — раздел настроек только для администратора */
+.settings-nav{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px;}
+.settings-nav button{padding:11px 15px;border:1px solid rgba(120,203,200,.27);
+ background:rgba(16,38,56,.85);color:var(--text);border-radius:12px;cursor:pointer;}
+.settings-nav button.selected{background:var(--mint);color:#122e3b;font-weight:750;}
+.settings-panel{margin-bottom:24px;}
+.settings-payment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+.settings-method{border:1px solid rgba(120,203,200,.26);border-radius:15px;
+ padding:19px;background:rgba(10,31,48,.65);}
+.settings-method h3{margin:0 0 12px;}
+.settings-method p{line-height:1.55;}
+@media(max-width:650px){.settings-payment-grid{grid-template-columns:1fr;}}

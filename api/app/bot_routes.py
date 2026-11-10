@@ -16,6 +16,7 @@ from psycopg.errors import UniqueViolation
 from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 from psycopg.rows import dict_row
+from .payment_gate import stars_invoices_enabled
 from .channel_verification import (
     ChannelNotVerified, TelegramUnavailable, verify_channel_admin,
 )
@@ -86,7 +87,9 @@ def list_bot_campaigns(
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [
         BotCampaignSummary(
-            **{**row, "currency_snapshot": row["currency_snapshot"].strip()}
+            **{**row,
+               "currency_snapshot": row["currency_snapshot"].strip(),
+               "stars_price_xtr": row["stars_price_xtr"] if stars_invoices_enabled() else None}
         )
         for row in rows
     ]

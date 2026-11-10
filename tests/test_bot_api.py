@@ -82,7 +82,7 @@ class BotCampaignApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(response.json()[0]["channel_title"], "Тестовый канал")
-        self.assertEqual(response.json()[0]["stars_price_xtr"], 180)
+        self.assertIsNone(response.json()[0]["stars_price_xtr"])
         self.assertEqual(response.json()[0]["currency_snapshot"], "RUB")
         sql_query, params = db.execute.call_args.args
         self.assertIn("WHERE u.telegram_user_id = %s", sql_query)

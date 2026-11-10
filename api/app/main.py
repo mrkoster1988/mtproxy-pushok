@@ -38,11 +38,12 @@ from .placement_verification import validate_observation_window
 from .placement_evidence import sanitize_image, store_image, read_verified_image, EvidenceReadError
 from .placement_report import build_campaign_report, PUBLIC_EVENTS
 from .report_export import render_campaign_csv
+from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.049",
+    version="0.050",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1661,6 +1662,56 @@ def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str,
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="admin_role_required")
     return user
+
+
+@app.get("/api/v1/admin/payments/status", tags=["admin"])
+def read_payment_settings(
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """Операционный обзор без ключей ЮKassa, токена Telegram и права включить оплату.
+
+    Отчёт показывает лишь наличие цен и записи в собственной БД;
+    это НЕ подтверждение работоспособности Telegram/эквайринга.
+    """
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            counts = connection.execute(
+                """SELECT
+                  (SELECT count(*) FROM tariffs
+                   WHERE is_active=TRUE AND stars_price_xtr IS NOT NULL)
+                        AS priced_stars_tariffs,
+                  (SELECT count(*) FROM stars_payment_receipts
+                   WHERE handling_status='requires_review')
+                        AS disputed_stars_receipts,
+                  (SELECT count(*) FROM payment_attempts
+                   WHERE provider='telegram_stars' AND status='succeeded')
+                        AS recorded_stars_payments,
+                  (SELECT count(*) FROM payment_attempts
+                   WHERE provider='sbp' AND status='succeeded')
+                        AS recorded_sbp_payments"""
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    safe = counts or {}
+    return {
+        "scope": "database_and_server_configuration_only",
+        "stars": {
+            "invoice_enabled_in_server_config": stars_invoices_enabled(),
+            "priced_active_tariffs": int(safe.get("priced_stars_tariffs") or 0),
+            "needs_manual_review": int(safe.get("disputed_stars_receipts") or 0),
+            "recorded_successes": int(safe.get("recorded_stars_payments") or 0),
+            "telegram_acceptance_verified": False,
+            "refund_workflow_verified": False,
+        },
+        "sbp": {
+            "integration": "not_implemented",
+            "checkout_enabled": False,
+            "recorded_successes": int(safe.get("recorded_sbp_payments") or 0),
+            "provider_verified": False,
+        },
+        "operator_can_enable_payments_from_ui": False,
+        "secrets_exposed": False,
+    }
 
 
 @app.get("/api/v1/admin/tariffs", response_model=list[TariffAdminResponse], tags=["admin"])

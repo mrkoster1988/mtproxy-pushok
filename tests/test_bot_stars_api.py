@@ -42,12 +42,29 @@ def row():
 class BotStarsAPITests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(main.app)
-        self.secret = patch.dict(os.environ, {"BOT_INTERNAL_SECRET": SECRET})
+        self.secret = patch.dict(os.environ, {
+            "BOT_INTERNAL_SECRET": SECRET, "PUSHOK_STARS_PAYMENTS_ENABLED": "1"
+        })
         self.secret.start()
 
     def tearDown(self):
         self.client.close()
         self.secret.stop()
+
+    def test_stars_invoices_disabled_without_database_write(self):
+        with patch.dict(os.environ, {"PUSHOK_STARS_PAYMENTS_ENABLED": "0"}):
+            with patch("app.bot_stars.psycopg.connect") as db:
+                response = self.client.post("/api/v1/internal/bot/stars/prepare",
+                    json={"telegram_user_id": 42, "campaign_id": str(CID)}, headers=H)
+                self.assertEqual(response.status_code, 409, response.text)
+                db.assert_not_called()
+                refusal = self.client.post("/api/v1/internal/bot/stars/precheckout",
+                    json={"query_id": "pc", "telegram_user_id": 42,
+                          "invoice_payload": "stars:" + str(ATT),
+                          "currency": "XTR", "total_amount": 180}, headers=H)
+                self.assertEqual(refusal.status_code, 200)
+                self.assertFalse(refusal.json()["ok"])
+                db.assert_not_called()
 
     def test_auth_before_database(self):
         with patch("app.bot_stars.psycopg.connect") as db:
