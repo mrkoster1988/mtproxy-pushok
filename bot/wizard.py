@@ -19,6 +19,21 @@ _TTL_SECONDS = 600
 _MAX_FLOWS = 512
 
 
+def format_tariff(data):
+    """Не вычисляем фиктивный курс RUB→XTR; обе цены независимы."""
+    if not isinstance(data, dict):
+        return "Актуальная цена временно недоступна"
+    name = " ".join(str(data.get("tariff_name") or data.get("name") or "Тариф").split())[:100]
+    price = data.get("price_kopecks", -1)
+    currency = str(data.get("currency", "")).strip()
+    if type(price) is not int or price <= 0 or currency != "RUB":
+        return "Актуальная цена временно недоступна"
+    rub = f"{price // 100}" if price % 100 == 0 else f"{price // 100},{price % 100:02d}"
+    stars = data.get("stars_price_xtr")
+    star_part = f" · {stars} ⭐" if type(stars) is int and stars > 0 else ""
+    return f"{name} — {rub} ₽{star_part}"
+
+
 def extract_channel_username(value):
     if not isinstance(value, str) or len(value) > 100:
         return None
@@ -38,11 +53,21 @@ def _answer(chat_id, text, callback_id=None, buttons=None):
 
 
 class DraftWizard:
-    def __init__(self, creator, enabled=True, clock=None):
+    def __init__(self, creator, enabled=True, clock=None, tariff_loader=None):
         self.creator = creator
         self.enabled = enabled
         self.clock = clock or time.monotonic
+        self.tariff_loader = tariff_loader
         self.sessions = {}
+
+    def current_tariff_text(self):
+        if self.tariff_loader is None:
+            return "Актуальная стоимость — в рекламном кабинете"
+        try:
+            return format_tariff(self.tariff_loader())
+        except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+            LOG.warning("Тариф временно недоступен: %s", type(exc).__name__)
+            return "Актуальная цена временно недоступна"
 
     def _clean(self):
         now = self.clock()
@@ -85,7 +110,7 @@ class DraftWizard:
                            "📢 Новое размещение MTProxy Pushok\n\n"
                            "Шаг 1 из 2. Отправьте @username своего публичного канала "
                            "или ссылку https://t.me/username.\n\n"
-                           "Стоимость: 1 день — 300 ₽. Оплата пока не принимается.",
+                           "Тариф: " + self.current_tariff_text() + ". Оплата пока не принимается.",
                            callback_id)
 
         if action == "draft:cancel" or first_word == "/cancel":
@@ -111,7 +136,11 @@ class DraftWizard:
                 return _answer(chat_id, "API ответил некорректно. Проверьте «Мои кампании».", callback_id)
             return _answer(chat_id,
                            "✅ Черновик создан для @" + state["username"] + ".\n"
-                           "Тариф: 1 день — 300 ₽.\n"
+                           "Тариф: " + format_tariff({
+                               "name": result.get("tariff_name"),
+                               "price_kopecks": result.get("price_kopecks"),
+                               "currency": result.get("currency"),
+                           }) + ".\n"
                            "Заявка пока НЕ отправлена на модерацию и НЕ оплачена.\n"
                            "Посмотрите её в разделе «Мои кампании».",
                            callback_id,
@@ -136,7 +165,7 @@ class DraftWizard:
                        "Шаг 2 из 2. Подтвердите:\n"
                        "Канал: @" + username + "\n"
                        "Формат: MTProxy Sponsor\n"
-                       "Тариф: 1 день — 300 ₽\n\n"
+                       "Тариф: " + self.current_tariff_text() + "\n\n"
                        "Сейчас создадим только черновик, без оплаты и публикации.",
                        None,
                        [[{"text": "✅ Создать черновик", "callback_data": "draft:confirm"}],

@@ -6,7 +6,7 @@ import time
 from uuid import UUID
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
-from .wizard import DraftWizard
+from .wizard import DraftWizard, format_tariff
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
 from .delivery_inbox import DeliveryInbox
@@ -38,8 +38,7 @@ def message_for(command):
     if command == "campaigns":
         return "📋 Просмотр личных кампаний через бота ещё не подключён."
     if command == "tariffs":
-        return ("💎 Базовый тариф: 1 день — 300 ₽.\n"
-                "Продажа и запуск прокси-размещений пока недоступны.")
+        return "💎 Актуальная стоимость тарифа доступна в кабинете. Оплата пока не подключена."
     if command == "channels":
         return "📣 Официальный канал:\n" + CHANNEL_URL
     return "❓ Поддержка: напишите через сообщения каналу\n" + CHANNEL_URL
@@ -57,6 +56,10 @@ def _internal_api(route, payload):
     )
     with urlopen(request, timeout=5) as stream:
         return json.load(stream)
+
+
+def fetch_current_tariff():
+    return _internal_api("tariff-quote", {})
 
 
 def fetch_campaigns(telegram_user_id):
@@ -254,7 +257,14 @@ def format_campaigns(campaigns):
     return "".join(lines)[:3900]
 
 
-def command_text(command, actor, chat_id, campaign_loader=None):
+def command_text(command, actor, chat_id, campaign_loader=None, tariff_loader=None):
+    if command == "tariffs" and tariff_loader is not None:
+        try:
+            return ("💎 Актуальный тариф: " + format_tariff(tariff_loader()) +
+                    "\nОплата Stars и СБП ещё не подключена.")
+        except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+            LOG.warning("Не удалось прочитать тариф: %s", type(exc).__name__)
+            return "💎 Тариф временно недоступен. Проверьте цену в кабинете."
     if command != "campaigns":
         return message_for(command)
     telegram_id = (actor or {}).get("id")
@@ -270,7 +280,7 @@ def command_text(command, actor, chat_id, campaign_loader=None):
 
 
 def response_for(update, campaign_loader=None, wizard=None, submitter=None,
-                 operator_inbox=None, delivery_inbox=None):
+                 operator_inbox=None, delivery_inbox=None, tariff_loader=None):
     """Вернуть (sendMessage_payload, callback_query_id) либо None."""
     if delivery_inbox is not None:
         delivery_reply = delivery_inbox.handle(update)
@@ -295,7 +305,7 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
         if not isinstance(chat.get("id"), int):
             return None
         return ({"chat_id": chat["id"], "text": command_text(
-            command, callback.get("from"), chat["id"], campaign_loader),
+            command, callback.get("from"), chat["id"], campaign_loader, tariff_loader),
                  "reply_markup": keyboard()}, callback.get("id"))
     message = update.get("message") or {}
     chat = message.get("chat") or {}
@@ -311,7 +321,7 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
     if command not in COMMANDS:
         return None
     return ({"chat_id": chat["id"], "text": command_text(
-        command, message.get("from"), chat["id"], campaign_loader),
+        command, message.get("from"), chat["id"], campaign_loader, tariff_loader),
              "reply_markup": keyboard()}, None)
 
 
@@ -348,7 +358,7 @@ def run():
         raise SystemExit("Не удалось запустить бота: проверьте токен, username и webhook.") from None
     secret = os.getenv("BOT_INTERNAL_SECRET", "")
     ready = len(secret) == 64 and all(c in "0123456789abcdef" for c in secret)
-    wizard = DraftWizard(create_campaign_draft, enabled=ready)
+    wizard = DraftWizard(create_campaign_draft, enabled=ready, tariff_loader=fetch_current_tariff)
     operator_inbox = OperatorInbox(operator_queue, operator_decide, operator_unsubscribe)
     delivery_inbox = DeliveryInbox(admin_delivery_report, admin_retry_advertiser_notice)
     next_notification_poll = time.monotonic()
@@ -361,6 +371,7 @@ def run():
             for update in updates:
                 next_offset = update["update_id"] + 1
                 response = response_for(update, campaign_loader=fetch_campaigns, wizard=wizard,
+                                        tariff_loader=fetch_current_tariff,
                                         submitter=submit_campaign_draft,
                                         operator_inbox=operator_inbox,
                                         delivery_inbox=delivery_inbox)

@@ -48,7 +48,7 @@
           </div>
           <div class="tariff-note">
             <span class="tariff-label">БАЗОВЫЙ ТАРИФ <span aria-hidden="true">↘</span></span>
-            <strong>300 ₽ <small>/ 1 день</small></strong>
+            <strong><span id="hero-tariff-price">300 ₽</span> <small id="hero-tariff-duration">/ 1 день</small></strong>
             <span class="tariff-subtitle">Стоимость одного размещения</span>
           </div>
         </div>
@@ -133,6 +133,20 @@
         <section id="node-admin" class="panel node-panel" hidden>
           <div class="node-heading"><div><div class="eyebrow">УПРАВЛЕНИЕ ИНФРАСТРУКТУРОЙ</div><h2>Pushok Unified Engine <span class="heading-star">✳</span></h2><p class="panel-lead">Классический MTProxy, Docker и план будущего Pushok Core — в едином месте.</p></div><span class="node-warning">Планирование · без запуска</span></div>
           <p class="muted">Выбор движка сохраняет только план. Установка и доступность на VPS не подтверждаются.</p>
+          <section class="core-health" aria-label="Настройки тарифов MTProxy Pushok">
+            <div><span class="eyebrow">ЦЕНЫ И ТАРИФЫ</span><h3>Настройки стоимости рекламы</h3></div>
+            <p class="muted">Базовая цена — 300 ₽ за день. Изменения действуют для новых заказов; ранее созданные сохраняют свою цену. Стоимость в Stars указывается отдельно, без выдуманного курса.</p>
+            <form id="tariff-admin-form">
+              <label>Выберите тариф<select id="tariff-admin-select" required></select></label>
+              <label>Название<input id="tariff-admin-name" maxlength="100" required></label>
+              <label>Длительность, часы<input id="tariff-admin-hours" type="number" min="1" max="8760" step="0.25" required></label>
+              <label>Цена для СБП, ₽<input id="tariff-admin-rub" type="number" min="1" max="1000000" step="0.01" required></label>
+              <label>Цена в Telegram Stars, XTR<input id="tariff-admin-stars" type="number" min="1" max="1000000" step="1" placeholder="Не настроено"></label>
+              <label><input id="tariff-admin-active" type="checkbox"> Тариф активен для новых заказов</label>
+              <button class="primary" type="submit">Сохранить настройки тарифа</button>
+            </form>
+            <p id="tariff-admin-status" class="muted" role="status">Настройки читаются из базы. Оплата Stars и СБП пока не подключена.</p>
+          </section>
           <div class="core-health" aria-label="Готовность к запуску MTProxy Pushok">
             <div><span class="eyebrow">ГОТОВНОСТЬ ПЛАТФОРМЫ</span><h3>Что осталось до запуска</h3></div>
             <p class="muted">Инвентаризация базы, не проверка доступности MTProxy и показов Telegram.</p>
@@ -165,7 +179,7 @@
       </div>
     </section>
 
-    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v0.047</span></footer>
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v0.048</span></footer>
   </main>
 </body>
 </html>

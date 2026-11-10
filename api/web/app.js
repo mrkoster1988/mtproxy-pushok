@@ -366,6 +366,62 @@ async function renderCoreReadiness(){
   $('core-test-plan').replaceChildren();
  }
 }
+let adminTariffs=[];
+
+function updatePublicPrice(){
+ const t=tariffs.find(x=>x.duration_seconds===86400)||tariffs[0];
+ if(!t){
+  $('hero-tariff-price').textContent='Уточняйте цену';
+  $('hero-tariff-duration').textContent='';
+  return;
+ }
+ $('hero-tariff-price').textContent=money(t.price_kopecks);
+ $('hero-tariff-duration').textContent='/ '+t.name;
+}
+function fillTariffAdmin(){
+ const tariff=adminTariffs.find(t=>t.id===$('tariff-admin-select').value);
+ if(!tariff)return;
+ $('tariff-admin-name').value=tariff.name;
+ $('tariff-admin-hours').value=tariff.duration_seconds/3600;
+ $('tariff-admin-rub').value=(tariff.price_kopecks/100).toFixed(2);
+ $('tariff-admin-stars').value=tariff.stars_price_xtr===null?'':String(tariff.stars_price_xtr);
+ $('tariff-admin-active').checked=tariff.is_active;
+}
+async function renderTariffAdmin(){
+ if(me?.role!=='admin')return;
+ try{
+  adminTariffs=await api('/admin/tariffs');
+  const select=$('tariff-admin-select'),previous=select.value;
+  select.replaceChildren();
+  adminTariffs.forEach(t=>option(select,t.id,t.name+' · '+money(t.price_kopecks)));
+  if(adminTariffs.some(t=>t.id===previous))select.value=previous;
+  fillTariffAdmin();
+  $('tariff-admin-status').textContent='Изменения применяются только к новым заявкам. Настоящие списания Stars/СБП не активны.';
+ }catch(e){$('tariff-admin-status').textContent='Не удалось прочитать тарифы: '+e.message;}
+}
+$('tariff-admin-select').addEventListener('change',fillTariffAdmin);
+$('tariff-admin-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
+ const chosen=$('tariff-admin-select').value;
+ const hours=Number($('tariff-admin-hours').value),rub=Number($('tariff-admin-rub').value);
+ const duration=Math.round(hours*3600),kopecks=Math.round(rub*100);
+ const starValue=$('tariff-admin-stars').value.trim();
+ const stars=starValue===''?null:Number(starValue);
+ if(!Number.isInteger(duration)||duration<3600||duration>31536000||
+    !Number.isInteger(kopecks)||kopecks<100||kopecks>100000000||
+    (stars!==null&&(!Number.isInteger(stars)||stars<1||stars>1000000)))
+  throw Error('Укажите допустимую цену, длительность и количество Stars.');
+ const body={name:$('tariff-admin-name').value.trim(),duration_seconds:duration,
+             price_kopecks:kopecks,stars_price_xtr:stars,
+             is_active:$('tariff-admin-active').checked};
+ await api('/admin/tariffs/'+chosen,{method:'PUT',body});
+ await renderTariffAdmin();
+ tariffs=await api('/tariffs');updatePublicPrice();
+ $('tariff-select').replaceChildren();
+ tariffs.forEach(t=>option($('tariff-select'),t.id,t.name+' · '+money(t.price_kopecks)));
+ await loadAvailability();
+ notice('Настройки тарифа сохранены. Старые заказы не изменены. Платежи не запущены.',true);
+},e.submitter);});
+
 function renderNodes(){
  $('node-admin').hidden=me?.role!=='admin';
  $('nodes-list').replaceChildren(...nodes.map(n=>{
@@ -394,14 +450,14 @@ async function refresh(){
  const own=await api('/campaigns');$('campaigns').replaceChildren(...own.map(c=>card(c,false)));$('campaign-count').textContent=own.length+' заявок';
  if(!own.length)$('campaigns').append(el('div','Заявок пока нет. Добавьте канал и создайте первое размещение.','empty'));
  if(me&&['operator','admin'].includes(me.role)){
-  nodes=await api('/operator/proxy-nodes');renderNodes();if(me.role==='admin'){await renderCoreReadiness();await renderLaunchReadiness();}
+  nodes=await api('/operator/proxy-nodes');renderNodes();if(me.role==='admin'){await renderCoreReadiness();await renderLaunchReadiness();await renderTariffAdmin();}
   const queue=await api('/operator/campaigns'+($('queue-filter').value?'?'+$('queue-filter').value:''));
   $('queue-count').textContent=queue.length+' заявок';
   $('queue').replaceChildren(...queue.map(c=>card(c,true)));if(!queue.length)$('queue').append(el('div','В этой очереди пока нет заявок.','empty'));
  }
 }
 async function enter(){
- me=await api('/me');channels=await api('/channels');tariffs=await api('/tariffs');
+ me=await api('/me');channels=await api('/channels');tariffs=await api('/tariffs');updatePublicPrice();
  const isOperator=['operator','admin'].includes(me.role);nodes=isOperator?await api('/operator/proxy-nodes'):[];
  $('identity').textContent=me.first_name||'Рекламодатель';$('logout').hidden=false;$('login').hidden=true;$('workspace').hidden=false;$('operator-tab').hidden=!isOperator;
  $('channel-select').replaceChildren();option($('channel-select'),'','Выберите канал');channels.forEach(c=>option($('channel-select'),c.id,c.title));
@@ -442,7 +498,9 @@ $('refresh').addEventListener('click',()=>run(async()=>{await refresh();await lo
 $('queue-filter').addEventListener('change',()=>run(refresh));
 $('advertiser-tab').addEventListener('click',()=>operatorView(false));
 $('operator-tab').addEventListener('click',()=>operatorView(true));
-run(async()=>{const config=await api('/public-config');if(config.telegram_bot_username&&/^[A-Za-z0-9_]+$/.test(config.telegram_bot_username)){
+run(async()=>{
+ try{tariffs=await api('/tariffs');updatePublicPrice();}catch(e){$('hero-tariff-price').textContent='Цена временно недоступна';}
+ const config=await api('/public-config');if(config.telegram_bot_username&&/^[A-Za-z0-9_]+$/.test(config.telegram_bot_username)){
  const script=document.createElement('script');script.src='https://telegram.org/js/telegram-widget.js?22';script.async=true;script.dataset.telegramLogin=config.telegram_bot_username;script.dataset.size='large';script.dataset.onauth='onTelegramAuth(user)';$('telegram-login').append(script);$('login-note').textContent='Вход подтверждается в Telegram.';
 }else $('login-note').textContent='Администратору нужно настроить Telegram-бота для входа.';
  if(token)await enter();
