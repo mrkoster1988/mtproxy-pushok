@@ -159,6 +159,28 @@ class NetworkApiTests(unittest.TestCase):
         self.assertNotIn("r.ad_tag", sql)
         self.assertNotIn("INSERT", sql)
 
+    def test_admin_api_blocks_mismatched_tag_engine(self):
+        main.app.dependency_overrides[main.require_admin] = lambda: {
+            "id": ADMIN, "role": "admin"}
+        connection = MagicMock()
+        connection.__enter__.return_value.execute.return_value.fetchall.return_value = [
+            node(registration_engine="telemt", target_engine="official_mtproxy",
+                 campaign_id=CAMPAIGN,
+                 campaign_channel_url="https://t.me/AdvertiserOne",
+                 moderation_status="approved", payment_status="verified",
+                 placement_status="scheduled", telegram_channel_id=12345),
+        ]
+        with patch("app.network_promotion.psycopg.connect", return_value=connection):
+            response = self.client.get(self.path, params={"at": WHEN.isoformat()})
+        self.assertEqual(response.status_code, 200, response.text)
+        result = response.json()["nodes"][0]
+        self.assertEqual(result["state"], "engine_tag_mismatch")
+        self.assertIsNone(result["target_channel_url"])
+        self.assertFalse(result["changes_applied"])
+        self.assertFalse(result["automatic_switch_supported"])
+        sql = connection.__enter__.return_value.execute.call_args.args[0]
+        self.assertIn("r.engine AS registration_engine", sql)
+
     def test_reject_naive_time_without_db(self):
         main.app.dependency_overrides[main.require_admin] = lambda: {"id": ADMIN, "role": "admin"}
         with patch("app.network_promotion.psycopg.connect") as db:
