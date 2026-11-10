@@ -156,7 +156,7 @@ def deliver_operator_outbox(token):
                 "text": (
                     "📨 Заявка на модерацию MTProxy Pushok\n"
                     f"Заявка: {str(campaign_id)[:8]}\n"
-                    "Тариф: 1 день — 300 ₽\n"
+                    "Цена и срок — в карточке заявки.\n"
                     "Откройте /moderation для проверки."
                 ),
                 "reply_markup": {"inline_keyboard": [[

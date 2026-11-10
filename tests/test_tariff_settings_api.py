@@ -107,6 +107,11 @@ class TariffSettingsTests(unittest.TestCase):
         self.assertIn("/admin/tariffs/", js)
         self.assertNotIn("price_kopecks = 30000", bot)
 
+    def test_operator_notification_does_not_hardcode_current_price(self):
+        bot = (ROOT / "bot/main.py").read_text()
+        self.assertIn("Цена и срок — в карточке заявки", bot)
+        self.assertNotIn("Тариф: 1 день — 300 ₽", bot)
+
 
 if __name__ == "__main__":
     unittest.main()
