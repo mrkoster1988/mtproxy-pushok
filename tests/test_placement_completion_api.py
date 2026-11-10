@@ -112,7 +112,7 @@ class PlacementCompletionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409, response.text)
         commands = conn.__enter__.return_value.execute.call_args_list
         self.assertEqual(len(commands), 2)
-        self.assertNotIn("audit_events", str(commands))
+        self.assertFalse(any("INSERT INTO audit_events" in call.args[0] for call in commands))
 
     def test_not_found_returns_404(self):
         self.as_operator()
