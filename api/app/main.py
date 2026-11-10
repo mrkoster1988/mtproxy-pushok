@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from psycopg.errors import ExclusionViolation, UniqueViolation
 from psycopg.rows import dict_row
 from .bot_routes import router as bot_router
+from .bot_stars import router as bot_stars_router
 from .bot_operator import router as operator_bot_router
 from .bot_advertiser_notices import router as advertiser_notices_router
 from .bot_outbox import router as bot_outbox_router
@@ -37,15 +38,17 @@ from .placement_verification import validate_observation_window
 from .placement_evidence import sanitize_image, store_image, read_verified_image, EvidenceReadError
 from .placement_report import build_campaign_report, PUBLIC_EVENTS
 from .report_export import render_campaign_csv
+from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
 from .network_promotion import register_network_routes
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.047",
+    version="0.050",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
+app.include_router(bot_stars_router)
 app.include_router(operator_bot_router)
 app.include_router(advertiser_notices_router)
 app.include_router(bot_outbox_router)
@@ -95,6 +98,28 @@ class TariffResponse(BaseModel):
     duration_seconds: int
     price_kopecks: int
     currency: str
+
+
+class TariffAdminResponse(TariffResponse):
+    is_active: bool
+    stars_price_xtr: int | None = None
+
+
+class TariffSettingsUpdate(BaseModel):
+    """Редактируем тариф, не меняя уже зафиксированные цены заказов."""
+    name: str = Field(min_length=1, max_length=100)
+    duration_seconds: int = Field(ge=3600, le=31536000)
+    price_kopecks: int = Field(ge=100, le=100000000)
+    stars_price_xtr: int | None = Field(ge=1, le=1000000)
+    is_active: bool
+
+    @field_validator("name")
+    @classmethod
+    def normalize_tariff_name(cls, value: str) -> str:
+        value = " ".join(value.split())
+        if not value:
+            raise ValueError("tariff_name_required")
+        return value
 
 
 class ChannelCreate(BaseModel):
@@ -305,6 +330,15 @@ def require_operator(user: dict[str, Any] = Depends(get_current_user)) -> dict[s
     if user["role"] not in {"operator", "admin"}:
         raise HTTPException(status_code=403, detail="operator_role_required")
     return user
+
+
+def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="admin_role_required")
+    return user
+
+
+register_network_routes(app, require_admin, DATABASE_URL)
 
 
 def _campaign_response(row: dict[str, Any]) -> CampaignResponse:
@@ -1633,14 +1667,110 @@ def list_payment_proofs(
 
 
 
+@app.get("/api/v1/admin/payments/status", tags=["admin"])
+def read_payment_settings(
+    admin: dict[str, Any] = Depends(require_admin),
+) -> dict[str, Any]:
+    """Операционный обзор без ключей ЮKassa, токена Telegram и права включить оплату.
 
-def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="admin_role_required")
-    return user
+    Отчёт показывает лишь наличие цен и записи в собственной БД;
+    это НЕ подтверждение работоспособности Telegram/эквайринга.
+    """
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            counts = connection.execute(
+                """SELECT
+                  (SELECT count(*) FROM tariffs
+                   WHERE is_active=TRUE AND stars_price_xtr IS NOT NULL)
+                        AS priced_stars_tariffs,
+                  (SELECT count(*) FROM stars_payment_receipts
+                   WHERE handling_status='requires_review')
+                        AS disputed_stars_receipts,
+                  (SELECT count(*) FROM payment_attempts
+                   WHERE provider='telegram_stars' AND status='succeeded')
+                        AS recorded_stars_payments,
+                  (SELECT count(*) FROM payment_attempts
+                   WHERE provider='sbp' AND status='succeeded')
+                        AS recorded_sbp_payments"""
+            ).fetchone()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    safe = counts or {}
+    return {
+        "scope": "database_and_server_configuration_only",
+        "stars": {
+            "invoice_enabled_in_server_config": stars_invoices_enabled(),
+            "priced_active_tariffs": int(safe.get("priced_stars_tariffs") or 0),
+            "needs_manual_review": int(safe.get("disputed_stars_receipts") or 0),
+            "recorded_successes": int(safe.get("recorded_stars_payments") or 0),
+            "telegram_acceptance_verified": False,
+            "refund_workflow_verified": False,
+        },
+        "sbp": {
+            "integration": "not_implemented",
+            "checkout_enabled": False,
+            "recorded_successes": int(safe.get("recorded_sbp_payments") or 0),
+            "provider_verified": False,
+        },
+        "operator_can_enable_payments_from_ui": False,
+        "secrets_exposed": False,
+    }
 
 
-register_network_routes(app, require_admin, DATABASE_URL)
+@app.get("/api/v1/admin/tariffs", response_model=list[TariffAdminResponse], tags=["admin"])
+def list_admin_tariffs(
+    admin: dict[str, Any] = Depends(require_admin),
+) -> list[TariffAdminResponse]:
+    """Действующие и отключённые тарифы; цены XTR видны только администратору."""
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            rows = connection.execute(
+                """SELECT id, name, duration_seconds, price_kopecks, currency,
+                          is_active, stars_price_xtr
+                   FROM tariffs ORDER BY duration_seconds, id"""
+            ).fetchall()
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return [TariffAdminResponse(**{**row, "currency": row["currency"].strip()}) for row in rows]
+
+
+@app.put("/api/v1/admin/tariffs/{tariff_id}", response_model=TariffAdminResponse, tags=["admin"])
+def update_admin_tariff(
+    tariff_id: UUID,
+    payload: TariffSettingsUpdate,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> TariffAdminResponse:
+    """Зафиксировать новую публичную цену без пересчёта старых кампаний."""
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            row = connection.execute(
+                """UPDATE tariffs
+                   SET name = %s, duration_seconds = %s, price_kopecks = %s,
+                       stars_price_xtr = %s, is_active = %s
+                   WHERE id = %s AND btrim(currency) = 'RUB'
+                   RETURNING id, name, duration_seconds, price_kopecks,
+                             currency, stars_price_xtr, is_active""",
+                (payload.name, payload.duration_seconds, payload.price_kopecks,
+                 payload.stars_price_xtr, payload.is_active, tariff_id),
+            ).fetchone()
+            if row is None:
+                raise HTTPException(status_code=404, detail="tariff_not_found")
+            connection.execute(
+                """INSERT INTO audit_events(actor_user_id, event_type, details_json)
+                   VALUES (%s, 'tariff_settings_updated',
+                           jsonb_build_object('tariff_id', %s::text,
+                                              'price_kopecks', %s::int,
+                                              'stars_price_xtr', %s::int,
+                                              'duration_seconds', %s::int,
+                                              'is_active', %s::boolean))""",
+                (admin["id"], str(tariff_id), payload.price_kopecks,
+                 payload.stars_price_xtr, payload.duration_seconds, payload.is_active),
+            )
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    return TariffAdminResponse(**{**row, "currency": row["currency"].strip()})
 
 
 class EngineSelectionInput(BaseModel):

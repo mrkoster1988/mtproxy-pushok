@@ -27,6 +27,7 @@ def node(**overrides):
         target_engine="official_mtproxy", tag_registered=True,
         campaign_id=None, campaign_channel_url=None,
         moderation_status=None, payment_status=None, placement_status=None,
+        telegram_channel_id=None,
     )
     item.update(overrides)
     return item
@@ -49,7 +50,7 @@ class NetworkPlanTests(unittest.TestCase):
         result = self.plan([node(
             campaign_id=CAMPAIGN, campaign_channel_url="https://t.me/AdvertiserOne",
             moderation_status="approved", payment_status="verified",
-            placement_status="scheduled"
+            placement_status="scheduled", telegram_channel_id=12345
         )])["nodes"][0]
         self.assertEqual(result["state"], "paid_channel_planned")
         self.assertEqual(result["target_channel_url"], "https://t.me/AdvertiserOne")
@@ -64,6 +65,16 @@ class NetworkPlanTests(unittest.TestCase):
         )])["nodes"][0]
         self.assertEqual(result["state"], "paid_placement_not_approved")
         self.assertNotEqual(result["channel_kind"], "own")
+        self.assertIsNone(result["target_channel_url"])
+
+    def test_unverified_sponsor_channel_is_not_planned(self):
+        result = self.plan([node(
+            campaign_id=CAMPAIGN, campaign_channel_url="https://t.me/AdvertiserOne",
+            moderation_status="approved", payment_status="verified",
+            placement_status="scheduled", telegram_channel_id=None,
+        )])["nodes"][0]
+        self.assertEqual(result["state"], "paid_placement_not_approved")
+        self.assertIsNone(result["target_channel_url"])
 
     def test_paused_and_unregistered_nodes_not_promised(self):
         self.assertEqual(self.plan([node(node_status="paused")])["nodes"][0]["state"], "node_paused")

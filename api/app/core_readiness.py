@@ -13,7 +13,7 @@ CORE_VERSION = "0.027"
 def core_readiness() -> dict[str, Any]:
     return {
         "product": "Pushok Source Core",
-        "project_version": "0.047",
+        "project_version": "0.050",
         "core_version": CORE_VERSION,
         "upstream_commit": UPSTREAM_COMMIT,
         "patch": PATCH_ID,
@@ -32,7 +32,7 @@ def core_readiness() -> dict[str, Any]:
 def core_diagnostic_plan() -> dict[str, Any]:
     """Static admin view of what CI may exercise; never query hosts or run a proxy."""
     return {
-        "project_version": "0.047",
+        "project_version": "0.050",
         "execution": "not_started_by_api",
         "ci_probe_scope": "offline_127.0.0.1_in_docker_network_none",
         "steps": [

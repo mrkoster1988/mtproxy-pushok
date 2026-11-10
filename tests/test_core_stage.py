@@ -159,7 +159,7 @@ class CoreReadinessAPITests(unittest.TestCase):
 
     def test_readiness_is_explicitly_not_a_live_health_check(self):
         report = core_readiness()
-        self.assertEqual(report["project_version"], "0.031")
+        self.assertEqual(report["project_version"], main.app.version)
         self.assertEqual(report["core_version"], "0.027")
         self.assertIsNone(report["local_build_verified"])
         self.assertEqual(report["runtime_status"], "not_checked")

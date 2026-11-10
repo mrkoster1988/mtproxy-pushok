@@ -41,6 +41,7 @@ def build_network_plan(rows, *, at, own_channel_url):
             nodes[key]["_campaigns"][str(row["campaign_id"])] = {
                 "campaign_id": str(row["campaign_id"]),
                 "channel_url": row["campaign_channel_url"],
+                "channel_verified": row.get("telegram_channel_id") is not None,
                 "moderation_status": row["moderation_status"],
                 "payment_status": row["payment_status"],
                 "placement_status": row["placement_status"],
@@ -51,7 +52,7 @@ def build_network_plan(rows, *, at, own_channel_url):
         campaigns = list(node.pop("_campaigns").values())
         campaign = campaigns[0] if len(campaigns) == 1 else None
         node["campaign_id"] = campaign["campaign_id"] if campaign else None
-        node["target_channel_url"] = (campaign["channel_url"] if campaign else own_channel_url) if len(campaigns) <= 1 else None
+        node["target_channel_url"] = own_channel_url if not campaigns else None
         node["channel_kind"] = "paid" if campaign else ("own" if not campaigns else "conflict")
         if len(campaigns) > 1:
             state, action = "overlap_conflict", "investigate_conflicting_placements"
@@ -59,10 +60,13 @@ def build_network_plan(rows, *, at, own_channel_url):
             state, action = "node_paused", "inspect_node_before_any_sponsor"
         elif not node["tag_registered"]:
             state, action = "tag_registration_required", "register_proxy_with_mtproxybot"
-        elif campaign and (campaign["moderation_status"] != "approved" or campaign["payment_status"] != "verified"):
+        elif campaign and (campaign["moderation_status"] != "approved" or campaign["payment_status"] != "verified"
+                           or not campaign["channel_verified"]
+                           or parse_public_channel(campaign["channel_url"]) is None):
             state, action = "paid_placement_not_approved", "resolve_moderation_or_payment"
         elif campaign:
             state, action = "paid_channel_planned", "manually_verify_paid_sponsor"
+            node["target_channel_url"] = campaign["channel_url"]
         else:
             state, action = "own_channel_planned", "manually_set_own_sponsor"
 
@@ -122,7 +126,8 @@ def register_network_routes(app, require_admin, database_url):
                            (r.proxy_node_id IS NOT NULL) AS tag_registered,
                            c.id AS campaign_id,
                            c.moderation_status, c.payment_status, c.placement_status,
-                           sc.telegram_url AS campaign_channel_url
+                           sc.telegram_url AS campaign_channel_url,
+                           sc.telegram_channel_id
                     FROM proxy_nodes AS n
                     LEFT JOIN proxy_sponsor_registrations AS r ON r.proxy_node_id = n.id
                     LEFT JOIN campaigns AS c ON c.proxy_node_id = n.id
