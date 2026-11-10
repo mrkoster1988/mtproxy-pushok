@@ -39,6 +39,17 @@ def build_network_plan(rows, *, at, own_channel_url):
                                        or row.get("registration_engine") == row.get("target_engine")),
                 "_campaigns": {},
             }
+        # A JOIN may yield multiple registration rows for one node. If any
+        # row disagrees with the selected engine, fail closed instead of
+        # trusting whichever registration PostgreSQL returned first.
+        nodes[key]["tag_registered"] = (
+            nodes[key]["tag_registered"] and bool(row["tag_registered"])
+        )
+        nodes[key]["engine_tag_matches"] = (
+            nodes[key]["engine_tag_matches"]
+            and (row.get("target_engine") is None
+                 or row.get("registration_engine") == row.get("target_engine"))
+        )
         if row.get("campaign_id") is not None:
             nodes[key]["_campaigns"][str(row["campaign_id"])] = {
                 "campaign_id": str(row["campaign_id"]),

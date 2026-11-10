@@ -101,6 +101,25 @@ class NetworkPlanTests(unittest.TestCase):
         self.assertEqual(paid["state"], "engine_tag_mismatch")
         self.assertIsNone(paid["target_channel_url"])
 
+    def test_multiple_registration_rows_fail_closed_regardless_of_order(self):
+        valid = node(registration_engine="official_mtproxy")
+        invalid = node(registration_engine="telemt")
+        for rows in ([valid, invalid], [invalid, valid]):
+            with self.subTest(first_engine=rows[0]["registration_engine"]):
+                result = self.plan(rows)["nodes"][0]
+                self.assertEqual(result["state"], "engine_tag_mismatch")
+                self.assertIsNone(result["target_channel_url"])
+                self.assertFalse(result["changes_applied"])
+
+    def test_missing_registration_row_cannot_be_hidden_by_valid_one(self):
+        valid = node(registration_engine="official_mtproxy")
+        missing = node(registration_engine=None, tag_registered=False)
+        for rows in ([valid, missing], [missing, valid]):
+            with self.subTest(first_registered=rows[0]["tag_registered"]):
+                result = self.plan(rows)["nodes"][0]
+                self.assertEqual(result["state"], "tag_registration_required")
+                self.assertIsNone(result["target_channel_url"])
+
     def test_legacy_node_with_null_engine_can_still_be_planned(self):
         result = self.plan([node(target_engine=None, registration_engine="telemt")])["nodes"][0]
         self.assertEqual(result["state"], "own_channel_planned")
