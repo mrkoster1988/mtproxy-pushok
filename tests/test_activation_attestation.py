@@ -68,7 +68,8 @@ class ActivationAttestationTests(unittest.TestCase):
         sql = db.__enter__.return_value.execute.call_args_list[0].args[0]
         self.assertIn("newest.id DESC", sql)
         self.assertIn("o.result = 'visible'", sql)
-        self.assertIn("interval '10 minutes'", sql)
+        self.assertIn("o.observed_at >= now() - interval '10 minutes'", sql)
+        self.assertIn("o.recorded_at >= now() - interval '10 minutes'", sql)
         self.assertIn("proxy_sponsor_registrations", sql)
         self.assertIn("sc.telegram_channel_id IS NOT NULL", sql)
 

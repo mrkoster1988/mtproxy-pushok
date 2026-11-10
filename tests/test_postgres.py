@@ -927,7 +927,7 @@ class PostgresIntegration(unittest.TestCase):
             """, (cid,)).fetchone()[0]
         self.request("POST", "/operator/campaigns/" + str(second) + "/schedule", 409, json={"proxy_node_id": node["id"], "start_at": start.isoformat()})
         with psycopg.connect(self.dsn) as conn:
-            conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '1 minute', scheduled_end_at=now()+interval '1 hour' WHERE id=%s", (cid,))
+            conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '20 minutes', scheduled_end_at=now()+interval '1 hour' WHERE id=%s", (cid,))
         # Активация не может полагаться только на нажатие кнопки оператора.
         self.request("POST", "/operator/campaigns/" + cid + "/activate", 409, json={"tag_applied_on_node": True, "mtproxybot_promotion_selected": True,
                        "independent_client_checked": True,
@@ -955,6 +955,23 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(public_report["result"], "visible")
         self.assertNotIn("note", public_report)
         actor = {"id": operator, "role": "admin"}
+        # Simulate elapsed time after a report was written: recorded_at remains
+        # fresh, but the actual observation is no longer within 10 minutes.
+        # The SQL guard must reject the old observation, not merely trust
+        # the time at which the report was saved.
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("""UPDATE placement_observations
+                           SET observed_at=now()-interval '11 minutes',
+                               recorded_at=now()
+                           WHERE id=%s""", (positive["id"],))
+        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409,
+                     json={"tag_applied_on_node": True,
+                           "mtproxybot_promotion_selected": True,
+                           "independent_client_checked": True,
+                           "verification_note": "Устаревшее наблюдение не должно разрешать запуск рекламного слота."})
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE placement_observations SET observed_at=now() WHERE id=%s",
+                         (positive["id"],))
         self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/activate", json={"tag_applied_on_node": True, "mtproxybot_promotion_selected": True,
                        "independent_client_checked": True,
                        "verification_note": "Проверка со второго клиента Telegram, канал показан вручную."})["placement_status"], "active")

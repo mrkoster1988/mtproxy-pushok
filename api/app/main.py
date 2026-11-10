@@ -1524,6 +1524,7 @@ def activate_placement(
                       AND o.method = 'separate_unsubscribed_client'
                       AND o.observed_at >= c.scheduled_start_at
                       AND o.observed_at <= now()
+                      AND o.observed_at >= now() - interval '10 minutes'
                       AND o.recorded_at >= now() - interval '10 minutes'
                   )
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
