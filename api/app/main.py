@@ -331,6 +331,12 @@ def require_operator(user: dict[str, Any] = Depends(get_current_user)) -> dict[s
     return user
 
 
+def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="admin_role_required")
+    return user
+
+
 def _campaign_response(row: dict[str, Any]) -> CampaignResponse:
     if row.get("currency_snapshot") is not None:
         row["currency_snapshot"] = row["currency_snapshot"].strip()
@@ -1655,13 +1661,6 @@ def list_payment_proofs(
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
 
-
-
-
-def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="admin_role_required")
-    return user
 
 
 @app.get("/api/v1/admin/payments/status", tags=["admin"])
