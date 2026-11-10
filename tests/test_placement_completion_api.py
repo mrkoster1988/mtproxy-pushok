@@ -17,7 +17,8 @@ from app import main
 CID = UUID("00000000-0000-4000-8000-000000000981")
 UID = UUID("00000000-0000-4000-8000-000000000982")
 TARGET = "/api/v1/operator/campaigns/" + str(CID) + "/complete"
-VALID = {"tag_removed_confirmed": True, "verification_method": "separate_unsubscribed_client"}
+VALID = {"tag_removed_confirmed": True, "own_channel_restored_confirmed": True,
+         "verification_method": "separate_unsubscribed_client"}
 
 
 def campaign_row():
@@ -62,8 +63,15 @@ class PlacementCompletionTests(unittest.TestCase):
         self.as_operator()
         with patch("app.main.psycopg.connect") as db:
             for payload in ({}, {"tag_removed_confirmed": False,
+                                 "own_channel_restored_confirmed": True,
                                  "verification_method": "separate_unsubscribed_client"},
                             {"tag_removed_confirmed": True,
+                             "verification_method": "separate_unsubscribed_client"},
+                            {"tag_removed_confirmed": True,
+                             "own_channel_restored_confirmed": False,
+                             "verification_method": "separate_unsubscribed_client"},
+                            {"tag_removed_confirmed": True,
+                             "own_channel_restored_confirmed": True,
                              "verification_method": "unknown_method"}):
                 with self.subTest(payload=payload):
                     response = self.client.post(TARGET, json=payload)
@@ -83,6 +91,9 @@ class PlacementCompletionTests(unittest.TestCase):
         self.assertIn("placement_status = 'active'", commands[0].args[0])
         self.assertIn("placement_completed_manually", commands[1].args[0])
         self.assertIn("tag_removed_confirmed", commands[1].args[0])
+        self.assertIn("own_channel_restored_confirmed", commands[1].args[0])
+        self.assertIn("operator_attestation", commands[1].args[0])
+        self.assertIn("'telegram_api_verified', false", commands[1].args[0])
         self.assertEqual(commands[1].args[1], (UID, CID, "separate_unsubscribed_client"))
         self.assertNotIn("ad_tag", str(commands))
 
@@ -111,7 +122,8 @@ class PlacementCompletionTests(unittest.TestCase):
         js = (ROOT / "api/web/app.js").read_text(encoding="utf-8")
         self.assertIn("tag_removed_confirmed:true", js)
         self.assertIn("separate_unsubscribed_client", js)
-        self.assertIn("Вы вручную выключили спонсорский тег", js)
+        self.assertIn("own_channel_restored_confirmed:true", js)
+        self.assertIn("восстановили СОБСТВЕННЫЙ канал Pushok", js)
 
 
 if __name__ == "__main__":

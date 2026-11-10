@@ -979,11 +979,20 @@ class PostgresIntegration(unittest.TestCase):
         self.request("POST", "/operator/campaigns/" + cid + "/complete", 422,
                      json={"tag_removed_confirmed": False,
                            "verification_method": "separate_unsubscribed_client"})
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 422,
+                     json={"tag_removed_confirmed": True,
+                           "verification_method": "separate_unsubscribed_client"})
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 422,
+                     json={"tag_removed_confirmed": True,
+                           "own_channel_restored_confirmed": False,
+                           "verification_method": "separate_unsubscribed_client"})
         self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/complete",
                          json={"tag_removed_confirmed": True,
+                               "own_channel_restored_confirmed": True,
                                "verification_method": "separate_unsubscribed_client"})["placement_status"], "completed")
         self.request("POST", "/operator/campaigns/" + cid + "/complete", 409,
                      json={"tag_removed_confirmed": True,
+                           "own_channel_restored_confirmed": True,
                            "verification_method": "separate_unsubscribed_client"})
         with psycopg.connect(self.dsn) as conn:
             completed_event = conn.execute(
@@ -992,6 +1001,9 @@ class PostgresIntegration(unittest.TestCase):
                 (cid,),
             ).fetchone()[0]
         self.assertIs(completed_event["tag_removed_confirmed"], True)
+        self.assertIs(completed_event["own_channel_restored_confirmed"], True)
+        self.assertEqual(completed_event["source"], "operator_attestation")
+        self.assertIs(completed_event["telegram_api_verified"], False)
         self.assertEqual(completed_event["verification_method"], "separate_unsubscribed_client")
         self.request("PATCH", "/admin/proxy-nodes/" + node["id"] + "/status", json={"status": "paused"})
         with psycopg.connect(self.dsn) as conn:

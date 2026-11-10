@@ -216,8 +216,9 @@ class ModerationRequest(BaseModel):
 
 
 class PlacementCompletionRequest(BaseModel):
-    """Явное ручное подтверждение удаления тега; не результат Telegram API."""
+    """Отчёт оператора о снятии платного спонсора и возврате собственного канала."""
     tag_removed_confirmed: Literal[True]
+    own_channel_restored_confirmed: Literal[True]
     verification_method: Literal["separate_unsubscribed_client"]
 
 
@@ -1586,8 +1587,11 @@ def complete_placement(
             connection.execute(
                 """INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
                    VALUES (%s, %s, 'placement_completed_manually',
-                           jsonb_build_object('tag_removed_confirmed', true,
-                                              'verification_method', %s::text))""",
+                           jsonb_build_object('source', 'operator_attestation',
+                                              'tag_removed_confirmed', true,
+                                              'own_channel_restored_confirmed', true,
+                                              'verification_method', %s::text,
+                                              'telegram_api_verified', false))""",
                 (operator["id"], campaign_id, payload.verification_method),
             )
     except HTTPException:

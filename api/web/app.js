@@ -359,9 +359,10 @@ function card(c,op){
     }
     panel.append(button('Закрыть',()=>panel.remove()));box.append(panel);
    }));
-  if(c.placement_status==='active')actions.append(button('Тег выключен — завершить',async()=>{
-   if(!confirm('Вы вручную выключили спонсорский тег и проверили в отдельном Telegram-клиенте, не подписанном на канал, что спонсор отсутствует?'))return;
-   await change('complete',{tag_removed_confirmed:true,verification_method:'separate_unsubscribed_client'});
+  if(c.placement_status==='active')actions.append(button('Снять рекламу и завершить',async()=>{
+   if(!confirm('Вы вручную сняли платный канал в @MTProxyBot и проверили в отдельном неподписанном Telegram-клиенте, что он больше не показывается?'))return;
+   if(!confirm('Вы вручную восстановили СОБСТВЕННЫЙ канал Pushok через Set promotion и подтвердили показ отдельным неподписанным Telegram-клиентом?'))return;
+   await change('complete',{tag_removed_confirmed:true,own_channel_restored_confirmed:true,verification_method:'separate_unsubscribed_client'});
   }));
  }
  return box;
