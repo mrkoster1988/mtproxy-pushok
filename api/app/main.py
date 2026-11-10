@@ -40,6 +40,7 @@ from .placement_report import build_campaign_report, PUBLIC_EVENTS
 from .report_export import render_campaign_csv
 from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
+from .network_promotion import register_network_routes
 
 app = FastAPI(
     title="MTProxy Pushok API",
@@ -353,6 +354,9 @@ def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str,
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="admin_role_required")
     return user
+
+
+register_network_routes(app, require_admin, DATABASE_URL)
 
 
 def _campaign_response(row: dict[str, Any]) -> CampaignResponse:
