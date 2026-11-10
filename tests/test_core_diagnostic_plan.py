@@ -19,7 +19,7 @@ from app.core_readiness import core_diagnostic_plan, core_readiness
 class CoreDiagnosticPlanTests(unittest.TestCase):
     def test_plan_does_not_claim_valid_handshake_or_telegram(self):
         plan = core_diagnostic_plan()
-        self.assertEqual(plan["project_version"], "0.032")
+        self.assertEqual(plan["project_version"], core_readiness()["project_version"])
         self.assertEqual(plan["execution"], "not_started_by_api")
         self.assertEqual(plan["ci_probe_scope"], "offline_127.0.0.1_in_docker_network_none")
         self.assertFalse(plan["current_host_checked"])

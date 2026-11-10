@@ -120,7 +120,7 @@ class TelegramBotTests(unittest.TestCase):
             "id": "callback1", "data": "tariffs",
             "message": {"chat": {"id": 17, "type": "private"}}}})
         self.assertEqual(response[1], "callback1")
-        self.assertIn("300 ₽", response[0]["text"])
+        self.assertIn("Актуальная", response[0]["text"])
         self.assertEqual(keyboard()["inline_keyboard"][2][0]["url"], CHANNEL_URL)
 
 

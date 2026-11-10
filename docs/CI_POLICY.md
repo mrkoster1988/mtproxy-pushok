@@ -34,3 +34,48 @@ Identity verification is required in order to run CI jobs
 ## Приёмка v0.012 с временной блокировкой
 
 Релиз допускается после **успешного GitHub Actions на коммите релиза**, прохождения необходимых локальных/интеграционных тестов, проверки версий, документации и синхронизации исходников в оба приватных репозитория. GitLab CI отмечается отдельно как **внешне заблокированный**, а не как успешный.
+
+
+## Диагностика 2026-11-09 (v0.036)
+- GitHub Actions run 42636552294: test, rust-core и cabinet-preview имеют failure, пустые steps и runner_name; нет доказательств исполнения кода.
+- GitLab pipeline 3045552500: failed, started_at=null, duration=null, список jobs пустой.
+- Причину остановки GitHub (биллинг, лимиты, политика runner или другая блокировка) нельзя точно установить только по этим полям. Проверить вкладку Actions и раздел Billing/Actions в настройках GitHub.
+- Для GitLab актуально описанное выше требование верификации учётной записи. Проверить разрешение runner и регистрацию GitLab CI.
+- Важно: тест дизайна с жёсткой привязкой к 0.031 исправлен. Релиз 0.036 всё равно нельзя маркировать зелёным без нового успешного CI.
+
+
+## Диагностика и проверка v0.039
+- Отдельные тесты: python -m unittest discover -s tests -p 'test_placement_evidence_*.py' -v.
+- Требуемая верификация: успешный GitHub Actions на SHA v0.039, PostgreSQL интеграция и Compose backup/restore. Пока этого нет, v0.039 не принят.
+- По предыдущему SHA GitHub runner не назначался, steps=[]; GitLab pipeline не создал job. Проверить биллинг/разрешения/лимиты CI и настройки GitLab, не отключать защиту из репозитория.
+
+
+## Проверка v0.041 — CSV-выгрузка
+- Без внешних сервисов: `python -m unittest discover -s tests -p 'test_campaign_report_export.py' -v` (зависимости из `api/requirements-dev.txt`).
+- В полном CI: `python -m unittest discover -s tests -v`, интеграция PostgreSQL и Compose smoke/backup restore.
+- По последней проверке v0.040 GitHub run 42659651060: задачи завершились без шагов и исполнителя; GitLab pipeline 3046147626: failed без jobs. Это блокировка запуска, а не доказательство провала тестов исходников.
+- При запуске локально не вставлять секреты в отчёт, не публиковать исходные CSV с реальными клиентскими данными в публичные issue.
+- Для устранения внешней блокировки нужно проверить настройки и ограничения GitHub Actions/биллинг и выполнить GitLab identity verification, если требование остаётся активным.
+
+
+## v0.042 — автономный preflight при заблокированных runners
+- Из корня репозитория: `python3 scripts/preflight.py`, для автоматизации — `python3 scripts/preflight.py --json`.
+- Автономный набор: `python3 -m unittest discover -s tests -p 'test_preflight.py' -v`. Только стандартная библиотека и временные тестовые файлы; **не проверяет** Python API, PostgreSQL, MTProxy и сеть.
+- После восстановления runners preflight должен выполняться до `pip install`, затем полный `python -m unittest discover -s tests -v` и Compose/Rust/browser проверки. Не отключать существующие задания ради зелёного статуса.
+- При проверке v0.041 GitHub run 42664270637 job test/rust-core/cabinet-preview закончились без назначенного runner (steps=0), скачать logs не удалось (404 BlobNotFound). GitLab pipeline 3046257763: started_at=null и jobs=[].
+- GitHub Actions permissions/billing/runner API через подключённый GitHub-инструмент недоступны, поэтому точная причина блокировки GitHub не установлена. Пользователю нужен доступ к настройкам Actions/исполнителей/биллинга аккаунта. В GitLab ранее возвращалось `Identity verification is required in order to run CI jobs`.
+
+
+## v0.043 — режимы безопасной локальной проверки
+- `python3 scripts/verify_release.py --mode offline --json`: AST-синтаксис, preflight, юнит-тесты preflight. Не требует PostgreSQL, Docker, VPS, секретов и не означает приёмку релиза.
+- `python3 scripts/verify_release.py --mode full --allow-test-db`: ТОЛЬКО с тестовым TEST_ADMIN_DSN и подтверждённым временным PostgreSQL. Тест может создавать/удалять временные базы. Запрещён на рабочем сервере с производственной БД.
+- В режиме full DATABASE_URL из окружения подменяется безопасным TEST_ADMIN_DSN. Для окружения `postgres` требуется флаг CI; с localhost разрешение оператора обязательно.
+- Новая группа `tests/test_verify_release.py`: 8 проверок на синтетических временных файлах и имитации базы, выполнены локально; полная интеграция API/PostgreSQL не выполнялась.
+- Раннеры GitHub и GitLab по последним проверкам не запускают jobs. Не отключать контроль качества ради зелёного статуса. Релиз v0.043 не считать принятым.
+
+
+## v0.044 — предотвращение ошибочного тестирования рабочих баз
+- Полный прогон может создавать и удалять временную БД. Нужны `TEST_ADMIN_DSN` к **выделенному тестовому экземпляру** PostgreSQL, база `postgres`, `PUSHOK_TEST_DB_ALLOWED=1`, а для verify_release также флаг `--allow-test-db`.
+- Локальный адрес сам по себе не доказывает безопасность: проверьте, что порт не проксирует production PostgreSQL. Нельзя давать opt-in с доступом к рабочему серверу.
+- CI-декларации используют только временные PostgreSQL-службы и устанавливают маркер для тестового suite.
+- Проверка GitHub/GitLab runners остаётся внешней задачей владельца аккаунтов. Без успешного CI и тестовой PostgreSQL версия не принята.

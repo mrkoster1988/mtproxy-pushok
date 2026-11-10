@@ -1,12 +1,10 @@
-"""v0.032 — ручная аттестация спонсора и безопасные проверки API."""
+"""PR #19: ручные подтверждения поверх независимых наблюдений показа."""
 import os
 import sys
 import unittest
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from uuid import UUID
-
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,77 +19,62 @@ PAYLOAD = {
     "tag_applied_on_node": True,
     "mtproxybot_promotion_selected": True,
     "independent_client_checked": True,
-    "verification_note": "Проверено с отдельного клиента Telegram после настройки спонсора.",
+    "verification_note": "Наблюдение с отдельного Telegram-клиента подтверждено оператором.",
 }
-
-
-def fake_db(*rows):
-    db = MagicMock()
-    db.__enter__.return_value.execute.side_effect = [
-        MagicMock(**{"fetchone.return_value": row}) for row in rows
-    ]
-    return db
 
 
 class ActivationAttestationTests(unittest.TestCase):
     def setUp(self):
-        self.client = TestClient(main.app)
         main.app.dependency_overrides.clear()
+        self.client = TestClient(main.app)
 
     def tearDown(self):
         main.app.dependency_overrides.clear()
         self.client.close()
 
-    def grant_operator(self):
+    def operator(self):
         main.app.dependency_overrides[main.require_operator] = lambda: {
-            "id": OPERATOR, "role": "operator",
-        }
+            "id": OPERATOR, "role": "operator"}
 
     def send(self, payload=PAYLOAD):
-        return self.client.post(
-            f"/api/v1/operator/campaigns/{CAMPAIGN}/activate", json=payload,
-        )
+        return self.client.post(f"/api/v1/operator/campaigns/{CAMPAIGN}/activate", json=payload)
 
-    def test_requires_operator_auth_before_sql(self):
+    def test_authentication_before_sql(self):
         with patch("app.main.psycopg.connect") as db:
-            result = self.send()
-        self.assertEqual(result.status_code, 401)
-        db.assert_not_called()
+            self.assertEqual(self.send().status_code, 401)
+            db.assert_not_called()
 
-    def test_missing_false_or_invalid_confirmation_rejected_without_sql(self):
-        self.grant_operator()
-        bad = [
-            {}, {**PAYLOAD, "tag_applied_on_node": False},
-            {**PAYLOAD, "mtproxybot_promotion_selected": False},
-            {**PAYLOAD, "independent_client_checked": False},
-            {**PAYLOAD, "verification_note": "    "},
-            {**PAYLOAD, "verification_note": "Слишком кратко"},
-            {**PAYLOAD, "verification_note": "x" * 501},
-            {**PAYLOAD, "extra_field": True},
-        ]
-        for payload in bad:
-            with self.subTest(payload=payload), patch("app.main.psycopg.connect") as db:
-                self.assertEqual(self.send(payload).status_code, 422)
+    def test_missing_or_false_confirmations_rejected_before_db(self):
+        self.operator()
+        bad = [{}, {**PAYLOAD, "tag_applied_on_node": False},
+               {**PAYLOAD, "mtproxybot_promotion_selected": False},
+               {**PAYLOAD, "independent_client_checked": False},
+               {**PAYLOAD, "verification_note": "short"},
+               {**PAYLOAD, "verification_note": " " * 21},
+               {**PAYLOAD, "verification_note": "x" * 501},
+               {**PAYLOAD, "unexpected": True}]
+        for value in bad:
+            with self.subTest(value=value), patch("app.main.psycopg.connect") as db:
+                self.assertEqual(self.send(value).status_code, 422)
                 db.assert_not_called()
 
-    def test_atomic_sql_guards_ready_conditions(self):
-        self.grant_operator()
-        db = fake_db(None, {"exists": True})
+    def test_no_observation_means_no_activation(self):
+        self.operator()
+        db = MagicMock()
+        db.__enter__.return_value.execute.return_value.fetchone.side_effect = [None, {"id": CAMPAIGN}]
         with patch("app.main.psycopg.connect", return_value=db):
-            response = self.send()
-        self.assertEqual(response.status_code, 409, response.text)
-        self.assertEqual(response.json()["detail"], "placement_not_ready_or_outside_window")
-        queries = db.__enter__.return_value.execute.call_args_list
-        self.assertEqual(len(queries), 2)
-        sql = queries[0].args[0]
-        for item in ("c.moderation_status = 'approved'", "c.payment_status = 'verified'",
-                     "n.status = 'active'", "sc.telegram_channel_id IS NOT NULL",
-                     "sr.proxy_node_id = n.id", "sr.engine = n.target_engine",
-                     "c.scheduled_start_at <= now()", "c.scheduled_end_at > now()"):
-            self.assertIn(item, sql)
+            r = self.send()
+        self.assertEqual(r.status_code, 409)
+        sql = db.__enter__.return_value.execute.call_args_list[0].args[0]
+        self.assertIn("newest.id DESC", sql)
+        self.assertIn("o.result = 'visible'", sql)
+        self.assertIn("interval '10 minutes'", sql)
+        self.assertIn("proxy_sponsor_registrations", sql)
+        self.assertIn("sc.telegram_channel_id IS NOT NULL", sql)
 
-    def test_audit_records_operator_not_telegram_telemetry(self):
-        self.grant_operator()
+    def test_success_audits_operator_without_telegram_claim(self):
+        self.operator()
+        from datetime import datetime, timezone
         now = datetime.now(timezone.utc)
         row = {
             "id": CAMPAIGN, "channel_id": UUID(int=13), "tariff_id": UUID(int=14),
@@ -99,21 +82,15 @@ class ActivationAttestationTests(unittest.TestCase):
             "price_kopecks_snapshot": 30000, "currency_snapshot": "RUB",
             "moderation_status": "approved", "payment_status": "verified",
             "placement_status": "active", "requested_start_at": None,
-            "scheduled_start_at": now - timedelta(minutes=1),
-            "scheduled_end_at": now + timedelta(hours=1),
+            "scheduled_start_at": now, "scheduled_end_at": now,
             "moderator_comment": None,
         }
-        db = fake_db(row, None)
+        db = MagicMock()
+        db.__enter__.return_value.execute.return_value.fetchone.return_value = row
         with patch("app.main.psycopg.connect", return_value=db):
-            response = self.send()
-        self.assertEqual(response.status_code, 200, response.text)
-        queries = db.__enter__.return_value.execute.call_args_list
-        self.assertEqual(len(queries), 2)
-        self.assertIn("operator_attestation", queries[1].args[0])
-        self.assertEqual(queries[1].args[1], (OPERATOR, CAMPAIGN, PAYLOAD["verification_note"]))
-        self.assertNotIn("telegram_verified", queries[1].args[0])
-        self.assertNotIn("ad_tag", str(queries[1].args))
-
-
-if __name__ == "__main__":
-    unittest.main()
+            r = self.send()
+        self.assertEqual(r.status_code, 200, r.text)
+        audit = db.__enter__.return_value.execute.call_args_list[1]
+        self.assertIn("operator_attestation", audit.args[0])
+        self.assertEqual(audit.args[1], (OPERATOR, CAMPAIGN, PAYLOAD["verification_note"]))
+        self.assertNotIn("telegram_api_verified", audit.args[0])

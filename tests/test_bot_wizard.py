@@ -57,7 +57,7 @@ class WizardTests(unittest.TestCase):
         self.assertEqual(confirm[0]["reply_markup"]["inline_keyboard"][0][0]["callback_data"], "draft:confirm")
         complete = self.handle(callback(42, "draft:confirm"))
         self.assertIn("Черновик создан", complete[0]["text"])
-        self.assertIn("300 ₽", complete[0]["text"])
+        self.assertIn("Тариф:", complete[0]["text"])
         self.assertEqual(len(self.created), 1)
         self.assertEqual(self.created[0][:2], (42, "mygreatchannel"))
         repeat = self.handle(callback(42, "draft:confirm"))

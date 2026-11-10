@@ -48,6 +48,17 @@ def build_readiness(row: dict, now: datetime | None = None) -> dict:
     в @MTProxyBot и подтвердить наблюдение с другого Telegram-аккаунта.
     """
     now = now or datetime.now(timezone.utc)
+    start = row.get("scheduled_start_at")
+    end = row.get("scheduled_end_at")
+    # Naive timestamps or malformed tags must never turn a placement green.
+    def aware(value):
+        return isinstance(value, datetime) and value.tzinfo is not None and value.utcoffset() is not None
+
+    try:
+        tag_valid = normalize_ad_tag(row.get("ad_tag")) == row.get("ad_tag", "").strip().lower()
+    except (ValueError, AttributeError):
+        tag_valid = False
+    time_valid = aware(start) and aware(end) and aware(now)
     checks = {
         "moderation_approved": row["moderation_status"] == "approved",
         "payment_verified": row["payment_status"] == "verified",
@@ -57,11 +68,9 @@ def build_readiness(row: dict, now: datetime | None = None) -> dict:
             row.get("telegram_channel_id") is not None
             and parse_public_channel(row["telegram_url"]) is not None
         ),
-        "tag_registered": bool(row.get("ad_tag")),
-        "window_not_expired": (
-            row.get("scheduled_end_at") is not None
-            and row["scheduled_end_at"] > now
-        ),
+        "tag_registered": tag_valid,
+        "window_order_valid": bool(time_valid and start < end),
+        "window_not_expired": bool(time_valid and end > now),
     }
     engine = row.get("engine")
     return {

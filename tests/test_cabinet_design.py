@@ -1,4 +1,4 @@
-"""Контракт фирменного интерфейса v0.032: старые формы и API не теряются."""
+"""Контракт фирменного интерфейса: старые формы и API не теряются."""
 import re
 import unittest
 import xml.etree.ElementTree as ET
@@ -56,7 +56,7 @@ class CabinetDesignTests(unittest.TestCase):
         }
         self.assertTrue(essential.issubset(ids), essential - ids)
         self.assertFalse([k for k, count in Counter(self.parser.ids).items() if count > 1])
-        self.assertEqual(set(self.parser.forms), {"channel-form", "campaign-form", "node-form"})
+        self.assertTrue({"channel-form", "campaign-form", "node-form", "tariff-admin-form"}.issubset(set(self.parser.forms)))
         self.assertIn("requested_start_at", self.parser.inputs)
         self.assertIn("telegram_url", self.parser.inputs)
         self.assertIn("preferred_engine", self.parser.inputs)
@@ -105,9 +105,13 @@ class CabinetDesignTests(unittest.TestCase):
     def test_version_and_standalone_boundary(self):
         main = (ROOT / "api/app/main.py").read_text(encoding="utf-8")
         setup = (ROOT / "setup.sh").read_text(encoding="utf-8")
-        self.assertIn('version="0.032"', main)
-        self.assertIn("v0.032", setup)
-        self.assertIn("v0.032", self.html)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        match = re.search(r"Версия проекта: v(\d+\.\d+)\.", readme)
+        self.assertIsNotNone(match)
+        release = match.group(1)
+        self.assertIn('version="' + release + '"', main)
+        self.assertIn("v" + release, setup)
+        self.assertIn("v" + release, self.html)
         self.assertIn("Pushok VPN", (ROOT / "README.md").read_text(encoding="utf-8"))
 
 
