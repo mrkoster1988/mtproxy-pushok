@@ -72,3 +72,34 @@ def test_incorrect_invoice_response_fails(monkeypatch):
     monkeypatch.setattr(sbp_provider, "_request", lambda *a, **kw: {"status": "succeeded"})
     with pytest.raises(sbp_provider.SBPProviderError):
         make(monkeypatch)
+
+
+@pytest.mark.parametrize("confirmation_url", [
+    "https://", "https://user:pass@pay.example/checkout",
+    "https://pay.example:8443/checkout",
+    "https://pay.example/#fragment",
+    "https://pay.example/checkout\\n", "https://pay.example/checkout\\t",
+    "https://pay.example./checkout", "http://pay.example/checkout",
+    "https://pay.example/checkout with spaces",
+])
+def test_invalid_provider_redirect_is_rejected(monkeypatch, confirmation_url):
+    monkeypatch.setattr(
+        sbp_provider, "_request",
+        lambda *a, **kw: {
+            "id": "provider-001", "status": "pending",
+            "confirmation": {"confirmation_url": confirmation_url},
+        },
+    )
+    with pytest.raises(sbp_provider.SBPProviderError, match="invalid_confirmation_url"):
+        make(monkeypatch)
+
+
+def test_valid_provider_redirect_passes(monkeypatch):
+    monkeypatch.setattr(
+        sbp_provider, "_request",
+        lambda *a, **kw: {
+            "id": "provider-001", "status": "pending",
+            "confirmation": {"confirmation_url": "https://pay.example/checkout?session=abc"},
+        },
+    )
+    assert make(monkeypatch)["confirmation_url"] == "https://pay.example/checkout?session=abc"
