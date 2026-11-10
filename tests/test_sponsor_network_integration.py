@@ -56,6 +56,7 @@ class SponsorNetworkIntegrationTests(unittest.TestCase):
         rows = [{
             "node_id": NODE, "node_name": "Pushok-1", "node_status": "active",
             "target_engine": "official_mtproxy", "tag_registered": True,
+            "registration_engine": "official_mtproxy",
             "campaign_id": CAMPAIGN, "campaign_channel_url": "https://t.me/AdvertiserOne",
             "telegram_channel_id": -100123456789,
             "moderation_status": "approved", "payment_status": "verified",
