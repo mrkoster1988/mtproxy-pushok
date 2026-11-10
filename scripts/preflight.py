@@ -51,12 +51,11 @@ def inspect(root: Path) -> dict:
         "setup.sh должен применять миграции 002+ по порядку; 001 создаётся PostgreSQL при инициализации")
 
     github = read(".github/workflows/check.yml")
-    gitlab = read(".gitlab-ci.yml")
     suite = "python -m unittest discover -s tests -v"
     add("github_test_suite", suite in github, "В GitHub Actions должна оставаться полная проверка unittest")
-    add("gitlab_test_suite", suite in gitlab, "В GitLab CI должна оставаться полная проверка unittest")
     add("github_preflight", "python3 scripts/preflight.py" in github, "GitHub Actions должен запускать preflight")
-    add("gitlab_preflight", "python3 scripts/preflight.py" in gitlab, "GitLab CI должен запускать preflight")
+    add("github_only_ci", not (root / ".gitlab-ci.yml").exists(),
+        "Устаревшая конфигурация стороннего CI должна отсутствовать; единственный CI — GitHub Actions")
     add("report_routes", '/api/v1/campaigns/{campaign_id}/report"' in read("api/app/main.py")
         and '/api/v1/campaigns/{campaign_id}/report.csv"' in read("api/app/main.py"),
         "JSON и CSV отчёты должны оставаться в API")
