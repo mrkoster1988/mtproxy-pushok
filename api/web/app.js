@@ -54,6 +54,8 @@ async function renderPaymentSettings(){
   $('settings-sbp-status').textContent=sbp.checkout_enabled?
    'СБП разрешена сервером · '+(sbp.test_mode?'тестовый режим.':'боевой режим; приёмка отдельно.'):
    'СБП выключена до настройки и приёмки.';
+  $('settings-sbp-status').textContent+=' Фоновая сверка: '+(sbp.background_enabled?'разрешена сервером':'выключена')+
+   ' · Ожидают проверки: '+sbp.pending_checks+' · Нужна ручная сверка: '+sbp.needs_manual_review;
   target.textContent='Данные БД и конфигурации не подтверждают приёмку Telegram, возвраты и банковский эквайринг. Секреты не отображаются.';
  }catch(e){
   $('settings-stars-status').textContent='Не удалось получить состояние Stars.';

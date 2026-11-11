@@ -10,7 +10,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import psycopg
 from psycopg import sql
@@ -991,6 +991,75 @@ class PostgresIntegration(unittest.TestCase):
                 duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,moderation_status,payment_status)
                 VALUES(%s,%s,%s,%s,'SBP fixture',86400,30055,'RUB','approved','awaiting_payment')""",(campaign,owner,channel,tariff))
         return campaign,owner,telegram_id
+
+    def test_sbp_background_retry_settle_gate_and_worker_lock(self):
+        from app import sbp_checkout, sbp_provider, sbp_worker
+        cid, owner, _ = self._sbp_fixture()
+        env = {'PUSHOK_SBP_PAYMENTS_ENABLED': '1', 'PUSHOK_SBP_TEST_MODE': '1',
+               'PUSHOK_SBP_RECONCILIATION_ENABLED': '1',
+               'PUSHOK_PUBLIC_PAYMENT_HOST': 'ads.example.org',
+               'YOOKASSA_SHOP_ID': 'fixture-shop', 'YOOKASSA_SECRET_KEY': 'fixture-secret'}
+        pid = 'bank-' + str(cid)
+        payment = {'id': pid, 'status': 'succeeded', 'paid': True, 'test': True,
+                   'amount': {'currency': 'RUB', 'value': '300.55'},
+                   'metadata': {'campaign_id': str(cid)}, 'payment_method': {'type': 'sbp'},
+                   'captured_at': '2026-11-11T12:00:00Z'}
+        def due(aid):
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE payment_attempts SET sbp_next_check_at='2000-01-01' WHERE id=%s", (aid,))
+        with patch.dict(os.environ, env), patch.object(sbp_provider, 'create_sbp_payment',
+                return_value={'payment_id': pid, 'confirmation_url': 'https://pay.example/fixture'}):
+            aid = sbp_checkout.create_checkout(self.dsn, cid, owner)['attempt_id']
+            due(aid)
+            with patch.object(sbp_provider, 'get_sbp_payment') as bank:
+                self.assertEqual(sbp_worker.service_once(self.dsn, limit=1)['status'], 'dry_run')
+                bank.assert_not_called()
+                with psycopg.connect(self.dsn, autocommit=True) as lock:
+                    lock.execute('SELECT pg_advisory_lock(%s)', (sbp_worker._LOCK,))
+                    self.assertEqual(sbp_worker.service_once(self.dsn, apply=True)['status'], 'busy')
+                    bank.assert_not_called()
+            with patch.object(sbp_provider, 'get_sbp_payment', side_effect=sbp_provider.SBPProviderError('timeout')):
+                self.assertEqual(sbp_worker.service_once(self.dsn, apply=True, limit=1)['retry'], 1)
+            with psycopg.connect(self.dsn) as conn:
+                state = conn.execute('SELECT status,sbp_check_failures,sbp_next_check_at>now() FROM payment_attempts WHERE id=%s', (aid,)).fetchone()
+                self.assertEqual(state, ('pending', 1, True))
+            due(aid)
+            # Выключение выставления новых счетов не блокирует старые платежи.
+            with patch.dict(os.environ, {'PUSHOK_SBP_PAYMENTS_ENABLED': '0'}), \
+                    patch.object(sbp_provider, 'get_sbp_payment', return_value=payment), \
+                    patch.object(sbp_provider, 'create_sbp_payment') as create:
+                self.assertEqual(sbp_worker.service_once(self.dsn, apply=True, limit=1)['settled'], 1)
+                self.assertEqual(sbp_checkout.verify_background(self.dsn, UUID(aid))['status'], 'succeeded')
+                create.assert_not_called()
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT payment_status,placement_status FROM campaigns WHERE id=%s', (cid,)).fetchone(), ('verified', 'not_scheduled'))
+                self.assertEqual(conn.execute("SELECT count(*) FROM audit_events WHERE campaign_id=%s AND event_type='sbp_payment_verified'", (cid,)).fetchone()[0], 1)
+
+    def test_sbp_background_mismatch_requires_review_and_cancel_is_terminal(self):
+        from app import sbp_checkout, sbp_provider, sbp_worker
+        cid, owner, _ = self._sbp_fixture()
+        pid = 'bank-' + str(cid)
+        env = {'PUSHOK_SBP_PAYMENTS_ENABLED': '1', 'PUSHOK_SBP_TEST_MODE': '1',
+               'PUSHOK_SBP_RECONCILIATION_ENABLED': '1', 'PUSHOK_PUBLIC_PAYMENT_HOST': 'ads.example.org',
+               'YOOKASSA_SHOP_ID': 'fixture-shop', 'YOOKASSA_SECRET_KEY': 'fixture-secret'}
+        payment = {'id': pid, 'status': 'canceled', 'paid': False, 'test': False,
+                   'amount': {'currency': 'RUB', 'value': '300.55'},
+                   'metadata': {'campaign_id': str(cid)}, 'payment_method': {'type': 'sbp'}}
+        with patch.dict(os.environ, env), patch.object(sbp_provider, 'create_sbp_payment',
+                return_value={'payment_id': pid, 'confirmation_url': 'https://pay.example/fixture'}):
+            aid = sbp_checkout.create_checkout(self.dsn, cid, owner)['attempt_id']
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE payment_attempts SET sbp_next_check_at='2000-01-01' WHERE id=%s", (aid,))
+            with patch.object(sbp_provider, 'get_sbp_payment', return_value=payment):
+                self.assertEqual(sbp_worker.service_once(self.dsn, apply=True, limit=1)['review'], 1)
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT status,sbp_requires_review FROM payment_attempts WHERE id=%s', (aid,)).fetchone(), ('pending', True))
+                conn.execute("UPDATE payment_attempts SET sbp_requires_review=false,sbp_next_check_at='2000-01-01' WHERE id=%s", (aid,))
+            with patch.object(sbp_provider, 'get_sbp_payment', return_value={**payment, 'test': True}):
+                self.assertEqual(sbp_worker.service_once(self.dsn, apply=True, limit=1)['settled'], 1)
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT status FROM payment_attempts WHERE id=%s', (aid,)).fetchone()[0], 'failed')
+                self.assertEqual(conn.execute('SELECT payment_status FROM campaigns WHERE id=%s', (cid,)).fetchone()[0], 'awaiting_payment')
 
     def test_sbp_web_retry_verification_owner_and_price_snapshot(self):
         from app import sbp_provider

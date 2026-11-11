@@ -49,7 +49,7 @@ class AdminPaymentSettingsTests(unittest.TestCase):
         conn = MagicMock()
         conn.__enter__.return_value.execute.return_value.fetchone.return_value = {
             "priced_stars_tariffs": 2, "disputed_stars_receipts": 1,
-            "recorded_stars_payments": 3, "recorded_sbp_payments": 0,
+            "recorded_stars_payments": 3, "recorded_sbp_payments": 0, "sbp_pending": 2, "sbp_review": 1,
         }
         with patch.dict(os.environ, {
             "PUSHOK_STARS_PAYMENTS_ENABLED": "0",
@@ -65,6 +65,8 @@ class AdminPaymentSettingsTests(unittest.TestCase):
         self.assertFalse(data["stars"]["telegram_acceptance_verified"])
         self.assertEqual(data["sbp"]["integration"], "external_web_checkout")
         self.assertFalse(data["sbp"]["checkout_enabled"])
+        self.assertEqual(data["sbp"]["pending_checks"], 2)
+        self.assertEqual(data["sbp"]["needs_manual_review"], 1)
         self.assertFalse(data["secrets_exposed"])
         self.assertNotIn("SECRET_TEST_TOKEN", response.text)
         self.assertEqual(conn.__enter__.return_value.execute.call_count, 1)
