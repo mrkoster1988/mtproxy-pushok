@@ -1,4 +1,5 @@
 """Проверки команд и безопасных ответов бота."""
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import patch, call
@@ -26,6 +27,7 @@ class TelegramBotTests(unittest.TestCase):
         self.assertIn("- bot-egress", bot_service)
         self.assertIn("- bot-api", bot_service)
         self.assertIn("BOT_INTERNAL_SECRET:", bot_service)
+        self.assertIn("TELEGRAM_BOT_USERNAME:", bot_service)
         self.assertIn("  bot-api:\n    internal: true", config)
         self.assertNotIn("env_file:", bot_service)
         self.assertNotIn("- internal", bot_service)
@@ -92,6 +94,31 @@ class TelegramBotTests(unittest.TestCase):
             call("test-token", "getMe", {}),
             call("test-token", "getWebhookInfo", {}),
         ])
+
+    def test_custom_username_from_installer_validates_bot_token(self):
+        with patch.dict(os.environ, {"TELEGRAM_BOT_USERNAME": "PushokSponsorBot"}):
+            with patch("bot.main.telegram_call", side_effect=[
+                {"username": "PushokSponsorBot"}, {"url": ""}
+            ]) as client:
+                validate_bot("custom-test-token")
+        self.assertEqual(client.call_count, 2)
+
+    def test_custom_username_is_used_in_explicit_command_mentions(self):
+        update = {"message": {"chat": {"id": 42, "type": "private"},
+                              "from": {"id": 42}, "text": "/start@PushokSponsorBot"}}
+        with patch.dict(os.environ, {"TELEGRAM_BOT_USERNAME": "PushokSponsorBot"}):
+            self.assertIsNotNone(response_for(update))
+            wrong = {"message": {**update["message"],
+                                 "text": "/start@mtproxy_pushok_bot"}}
+            self.assertIsNone(response_for(wrong))
+
+    def test_invalid_configured_username_is_rejected_before_telegram_network(self):
+        with patch.dict(os.environ, {"TELEGRAM_BOT_USERNAME": "invalid username"}):
+            with patch("bot.main.telegram_call") as telegram:
+                with self.assertRaisesRegex(RuntimeError, "TELEGRAM_BOT_USERNAME"):
+                    # Fail closed even when Telegram itself would answer.
+                    validate_bot("test-token")
+                self.assertEqual(telegram.call_count, 1)
 
     def test_other_bot_token_rejected(self):
         with patch("bot.main.telegram_call", return_value={"username": "wrong_bot"}):

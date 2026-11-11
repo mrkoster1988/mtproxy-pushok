@@ -123,7 +123,7 @@ if [[ "$COMPONENTS" != 1 ]]; then
       saved_username="$(sed -n 's/^TELEGRAM_BOT_USERNAME=//p' "$ROOT_DIR/.env" | head -n 1)"
       saved_secret="$(sed -n 's/^BOT_INTERNAL_SECRET=//p' "$ROOT_DIR/.env" | head -n 1)"
       if [[ ! "$saved_token" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]] ||
-         [[ ! "$saved_username" =~ ^[A-Za-z0-9_]+$ ]] ||
+         [[ ! "$saved_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] ||
          [[ ! "$saved_secret" =~ ^[0-9a-f]{64}$ ]]; then
         echo "Для запуска бота в .env нужны TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME и 64-значный BOT_INTERNAL_SECRET. Файл не изменён." >&2
         exit 1
@@ -164,7 +164,7 @@ if [[ "$COMPONENTS" != 1 ]]; then
       done
       while true; do
         ask BOT_USERNAME "Имя бота без @" ""
-        [[ "$BOT_USERNAME" =~ ^[a-zA-Z0-9_]+$ ]] && break
+        [[ "$BOT_USERNAME" =~ ^[a-zA-Z0-9_]{5,32}$ ]] && break
       done
       choose ADMIN_SETUP "Назначить владельца кабинета?" 1 "Указать Telegram ID" "Настроить позже"
       if [[ "$ADMIN_SETUP" == 1 ]]; then
