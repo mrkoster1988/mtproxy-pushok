@@ -32,8 +32,8 @@ class UnifiedBotInstallerTests(unittest.TestCase):
     def test_new_install_with_telegram_starts_bot_in_plan(self):
         token = "123456:Test-Private_Token"
         # cabinet, private staging, default project/port, telegram now,
-        # token, username, owner later, payment later, confirm
-        answers = "2\n2\n\n\n1\n" + token + "\nmtproxy_pushok_bot\n2\n2\n1\n"
+        # production environment, token, username, owner later, payment later, confirm
+        answers = "2\n2\n\n\n1\n1\n" + token + "\nmtproxy_pushok_bot\n2\n2\n1\n"
         output = self.run_plan(answers)
         self.assertIn("запуск polling вместе с кабинетом", output)
         self.assertIn("Режим --plan: изменения не выполнялись", output)

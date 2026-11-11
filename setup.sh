@@ -112,6 +112,10 @@ ADMIN_ID=""
 PAYMENT_CHANGED=false
 PAYMENT_B64=""
 BOT_LAUNCH=false
+TELEGRAM_TEST_ENVIRONMENT=0
+MINIAPP_ENABLED=0
+MINIAPP_URL=""
+STARS_ENABLED=0
 if [[ "$COMPONENTS" != 1 ]]; then
   if [[ -f "$ROOT_DIR/.env" ]]; then
     choose EXISTING "Найдена существующая настройка" 1 "Сохранить настройки и обновить сервисы" "Изменить инструкцию оплаты и обновить" "Завершить без изменений" "Запустить Telegram-бота из сохранённых настроек"
@@ -157,6 +161,15 @@ if [[ "$COMPONENTS" != 1 ]]; then
     BOT_TOKEN=""
     BOT_USERNAME=""
     if [[ "$TELEGRAM" == 1 ]]; then
+      choose TELEGRAM_ENV "Среда Telegram (нужны разные боты и базы)" 1 "Основная среда" "Тестовый Telegram: отдельный аккаунт и BotFather"
+      if [[ "$TELEGRAM_ENV" == 2 ]]; then
+        if [[ "$COMPONENTS" != 2 ]]; then
+          echo "Тестовый Telegram настраивается только с вариантом «Только спонсорский кабинет». Запустите мастер заново; рабочий прокси не изменён." >&2
+          exit 1
+        fi
+        TELEGRAM_TEST_ENVIRONMENT=1
+        echo "Нужен новый бот из BotFather тестовой среды. Отдельные каталог, Compose-проект, БД и домен обязательны; не используйте рабочий токен." >&2
+      fi
       while true; do
         read -r -s -u 3 -p "Токен бота из BotFather (скрыт): " BOT_TOKEN; echo >&2
         [[ "$BOT_TOKEN" =~ ^[0-9]+:[a-zA-Z0-9_-]+$ ]] && break
@@ -174,7 +187,25 @@ if [[ "$COMPONENTS" != 1 ]]; then
         done
       fi
     fi
-    if [[ "$TELEGRAM" == 1 ]]; then BOT_LAUNCH=true; fi
+    if [[ "$TELEGRAM" == 1 ]]; then
+      BOT_LAUNCH=true
+      if [[ "$HTTPS" != 3 ]]; then
+        choose MINIAPP_SETUP "Telegram Mini App" 2 "Подготовить запуск по HTTPS-домену кабинета" "Позже (кнопка Mini App скрыта)"
+        if [[ "$MINIAPP_SETUP" == 1 ]]; then
+          MINIAPP_ENABLED=1
+          MINIAPP_URL="https://$CABINET_DOMAIN/miniapp"
+          echo "Mini App: $MINIAPP_URL. DNS, HTTPS и доступ из Telegram проверяются после запуска." >&2
+          if [[ "$TELEGRAM_TEST_ENVIRONMENT" == 1 ]]; then
+            choose STARS_SETUP "Stars в изолированном тестовом Telegram" 2 "Разрешить тестовые счета (цену XTR настрою в кабинете)" "Позже: выдача счетов выключена"
+            if [[ "$STARS_SETUP" == 1 ]]; then STARS_ENABLED=1; fi
+          else
+            echo "Основная среда: выдача Stars-счетов останется выключенной до отдельной приёмки." >&2
+          fi
+        fi
+      else
+        echo "Mini App выключена: нужен HTTPS-домен, доступный из Telegram. Локальный staging подходит для проверки API; настройка Mini App описана в docs/MINIAPP.md." >&2
+      fi
+    fi
     configure_payments
   fi
 fi
@@ -204,6 +235,10 @@ if [[ "$COMPONENTS" != 1 ]]; then
       2) echo "Доступ: новый Caddy, порты 80/443; DNS должен указывать на сервер." >&2 ;;
       3) echo "Доступ: только локальный." >&2 ;;
     esac
+    echo "PUSHOK_TELEGRAM_TEST_ENVIRONMENT=$TELEGRAM_TEST_ENVIRONMENT (0 — основная, 1 — тестовая среда)" >&2
+    echo "PUSHOK_MINIAPP_ENABLED=$MINIAPP_ENABLED; PUSHOK_STARS_PAYMENTS_ENABLED=$STARS_ENABLED" >&2
+    [[ -z "$MINIAPP_URL" ]] || echo "Адрес Mini App: $MINIAPP_URL" >&2
+    echo "СБП выключена; автоматический приём включается отдельно после настройки и проверки." >&2
     [[ -z "$ADMIN_ID" ]] || echo "Telegram ID владельца: $ADMIN_ID" >&2
   else
     echo "Существующие настройки и секреты будут сохранены." >&2
@@ -251,6 +286,13 @@ SESSION_SIGNING_KEY=$SESSION_KEY
 BOT_INTERNAL_SECRET=$BOT_INTERNAL_SECRET
 TELEGRAM_BOT_TOKEN=$BOT_TOKEN
 TELEGRAM_BOT_USERNAME=$BOT_USERNAME
+PUSHOK_TELEGRAM_TEST_ENVIRONMENT=$TELEGRAM_TEST_ENVIRONMENT
+PUSHOK_MINIAPP_ENABLED=$MINIAPP_ENABLED
+PUSHOK_MINIAPP_URL=$MINIAPP_URL
+PUSHOK_STARS_PAYMENTS_ENABLED=$STARS_ENABLED
+PUSHOK_SBP_PAYMENTS_ENABLED=0
+PUSHOK_SBP_RECONCILIATION_ENABLED=0
+PUSHOK_SBP_WEBHOOK_ENABLED=0
 API_BIND_PORT=$API_PORT
 PAYMENT_INSTRUCTIONS_B64=$PAYMENT_B64
 EOF
