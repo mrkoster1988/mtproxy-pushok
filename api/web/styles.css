@@ -406,7 +406,7 @@ body.cabinet-mode{--bg:#f2f7fb;--surface:#fff;--surface-2:#edf5f9;--surface-3:#e
 .miniapp-mode #miniapp-login[hidden]{display:none}
 .miniapp-mode .cabinet-stage{padding-top:var(--mini-safe-top,0px);padding-bottom:calc(30px + var(--mini-safe-bottom,0px))}
 .miniapp-mode .cabinet-sidebar{padding-top:calc(28px + var(--mini-safe-top,0px));padding-bottom:calc(18px + var(--mini-safe-bottom,0px))}
-.miniapp-mode[data-miniapp-theme=dark]{--bg:#0b1728;--surface:#142439;--line:#314657;--line-soft:#314657;--text:#f3f5ee;--text-soft:#c5d5d5;--muted:#b6c6d6;background:var(--bg);color:var(--text);color-scheme:dark}
+.miniapp-mode[data-miniapp-theme=dark]{--bg:#0b1728;--surface:#142439;--line:#314657;--line-soft:#314657;--text:#f3f5ee;--text-soft:#c5d5d5;--muted:#b6c6d6;--mint:#69e0d1;background:var(--bg);color:var(--text);color-scheme:dark}
 .miniapp-mode[data-miniapp-theme=dark] .metric,.miniapp-mode[data-miniapp-theme=dark] .panel,.miniapp-mode[data-miniapp-theme=dark] .page-help,.miniapp-mode[data-miniapp-theme=dark] .table-scroll,.miniapp-mode[data-miniapp-theme=dark] .settings-method,.miniapp-mode[data-miniapp-theme=dark] .core-health,.miniapp-mode[data-miniapp-theme=dark] .card{background:var(--surface);color:var(--text)}
 .miniapp-mode[data-miniapp-theme=dark] input,.miniapp-mode[data-miniapp-theme=dark] select,.miniapp-mode[data-miniapp-theme=dark] textarea{background:#0b1728;color:var(--text);border-color:var(--line)}
 .miniapp-mode[data-miniapp-theme=dark] .table-scroll th{background:#192d42;color:var(--text)}
@@ -416,3 +416,12 @@ body.cabinet-mode{--bg:#f2f7fb;--surface:#fff;--surface-2:#edf5f9;--surface-3:#e
 .miniapp-mode[data-miniapp-theme=light]{--bg:#f2f7fb;--surface:#fff;--line:#dbe5ed;--text:#192e48;--muted:#547387;color-scheme:light;background:var(--bg);color:var(--text)}
 
 @media(max-width:760px){.miniapp-mode .cabinet-stage{padding-left:calc(16px + var(--mini-safe-left,0px));padding-right:calc(16px + var(--mini-safe-right,0px))}}
+
+.miniapp-mode[data-miniapp-theme=dark] .table-scroll a,.miniapp-mode[data-miniapp-theme=dark] .page-help a,.miniapp-mode[data-miniapp-theme=dark] .card a{color:#69e0d1}
+.miniapp-mode[data-miniapp-theme=dark] .metric small{color:#9be0d6}
+.miniapp-mode[data-miniapp-theme=dark] .context-help{background:#20364c;border-color:var(--line);color:var(--text)}
+.miniapp-mode[data-miniapp-theme=dark] .context-help p,.miniapp-mode[data-miniapp-theme=dark] label{color:var(--text-soft)}
+.miniapp-mode[data-miniapp-theme=dark] .meta span,.miniapp-mode[data-miniapp-theme=dark] .calendar,.miniapp-mode[data-miniapp-theme=dark] .slot-hold-panel,.miniapp-mode[data-miniapp-theme=dark] .campaign-report,.miniapp-mode[data-miniapp-theme=dark] .observation-panel,.miniapp-mode[data-miniapp-theme=dark] .core-checklist li{background:#192d42;color:var(--text-soft)}
+.miniapp-mode[data-miniapp-theme=dark] .cabinet-topbar input{background:#0b1728;color:var(--text)}
+.miniapp-mode #miniapp-login h1{color:var(--text)}
+.miniapp-mode[data-miniapp-theme=light] #miniapp-login button{background:#e3f5f3;color:#075358}

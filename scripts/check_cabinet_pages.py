@@ -390,7 +390,7 @@ def main():
                 from test_miniapp_auth import signed_data
                 mini_requests=[]
                 def mini_page(raw):
-                    context=browser.new_context(viewport={'width':390,'height':844})
+                    context=browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce')
                     context.add_init_script("sessionStorage.setItem('pushok-session', "+repr(sessions['outsider'])+");")
                     context.add_init_script("if(!sessionStorage.getItem('mini-fixture-seeded')){sessionStorage.setItem('pushok-miniapp-session', "+repr(sessions['outsider'])+");sessionStorage.setItem('pushok-miniapp-init-hash','old-account-hash');sessionStorage.setItem('mini-fixture-seeded','1');}")
                     context.add_init_script("""window.__miniEvents={};window.__miniBackVisible=false;
