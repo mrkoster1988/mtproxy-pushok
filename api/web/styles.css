@@ -370,3 +370,6 @@ footer { margin-top: 64px; padding: 26px 0 34px; border-top: 1px solid #33495a; 
 .settings-method h3{margin:0 0 12px;}
 .settings-method p{line-height:1.55;}
 @media(max-width:650px){.settings-payment-grid{grid-template-columns:1fr;}}
+
+/* Контекстная справка: доступна с клавиатуры без JavaScript. */
+.context-help{margin:12px 0 18px;border:1px solid #375669;border-radius:12px;padding:12px 16px;background:#102338}.context-help summary{cursor:pointer;color:#83e2d3;font-weight:600}.context-help p{font-size:14px;line-height:1.7}.context-help a,.help-page a,.help-link{color:#83e2d3;text-underline-offset:4px}.context-help summary:focus-visible,.help-page a:focus-visible,.help-link:focus-visible{outline:2px solid #f5bd70;outline-offset:4px}.help-page{max-width:1000px;margin:auto;padding:28px 20px}.help-page .panel{margin:0 0 20px}.help-page h1{font-size:clamp(30px,5vw,48px);letter-spacing:-1px}.help-page p{max-width:75ch;line-height:1.8}.help-nav{display:flex;gap:12px 20px;flex-wrap:wrap}.help-page section{scroll-margin-top:20px}@media(max-width:640px){.help-nav{display:grid;grid-template-columns:1fr}.help-link{font-size:13px}}
