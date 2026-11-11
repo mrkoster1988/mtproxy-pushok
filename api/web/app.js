@@ -30,6 +30,7 @@ function showWorkspace(view){
 }
 function operatorView(on){showWorkspace(on?'operator':'advertiser');}
 function showSettingsPane(pane){
+ $('notice').hidden=true;
  const selected=['payments','tariffs','system'].includes(pane)?pane:'payments';
  for(const name of ['payments','tariffs','system']){
   $('settings-'+name).hidden=name!==selected;

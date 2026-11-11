@@ -338,6 +338,11 @@ def main():
                     review.get_by_role('button',name='Повторить серверную проверку',exact=True).click()
                     assert not review.locator('textarea').evaluate('(field)=>field.validity.valid')
                     review.get_by_label('Причина повторной сверки',exact=True).fill('Проверены настройки тестового магазина')
+                    expect(admin.locator('#notice')).to_be_hidden()
+                    admin.set_viewport_size({'width':320,'height':900})
+                    assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'SBP review overflows mobile'
+                    admin.set_viewport_size({'width':1440,'height':1000})
+                    admin.evaluate('window.scrollTo(0,0)')
                     admin.screenshot(path=str(output/'16-sbp-review.png'),full_page=True)
                     review.get_by_role('button',name='Повторить серверную проверку',exact=True).click()
                     expect(admin.locator('#notice')).to_contain_text('Повтор поставлен в очередь')
