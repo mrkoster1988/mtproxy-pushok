@@ -81,7 +81,7 @@ async function renderSBPReview(offset=0){
   for(const a of data.items){
    const card=el('article',undefined,'settings-method');card.dataset.attemptId=a.id;
    card.append(el('h4','Кампания '+a.campaign_id),
-    el('p',money(a.amount)+' · '+(a.sbp_test_mode?'Тестовый режим':'Боевой режим')),
+    el('p',money(a.amount)+' · '+(a.sbp_test_mode===true?'Тестовый режим':a.sbp_test_mode===false?'Боевой режим':'Режим не сохранён')),
     el('p','Попытка: '+a.id,'muted'),
     el('p','Платёж провайдера: '+(a.provider_payment_id||'ID ещё не получен'),'muted'),
     el('p',reasons[a.reason]||'Требуется проверка состояния.'),

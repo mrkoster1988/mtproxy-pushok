@@ -29,7 +29,7 @@ def service_once(dsn, *, apply=False, limit=20):
     """
     if not 1 <= limit <= 100:
         raise ValueError('limit_out_of_range')
-    result = dict(checked=0, pending=0, settled=0, retry=0, review=0)
+    result = dict(checked=0, pending=0, settled=0, retry=0, review=0, superseded=0)
     if apply and os.getenv('PUSHOK_SBP_RECONCILIATION_ENABLED', '0') != '1':
         return {**result, 'status': 'disabled'}
     with psycopg.connect(dsn, connect_timeout=3, autocommit=True, row_factory=dict_row,
@@ -53,6 +53,7 @@ def service_once(dsn, *, apply=False, limit=20):
                                 RETURNING sbp_check_revision""",
                                 (row['id'], row['sbp_check_revision'])).fetchone()
                 if claimed is None:
+                    result['superseded'] += 1
                     continue
                 failures = 0
                 review = False
@@ -68,12 +69,12 @@ def service_once(dsn, *, apply=False, limit=20):
                     # Не подтверждаем спорные суммы/магазин/режим; никакого текста ответа в логах.
                     review = True
                     code = 'review'
-                conn.execute("""UPDATE payment_attempts SET sbp_next_check_at=now()+(%s * interval '1 second'),
+                finished = conn.execute("""UPDATE payment_attempts SET sbp_next_check_at=now()+(%s * interval '1 second'),
                                 sbp_check_failures=%s,sbp_check_result=%s,sbp_requires_review=%s
-                                WHERE id=%s AND sbp_check_revision=%s""",
-                             (delay, failures, code, review, row['id'], claimed['sbp_check_revision']))
+                                WHERE id=%s AND sbp_check_revision=%s RETURNING id""",
+                             (delay, failures, code, review, row['id'], claimed['sbp_check_revision'])).fetchone()
                 result['checked'] += 1
-                result[code] += 1
+                result[code if finished else 'superseded'] += 1
             return {**result, 'status': 'processed'}
         finally:
             conn.execute('SELECT pg_advisory_unlock(%s)', (_LOCK,))

@@ -1029,7 +1029,7 @@ class PostgresIntegration(unittest.TestCase):
                 # Старый worker не должен затереть более новый запрос администратора.
                 raise sbp_worker.SBPVerificationError('payment_test_mode_mismatch')
             with patch.object(sbp_worker, 'verify_background', side_effect=interleaved_verify):
-                self.assertEqual(sbp_worker.service_once(self.dsn, apply=True, limit=1)['review'], 1)
+                self.assertEqual(sbp_worker.service_once(self.dsn, apply=True, limit=1)['superseded'], 1)
             with psycopg.connect(self.dsn) as conn:
                 self.assertEqual(conn.execute('SELECT sbp_check_result,sbp_requires_review,sbp_check_revision FROM payment_attempts WHERE id=%s', (aid,)).fetchone(), ('admin_retry_queued', False, 3))
                 conn.execute("UPDATE payment_attempts SET sbp_next_check_at='2000-01-01' WHERE id=%s", (aid,))
