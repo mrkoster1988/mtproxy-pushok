@@ -102,9 +102,9 @@ def main():
                     }""")
                     return page
 
-                def go(page, route):
+                def go(page, route, expected_page=None):
                     page.evaluate("route => window.cabinet.go(route)", route)
-                    expect(page.locator('[data-page="' + route.split('/')[0] + '"]')).to_be_visible()
+                    expect(page.locator('[data-page="' + (expected_page or route.split('/')[0]) + '"]')).to_be_visible()
 
                 def refresh(page):
                     with page.expect_response(lambda r: r.url.endswith('/campaigns') and r.request.method == 'GET'):
@@ -136,7 +136,7 @@ def main():
 
                 advertiser = new_page("advertiser")
                 expect(advertiser.locator('[data-page=dashboard]')).to_contain_text('Пока нет данных')
-                go(advertiser, "settings")
+                go(advertiser, "settings", expected_page="dashboard")
                 expect(advertiser.locator('[data-page=dashboard]')).to_be_visible()
                 assert advertiser.locator('nav a[data-route=settings]').is_hidden()
                 forbidden = advertiser.request.get(base + '/api/v1/admin/payments/status',
