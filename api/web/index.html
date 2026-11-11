@@ -19,6 +19,7 @@
       </a>
       <div class="account">
         <span class="header-caption"><span class="online-dot"></span> СПОНСОРСКИЙ КАБИНЕТ</span>
+        <a class="help-link" href="/assets/help.html">Помощь</a>
         <span id="identity">Гость</span>
         <button id="logout" type="button" hidden>Выйти <span aria-hidden="true">↗</span></button>
       </div>
@@ -94,7 +95,8 @@
             <div class="panel-topline"><span class="eyebrow">ШАГ 01</span><span class="panel-symbol" aria-hidden="true">✎</span></div>
             <h2>Ваш Telegram-канал</h2>
             <p class="panel-lead">Расскажите, какой канал хотите продвигать.</p>
-            <form id="channel-form">
+            <details class="context-help"><summary>Какой канал добавить?</summary><p>Укажите ссылку на канал и его название. Если канал уже добавлен, выберите его при создании заявки. <a href="/assets/help.html#channels">Открыть инструкцию</a></p></details>
+<form id="channel-form">
               <label>Название канала<input name="title" required maxlength="255" placeholder="Например, Новости технологий"></label>
               <label>Ссылка на канал<input name="telegram_url" required type="url" placeholder="https://t.me/channel"></label>
               <button class="primary" type="submit">Добавить канал <span aria-hidden="true">↗</span></button>
@@ -105,7 +107,8 @@
             <div class="panel-topline"><span class="eyebrow">ШАГ 02</span><span class="panel-symbol" aria-hidden="true">✦</span></div>
             <h2>Новое размещение</h2>
             <p class="panel-lead">Выберите тариф и удобный день для рекламы.</p>
-            <form id="campaign-form">
+            <details class="context-help"><summary>Как выбрать дату и что будет дальше?</summary><p>Желаемая дата и отдельная 15-минутная бронь не означают начало рекламы. Дождитесь модерации, подтверждения оплаты и назначения периода. <a href="/assets/help.html#calendar">Открыть инструкцию</a></p></details>
+<form id="campaign-form">
               <label>Канал<select id="channel-select" name="channel_id" required></select></label>
               <label>Тариф<select id="tariff-select" name="tariff_id" required></select></label>
               <div class="calendar">
@@ -152,14 +155,16 @@
 
         <div class="section-title operator-title"><div><span class="eyebrow">РАБОТА С ЗАЯВКАМИ</span><h2>Очередь оператора</h2></div><div class="queue-filter-wrap"><span id="queue-count" class="count-pill"></span><select id="queue-filter" aria-label="Фильтр очереди"><option value="">Все заявки</option><option value="moderation_status=pending">На модерации</option><option value="payment_status=proof_submitted">Проверка оплаты</option></select></div></div>
         <p class="muted operator-note">Активируйте и завершайте размещение только после ручной проверки спонсорского тега на узле.</p>
-        <div id="queue" class="cards"></div>
+        <details class="context-help"><summary>Что проверить перед подтверждением?</summary><p>Оплату подтверждайте после сверки поступления. Активацию и завершение — после ручной проверки спонсора отдельным клиентом. <a href="/assets/help.html#operator">Открыть инструкцию</a></p></details>
+<div id="queue" class="cards"></div>
       </div>
       <div id="settings" hidden>
         <div class="section-title">
           <div><span class="eyebrow">ЦЕНТРАЛЬНАЯ ПАНЕЛЬ</span><h2>Настройки MTProxy Pushok</h2></div>
           <span class="workspace-hint">Доступно только администратору</span>
         </div>
-        <nav class="settings-nav" aria-label="Разделы настроек">
+        <details class="context-help"><summary>Как настройки влияют на существующие заявки?</summary><p>Новые цены действуют для новых заказов. RUB и XTR задаются отдельно. Статус подключения не подтверждает успешный платёж. <a href="/assets/help.html#settings">Открыть инструкцию</a></p></details>
+<nav class="settings-nav" aria-label="Разделы настроек">
           <button id="settings-payments-tab" type="button" class="selected">Платежи</button>
           <button id="settings-tariffs-tab" type="button">Тарифы</button>
           <button id="settings-system-tab" type="button">Система и готовность</button>

@@ -40,10 +40,28 @@ def campaign(identifier: str, channel: str, moderation: str, payment: str, place
 
 def demo_response(path: str, role: str) -> object:
     path = urlsplit(path).path
+    if path.endswith("/admin/payments/status"):
+        return {"stars": {"invoice_enabled_in_server_config": False,
+                          "priced_active_tariffs": 1, "recorded_successes": 0,
+                          "needs_manual_review": 0},
+                "sbp": {"checkout_enabled": False}}
+    if path.endswith("/admin/tariffs"):
+        return [{"id": TARIFF, "name": "1 день", "price_kopecks": 30000,
+                 "duration_seconds": 86400, "stars_price_xtr": 200,
+                 "is_active": True}]
+    if path.endswith("/admin/launch-readiness"):
+        return {"statistics": {
+                    "nodes_total": 1, "nodes_active": 1, "nodes_with_registered_tag": 0,
+                    "campaigns_total": 2, "moderation_pending": 1, "payments_pending": 1,
+                    "payments_verified": 0, "placements_scheduled": 0,
+                    "placements_active": 0, "placements_completed": 0,
+                    "manual_observations": 0},
+                "checks": [{"title": "Подключение Telegram и показ спонсора",
+                            "status": "not_verified", "count": 0}]}
     if path.endswith("/public-config"):
         return {"telegram_bot_username": None}
     if path.endswith("/admin/pushok-core/diagnostic-plan"):
-        return {"project_version": "0.031", "execution": "not_started_by_api",
+        return {"project_version": "0.050", "execution": "not_started_by_api",
                 "steps": [
                     {"title": "Локальный TCP", "verification": "ci_only"},
                     {"title": "Некорректный 64-байтный заголовок", "verification": "ci_only"},
@@ -110,6 +128,8 @@ class StaticHandler(SimpleHTTPRequestHandler):
 def main() -> None:
     parser = argparse.ArgumentParser(description="MTProxy Pushok — private visual preview")
     parser.add_argument("--out", type=Path, default=ROOT / ".build" / "ui-preview")
+    parser.add_argument("--browser-executable", type=Path,
+                        help="Use an installed Chromium instead of Playwright's browser")
     args = parser.parse_args()
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -121,7 +141,9 @@ def main() -> None:
 
     try:
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])
+            browser = playwright.chromium.launch(
+                headless=True, args=["--no-sandbox"],
+                executable_path=str(args.browser_executable) if args.browser_executable else None)
             def create_page(role: str, width: int, height: int):
                 page = browser.new_page(viewport={"width": width, "height": height},
                                         device_scale_factor=1)
@@ -164,6 +186,18 @@ def main() -> None:
                                     animations="disabled")
                 operator.locator("#node-admin").screenshot(
                     path=str(output / "04-unified-engine.png"), animations="disabled")
+                operator.locator("#settings-tab").click()
+                operator.wait_for_function("document.querySelector('#settings-stars-counts').textContent.includes('Тарифов')")
+                operator.wait_for_function("document.querySelector('#tariff-admin-name').value === '1 день'")
+                operator.wait_for_selector("#launch-readiness .core-checklist", state="attached")
+                operator.screenshot(path=str(output / "06-payment-settings.png"),
+                                    full_page=True, animations="disabled")
+                operator.locator("#settings-tariffs-tab").click()
+                operator.screenshot(path=str(output / "07-tariff-settings.png"),
+                                    full_page=True, animations="disabled")
+                operator.locator("#settings-system-tab").click()
+                operator.screenshot(path=str(output / "08-system-readiness.png"),
+                                    full_page=True, animations="disabled")
                 operator.close()
 
                 mobile = create_page("advertiser", 390, 844)
@@ -185,6 +219,17 @@ def main() -> None:
                 mobile.screenshot(path=str(output / "05-mobile.png"), full_page=True,
                                   animations="disabled")
                 mobile.close()
+
+                for name, width, height in (("09-help", 1440, 900),
+                                             ("10-help-mobile", 390, 844)):
+                    help_page = browser.new_page(viewport={"width": width, "height": height})
+                    help_page.goto(url + "assets/help.html", wait_until="domcontentloaded")
+                    help_page.wait_for_selector("#payments")
+                    assert help_page.evaluate("document.documentElement.scrollWidth <= innerWidth + 2"), \
+                        f"Horizontal overflow on {name}"
+                    help_page.screenshot(path=str(output / f"{name}.png"),
+                                         full_page=True, animations="disabled")
+                    help_page.close()
             finally:
                 browser.close()
     finally:
@@ -192,7 +237,7 @@ def main() -> None:
         server.server_close()
 
     generated = sorted(output.glob("*.png"))
-    assert len(generated) == 5, f"Expected 5 previews, found {len(generated)}"
+    assert len(generated) == 10, f"Expected 10 previews, found {len(generated)}"
     for file in generated:
         assert file.stat().st_size > 8000, f"Screenshot too small: {file}"
         print(f"{file.name}: {file.stat().st_size} bytes")
