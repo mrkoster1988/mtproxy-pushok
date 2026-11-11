@@ -42,7 +42,7 @@ class StagingPreflightTests(unittest.TestCase):
                 (ROOT / "scripts/staging_preflight.sh").read_text(encoding="utf-8"),
                 encoding="utf-8")
             (base / ".env").write_text(
-                "\\n".join([
+                "\n".join([
                     "POSTGRES_DB=pushok_test",
                     "POSTGRES_USER=pushok_test",
                     "POSTGRES_PASSWORD=not-real-test-secret",
@@ -51,10 +51,10 @@ class StagingPreflightTests(unittest.TestCase):
                     "SESSION_SIGNING_KEY=" + "b" * 64,
                     "TELEGRAM_BOT_TOKEN=" + token,
                     "TELEGRAM_BOT_USERNAME=" + username,
-                ]) + "\\n", encoding="utf-8")
+                ]) + "\n", encoding="utf-8")
             docker = base / "bin/docker"
             docker.write_text(
-                '#!/bin/sh\\nprintf "%s\\\\n" "$*" >> "$DOCKER_CALLS"\\n',
+                '#!/bin/sh\nprintf "%s\\\n" "$*" >> "$DOCKER_CALLS"\n',
                 encoding="utf-8")
             docker.chmod(0o755)
             env = os.environ.copy()
