@@ -212,12 +212,16 @@ def precheckout(
             if a["precheckout_query_id"] not in (None, payload.query_id):
                 return StarsPrecheckoutOutput(ok=False, error_message=CHECKOUT_ERROR)
             if a["precheckout_query_id"] is None:
-                conn.execute(
+                updated = conn.execute(
                     """UPDATE payment_attempts
                        SET precheckout_query_id=%s, precheckout_approved_at=now()
-                       WHERE id=%s""",
+                       WHERE id=%s AND status='pending'
+                         AND precheckout_query_id IS NULL
+                       RETURNING id""",
                     (payload.query_id, attempt),
-                )
+                ).fetchone()
+                if updated is None:
+                    return StarsPrecheckoutOutput(ok=False, error_message=CHECKOUT_ERROR)
     except psycopg.Error:
         return StarsPrecheckoutOutput(
             ok=False, error_message="Сервис проверки временно недоступен."
@@ -300,16 +304,28 @@ def settle(
                     (attempt, receipt["id"]),
                 )
                 return StarsReceiptOutput(status="already_processed", campaign_id=a["campaign_id"])
-            conn.execute(
+            settled = conn.execute(
                 """UPDATE payment_attempts SET status='succeeded',
-                       provider_payment_id=%s, settled_at=now() WHERE id=%s""",
+                       provider_payment_id=%s, settled_at=now()
+                   WHERE id=%s AND status='pending'
+                     AND provider='telegram_stars' AND provider_payment_id IS NULL
+                   RETURNING id""",
                 (payload.telegram_payment_charge_id, attempt),
-            )
-            conn.execute(
+            ).fetchone()
+            if settled is None:
+                # Не признаём receipt применённым без обновлённой попытки.
+                # HTTPException откатывает всю транзакцию, включая receipt.
+                raise HTTPException(503, "stars_attempt_changed_retry")
+            campaign_settled = conn.execute(
                 """UPDATE campaigns SET payment_status='verified', updated_at=now()
-                   WHERE id=%s AND payment_status='awaiting_payment'""",
+                   WHERE id=%s AND payment_status='awaiting_payment'
+                     AND moderation_status='approved' AND placement_status='not_scheduled'
+                   RETURNING id""",
                 (a["campaign_id"],),
-            )
+            ).fetchone()
+            if campaign_settled is None:
+                # Нельзя оставить succeeded-попытку и неоплаченную кампанию.
+                raise HTTPException(503, "stars_campaign_changed_retry")
             conn.execute(
                 """UPDATE stars_payment_receipts SET handling_status='applied',
                        attempt_id=%s, processed_at=now() WHERE id=%s""",
