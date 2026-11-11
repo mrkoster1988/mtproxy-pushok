@@ -3,6 +3,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Не запускать профиль bot, пока оператор не выбрал его явно.
+# Режим без бота подходит для первого приватного стенда и SSH-кабинета.
+MODE="${1:---cabinet-only}"
+if [[ "$#" -gt 1 ]] || [[ "$MODE" != "--cabinet-only" && "$MODE" != "--with-bot" ]]; then
+  echo "Использование: bash scripts/staging_preflight.sh [--cabinet-only|--with-bot]" >&2
+  exit 2
+fi
+if [[ "$MODE" == "--with-bot" ]]; then
+  export PUSHOK_PREFLIGHT_WITH_BOT=1
+else
+  export PUSHOK_PREFLIGHT_WITH_BOT=0
+fi
+
 echo "MTProxy Pushok — безопасная проверка staging (без изменений)"
 command -v python3 >/dev/null || { echo "Не найден python3" >&2; exit 1; }
 command -v docker >/dev/null || { echo "Не найден Docker" >&2; exit 1; }
@@ -22,6 +35,7 @@ python3 - <<'PY'
 from pathlib import Path
 import re
 import sys
+import os
 
 values = {}
 for line in Path(".env").read_text(encoding="utf-8").splitlines():
@@ -33,9 +47,11 @@ for line in Path(".env").read_text(encoding="utf-8").splitlines():
 
 required = (
     "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD",
-    "DATABASE_URL", "BOT_INTERNAL_SECRET", "TELEGRAM_BOT_TOKEN",
-    "SESSION_SIGNING_KEY",
+    "DATABASE_URL", "BOT_INTERNAL_SECRET", "SESSION_SIGNING_KEY",
 )
+with_bot = os.environ.get("PUSHOK_PREFLIGHT_WITH_BOT") == "1"
+if with_bot:
+    required += ("TELEGRAM_BOT_TOKEN", "TELEGRAM_BOT_USERNAME")
 missing = [k for k in required if not values.get(k) or values[k].startswith("REPLACE_")]
 if missing:
     print("Отсутствуют или не настроены поля: " + ", ".join(missing), file=sys.stderr)
@@ -46,12 +62,22 @@ if not re.fullmatch(r"[0-9a-f]{64}", values["BOT_INTERNAL_SECRET"]):
 if len(values["SESSION_SIGNING_KEY"]) < 32:
     print("SESSION_SIGNING_KEY слишком короткий.", file=sys.stderr)
     sys.exit(1)
-if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]{20,}", values["TELEGRAM_BOT_TOKEN"]):
-    print("Неверный формат TELEGRAM_BOT_TOKEN.", file=sys.stderr)
+token = values.get("TELEGRAM_BOT_TOKEN", "")
+if with_bot or (token and not token.startswith("REPLACE_")):
+    if not re.fullmatch(r"[0-9]+:[A-Za-z0-9_-]{20,}", token):
+        print("Неверный формат TELEGRAM_BOT_TOKEN.", file=sys.stderr)
+        sys.exit(1)
+if with_bot and not re.fullmatch(r"[A-Za-z0-9_]{5,32}", values["TELEGRAM_BOT_USERNAME"]):
+    print("Неверный формат TELEGRAM_BOT_USERNAME.", file=sys.stderr)
     sys.exit(1)
 print("Локальная конфигурация: базовые поля и формат секретов проверены.")
+print("Профиль бота: " + ("проверяется" if with_bot else "не выбран, токен не обязателен"))
 PY
 
-docker compose --profile bot config --quiet
-echo "Docker Compose: конфигурация валидна."
+if [[ "$MODE" == "--with-bot" ]]; then
+  docker compose --profile bot config --quiet
+else
+  docker compose config --quiet
+fi
+echo "Docker Compose: конфигурация валидна для выбранного режима."
 echo "Проверка завершена: контейнеры, сеть, БД и Telegram не изменялись."
