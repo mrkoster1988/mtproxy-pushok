@@ -162,6 +162,10 @@ def prepare_invoice(
             if prev:
                 attempt_id, amount = prev["id"], prev["amount"]
             else:
+                if conn.execute("""SELECT 1 FROM payment_attempts WHERE campaign_id=%s
+                                    AND provider='sbp' AND status IN ('created','pending') LIMIT 1""",
+                                (payload.campaign_id,)).fetchone():
+                    raise HTTPException(409, 'another_payment_in_progress')
                 row = conn.execute(
                     """INSERT INTO payment_attempts(
                            campaign_id, provider, payment_channel, amount, currency,

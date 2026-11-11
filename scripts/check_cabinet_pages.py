@@ -15,6 +15,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
@@ -289,6 +290,49 @@ def main():
                 expect(advertiser.locator('[data-page=help] details').first).to_have_attribute('open', '')
                 advertiser.go_back()
                 expect(advertiser.locator('[data-page=campaigns]')).to_be_visible()
+
+                # Настоящие HTTP/SQL; только транспорт эквайринга заменён фикстурой.
+                from app import sbp_provider
+                go(advertiser,'create')
+                advertiser.locator('#channel-select').select_option(index=1)
+                advertiser.locator('#calendar-clear').click()
+                advertiser.locator('#campaign-form button[type=submit]').click()
+                expect(advertiser.locator('[data-page=campaign]')).to_be_visible()
+                sbp_cid=advertiser.evaluate("location.hash.split('/')[2]")
+                advertiser.get_by_role('button',name='Отправить на модерацию',exact=True).click()
+                expect(advertiser.locator('[data-page=campaign] .meta')).to_contain_text('На модерации')
+                refresh(operator)
+                operator.get_by_role('button',name='Одобрить канал',exact=True).click()
+                expect(operator.locator('#queue')).to_contain_text('Ожидается оплата')
+                refresh(advertiser)
+                go(advertiser,'payments/'+sbp_cid)
+                expect(advertiser.locator('.sbp-checkout')).to_contain_text('Новые счета СБП выключены')
+                bank_state={'status':'pending','paid':False}
+                invoice_calls=[]
+                def sbp_create(**kwargs):
+                    invoice_calls.append(kwargs)
+                    return {'payment_id':'sbp-e2e-'+sbp_cid,'confirmation_url':'https://pay.example/fixture','status':'pending'}
+                def sbp_get(identifier):
+                    return {'id':identifier,**bank_state,'test':True,'captured_at':'2026-11-11T12:00:00Z',
+                            'amount':{'currency':'RUB','value':'450.55'},'metadata':{'campaign_id':sbp_cid},
+                            'payment_method':{'type':'sbp'}}
+                env={'PUSHOK_SBP_PAYMENTS_ENABLED':'1','PUSHOK_SBP_TEST_MODE':'1',
+                     'PUSHOK_PUBLIC_PAYMENT_HOST':'ads.example.org','YOOKASSA_SHOP_ID':'fixture-shop','YOOKASSA_SECRET_KEY':'fixture-secret'}
+                with patch.dict(os.environ,env),patch.object(sbp_provider,'create_sbp_payment',side_effect=sbp_create),patch.object(sbp_provider,'get_sbp_payment',side_effect=sbp_get):
+                    refresh(advertiser)
+                    advertiser.get_by_role('button',name='Выставить счёт СБП',exact=True).click()
+                    expect(advertiser.get_by_role('link',name='Перейти к оплате СБП',exact=True)).to_have_attribute('href','https://pay.example/fixture')
+                    assert invoice_calls[0]['amount_kopecks']==45055
+                    assert invoice_calls[0]['return_url']=='https://ads.example.org/?sbp_campaign='+sbp_cid
+                    with advertiser.expect_response(lambda r:r.url.endswith('/sbp/reconcile')):
+                        advertiser.goto(base+'/?sbp_campaign='+sbp_cid)
+                    expect(advertiser.locator('.sbp-checkout')).to_contain_text('Ожидается результат платежа')
+                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Ожидается оплата')
+                    bank_state.update(status='succeeded',paid=True)
+                    advertiser.get_by_role('button',name='Проверить платёж СБП',exact=True).click()
+                    expect(advertiser.locator('.sbp-checkout')).to_contain_text('Платёж подтверждён серверной сверкой')
+                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Оплата подтверждена')
+                    advertiser.screenshot(path=str(output/'15-sbp-verified.png'),full_page=True)
 
                 refresh(admin)
                 screens = [('01-dashboard', 'dashboard'), ('02-channels', 'channels'),

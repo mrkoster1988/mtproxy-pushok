@@ -63,7 +63,7 @@ class AdminPaymentSettingsTests(unittest.TestCase):
         self.assertEqual(data["stars"]["needs_manual_review"], 1)
         self.assertFalse(data["stars"]["invoice_enabled_in_server_config"])
         self.assertFalse(data["stars"]["telegram_acceptance_verified"])
-        self.assertEqual(data["sbp"]["integration"], "not_implemented")
+        self.assertEqual(data["sbp"]["integration"], "external_web_checkout")
         self.assertFalse(data["sbp"]["checkout_enabled"])
         self.assertFalse(data["secrets_exposed"])
         self.assertNotIn("SECRET_TEST_TOKEN", response.text)

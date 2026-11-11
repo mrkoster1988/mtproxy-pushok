@@ -100,14 +100,14 @@ class BotStarsAPITests(unittest.TestCase):
         campaign = {"moderation_status": "approved", "payment_status": "awaiting_payment",
                     "placement_status": "not_scheduled", "currency_snapshot": "RUB",
                     "stars_price_xtr": 180, "is_active": True}
-        db = fake_db(campaign, None, None, None, {"id": ATT, "amount": 180})
+        db = fake_db(campaign, None, None, None, None, {"id": ATT, "amount": 180})
         with patch("app.bot_stars.psycopg.connect", return_value=db):
             r = self.client.post("/api/v1/internal/bot/stars/prepare",
                  json={"telegram_user_id": 42, "campaign_id": str(CID)}, headers=H)
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(r.json()["stars_amount"], 180)
         self.assertEqual(r.json()["invoice_payload"], "stars:" + str(ATT))
-        self.assertEqual(db.__enter__.return_value.execute.call_args_list[4].args[1],
+        self.assertEqual(db.__enter__.return_value.execute.call_args_list[5].args[1],
                          (CID, 180, 42))
 
     def test_precheckout_mismatch_denies_without_writes(self):

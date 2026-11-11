@@ -103,3 +103,12 @@ def test_valid_provider_redirect_passes(monkeypatch):
         },
     )
     assert make(monkeypatch)["confirmation_url"] == "https://pay.example/checkout?session=abc"
+
+@pytest.mark.parametrize('observed,expected,allowed', [(True,True,True),(False,False,True),(True,False,False),(False,True,False),(None,False,False)])
+def test_invoice_test_mode_checked_before_exposing_redirect(monkeypatch,observed,expected,allowed):
+    monkeypatch.setattr(sbp_provider,'_request',lambda *a,**kw:{'id':'provider-1','status':'pending','test':observed,'confirmation':{'confirmation_url':'https://pay.example/checkout'}})
+    if allowed:
+        assert make(monkeypatch,expected_test=expected)['payment_id']=='provider-1'
+    else:
+        with pytest.raises(sbp_provider.SBPProviderError,match='test_mode_mismatch'):
+            make(monkeypatch,expected_test=expected)

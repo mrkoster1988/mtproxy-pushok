@@ -40,6 +40,10 @@ def campaign(identifier: str, channel: str, moderation: str, payment: str, place
 
 def demo_response(path: str, role: str) -> object:
     path = urlsplit(path).path
+    if path.endswith('/sbp'):
+        return {'available': False, 'test_mode': True, 'amount_kopecks': 30000,
+                'status': 'not_created', 'can_create': False, 'can_verify': False,
+                'confirmation_url': None, 'payment_status': 'awaiting_payment'}
     if path.endswith("/admin/payments/status"):
         return {"stars": {"invoice_enabled_in_server_config": False,
                          "priced_active_tariffs": 0, "recorded_successes": 0,

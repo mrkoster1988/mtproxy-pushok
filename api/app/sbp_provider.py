@@ -71,7 +71,8 @@ def _request(method: str, url: str, *, body: Mapping | None = None,
 
 
 def create_sbp_payment(*, campaign_id: str, amount_kopecks: int,
-                       idempotence_key: str, return_url: str) -> dict:
+                       idempotence_key: str, return_url: str,
+                       expected_test: bool | None = None) -> dict:
     """Request a redirect invoice. NEVER treat its creation as payment proof."""
     if not sbp_enabled():
         raise SBPProviderError("sbp_checkout_disabled_until_acceptance")
@@ -131,6 +132,8 @@ def create_sbp_payment(*, campaign_id: str, amount_kopecks: int,
         raise SBPProviderError("sbp_invalid_confirmation_url")
     if not isinstance(result.get("id"), str) or not _PAYMENT_ID.fullmatch(result["id"]):
         raise SBPProviderError("sbp_invalid_provider_payment_id")
+    if expected_test is not None and result.get('test') is not expected_test:
+        raise SBPProviderError('sbp_test_mode_mismatch')
     return {"payment_id": result["id"], "confirmation_url": url, "status": "pending"}
 
 
