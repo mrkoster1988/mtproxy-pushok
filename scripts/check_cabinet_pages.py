@@ -7,6 +7,7 @@ Sessions are seeded only into a fresh test database; no login bypass is added to
 import argparse
 import base64
 import io
+import json
 import os
 import socket
 import sys
@@ -385,6 +386,82 @@ def main():
                         admin.keyboard.press('Escape')
                         expect(admin.locator('#cabinet-sidebar')).to_have_attribute('inert', '')
                         admin.screenshot(path=str(output / '14-mobile.png'), full_page=True)
+                # Настоящая серверная авторизация; подменяется только оболочка SDK Telegram.
+                from test_miniapp_auth import signed_data
+                mini_requests=[]
+                def mini_page(raw):
+                    context=browser.new_context(viewport={'width':390,'height':844})
+                    context.add_init_script("sessionStorage.setItem('pushok-session', "+repr(sessions['outsider'])+");")
+                    context.add_init_script("if(!sessionStorage.getItem('mini-fixture-seeded')){sessionStorage.setItem('pushok-miniapp-session', "+repr(sessions['outsider'])+");sessionStorage.setItem('pushok-miniapp-init-hash','old-account-hash');sessionStorage.setItem('mini-fixture-seeded','1');}")
+                    context.add_init_script("""window.__miniEvents={};window.__miniBackVisible=false;
+                        window.Telegram={WebApp:{initData:RAW_DATA,initDataUnsafe:{user:{id:999,role:'admin'}},
+                        colorScheme:'light',safeAreaInset:{top:18,bottom:24},contentSafeAreaInset:{top:12,bottom:16},
+                        ready(){window.__miniReady=true},expand(){window.__miniExpanded=true},
+                        onEvent(name,fn){window.__miniEvents[name]=fn},openTelegramLink(url){window.__miniLink=url},
+                        BackButton:{show(){window.__miniBackVisible=true},hide(){window.__miniBackVisible=false},onClick(fn){window.__miniBack=fn}}}};
+                    """.replace('RAW_DATA',json.dumps(raw)))
+                    page=context.new_page();page.on('pageerror',lambda error:failures.append(str(error)))
+                    page.on('request',lambda request:mini_requests.append((request.method,request.url)))
+                    page.route('**/*',lambda route:route.continue_() if route.request.url.startswith(base+'/') else route.abort())
+                    page.goto(base+'/miniapp');return page
+                with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'1','TELEGRAM_BOT_USERNAME':'mtproxy_pushok_bot'}),patch.object(api,'TELEGRAM_BOT_TOKEN','fixture-token'):
+                    raw=signed_data(user=json.dumps({'id':99116000,'first_name':'Mini App тест'}),query_id='mini-client-first')
+                    mini=mini_page(raw)
+                    expect(mini.locator('body')).to_have_class('miniapp-mode cabinet-mode')
+                    expect(mini.locator('.cabinet-account')).to_contain_text('Mini App тест')
+                    assert mini.evaluate('window.__miniReady&&window.__miniExpanded')
+                    assert not mini.evaluate('window.__miniBackVisible')
+                    go(mini,'channels')
+                    assert mini.evaluate('window.__miniBackVisible')
+                    mini.locator('.menu-toggle').click()
+                    mini.evaluate('window.__miniBack()')
+                    expect(mini.locator('#cabinet-sidebar')).to_have_attribute('inert','')
+                    mini.evaluate('window.__miniBack()')
+                    expect(mini).to_have_url(base+'/miniapp#/dashboard')
+                    mini.reload()
+                    expect(mini.locator('body')).to_have_class('miniapp-mode cabinet-mode')
+                    assert len([x for x in mini_requests if x[0]=='POST' and x[1].endswith('/auth/telegram/miniapp')])==1
+                    go(mini,'payments/'+sbp_cid)
+                    expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата Telegram Stars')
+                    expect(mini.get_by_role('button',name='Реквизиты и сумма',exact=True)).to_have_count(0)
+                    expect(mini.get_by_role('button',name='Загрузить чек',exact=True)).to_have_count(0)
+                    assert not any('/sbp' in url or '/payment-instructions' in url or '/payment-proofs' in url for _,url in mini_requests)
+                    mini.get_by_role('link',name='Открыть @mtproxy_pushok_bot',exact=True).click()
+                    assert mini.evaluate('window.__miniLink')=='https://t.me/mtproxy_pushok_bot'
+                    for width in (320,390):
+                        mini.set_viewport_size({'width':width,'height':844})
+                        assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                    go(mini,'dashboard');mini.screenshot(path=str(output/'17-miniapp-light.png'),full_page=True)
+                    mini.evaluate("window.Telegram.WebApp.colorScheme='dark';window.__miniEvents.themeChanged()")
+                    expect(mini.locator('body')).to_have_attribute('data-miniapp-theme','dark')
+                    assert mini.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--mini-safe-top").trim()')=='18px'
+                    mini.screenshot(path=str(output/'18-miniapp-dark.png'),full_page=True)
+                    mini_token=mini.evaluate("sessionStorage.getItem('pushok-miniapp-session')")
+                    _,mini_sid,_=api._decode_session_token(mini_token)
+                    with psycopg.connect(PostgresIntegration.dsn) as connection:
+                        connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s',(mini_sid,))
+                    mini.locator('#refresh').click()
+                    expect(mini.locator('#miniapp-login')).to_contain_text('Сессия завершена')
+                    expect(mini.locator('#workspace')).to_be_hidden()
+                    assert mini.evaluate("sessionStorage.getItem('pushok-miniapp-session')")==None
+                    invalid=mini_page(raw+'tampered')
+                    expect(invalid.locator('#miniapp-login')).to_contain_text('Вход не завершён')
+                    expect(invalid.locator('#workspace')).to_be_hidden()
+                    outside=mini_page('')
+                    expect(outside.locator('#miniapp-login')).to_contain_text('Откройте Mini App из меню')
+                    expect(outside.locator('#workspace')).to_be_hidden()
+                    other=mini_page(signed_data(user=json.dumps({'id':99116000,'first_name':'Mini App тест'}),query_id='mini-client-logout'))
+                    expect(other.locator('body')).to_have_class('miniapp-mode cabinet-mode')
+                    other.locator('#logout').click()
+                    expect(other.locator('#miniapp-login')).to_contain_text('Вы вышли')
+                    other.reload()
+                    expect(other.locator('#miniapp-login')).to_contain_text('Вы вышли')
+                    expect(other.locator('#workspace')).to_be_hidden()
+                    disabled_raw=signed_data(query_id='mini-disabled')
+                    with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'0'}):
+                        disabled=mini_page(disabled_raw)
+                        expect(disabled.locator('#miniapp-login')).to_contain_text('пока не включён')
+                        expect(disabled.locator('#workspace')).to_be_hidden()
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))

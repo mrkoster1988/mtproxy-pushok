@@ -18,7 +18,7 @@ from uuid import UUID, uuid4
 import psycopg
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from psycopg.errors import ExclusionViolation, UniqueViolation
@@ -2284,6 +2284,23 @@ def get_availability(
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
+
+
+@app.get('/api/v1/miniapp/config', tags=['configuration'])
+def miniapp_config(response: Response):
+    response.headers['Cache-Control'] = 'no-store'
+    return {'enabled': os.getenv('PUSHOK_MINIAPP_ENABLED', '0') == '1'}
+
+
+@app.get('/miniapp', response_class=HTMLResponse, include_in_schema=False)
+@app.get('/miniapp/', response_class=HTMLResponse, include_in_schema=False)
+def miniapp_client():
+    html = (WEB_DIR / 'index.html').read_text()
+    html = html.replace('initial-scale=1', 'initial-scale=1, viewport-fit=cover')
+    html = html.replace('<body>', '<body data-miniapp="true">')
+    html = html.replace('<script src="/assets/app.js"',
+                        '<script src="/assets/miniapp.js" defer></script>\n  <script src="/assets/app.js"')
+    return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
 @app.get("/", include_in_schema=False)
