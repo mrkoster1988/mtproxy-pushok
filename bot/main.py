@@ -7,6 +7,7 @@ import time
 from uuid import UUID
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
 from .wizard import DraftWizard, format_tariff
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
@@ -28,14 +29,34 @@ COMMANDS = frozenset(("start", "advertise", "campaigns", "tariffs", "channels", 
 LOG = logging.getLogger("pushok.bot")
 
 
+def miniapp_url():
+    if os.getenv('PUSHOK_MINIAPP_ENABLED', '0') != '1':
+        return None
+    raw = os.getenv('PUSHOK_MINIAPP_URL', '')
+    try:
+        url = urlsplit(raw)
+        if (any(c.isspace() for c in raw) or url.scheme != 'https' or url.username or url.password
+            or url.port not in (None, 443) or url.query or url.fragment
+            or url.path not in ('/miniapp', '/miniapp/')
+            or not re.fullmatch(r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}', url.hostname or '')):
+            return None
+    except ValueError:
+        return None
+    return raw
+
+
 def keyboard():
-    return {"inline_keyboard": [
+    result = {"inline_keyboard": [
         [{"text": "📢 Разместить рекламу", "callback_data": "advertise"}],
         [{"text": "📋 Мои кампании", "callback_data": "campaigns"},
          {"text": "💎 Тарифы", "callback_data": "tariffs"}],
         [{"text": "📣 Наш канал", "url": CHANNEL_URL}],
         [{"text": "❓ Помощь", "callback_data": "help"}],
     ]}
+    url = miniapp_url()
+    if url:
+        result['inline_keyboard'].insert(0, [{'text': '🐱 Открыть Mini App', 'web_app': {'url': url}}])
+    return result
 
 
 def message_for(command):

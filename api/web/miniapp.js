@@ -87,6 +87,10 @@ window.pushokMiniApp=(()=>{
  });
  retry.addEventListener('click',start);
  message('Подключение к Telegram…');
- return {start,syncNavigation,expired(){end('Сессия завершена. Закройте Mini App и откройте заново.');},
+ return {start,syncNavigation,canPay(){return typeof app?.openInvoice==='function';},
+  payInvoice(url){return new Promise((resolve,reject)=>{
+   if(!/^https:\/\/t\.me\/\$[A-Za-z0-9_-]{1,256}$/.test(url)||typeof app?.openInvoice!=='function'){reject(Error('Обновите Telegram для оплаты Stars.'));return;}
+   try{app.openInvoice(url,resolve);}catch{reject(Error('Не удалось открыть счёт. Обновите статус перед повтором.'));}
+  });},expired(){end('Сессия завершена. Закройте Mini App и откройте заново.');},
   signedOut(){const hash=sessionStorage.getItem(cacheKey);if(hash)sessionStorage.setItem(exitKey,hash);end('Вы вышли. Закройте Mini App и откройте заново для нового входа.');}};
 })();
