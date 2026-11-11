@@ -413,7 +413,7 @@ def main():
                     assert not mini.evaluate('window.__miniBackVisible')
                     go(mini,'channels')
                     assert mini.evaluate('window.__miniBackVisible')
-                    mini.locator('.menu-toggle').click()
+                    mini.locator('.cabinet-topbar .menu-toggle').click()
                     mini.evaluate('window.__miniBack()')
                     expect(mini.locator('#cabinet-sidebar')).to_have_attribute('inert','')
                     mini.evaluate('window.__miniBack()')
