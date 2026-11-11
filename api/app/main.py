@@ -41,6 +41,7 @@ from .report_export import render_campaign_csv
 from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
 from . import sbp_checkout
+from .sbp_webhook import router as sbp_webhook_router
 from .sbp_provider import SBPProviderError
 from .sbp_reconcile import SBPReconcileError
 from .sbp_verification import SBPVerificationError
@@ -56,6 +57,7 @@ app.include_router(operator_bot_router)
 app.include_router(advertiser_notices_router)
 app.include_router(bot_outbox_router)
 app.include_router(bot_delivery_admin_router)
+app.include_router(sbp_webhook_router)
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 PAYMENT_PROOFS_DIR = os.getenv("PAYMENT_PROOFS_DIR", "/var/lib/mtproxy-pushok/payment-proofs")
