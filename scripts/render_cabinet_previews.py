@@ -42,6 +42,36 @@ def demo_response(path: str, role: str) -> object:
     path = urlsplit(path).path
     if path.endswith("/public-config"):
         return {"telegram_bot_username": None}
+    if path.endswith("/admin/payments/status"):
+        return {"stars": {"invoice_enabled_in_server_config": False,
+                          "priced_active_tariffs": 0, "recorded_successes": 0,
+                          "needs_manual_review": 0},
+                "sbp": {"checkout_enabled": False}}
+    if path.endswith("/admin/tariffs"):
+        return [{"id": TARIFF, "name": "1 день", "duration_seconds": 86400,
+                 "price_kopecks": 30000, "currency": "RUB",
+                 "stars_price_xtr": None, "is_active": True}]
+    if path.endswith("/admin/launch-readiness"):
+        return {"statistics": {
+                 "nodes_total": 1, "nodes_active": 1,
+                 "nodes_with_registered_tag": 0, "campaigns_total": 2,
+                 "moderation_pending": 1, "payments_pending": 1,
+                 "payments_verified": 0, "placements_scheduled": 0,
+                 "placements_active": 0, "placements_completed": 0,
+                 "manual_observations": 0},
+                "checks": [
+                 {"title": "Telegram-клиент", "status": "not_verified", "count": 0},
+                 {"title": "Показ спонсора", "status": "not_verified", "count": 0},
+                 {"title": "Реальная оплата", "status": "not_verified", "count": 0}]}
+    if path.endswith("/admin/network/promotion-plan"):
+        return {"node_count": 1,
+                "summary": {"own_channel_planned": 1,
+                            "paid_channel_planned": 0,
+                            "tag_registration_required": 1,
+                            "engine_tag_mismatch": 0, "overlap_conflict": 0},
+                "nodes": [{"name": "Pushok · тестовый узел",
+                           "state": "tag_registration_required",
+                           "target_channel_url": None}]}
     if path.endswith("/admin/pushok-core/diagnostic-plan"):
         return {"project_version": "0.031", "execution": "not_started_by_api",
                 "steps": [
@@ -147,23 +177,35 @@ def main() -> None:
                 }""")
                 return page
             try:
+                # Пятнадцать отдельных скриншотов настоящего HTML с тестовыми данными.
                 landing = create_page("guest", 1440, 900)
-                landing.screenshot(path=str(output / "01-landing.png"), full_page=True,
-                                   animations="disabled")
+                landing.screenshot(path=str(output / "01-landing.png"), full_page=True, animations="disabled")
+                landing.locator("#login").screenshot(path=str(output / "02-telegram-login.png"), animations="disabled")
                 landing.close()
 
                 advertiser = create_page("advertiser", 1440, 900)
-                advertiser.screenshot(path=str(output / "02-advertiser.png"), full_page=True,
-                                       animations="disabled")
+                advertiser.screenshot(path=str(output / "03-advertiser.png"), full_page=True, animations="disabled")
+                advertiser.locator(".form-panel").first.screenshot(path=str(output / "04-add-channel.png"), animations="disabled")
+                advertiser.locator(".campaign-panel").screenshot(path=str(output / "05-campaign-calendar.png"), animations="disabled")
+                advertiser.locator("#campaigns").screenshot(path=str(output / "06-my-campaigns.png"), animations="disabled")
+                advertiser.locator("#help-tab").click()
+                advertiser.locator("#help").screenshot(path=str(output / "12-help-advertiser.png"), animations="disabled")
                 advertiser.close()
 
                 operator = create_page("admin", 1440, 900)
                 operator.locator("#operator-tab").click()
-                operator.wait_for_selector("#node-admin:not([hidden])", timeout=6000)
-                operator.screenshot(path=str(output / "03-operator.png"), full_page=True,
-                                    animations="disabled")
-                operator.locator("#node-admin").screenshot(
-                    path=str(output / "04-unified-engine.png"), animations="disabled")
+                operator.locator("#node-admin").wait_for(state="visible")
+                operator.screenshot(path=str(output / "07-operator.png"), full_page=True, animations="disabled")
+                operator.locator("#node-admin").screenshot(path=str(output / "08-unified-engine.png"), animations="disabled")
+                operator.locator("#settings-tab").click()
+                operator.locator("#settings-payments").wait_for(state="visible")
+                operator.locator("#settings-payments").screenshot(path=str(output / "09-settings-payments.png"), animations="disabled")
+                operator.locator("#settings-tariffs-tab").click()
+                operator.locator("#settings-tariffs").screenshot(path=str(output / "10-settings-tariffs.png"), animations="disabled")
+                operator.locator("#settings-system-tab").click()
+                operator.locator("#settings-system").screenshot(path=str(output / "11-settings-system.png"), animations="disabled")
+                operator.locator("#help-tab").click()
+                operator.locator("#help").screenshot(path=str(output / "13-help-admin.png"), animations="disabled")
                 operator.close()
 
                 mobile = create_page("advertiser", 390, 844)
@@ -182,8 +224,9 @@ def main() -> None:
                 })""")
                 if overflow["scroll"] > overflow["viewport"] + 2:
                     raise AssertionError(f"Mobile horizontal overflow: {overflow}")
-                mobile.screenshot(path=str(output / "05-mobile.png"), full_page=True,
-                                  animations="disabled")
+                mobile.screenshot(path=str(output / "14-mobile-advertiser.png"), full_page=True, animations="disabled")
+                mobile.locator("#help-tab").click()
+                mobile.locator("#help").screenshot(path=str(output / "15-mobile-help.png"), animations="disabled")
                 mobile.close()
             finally:
                 browser.close()
@@ -192,7 +235,7 @@ def main() -> None:
         server.server_close()
 
     generated = sorted(output.glob("*.png"))
-    assert len(generated) == 5, f"Expected 5 previews, found {len(generated)}"
+    assert len(generated) == 15, f"Expected 15 previews, found {len(generated)}"
     for file in generated:
         assert file.stat().st_size > 8000, f"Screenshot too small: {file}"
         print(f"{file.name}: {file.stat().st_size} bytes")
