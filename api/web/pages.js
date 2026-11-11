@@ -1,6 +1,7 @@
 'use strict';
 // Страницы используют общие формы и действия app.js, без второго набора API.
 (() => {
+ Object.assign(errors,{sponsor_engine_mismatch:'Движок тега не совпадает с планом узла.',sponsor_tag_already_registered:'Этот тег уже зарегистрирован на другом узле.',sponsor_registration_not_found:'Сначала сохраните регистрацию спонсорского тега.',proxy_node_not_found:'Узел не найден. Обновите список.'});
  const state={campaigns:[],search:'',filter:'',route:'',bot:null,ready:false,loaded:false};
  const routes={
   dashboard:['Главная','Обзор ваших размещений'],
@@ -147,16 +148,27 @@
   $('campaign-count').textContent=list.length+' заявок';
   if(!list.length)empty($('campaigns'),state.search||state.filter?'Поиск не дал результатов. Измените запрос или сбросьте фильтр.':'Заявок пока нет. Создайте первую кампанию.');
  }
+ function renderQuote(){
+  const t=tariffs.find(t=>t.id===$('tariff-select').value),c=channels.find(c=>c.id===$('channel-select').value);
+  metrics('create',t?[
+   ['Цена заявки',money(t.price_kopecks),'Фиксируется при создании'],
+   ['Длительность',String(t.duration_seconds/3600)+' ч',t.name],
+   ['Канал',c?.title||'Не выбран','Проверяется модератором']
+  ]:[]);
+ }
+ $('channel-select').addEventListener('change',renderQuote);$('tariff-select').addEventListener('change',renderQuote);
  function render(){
   if(!state.ready||!state.loaded||!me)return;
   metrics('dashboard',[
    ['Активные кампании',state.campaigns.filter(c=>c.placement_status==='active').length,'По статусу размещения'],
    ['На модерации',state.campaigns.filter(c=>c.moderation_status==='pending').length,'Ожидают решения'],
    ['Оплата подтверждена',state.campaigns.filter(c=>c.payment_status==='verified').length,'Количество заявок'],
-   ['Каналы',channels.length,'В вашем аккаунте']
+   ['Ближайший запуск',date(state.campaigns.filter(c=>c.placement_status==='scheduled'&&c.scheduled_start_at&&new Date(c.scheduled_start_at)>new Date()).map(c=>c.scheduled_start_at).sort()[0]),'По назначенному расписанию']
   ]);
   metrics('channels',[['Каналов',channels.length,'Добавлены в кабинет']]);
   metrics('campaigns',[['Всего',state.campaigns.length,'Ваши заявки'],['Ожидают оплаты',state.campaigns.filter(c=>c.payment_status==='awaiting_payment').length,'После модерации'],['Завершены',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным системы']]);
+  renderQuote();metrics('calendar',[['Часовой пояс',calendarZone,'Время в календаре'],['Период',14,'Дней в запросе доступности']]);
+  metrics('reports',[['Кампаний',state.campaigns.length,'В вашем аккаунте'],['В эфире',state.campaigns.filter(c=>c.placement_status==='active').length,'По ручной отметке оператора'],['Завершено',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным API']]);
   table(channelRows,channels.map(c=>[c.title,safeChannel(c.telegram_url,c.telegram_url),link('Создать кампанию','create')]),['Название','Ссылка','Действие']);
   table(summaryRows,campaignRows(state.campaigns.slice(0,5)),campaignHeaders);renderList();
   onboarding.hidden=sessionStorage.getItem('pushok-onboarding-hidden')==='1';
@@ -179,7 +191,7 @@
   const [name,id]=routeParts();
   if(name==='campaign'){
    detail.replaceChildren();const c=state.campaigns.find(c=>c.id===id);
-   if(c){detail.append(card(c,false));metrics('campaign',[['Модерация',labels[c.moderation_status],'По данным API'],['Оплата',labels[c.payment_status],'По данным API'],['Размещение',labels[c.placement_status],'По данным API']]);}
+   if(c){detail.append(card(c,false));metrics('campaign',[['Модерация',labels[c.moderation_status],'По данным API'],['Оплата',labels[c.payment_status],'По данным API'],['Размещение',labels[c.placement_status],'По данным API'],['Окончание',date(c.scheduled_end_at),'Назначенный период']]);}
    else{empty(detail,'Кампания не найдена или недоступна вашему аккаунту.');metrics('campaign',[]);}
   }
   if(name==='payments'&&id){
@@ -205,8 +217,10 @@
  window.cabinet={go,sync(own){state.campaigns=own;state.loaded=true;document.body.dataset.cabinetLoaded='true';render();},enter(){
   state.ready=true;document.body.classList.add('cabinet-mode');account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);
   nav.querySelectorAll('a').forEach(a=>a.hidden=!permitted(a.dataset.route));activate();
- },logout(){state.ready=false;state.loaded=false;state.campaigns=[];ownCampaigns=[];me=null;window.cabinetBootReady=false;$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
+ },logout(){state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   [detail,paymentRows,reportRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list')].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());
+  workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
+  ['settings-stars-counts','settings-stars-status','settings-sbp-status','launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());
  },config(config){state.bot=/^[A-Za-z0-9_]{5,32}$/.test(config.telegram_bot_username||'')?config.telegram_bot_username:null;}};
  const fieldHelp=[
   [$('channel-form').elements.telegram_url,'Публичная ссылка вида https://t.me/channel. Доступность и содержание проверяются при модерации.'],
