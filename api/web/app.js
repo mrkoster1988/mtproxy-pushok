@@ -20,8 +20,8 @@ function money(n){return new Intl.NumberFormat('ru-RU',{style:'currency',currenc
 function date(v){return v?new Date(v).toLocaleString('ru-RU'):'Не назначено';}
 function showWorkspace(view){
  const admin=me?.role==='admin';
- const selected=(view==='settings'&&admin)?'settings':view==='operator'?'operator':'advertiser';
- for(const part of ['advertiser','operator','settings']){
+ const selected=view==='help'?'help':(view==='settings'&&admin)?'settings':view==='operator'?'operator':'advertiser';
+ for(const part of ['advertiser','operator','settings','help']){
   $(part).hidden=part!==selected;
   const tab=$(part+'-tab');tab.classList.toggle('selected',part===selected);
   tab.setAttribute('aria-pressed',String(part===selected));
@@ -570,7 +570,10 @@ async function enter(){
  const isOperator=['operator','admin'].includes(me.role);nodes=isOperator?await api('/operator/proxy-nodes'):[];
  $('identity').textContent=me.first_name||'Рекламодатель';$('logout').hidden=false;
  $('login').hidden=true;$('workspace').hidden=false;$('operator-tab').hidden=!isOperator;
- $('settings-tab').hidden=me.role!=='admin';showWorkspace('advertiser');showSettingsPane('payments');
+ $('settings-tab').hidden=me.role!=='admin';
+ $('help-operator').hidden=!isOperator;
+ $('help-admin').hidden=me.role!=='admin';
+ showWorkspace('advertiser');showSettingsPane('payments');
  $('channel-select').replaceChildren();option($('channel-select'),'','Выберите канал');channels.forEach(c=>option($('channel-select'),c.id,c.title));
  $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,t.name+' · '+money(t.price_kopecks)));
  await refresh();await loadAvailability();
@@ -609,6 +612,7 @@ $('refresh').addEventListener('click',()=>run(async()=>{await refresh();await lo
 $('queue-filter').addEventListener('change',()=>run(refresh));
 $('advertiser-tab').addEventListener('click',()=>operatorView(false));
 $('operator-tab').addEventListener('click',()=>operatorView(true));
+$('help-tab').addEventListener('click',()=>showWorkspace('help'));
 $('settings-tab').addEventListener('click',()=>run(async()=>{
  if(me?.role!=='admin')return;
  showWorkspace('settings');

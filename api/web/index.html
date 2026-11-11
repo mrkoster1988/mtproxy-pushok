@@ -85,6 +85,7 @@
         <button id="advertiser-tab" type="button" class="selected">Мои размещения</button>
         <button id="operator-tab" type="button" hidden>Очередь оператора</button>
         <button id="settings-tab" type="button" hidden>Настройки</button>
+        <button id="help-tab" type="button">Помощь и инструкции</button>
         <button id="refresh" type="button" class="refresh-button">Обновить <span aria-hidden="true">↻</span></button>
       </nav>
 
@@ -96,7 +97,8 @@
             <p class="panel-lead">Расскажите, какой канал хотите продвигать.</p>
             <form id="channel-form">
               <label>Название канала<input name="title" required maxlength="255" placeholder="Например, Новости технологий"></label>
-              <label>Ссылка на канал<input name="telegram_url" required type="url" placeholder="https://t.me/channel"></label>
+              <label>Ссылка на канал<input name="telegram_url" required type="url" placeholder="https://t.me/channel" aria-describedby="channel-url-hint"></label>
+              <p id="channel-url-hint" class="field-note">Укажите публичную ссылку вида https://t.me/имя_канала. Оператор проверит доступность канала и право на размещение.</p>
               <button class="primary" type="submit">Добавить канал <span aria-hidden="true">↗</span></button>
             </form>
           </section>
@@ -107,7 +109,8 @@
             <p class="panel-lead">Выберите тариф и удобный день для рекламы.</p>
             <form id="campaign-form">
               <label>Канал<select id="channel-select" name="channel_id" required></select></label>
-              <label>Тариф<select id="tariff-select" name="tariff_id" required></select></label>
+              <label>Тариф<select id="tariff-select" name="tariff_id" required aria-describedby="tariff-help"></select></label>
+              <p id="tariff-help" class="field-note">Цена в рублях фиксируется в заявке. Цена в Stars, если настроена, задаётся отдельно: автоматического обменного курса нет.</p>
               <div class="calendar">
                 <h3>Желаемая дата <span aria-hidden="true">✳</span></h3>
                 <div class="calendar-controls">
@@ -152,6 +155,16 @@
 
         <div class="section-title operator-title"><div><span class="eyebrow">РАБОТА С ЗАЯВКАМИ</span><h2>Очередь оператора</h2></div><div class="queue-filter-wrap"><span id="queue-count" class="count-pill"></span><select id="queue-filter" aria-label="Фильтр очереди"><option value="">Все заявки</option><option value="moderation_status=pending">На модерации</option><option value="payment_status=proof_submitted">Проверка оплаты</option></select></div></div>
         <p class="muted operator-note">Активируйте и завершайте размещение только после ручной проверки спонсорского тега на узле.</p>
+        <details class="context-help">
+          <summary>Как оператору проверить и завершить спонсорство?</summary>
+          <ol>
+            <li>Проверьте канал, оплату и отсутствие пересечений по времени.</li>
+            <li>Вручную настройте нужный канал через @MTProxyBot → Set promotion. Изменение записи в кабинете само не меняет Telegram.</li>
+            <li>Проверьте показ отдельным неподписанным Telegram-клиентом, запишите свежее положительное наблюдение и только затем активируйте кампанию.</li>
+            <li>После окончания вручную снимите платное продвижение, запишите свежее отрицательное наблюдение и верните собственный канал Pushok.</li>
+            <li>Завершите заявку только после обеих проверок. Галочки оператора не являются независимым подтверждением Telegram.</li>
+          </ol>
+        </details>
         <div id="queue" class="cards"></div>
       </div>
       <div id="settings" hidden>
@@ -180,6 +193,11 @@
               <p class="muted">Цена в рублях устанавливается во вкладке «Тарифы». Банковские ключи появятся только после реализации серверного подключения эквайринга.</p>
             </article>
           </div>
+          <details class="context-help">
+            <summary>Где подключать оплату и почему её нельзя включить кнопкой?</summary>
+            <p>Telegram Stars требуют установленной XTR-цены и отдельной приёмки Telegram Bot API. СБП требует серверной интеграции с платёжным провайдером и проверки оплаты по данным провайдера. В кабинете выводится статус, но секретные ключи здесь не вводятся.</p>
+            <p>Не считайте платёж полученным по скриншоту, возврату браузера или уведомлению без сверки. На тестовом стенде реальные счета остаются выключенными.</p>
+          </details>
           <p id="settings-payments-note" class="muted" role="status">Не сохраняйте реквизиты и секреты в комментариях или полях тарифов.</p>
         </section>
         <div id="settings-tariffs" class="settings-panel" hidden>
@@ -191,7 +209,8 @@
               <label>Название<input id="tariff-admin-name" maxlength="100" required></label>
               <label>Длительность, часы<input id="tariff-admin-hours" type="number" min="1" max="8760" step="0.25" required></label>
               <label>Цена для СБП, ₽<input id="tariff-admin-rub" type="number" min="1" max="1000000" step="0.01" required></label>
-              <label>Цена в Telegram Stars, XTR<input id="tariff-admin-stars" type="number" min="1" max="1000000" step="1" placeholder="Не настроено"></label>
+              <label>Цена в Telegram Stars, XTR<input id="tariff-admin-stars" type="number" min="1" max="1000000" step="1" placeholder="Не настроено" aria-describedby="stars-price-hint"></label>
+              <p id="stars-price-hint" class="field-note">Введите целое число звёзд. Это самостоятельная цена, а не пересчёт 300 ₽. Пустое поле — Stars для тарифа не настроены.</p>
               <label><input id="tariff-admin-active" type="checkbox"> Тариф активен для новых заказов</label>
               <button class="primary" type="submit">Сохранить настройки тарифа</button>
             </form>
@@ -217,6 +236,61 @@
           </div>
         </div>
       </div>
+      <section id="help" class="help-page" hidden aria-label="Справка и инструкции MTProxy Pushok">
+        <div class="section-title"><div><span class="eyebrow">БАЗА ЗНАНИЙ PUSHOK</span><h2>Помощь и инструкции <span class="heading-star">✳</span></h2></div></div>
+        <p class="panel-lead">Пошаговые действия прямо в кабинете. Если действие не подтверждено сервером или Telegram, не считайте его выполненным.</p>
+        <div class="help-grid">
+          <article class="panel help-card">
+            <span class="eyebrow">РЕКЛАМОДАТЕЛЮ</span><h3>Как разместить канал</h3>
+            <ol>
+              <li>Добавьте публичный Telegram-канал и корректную ссылку.</li>
+              <li>Создайте черновик: выберите канал, тариф и желаемую дату.</li>
+              <li>Отправьте заявку на модерацию; при замечаниях исправьте данные.</li>
+              <li>После одобрения следуйте доступным инструкциям по оплате. Реальные Stars и СБП включаются только после приёмки.</li>
+              <li>Следите за этапами в «Моих заявках» и проверяйте отчёт о размещении.</li>
+            </ol>
+            <p class="field-note">Выбранная дата — пожелание, а не гарантированное бронирование.</p>
+          </article>
+          <article class="panel help-card">
+            <span class="eyebrow">СТАТУСЫ</span><h3>Что означают отметки</h3>
+            <dl class="help-terms">
+              <dt>Черновик / На модерации</dt><dd>Заявку ещё можно отправить / оператор проверяет канал.</dd>
+              <dt>Нужны исправления</dt><dd>Исправьте ссылку или сведения и отправьте повторно.</dd>
+              <dt>Ожидание оплаты / Проверка оплаты</dt><dd>Платёж ещё не подтверждён сервером или провайдером.</dd>
+              <dt>Запланировано</dt><dd>Выбран слот, но показы ещё не подтверждены.</dd>
+              <dt>Активно / Завершено</dt><dd>Есть запись о ручной проверке; это не статистика Telegram API.</dd>
+            </dl>
+          </article>
+          <article id="help-operator" class="panel help-card" hidden>
+            <span class="eyebrow">ОПЕРАТОРУ</span><h3>Проверка и смена спонсора</h3>
+            <ol>
+              <li>Одобрите канал или запросите уточнение.</li>
+              <li>Подтверждайте оплату только после независимой проверки.</li>
+              <li>Запланируйте свободный слот и вручную выберите спонсора через @MTProxyBot.</li>
+              <li>Проверьте реальный показ неподписанным клиентом, сохраните свежий отчёт.</li>
+              <li>При окончании снимите рекламу, проверьте её отсутствие и восстановите собственный канал Pushok.</li>
+            </ol>
+            <p class="field-note">Автоматическое переключение спонсоров пока не реализовано.</p>
+          </article>
+          <article id="help-admin" class="panel help-card" hidden>
+            <span class="eyebrow">АДМИНИСТРАТОРУ</span><h3>Настройки и безопасность</h3>
+            <ol>
+              <li>Во вкладке «Тарифы» задайте цену в рублях и отдельно XTR.</li>
+              <li>Во вкладке «Платежи» проверьте статус Stars и СБП. Секреты вводятся только на сервере.</li>
+              <li>В «Системе и готовности» смотрите план сети; он не применяет изменения к MTProxy.</li>
+              <li>Тестируйте сначала на отдельном приватном VPS с резервной копией.</li>
+              <li>Не включайте реальные платежи и публичную рекламу до успешной приёмки.</li>
+            </ol>
+            <p class="field-note">Проверки кода не заменяют проверку Telegram и платёжного провайдера.</p>
+          </article>
+        </div>
+        <details class="context-help"><summary>Частые вопросы: дата, оплата, показ и возврат</summary>
+          <p><strong>Можно ли выбрать дату?</strong> Да, как пожелание. Оператор подтвердит слот отдельно.</p>
+          <p><strong>300 ₽ равно определённому количеству Stars?</strong> Нет, XTR задаётся отдельно.</p>
+          <p><strong>Почему не видно спонсора?</strong> Запись в базе не переключает @MTProxyBot; нужен реальный тест клиентом.</p>
+          <p><strong>Где помощь по оплате?</strong> В Telegram-боте команда /paysupport; не отправляйте туда секретные ключи.</p>
+        </details>
+      </section>
     </section>
 
     <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v0.050</span></footer>
