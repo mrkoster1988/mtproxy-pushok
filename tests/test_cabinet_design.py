@@ -63,7 +63,7 @@ class CabinetDesignTests(unittest.TestCase):
 
     def test_no_external_styles_scripts_or_tracking(self):
         self.assertEqual(set(self.parser.links), {
-            "/assets/styles.css", "/assets/app.js", "/assets/pushok-mascot.svg"
+            "/assets/styles.css", "/assets/app.js", "/assets/pages.js", "/assets/pushok-mascot.svg"
         })
         self.assertNotIn("onclick=", self.html)
         self.assertNotIn("onload=", self.html)
