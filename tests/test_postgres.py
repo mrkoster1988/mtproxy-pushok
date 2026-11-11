@@ -1037,6 +1037,11 @@ class PostgresIntegration(unittest.TestCase):
             with psycopg.connect(self.dsn) as conn:
                 self.assertEqual(conn.execute("SELECT payment_status,placement_status FROM campaigns WHERE id=%s",(cid,)).fetchone(),('verified','not_scheduled'))
                 self.assertEqual(conn.execute("SELECT count(*) FROM audit_events WHERE campaign_id=%s AND event_type='sbp_payment_verified'",(cid,)).fetchone()[0],1)
+            report=self.request('GET','/campaigns/'+str(cid)+'/report')
+            self.assertIn('sbp_payment_verified',[event['event'] for event in report['timeline']])
+            csv=self.client.get('/api/v1/campaigns/'+str(cid)+'/report.csv')
+            self.assertEqual(csv.status_code,200)
+            self.assertIn('СБП подтверждена сервером',csv.content.decode('utf-8-sig'))
             main.app.dependency_overrides[main.get_current_user]=lambda:{'id':uuid4(),'role':'advertiser'}
             with patch.object(sbp_provider,'get_sbp_payment') as bank:
                 self.request('POST',base+'/reconcile',404);bank.assert_not_called()
