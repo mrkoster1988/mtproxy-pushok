@@ -12,6 +12,7 @@ from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 from .bot_routes import _verify_bot_secret
 from .payment_contract import validate_settlement, PaymentContractError
+from .telegram_environment import is_test_environment, environment_name
 from .payment_gate import stars_invoices_enabled
 
 router = APIRouter()
@@ -66,8 +67,12 @@ def parse_attempt(payload: str) -> UUID | None:
     return identifier if payload == "stars:" + str(identifier) else None
 
 
-def authorize(secret: str | None, response: Response) -> None:
+def authorize(secret: str | None, response: Response, environment=None) -> None:
     _verify_bot_secret(secret)
+    environment = environment if isinstance(environment, str) else None
+    expected = environment_name()
+    if environment != expected and not (expected == "production" and environment is None):
+        raise HTTPException(403, "telegram_environment_mismatch")
     response.headers["Cache-Control"] = "no-store"
 
 
@@ -80,7 +85,7 @@ def locked_attempt(conn, attempt_id: UUID):
            )
            SELECT a.id, a.campaign_id, a.amount, a.currency, a.status,
                   a.provider_payment_id, a.payer_telegram_user_id, a.expires_at,
-                  a.precheckout_query_id, a.precheckout_approved_at,
+                  a.precheckout_query_id, a.precheckout_approved_at, a.telegram_test_environment,
                   c.advertiser_user_id, c.moderation_status, c.payment_status,
                   c.placement_status, u.telegram_user_id,
                   t.is_active AS tariff_is_active
@@ -98,6 +103,7 @@ def locked_attempt(conn, attempt_id: UUID):
 def eligible(row, user_id: int, currency: str, amount: int) -> bool:
     return bool(
         row
+        and row.get("telegram_test_environment", False) == is_test_environment()
         and row["payer_telegram_user_id"] == user_id
         and row["telegram_user_id"] == user_id
         and row["currency"].strip() == "XTR" and currency == "XTR"
@@ -113,8 +119,9 @@ def eligible(row, user_id: int, currency: str, amount: int) -> bool:
 def prepare_invoice(
     payload: StarsPrepareInput, response: Response,
     x_pushok_bot_secret: str | None = Header(default=None),
+    x_pushok_telegram_environment: str | None = Header(default=None),
 ) -> StarsPrepareOutput:
-    authorize(x_pushok_bot_secret, response)
+    authorize(x_pushok_bot_secret, response, x_pushok_telegram_environment)
     return prepare_for_user(os.environ["DATABASE_URL"], payload)
 
 
@@ -161,13 +168,15 @@ def prepare_for_user(dsn, payload: StarsPrepareInput) -> StarsPrepareOutput:
                 (payload.campaign_id,),
             )
             prev = conn.execute(
-                """SELECT id, amount, precheckout_approved_at
+                """SELECT id, amount, precheckout_approved_at, telegram_test_environment
                    FROM payment_attempts
                    WHERE campaign_id=%s AND provider='telegram_stars'
                      AND status='pending'
                    ORDER BY created_at DESC LIMIT 1 FOR UPDATE""",
                 (payload.campaign_id,),
             ).fetchone()
+            if prev and prev.get("telegram_test_environment", False) != is_test_environment():
+                raise HTTPException(409, "stars_environment_changed")
             if prev and prev["precheckout_approved_at"] is not None:
                 raise HTTPException(409, "stars_payment_processing")
             if prev:
@@ -180,11 +189,11 @@ def prepare_for_user(dsn, payload: StarsPrepareInput) -> StarsPrepareOutput:
                 row = conn.execute(
                     """INSERT INTO payment_attempts(
                            campaign_id, provider, payment_channel, amount, currency,
-                           status, payer_telegram_user_id, expires_at)
+                           status, payer_telegram_user_id, expires_at, telegram_test_environment)
                        VALUES(%s,'telegram_stars','telegram_bot',%s,'XTR',
-                              'pending',%s,now()+interval '10 minutes')
+                              'pending',%s,now()+interval '10 minutes',%s)
                        RETURNING id, amount""",
-                    (payload.campaign_id, stars, payload.telegram_user_id),
+                    (payload.campaign_id, stars, payload.telegram_user_id, is_test_environment()),
                 ).fetchone()
                 attempt_id, amount = row["id"], row["amount"]
     except HTTPException:
@@ -203,8 +212,9 @@ def prepare_for_user(dsn, payload: StarsPrepareInput) -> StarsPrepareOutput:
 def precheckout(
     payload: StarsPrecheckoutInput, response: Response,
     x_pushok_bot_secret: str | None = Header(default=None),
+    x_pushok_telegram_environment: str | None = Header(default=None),
 ) -> StarsPrecheckoutOutput:
-    authorize(x_pushok_bot_secret, response)
+    authorize(x_pushok_bot_secret, response, x_pushok_telegram_environment)
     if not stars_invoices_enabled():
         return StarsPrecheckoutOutput(ok=False, error_message="Оплата Stars ещё не включена.")
     attempt = parse_attempt(payload.invoice_payload)
@@ -249,8 +259,9 @@ def precheckout(
 def settle(
     payload: StarsReceiptInput, response: Response,
     x_pushok_bot_secret: str | None = Header(default=None),
+    x_pushok_telegram_environment: str | None = Header(default=None),
 ) -> StarsReceiptOutput:
-    authorize(x_pushok_bot_secret, response)
+    authorize(x_pushok_bot_secret, response, x_pushok_telegram_environment)
     attempt = parse_attempt(payload.invoice_payload)
     try:
         with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=3,
@@ -297,6 +308,8 @@ def settle(
 
             if not a:
                 return unresolved("unknown_attempt")
+            if a.get("telegram_test_environment", False) != is_test_environment():
+                return unresolved("telegram_environment_mismatch")
             if not eligible(a, payload.telegram_user_id, payload.currency,
                             payload.total_amount):
                 return unresolved("amount_user_or_status_mismatch")

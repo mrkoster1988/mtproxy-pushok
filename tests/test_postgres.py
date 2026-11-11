@@ -980,6 +980,40 @@ class PostgresIntegration(unittest.TestCase):
         finally:
             main.TELEGRAM_BOT_TOKEN, main.SESSION_SIGNING_KEY = old_token, old_key
 
+    def test_stars_test_environment_snapshot_and_production_isolation(self):
+        from app import stars_checkout
+        cid, owner, tid = self._sbp_fixture()
+        env={'PUSHOK_MINIAPP_ENABLED':'1','PUSHOK_STARS_PAYMENTS_ENABLED':'1',
+             'PUSHOK_TELEGRAM_TEST_ENVIRONMENT':'1','TELEGRAM_BOT_TOKEN':'12345:fixture-secret',
+             'BOT_INTERNAL_SECRET':'b'*64,'DATABASE_URL':self.dsn}
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':owner,'role':'advertiser'}
+        self.addCleanup(main.app.dependency_overrides.clear)
+        base='/campaigns/'+str(cid)+'/stars'
+        headers={'X-Pushok-Bot-Secret':'b'*64,'X-Pushok-Telegram-Environment':'test'}
+        with patch.dict(os.environ,env),patch.object(stars_checkout,'create_invoice_link',return_value='https://t.me/$test') as transport:
+            invoice=self.request('POST',base+'/checkout')
+            aid=invoice['attempt_id']
+            self.assertTrue(self.request('GET',base)['test_environment'])
+            self.assertEqual(self.request('POST',base+'/checkout'),invoice)
+            self.assertEqual(transport.call_count,1)
+            with psycopg.connect(self.dsn) as conn:
+                self.assertTrue(conn.execute('SELECT telegram_test_environment FROM payment_attempts WHERE id=%s',(aid,)).fetchone()[0])
+            pc={'query_id':'test-'+aid,'telegram_user_id':tid,'invoice_payload':'stars:'+aid,'currency':'XTR','total_amount':180}
+            self.request('POST','/internal/bot/stars/precheckout',403,headers={'X-Pushok-Bot-Secret':'b'*64},json=pc)
+            with patch.dict(os.environ,{'PUSHOK_TELEGRAM_TEST_ENVIRONMENT':'0'}):
+                self.request('POST',base+'/checkout',409)
+                prod={'X-Pushok-Bot-Secret':'b'*64,'X-Pushok-Telegram-Environment':'production'}
+                self.assertFalse(self.request('POST','/internal/bot/stars/precheckout',headers=prod,json=pc)['ok'])
+                receipt={k:v for k,v in pc.items() if k!='query_id'}|{'telegram_payment_charge_id':'wrong-env-'+aid}
+                self.assertEqual(self.request('POST','/internal/bot/stars/settle',headers=prod,json=receipt)['status'],'requires_review')
+                self.assertEqual(self.request('GET',base)['payment_status'],'awaiting_payment')
+            self.assertTrue(self.request('POST','/internal/bot/stars/precheckout',headers=headers,json=pc)['ok'])
+            receipt={k:v for k,v in pc.items() if k!='query_id'}|{'telegram_payment_charge_id':'test-env-'+aid}
+            with patch.dict(os.environ,{'PUSHOK_STARS_PAYMENTS_ENABLED':'0'}):
+                self.assertEqual(self.request('POST','/internal/bot/stars/settle',headers=headers,json=receipt)['status'],'applied')
+                self.assertEqual(self.request('POST','/internal/bot/stars/settle',headers=headers,json=receipt)['status'],'already_processed')
+            self.assertEqual(self.request('GET',base)['payment_status'],'verified')
+
     def test_stars_miniapp_link_retry_snapshot_owner_and_settlement(self):
         from app import stars_checkout
         from app.stars_checkout import StarsLinkError

@@ -101,3 +101,7 @@ checkout сериализуются; разные ссылки одной поп
 CI имитирует только createInvoiceLink и оболочку SDK. Настоящие Stars не покупаются
 и не списываются; выпуск ссылки в боевом Bot API и живые мобильные клиенты остаются
 отдельной приёмкой. Справочник: https://core.telegram.org/bots/api#createinvoicelink
+
+Для отдельной проверки через Telegram Test Environment предусмотрен флаг
+`PUSHOK_TELEGRAM_TEST_ENVIRONMENT=1`. Подготовка изолированного стенда и критерии
+приёмки: [TELEGRAM_TEST_ENVIRONMENT.md](TELEGRAM_TEST_ENVIRONMENT.md).
