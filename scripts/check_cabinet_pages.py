@@ -307,6 +307,11 @@ def main():
                         assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), (width, route)
                     if width == 390:
                         go(admin, 'dashboard')
+                        expect(admin.locator('#cabinet-sidebar')).to_have_attribute('inert', '')
+                        admin.locator('.cabinet-topbar .menu-toggle').click()
+                        expect(admin.locator('#cabinet-sidebar')).to_have_class('cabinet-sidebar is-open')
+                        admin.keyboard.press('Escape')
+                        expect(admin.locator('#cabinet-sidebar')).to_have_attribute('inert', '')
                         admin.screenshot(path=str(output / '14-mobile.png'), full_page=True)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:

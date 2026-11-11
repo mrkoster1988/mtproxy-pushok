@@ -126,9 +126,15 @@ jobs:
       - name: Install isolated browser dependencies
         run: |
           python -m pip install -r api/requirements-dev.txt playwright==1.56.0
-          python -m playwright install --with-deps chromium
       - name: Verify forms and capture pages using real API and disposable PostgreSQL
-        run: python scripts/check_cabinet_pages.py --out .build/ui-preview
+        run: |
+          browser_path="$(command -v google-chrome || command -v chromium || true)"
+          if [ -n "$browser_path" ]; then
+            python scripts/check_cabinet_pages.py --browser-executable "$browser_path" --out .build/ui-preview
+          else
+            python -m playwright install --with-deps chromium
+            python scripts/check_cabinet_pages.py --out .build/ui-preview
+          fi
       - name: Attach test desktop and mobile interface screenshots
         if: always()
         uses: actions/upload-artifact@v4

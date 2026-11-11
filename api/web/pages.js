@@ -75,8 +75,14 @@
  menu.forEach(([name,icon,title])=>{const a=link(icon+'  '+title,name);a.dataset.route=name;nav.append(a);});sidebar.append(nav);
  sidebar.append(el('p','Подсказки и инструкции доступны в каждом разделе.','sidebar-note'));
  const stage=el('div',undefined,'cabinet-stage'),bar=el('div',undefined,'cabinet-topbar');
- const toggle=button('☰ Меню',async()=>{const open=sidebar.classList.toggle('is-open');toggle.setAttribute('aria-expanded',String(open));});
+ const mobileMenu=window.matchMedia?.('(max-width:760px)');
+ function menuState(open){sidebar.classList.toggle('is-open',open);sidebar.inert=Boolean(mobileMenu?.matches&&!open);toggle.setAttribute('aria-expanded',String(open));}
+ const toggle=button('☰ Меню',async()=>menuState(!sidebar.classList.contains('is-open')));
  toggle.className='menu-toggle';toggle.setAttribute('aria-controls','cabinet-sidebar');toggle.setAttribute('aria-expanded','false');
+ const closeMenu=button('Закрыть меню',async()=>{menuState(false);toggle.focus();});closeMenu.className='menu-toggle';sidebar.prepend(closeMenu);
+ mobileMenu?.addEventListener('change',()=>menuState(false));
+ window.addEventListener('keydown',event=>{if(event.key==='Escape'&&sidebar.classList.contains('is-open')){menuState(false);toggle.focus();}});
+ menuState(false);
  const searchForm=el('form'),search=el('input');search.type='search';search.placeholder='Поиск кампаний по каналу или номеру';search.setAttribute('aria-label','Поиск кампаний');
  searchForm.append(search);searchForm.addEventListener('submit',e=>{e.preventDefault();state.search=search.value.trim();go('campaigns');renderList();});
  const account=el('span',undefined,'cabinet-account');account.id='cabinet-account';
@@ -210,7 +216,7 @@
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.insertBefore(calendar,calendarOrigin.querySelector('button[type="submit"]'));
   nav.querySelectorAll('a').forEach(a=>{const active=a.dataset.route===name||(name==='create'||name==='campaign')&&a.dataset.route==='campaigns';a.classList.toggle('selected',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
-  sidebar.classList.remove('is-open');toggle.setAttribute('aria-expanded','false');
+  menuState(false);
   render();pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
   if(name==='settings')run(loadAdminSettings);
  }
