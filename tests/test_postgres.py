@@ -980,6 +980,28 @@ class PostgresIntegration(unittest.TestCase):
         finally:
             main.TELEGRAM_BOT_TOKEN, main.SESSION_SIGNING_KEY = old_token, old_key
 
+    def test_miniapp_login_same_account_replay_and_revocation(self):
+        from test_miniapp_auth import signed_data
+        cid, owner, telegram_id = self._sbp_fixture()
+        import json
+        telegram_id = 1234567890123
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE users SET telegram_user_id=%s WHERE id=%s', (telegram_id, owner))
+        raw = signed_data(user=json.dumps({'id': telegram_id, 'first_name': 'Mini App'}))
+        with patch.dict(os.environ, {'PUSHOK_MINIAPP_ENABLED': '1'}), \
+                patch.object(main, 'TELEGRAM_BOT_TOKEN', 'fixture-token'), \
+                patch.object(main, 'SESSION_SIGNING_KEY', 'x'*64):
+            response = self.client.post('/api/v1/auth/telegram/miniapp', json={'init_data': raw})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.headers['cache-control'], 'private, no-store')
+            headers = {'Authorization': 'Bearer '+response.json()['access_token']}
+            self.assertEqual(self.request('GET', '/me', headers=headers)['id'], str(owner))
+            self.assertIn(str(cid), [x['id'] for x in self.request('GET', '/campaigns', headers=headers)])
+            self.request('POST', '/auth/telegram/miniapp', 401, json={'init_data': raw})
+            self.request('POST', '/auth/telegram/miniapp', 401, json={'init_data': '&'.join(reversed(raw.split('&')))})
+            self.request('POST', '/auth/logout', 204, headers=headers)
+            self.request('GET', '/me', 401, headers=headers)
+
     def _sbp_fixture(self):
         owner, channel, tariff, campaign = (uuid4() for _ in range(4))
         telegram_id = owner.int % (2**60)

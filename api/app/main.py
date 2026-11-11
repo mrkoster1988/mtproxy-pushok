@@ -41,6 +41,7 @@ from .report_export import render_campaign_csv
 from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
 from . import sbp_checkout, sbp_admin
+from .miniapp_auth import validate_init_data
 from .sbp_webhook import router as sbp_webhook_router
 from .sbp_provider import SBPProviderError
 from .sbp_reconcile import SBPReconcileError
@@ -367,6 +368,26 @@ def ready() -> dict[str, str]:
 @app.post("/api/v1/auth/telegram", response_model=SessionResponse, tags=["authentication"])
 def telegram_login(payload: TelegramLoginPayload) -> SessionResponse:
     _verify_telegram_login(payload)
+    return _start_telegram_session(payload)
+
+
+class MiniAppLoginPayload(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    init_data: str = Field(min_length=1, max_length=16384)
+
+
+@app.post('/api/v1/auth/telegram/miniapp', response_model=SessionResponse, tags=['authentication'])
+def miniapp_login(payload: MiniAppLoginPayload, response: Response):
+    response.headers['Cache-Control'] = 'private, no-store'
+    if os.getenv('PUSHOK_MINIAPP_ENABLED', '0') != '1':
+        raise HTTPException(409, 'miniapp_disabled')
+    bot_token = _required_secret(TELEGRAM_BOT_TOKEN, 'TELEGRAM_BOT_TOKEN').decode()
+    verified = validate_init_data(payload.init_data, bot_token)
+    return _start_telegram_session(TelegramLoginPayload(**verified))
+
+
+def _start_telegram_session(payload: TelegramLoginPayload) -> SessionResponse:
+    _required_secret(SESSION_SIGNING_KEY, 'SESSION_SIGNING_KEY')
     session_id = uuid4()
     expires_at = datetime.fromtimestamp(
         int(time.time()) + SESSION_TTL_SECONDS, tz=timezone.utc
