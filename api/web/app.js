@@ -495,7 +495,16 @@ $('node-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
 },e.submitter);});
 async function refresh(){
  if(!token)return;
- const own=await api('/campaigns');$('campaigns').replaceChildren(...own.map(c=>card(c,false)));$('campaign-count').textContent=own.length+' заявок';
+ const selectedChannel=$('channel-select').value,selectedTariff=$('tariff-select').value;
+ const [own,currentChannels,currentTariffs]=await Promise.all([api('/campaigns'),api('/channels'),api('/tariffs')]);
+ const calendarChanged=JSON.stringify(tariffs.map(t=>[t.id,t.duration_seconds]))!==JSON.stringify(currentTariffs.map(t=>[t.id,t.duration_seconds]));
+ channels=currentChannels;tariffs=currentTariffs;updatePublicPrice();
+ $('channel-select').replaceChildren();option($('channel-select'),'','Выберите канал');channels.forEach(c=>option($('channel-select'),c.id,c.title));
+ if(channels.some(c=>c.id===selectedChannel))$('channel-select').value=selectedChannel;
+ $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,t.name+' · '+money(t.price_kopecks)));
+ if(tariffs.some(t=>t.id===selectedTariff))$('tariff-select').value=selectedTariff;
+ if(calendarChanged){try{await loadAvailability();}catch(e){notice(e.message);}}
+ $('campaigns').replaceChildren(...own.map(c=>card(c,false)));$('campaign-count').textContent=own.length+' заявок';
  ownCampaigns=own;
  if(!own.length)$('campaigns').append(el('div','Заявок пока нет. Добавьте канал и создайте первое размещение.','empty'));
  if(me&&['operator','admin'].includes(me.role)){

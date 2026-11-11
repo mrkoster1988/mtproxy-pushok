@@ -26,6 +26,8 @@ def main():
     parser.add_argument("--out", type=Path, default=ROOT / ".build/cabinet-pages")
     parser.add_argument("--browser-executable")
     args = parser.parse_args()
+    # main.py captures this setting when imported, before test sessions are issued.
+    os.environ["SESSION_SIGNING_KEY"] = "browser-test-only-" * 8
     from test_postgres import PostgresIntegration, _approved_test_postgres
     if not _approved_test_postgres():
         parser.error("Requires an explicitly approved local test PostgreSQL")
@@ -38,7 +40,6 @@ def main():
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=True)
     # These values belong only to the local disposable test server.
-    os.environ["SESSION_SIGNING_KEY"] = "browser-test-only-" * 8
     os.environ["PAYMENT_INSTRUCTIONS_B64"] = base64.b64encode(
         "ТЕСТОВАЯ ИНСТРУКЦИЯ. Не переводите деньги.".encode()).decode()
     os.environ.pop("TELEGRAM_BOT_USERNAME", None)
@@ -265,6 +266,8 @@ def main():
                 go(advertiser, 'campaign/' + campaign_id)
                 expect(advertiser.locator('[data-page=campaign] .meta')).to_contain_text('300')
                 assert '450' not in advertiser.locator('[data-page=campaign] .meta').inner_text()
+                go(advertiser, 'create')
+                expect(advertiser.locator('[data-page=create] .metrics')).to_contain_text('450,55')
 
                 outsider = new_page('outsider')
                 go(outsider, 'campaign/' + campaign_id)
