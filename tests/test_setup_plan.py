@@ -9,7 +9,7 @@ SOURCE = Path(__file__).resolve().parents[1] / "setup.sh"
 
 
 class SetupPlanTests(unittest.TestCase):
-    def invoke(self, answers, existing_env=None):
+    def invoke(self, answers, existing_env=None, expected_code=0):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             shutil.copy2(SOURCE, root / "setup.sh")
@@ -19,7 +19,7 @@ class SetupPlanTests(unittest.TestCase):
                 ["bash", str(root / "setup.sh"), "--plan"],
                 input=answers, text=True, capture_output=True, timeout=10,
             )
-            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(result.returncode, expected_code, result.stdout + result.stderr)
             expected_files = {"setup.sh", ".env"} if existing_env is not None else {"setup.sh"}
             self.assertEqual({p.name for p in root.iterdir()}, expected_files)
             if existing_env is not None:
@@ -41,3 +41,33 @@ class SetupPlanTests(unittest.TestCase):
 
     def test_existing_environment_is_preserved(self):
         self.invoke("2\n1\n2\n", existing_env="SESSION_SIGNING_KEY=test-only\n")
+
+    def test_miniapp_production_keeps_commercial_payments_disabled(self):
+        secret="12345:fixture_secret"
+        text=self.invoke("2\n1\n\n1\nads.example.org\n\n1\n1\n"+secret+"\nfixture_bot\n2\n1\n2\n1\n")
+        self.assertIn("https://ads.example.org/miniapp",text)
+        self.assertIn("PUSHOK_TELEGRAM_TEST_ENVIRONMENT=0",text)
+        self.assertIn("PUSHOK_MINIAPP_ENABLED=1; PUSHOK_STARS_PAYMENTS_ENABLED=0",text)
+        self.assertNotIn(secret,text)
+
+    def test_test_environment_and_stars_require_explicit_choices(self):
+        secret="12345:fixture_secret"
+        text=self.invoke("2\n1\npushok-test\n1\nads-test.example.org\n8010\n1\n2\n"+secret+"\nfixture_bot\n2\n1\n1\n2\n1\n")
+        self.assertIn("PUSHOK_TELEGRAM_TEST_ENVIRONMENT=1",text)
+        self.assertIn("PUSHOK_MINIAPP_ENABLED=1; PUSHOK_STARS_PAYMENTS_ENABLED=1",text)
+        self.assertIn("https://ads-test.example.org/miniapp",text)
+        self.assertNotIn(secret,text)
+
+    def test_local_staging_does_not_offer_unreachable_miniapp(self):
+        text=self.invoke("2\n2\n\n\n1\n1\n12345:fixture_secret\nfixture_bot\n2\n2\n1\n")
+        self.assertIn("Mini App выключена: нужен HTTPS-домен",text)
+        self.assertIn("PUSHOK_MINIAPP_ENABLED=0; PUSHOK_STARS_PAYMENTS_ENABLED=0",text)
+
+    def test_default_miniapp_choice_keeps_it_disabled(self):
+        text=self.invoke("2\n1\n\n1\nads.example.org\n\n1\n\n12345:fixture_secret\nfixture_bot\n2\n\n2\n1\n")
+        self.assertIn("PUSHOK_MINIAPP_ENABLED=0; PUSHOK_STARS_PAYMENTS_ENABLED=0",text)
+
+    def test_test_telegram_refuses_installing_proxy_with_cabinet(self):
+        text=self.invoke("3\n3\n1\n\n3\n\n1\n2\n",expected_code=1)
+        self.assertIn("Тестовый Telegram настраивается только",text)
+        self.assertNotIn("Начать установку пакетов",text)
