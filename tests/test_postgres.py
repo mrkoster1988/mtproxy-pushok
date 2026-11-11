@@ -998,7 +998,7 @@ class PostgresIntegration(unittest.TestCase):
         main.app.dependency_overrides[main.get_current_user]=lambda:{'id':owner,'role':'advertiser'}
         self.addCleanup(main.app.dependency_overrides.clear)
         base='/campaigns/'+str(cid)+'/sbp'
-        env={'PUSHOK_SBP_PAYMENTS_ENABLED':'1','PUSHOK_SBP_TEST_MODE':'1',
+        env={'PUSHOK_SBP_PAYMENTS_ENABLED':'1','PUSHOK_SBP_TEST_MODE':'1','DATABASE_URL':self.dsn,
              'PUSHOK_PUBLIC_PAYMENT_HOST':'ads.example.org','YOOKASSA_SHOP_ID':'fixture-shop',
              'YOOKASSA_SECRET_KEY':'fixture-secret','PUSHOK_STARS_PAYMENTS_ENABLED':'1','BOT_INTERNAL_SECRET':'b'*64}
         calls=[]
