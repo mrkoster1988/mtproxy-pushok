@@ -102,6 +102,21 @@ class CabinetDesignTests(unittest.TestCase):
         self.assertNotIn("innerHTML", self.js)
         self.assertIn("fetch('/api/v1'+path", self.js)
 
+    def test_inline_guides_are_role_scoped_and_accessible(self):
+        self.assertIn('id="help-tab"', self.html)
+        self.assertIn('id="help" class="help-page" hidden', self.html)
+        self.assertIn('id="help-operator" class="panel help-card" hidden', self.html)
+        self.assertIn('id="help-admin" class="panel help-card" hidden', self.html)
+        self.assertIn('aria-describedby="channel-url-hint"', self.html)
+        self.assertIn('aria-describedby="stars-price-hint"', self.html)
+        self.assertIn('selected=view===\'help\'?', self.js)
+        self.assertIn("$('help-admin').hidden=me.role!=='admin'", self.js)
+        self.assertIn("$('help-operator').hidden=!isOperator", self.js)
+        self.assertIn("showWorkspace('help')", self.js)
+        self.assertIn(".help-grid", self.css)
+        self.assertNotIn("innerHTML", self.js)
+        self.assertEqual(len(self.parser.ids), len(set(self.parser.ids)))
+
     def test_version_and_standalone_boundary(self):
         main = (ROOT / "api/app/main.py").read_text(encoding="utf-8")
         setup = (ROOT / "setup.sh").read_text(encoding="utf-8")

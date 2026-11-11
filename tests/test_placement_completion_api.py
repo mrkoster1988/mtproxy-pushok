@@ -17,7 +17,8 @@ from app import main
 CID = UUID("00000000-0000-4000-8000-000000000981")
 UID = UUID("00000000-0000-4000-8000-000000000982")
 TARGET = "/api/v1/operator/campaigns/" + str(CID) + "/complete"
-VALID = {"tag_removed_confirmed": True, "verification_method": "separate_unsubscribed_client"}
+VALID = {"tag_removed_confirmed": True, "own_channel_restored_confirmed": True,
+         "verification_method": "separate_unsubscribed_client"}
 
 
 def campaign_row():
@@ -62,8 +63,15 @@ class PlacementCompletionTests(unittest.TestCase):
         self.as_operator()
         with patch("app.main.psycopg.connect") as db:
             for payload in ({}, {"tag_removed_confirmed": False,
+                                 "own_channel_restored_confirmed": True,
                                  "verification_method": "separate_unsubscribed_client"},
                             {"tag_removed_confirmed": True,
+                             "verification_method": "separate_unsubscribed_client"},
+                            {"tag_removed_confirmed": True,
+                             "own_channel_restored_confirmed": False,
+                             "verification_method": "separate_unsubscribed_client"},
+                            {"tag_removed_confirmed": True,
+                             "own_channel_restored_confirmed": True,
                              "verification_method": "unknown_method"}):
                 with self.subTest(payload=payload):
                     response = self.client.post(TARGET, json=payload)
@@ -80,9 +88,16 @@ class PlacementCompletionTests(unittest.TestCase):
         self.assertEqual(response.json()["placement_status"], "completed")
         commands = conn.__enter__.return_value.execute.call_args_list
         self.assertEqual(len(commands), 2)
-        self.assertIn("placement_status = 'active'", commands[0].args[0])
+        self.assertIn("c.placement_status = 'active'", commands[0].args[0])
+        self.assertIn("o.result = 'not_visible'", commands[0].args[0])
+        self.assertIn("newest.id DESC", commands[0].args[0])
+        self.assertIn("a.event_type = 'placement_activated_manually'", commands[0].args[0])
+        self.assertIn("o.observed_at >= now() - interval '10 minutes'", commands[0].args[0])
         self.assertIn("placement_completed_manually", commands[1].args[0])
         self.assertIn("tag_removed_confirmed", commands[1].args[0])
+        self.assertIn("own_channel_restored_confirmed", commands[1].args[0])
+        self.assertIn("operator_attestation", commands[1].args[0])
+        self.assertIn("'telegram_api_verified', false", commands[1].args[0])
         self.assertEqual(commands[1].args[1], (UID, CID, "separate_unsubscribed_client"))
         self.assertNotIn("ad_tag", str(commands))
 
@@ -97,7 +112,7 @@ class PlacementCompletionTests(unittest.TestCase):
         self.assertEqual(response.status_code, 409, response.text)
         commands = conn.__enter__.return_value.execute.call_args_list
         self.assertEqual(len(commands), 2)
-        self.assertNotIn("audit_events", str(commands))
+        self.assertFalse(any("INSERT INTO audit_events" in call.args[0] for call in commands))
 
     def test_not_found_returns_404(self):
         self.as_operator()
@@ -107,11 +122,27 @@ class PlacementCompletionTests(unittest.TestCase):
             response = self.client.post(TARGET, json=VALID)
         self.assertEqual(response.status_code, 404, response.text)
 
+    def test_release_gate_matches_completion_api_contract(self):
+        doc = (ROOT / "docs/MVP_RELEASE_GATE.md").read_text(encoding="utf-8")
+        for required in (
+            '"tag_removed_confirmed":true',
+            '"own_channel_restored_confirmed":true',
+            '"verification_method":"separate_unsubscribed_client"',
+            "not_visible", "observed_at", "recorded_at",
+            "telegram_api_verified=false",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, doc)
+        self.assertIn("HTTP **422**", doc)
+        self.assertIn("HTTP **409**", doc)
+
     def test_cabinet_requires_manual_confirmation(self):
         js = (ROOT / "api/web/app.js").read_text(encoding="utf-8")
         self.assertIn("tag_removed_confirmed:true", js)
         self.assertIn("separate_unsubscribed_client", js)
-        self.assertIn("Вы вручную выключили спонсорский тег", js)
+        self.assertIn("own_channel_restored_confirmed:true", js)
+        self.assertIn("Платный канал не виден — записать проверку", js)
+        self.assertIn("восстановили СОБСТВЕННЫЙ канал Pushok", js)
 
 
 if __name__ == "__main__":

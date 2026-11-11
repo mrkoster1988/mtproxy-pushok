@@ -7,6 +7,15 @@ from bot.main import CHANNEL_URL, COMMANDS, keyboard, response_for, validate_bot
 
 
 class TelegramBotTests(unittest.TestCase):
+    def test_help_explains_actual_flow_and_limitations(self):
+        reply = response_for({"message": {"chat": {"id": 123, "type": "private"},
+                                         "text": "/help"}})
+        text = reply[0]["text"]
+        self.assertIn("модерацию", text)
+        self.assertIn("Stars", text)
+        self.assertIn("Автоматическая смена спонсоров пока не реализована", text)
+        self.assertIn("/paysupport", text)
+
     def test_all_registered_commands_have_responses(self):
         for command in COMMANDS:
             with self.subTest(command=command):

@@ -370,3 +370,27 @@ footer { margin-top: 64px; padding: 26px 0 34px; border-top: 1px solid #33495a; 
 .settings-method h3{margin:0 0 12px;}
 .settings-method p{line-height:1.55;}
 @media(max-width:650px){.settings-payment-grid{grid-template-columns:1fr;}}
+
+/* Подтверждение оператора не подменяет независимое наблюдение показа. */
+.activation-review { display:grid; gap:12px; padding:16px; border:1px solid rgba(49,212,194,.4); border-radius:14px; }
+.activation-review .activation-confirm { display:flex; align-items:flex-start; gap:10px; }
+.activation-review input[type=checkbox] { width:20px; height:20px; flex:none; }
+.activation-review textarea { width:100%; min-height:90px; box-sizing:border-box; }
+
+/* Встроенная справка: доступная с телефона, без скрытых hover-only tooltip. */
+.field-note { margin:8px 0 15px; font-size:12px; line-height:1.6; color:#a8d6d7; }
+.context-help { margin:14px 0 23px; padding:14px 18px; border:1px solid rgba(120,203,200,.4); border-radius:15px; background:rgba(15,47,62,.67); }
+.context-help summary { cursor:pointer; font-weight:800; color:#bdf3e5; line-height:1.5; }
+.context-help summary:focus-visible { outline:3px solid #efb56d; outline-offset:4px; }
+.context-help p,.context-help li { font-size:13px; line-height:1.7; }
+.context-help ol { padding-left:20px; }
+.help-page { margin:24px 0 38px; }
+.help-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin:20px 0; }
+.help-card h3 { margin:8px 0 13px; font-size:20px; }
+.help-card li,.help-card dd { font-size:13px; line-height:1.7; }
+.help-card ol { padding-left:22px; }
+.help-card li { margin:9px 0; }
+.help-terms { margin:0; }
+.help-terms dt { color:#bdf3e5; margin-top:14px; font-weight:750; font-size:13px; }
+.help-terms dd { margin:5px 0 0; }
+@media (max-width:760px) { .help-grid { grid-template-columns:1fr; } }

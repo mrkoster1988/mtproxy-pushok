@@ -102,6 +102,29 @@ class PlacementVerificationTests(unittest.TestCase):
         self.assertIn("placement_observation_recorded", calls[2].args[0])
         self.assertNotIn("UPDATE campaigns", str(calls))
 
+    def test_active_accepts_removal_report_after_slot_end(self):
+        self.operator()
+        report = {"id": 15, "result": "not_visible", "method": "separate_unsubscribed_client",
+                  "observed_at": self.now, "recorded_at": self.now}
+        conn = MagicMock()
+        active = self.campaign(placement_status="active",
+                               scheduled_start_at=self.now-timedelta(hours=2),
+                               scheduled_end_at=self.now-timedelta(hours=1))
+        conn.__enter__.return_value.execute.return_value.fetchone.side_effect = [active, report]
+        with patch("app.main.psycopg.connect", return_value=conn):
+            response = self.client.post(self.endpoint(), json=self.body("not_visible"))
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertEqual(conn.__enter__.return_value.execute.call_count, 3)
+
+    def test_completed_cannot_record_observation(self):
+        self.operator()
+        conn = MagicMock()
+        conn.__enter__.return_value.execute.return_value.fetchone.return_value = self.campaign(placement_status="completed")
+        with patch("app.main.psycopg.connect", return_value=conn):
+            response = self.client.post(self.endpoint(), json=self.body("not_visible"))
+        self.assertEqual(response.status_code, 409, response.text)
+        self.assertEqual(conn.__enter__.return_value.execute.call_count, 1)
+
     def test_unpaid_or_unscheduled_does_not_create_observation(self):
         self.operator()
         conn = MagicMock()
@@ -139,13 +162,19 @@ class PlacementVerificationTests(unittest.TestCase):
         conn = MagicMock()
         conn.__enter__.return_value.execute.return_value.fetchone.side_effect = [None, {"id": CAMPAIGN}]
         with patch("app.main.psycopg.connect", return_value=conn):
-            response = self.client.post(f"/api/v1/operator/campaigns/{CAMPAIGN}/activate")
+            response = self.client.post(f"/api/v1/operator/campaigns/{CAMPAIGN}/activate", json={
+                "tag_applied_on_node": True, "mtproxybot_promotion_selected": True,
+                "independent_client_checked": True,
+                "verification_note": "Проверено на втором Telegram-клиенте вручную."
+            })
         self.assertEqual(response.status_code, 409)
         update_sql = conn.__enter__.return_value.execute.call_args_list[0].args[0]
         self.assertIn("newest.id DESC", update_sql)
         self.assertIn("o.result = 'visible'", update_sql)
         self.assertIn("interval '10 minutes'", update_sql)
         self.assertIn("c.payment_status = 'verified'", update_sql)
+        self.assertIn("proxy_sponsor_registrations", update_sql)
+        self.assertIn("sc.telegram_channel_id IS NOT NULL", update_sql)
 
     def test_migration_and_install_hook(self):
         schema = (ROOT / "database/011_placement_observations.sql").read_text()

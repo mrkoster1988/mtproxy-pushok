@@ -34,12 +34,13 @@ from .engine_adapters import recommend_engine, engine_catalog
 from .core_readiness import core_readiness, core_diagnostic_plan
 from .slot_calendar import slot_status
 from .slot_holds import normalize_hold_window
-from .placement_verification import validate_observation_window
+from .placement_verification import validate_observation_window, validate_recent_observation
 from .placement_evidence import sanitize_image, store_image, read_verified_image, EvidenceReadError
 from .placement_report import build_campaign_report, PUBLIC_EVENTS
 from .report_export import render_campaign_csv
 from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
+from .network_promotion import register_network_routes
 
 app = FastAPI(
     title="MTProxy Pushok API",
@@ -178,6 +179,24 @@ class PlacementScheduleRequest(BaseModel):
     start_at: datetime
 
 
+class PlacementActivationRequest(BaseModel):
+    """Заявление оператора. Не заменяет последнюю положительную запись наблюдения."""
+
+    model_config = ConfigDict(extra="forbid")
+    tag_applied_on_node: Literal[True]
+    mtproxybot_promotion_selected: Literal[True]
+    independent_client_checked: Literal[True]
+    verification_note: str = Field(min_length=20, max_length=500)
+
+    @field_validator("verification_note")
+    @classmethod
+    def normalize_verification_note(cls, value: str) -> str:
+        note = value.strip()
+        if len(note) < 20:
+            raise ValueError("verification_note_too_short")
+        return note
+
+
 class SlotHoldRequest(BaseModel):
     proxy_node_id: UUID
     start_at: datetime
@@ -197,8 +216,9 @@ class ModerationRequest(BaseModel):
 
 
 class PlacementCompletionRequest(BaseModel):
-    """Явное ручное подтверждение удаления тега; не результат Telegram API."""
+    """Отчёт оператора о снятии платного спонсора и возврате собственного канала."""
     tag_removed_confirmed: Literal[True]
+    own_channel_restored_confirmed: Literal[True]
     verification_method: Literal["separate_unsubscribed_client"]
 
 
@@ -335,6 +355,9 @@ def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str,
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="admin_role_required")
     return user
+
+
+register_network_routes(app, require_admin, DATABASE_URL)
 
 
 def _campaign_response(row: dict[str, Any]) -> CampaignResponse:
@@ -1168,20 +1191,27 @@ def report_placement_observation(
             if campaign is None:
                 raise HTTPException(status_code=404, detail="campaign_not_found")
             now = datetime.now(timezone.utc)
-            if (
-                campaign["moderation_status"] != "approved"
-                or campaign["payment_status"] != "verified"
-                or campaign["placement_status"] != "scheduled"
-                or campaign["scheduled_start_at"] is None
-                or campaign["scheduled_end_at"] is None
-                or not (campaign["scheduled_start_at"] <= now < campaign["scheduled_end_at"])
-            ):
+            state = campaign["placement_status"]
+            start = campaign["scheduled_start_at"]
+            end = campaign["scheduled_end_at"]
+            if state == "scheduled":
+                if (campaign["moderation_status"] != "approved"
+                    or campaign["payment_status"] != "verified"
+                    or start is None or end is None or not (start <= now < end)):
+                    raise HTTPException(status_code=409, detail="placement_not_ready_for_observation")
+            elif state == "active":
+                # Разрешаем отчёт о снятии платного спонсора после конца слота.
+                if start is None or end is None or now < start:
+                    raise HTTPException(status_code=409, detail="placement_not_ready_for_observation")
+            else:
                 raise HTTPException(status_code=409, detail="placement_not_ready_for_observation")
             try:
-                validate_observation_window(
-                    campaign["scheduled_start_at"], campaign["scheduled_end_at"],
-                    payload.observed_at, now,
-                )
+                if state == "scheduled":
+                    validate_observation_window(start, end, payload.observed_at, now)
+                else:
+                    validate_recent_observation(payload.observed_at, now)
+                    if payload.observed_at < start:
+                        raise ValueError("observation_outside_placement_window")
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             report = connection.execute(
@@ -1472,6 +1502,7 @@ def get_campaign_placement_observation(
 @app.post("/api/v1/operator/campaigns/{campaign_id}/activate", response_model=CampaignResponse, tags=["operator"])
 def activate_placement(
     campaign_id: UUID,
+    payload: PlacementActivationRequest,
     operator: dict[str, Any] = Depends(require_operator),
 ) -> CampaignResponse:
     try:
@@ -1484,6 +1515,14 @@ def activate_placement(
                   AND c.moderation_status = 'approved' AND c.payment_status = 'verified'
                   AND c.scheduled_start_at <= now() AND c.scheduled_end_at > now()
                   AND EXISTS (
+                    SELECT 1 FROM proxy_nodes AS n
+                    JOIN sponsor_channels AS sc ON sc.id=c.channel_id
+                    JOIN proxy_sponsor_registrations AS sr ON sr.proxy_node_id=n.id
+                    WHERE n.id=c.proxy_node_id AND n.status='active'
+                      AND sc.telegram_channel_id IS NOT NULL
+                      AND (n.target_engine IS NULL OR sr.engine=n.target_engine)
+                  )
+                  AND EXISTS (
                     SELECT 1 FROM placement_observations AS o
                     WHERE o.id = (
                       SELECT newest.id FROM placement_observations AS newest
@@ -1493,6 +1532,7 @@ def activate_placement(
                       AND o.method = 'separate_unsubscribed_client'
                       AND o.observed_at >= c.scheduled_start_at
                       AND o.observed_at <= now()
+                      AND o.observed_at >= now() - interval '10 minutes'
                       AND o.recorded_at >= now() - interval '10 minutes'
                   )
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
@@ -1509,8 +1549,14 @@ def activate_placement(
                     raise HTTPException(status_code=404, detail="campaign_not_found")
                 raise HTTPException(status_code=409, detail="placement_not_in_active_window")
             connection.execute(
-                "INSERT INTO audit_events (actor_user_id, campaign_id, event_type) VALUES (%s, %s, 'placement_activated_manually')",
-                (operator["id"], campaign_id),
+                """INSERT INTO audit_events(actor_user_id, campaign_id, event_type, details_json)
+                   VALUES(%s,%s,'placement_activated_manually',
+                     jsonb_build_object('source','operator_attestation',
+                       'tag_applied_on_node',true,
+                       'mtproxybot_promotion_selected',true,
+                       'independent_client_checked',true,
+                       'verification_note',%s::text))""",
+                (operator["id"], campaign_id, payload.verification_note),
             )
     except HTTPException:
         raise
@@ -1529,9 +1575,27 @@ def complete_placement(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             row = connection.execute(
                 """
-                UPDATE campaigns
+                UPDATE campaigns AS c
                 SET placement_status = 'completed', updated_at = now()
-                WHERE id = %s AND placement_status = 'active'
+                WHERE c.id = %s AND c.placement_status = 'active'
+                  AND EXISTS (
+                    SELECT 1 FROM placement_observations AS o
+                    WHERE o.id = (
+                      SELECT newest.id FROM placement_observations AS newest
+                      WHERE newest.campaign_id = c.id ORDER BY newest.id DESC LIMIT 1
+                    )
+                      AND o.result = 'not_visible'
+                      AND o.method = 'separate_unsubscribed_client'
+                      AND o.observed_at <= now()
+                      AND o.observed_at >= now() - interval '10 minutes'
+                      AND o.recorded_at >= now() - interval '10 minutes'
+                      AND EXISTS (
+                        SELECT 1 FROM audit_events AS a
+                        WHERE a.campaign_id = c.id
+                          AND a.event_type = 'placement_activated_manually'
+                          AND a.created_at <= o.observed_at
+                      )
+                  )
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
                           duration_seconds_snapshot, price_kopecks_snapshot,
                           currency_snapshot, moderation_status, payment_status,
@@ -1544,12 +1608,15 @@ def complete_placement(
                 exists = connection.execute("SELECT 1 FROM campaigns WHERE id = %s", (campaign_id,)).fetchone()
                 if exists is None:
                     raise HTTPException(status_code=404, detail="campaign_not_found")
-                raise HTTPException(status_code=409, detail="placement_not_active")
+                raise HTTPException(status_code=409, detail="placement_completion_requires_fresh_negative_observation")
             connection.execute(
                 """INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
                    VALUES (%s, %s, 'placement_completed_manually',
-                           jsonb_build_object('tag_removed_confirmed', true,
-                                              'verification_method', %s::text))""",
+                           jsonb_build_object('source', 'operator_attestation',
+                                              'tag_removed_confirmed', true,
+                                              'own_channel_restored_confirmed', true,
+                                              'verification_method', %s::text,
+                                              'telegram_api_verified', false))""",
                 (operator["id"], campaign_id, payload.verification_method),
             )
     except HTTPException:

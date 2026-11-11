@@ -25,7 +25,6 @@ def fixture(root: Path) -> None:
         "database/002_second.sql": "SELECT 2;\n",
         "database/003_third.sql": "SELECT 3;\n",
         ".github/workflows/check.yml": "python3 scripts/preflight.py\npython -m unittest discover -s tests -v\n",
-        ".gitlab-ci.yml": "python3 scripts/preflight.py\npython -m unittest discover -s tests -v\n",
     }
     for relative, content in files.items():
         path = root / relative
@@ -67,6 +66,16 @@ class PreflightTests(unittest.TestCase):
         p = self.root / ".github/workflows/check.yml"
         p.write_text("python3 scripts/preflight.py\n")
         self.assertIn("github_test_suite", self.failed_checks())
+
+    def test_legacy_ci_configuration_rejected(self):
+        (self.root / ".gitlab-ci.yml").write_text(
+            "test: python -m unittest discover -s tests -v\n", encoding="utf-8")
+        self.assertIn("github_only_ci", self.failed_checks())
+
+    def test_github_preflight_removal_detected(self):
+        p = self.root / ".github/workflows/check.yml"
+        p.write_text("python -m unittest discover -s tests -v\n")
+        self.assertIn("github_preflight", self.failed_checks())
 
     def test_cli_json_reports_errors_and_exits_nonzero(self):
         p = self.root / "api/web/index.html"

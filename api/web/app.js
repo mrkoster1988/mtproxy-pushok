@@ -20,8 +20,8 @@ function money(n){return new Intl.NumberFormat('ru-RU',{style:'currency',currenc
 function date(v){return v?new Date(v).toLocaleString('ru-RU'):'Не назначено';}
 function showWorkspace(view){
  const admin=me?.role==='admin';
- const selected=(view==='settings'&&admin)?'settings':view==='operator'?'operator':'advertiser';
- for(const part of ['advertiser','operator','settings']){
+ const selected=view==='help'?'help':(view==='settings'&&admin)?'settings':view==='operator'?'operator':'advertiser';
+ for(const part of ['advertiser','operator','settings','help']){
   $(part).hidden=part!==selected;
   const tab=$(part+'-tab');tab.classList.toggle('selected',part===selected);
   tab.setAttribute('aria-pressed',String(part===selected));
@@ -63,7 +63,7 @@ async function renderPaymentSettings(){
 async function loadAdminSettings(){
  if(me?.role!=='admin')return;
  await Promise.all([renderPaymentSettings(),renderTariffAdmin(),
-                    renderCoreReadiness(),renderLaunchReadiness()]);
+                    renderCoreReadiness(),renderLaunchReadiness(),renderNetworkPlan()]);
 }
 
 const holdEligibility=c=>c.moderation_status==='approved' &&
@@ -296,8 +296,35 @@ function card(c,op){
      await refresh();notice(result==='visible'?'Отчёт оператора сохранён. Проверьте статус перед активацией.':'Отрицательное наблюдение записано. Активация заблокирована.',true);
     }));
    }
-   actions.append(button('Активировать после проверки',async()=>{
-    if(confirm('Вы записали положительное наблюдение за последние 10 минут и вручную включили тег?'))await change('activate');
+   actions.append(button('Проверить и активировать',async()=>{
+    if(box.querySelector('.activation-review'))return;
+    const panel=el('form',undefined,'activation-review');
+    panel.append(el('h4','Подтверждение запуска спонсора'));
+    panel.append(el('p','Требуется последняя положительная запись наблюдения за последние 10 минут. Подтверждения оператора не являются телеметрией Telegram.','muted'));
+    const fields=[
+     ['tag_applied_on_node','Тег применён на выбранном MTProxy-узле'],
+     ['mtproxybot_promotion_selected','Set promotion выбран в @MTProxyBot'],
+     ['independent_client_checked','Показ проверен на отдельном неподписанном клиенте Telegram']
+    ];
+    const marks={};
+    for(const [name,labelText] of fields){
+     const label=el('label',undefined,'activation-confirm');
+     const check=el('input');check.type='checkbox';check.required=true;
+     marks[name]=check;label.append(check,document.createTextNode(labelText));panel.append(label);
+    }
+    const note=el('textarea');note.required=true;note.minLength=20;note.maxLength=500;note.rows=3;
+    note.placeholder='Подробности ручной проверки (20–500 символов)';
+    note.setAttribute('aria-label','Комментарий оператора об активации');
+    panel.append(note);
+    const submit=el('button','Подтвердить ручную активацию');submit.type='submit';
+    const cancel=el('button','Отмена');cancel.type='button';
+    cancel.addEventListener('click',()=>panel.remove());panel.append(submit,cancel);
+    panel.addEventListener('submit',event=>{event.preventDefault();run(async()=>{
+     if(Object.values(marks).some(input=>!input.checked))throw Error('Подтвердите все три условия.');
+     await change('activate',{tag_applied_on_node:true,mtproxybot_promotion_selected:true,
+      independent_client_checked:true,verification_note:note.value});
+    },submit);});
+    box.append(panel);note.focus();
    }));
   }
   if(['scheduled','active','completed'].includes(c.placement_status))
@@ -332,10 +359,21 @@ function card(c,op){
     }
     panel.append(button('Закрыть',()=>panel.remove()));box.append(panel);
    }));
-  if(c.placement_status==='active')actions.append(button('Тег выключен — завершить',async()=>{
-   if(!confirm('Вы вручную выключили спонсорский тег и проверили в отдельном Telegram-клиенте, не подписанном на канал, что спонсор отсутствует?'))return;
-   await change('complete',{tag_removed_confirmed:true,verification_method:'separate_unsubscribed_client'});
+  if(c.placement_status==='active'){
+   actions.append(button('Платный канал не виден — записать проверку',async()=>{
+    const note=prompt('После снятия платного спонсора опишите проверку отдельным неподписанным Telegram-клиентом (не менее 12 символов):');
+    if(note===null)return;if(note.trim().length<12)throw Error('Опишите проверку подробнее.');
+    await api('/operator/campaigns/'+c.id+'/display-observations',{method:'POST',body:{
+     result:'not_visible',method:'separate_unsubscribed_client',observed_at:new Date().toISOString(),note:note.trim()
+    }});
+    await refresh();notice('Отрицательная проверка записана. Восстановите собственный канал.',true);
+   }));
+   actions.append(button('Снять рекламу и завершить',async()=>{
+   if(!confirm('Вы вручную сняли платный канал в @MTProxyBot, записали свежее отрицательное наблюдение (не старше 10 минут) и проверили, что реклама исчезла?'))return;
+   if(!confirm('Вы вручную восстановили СОБСТВЕННЫЙ канал Pushok через Set promotion и подтвердили показ отдельным неподписанным Telegram-клиентом?'))return;
+   await change('complete',{tag_removed_confirmed:true,own_channel_restored_confirmed:true,verification_method:'separate_unsubscribed_client'});
   }));
+  }
  }
  return box;
 }
@@ -356,6 +394,29 @@ $('engine-preview').addEventListener('click',()=>run(async()=>{
  $('engine-advice').textContent='План: '+plan.title+' · '+plan.availability+
   '. Не установлено и не проверено. Смена работающего прокси не выполняется.';
 }));
+async function renderNetworkPlan(){
+ if(me?.role!=='admin')return;
+ const target=$('network-plan');target.replaceChildren(el('p','Читаем состояние расписания…','muted'));
+ try{
+  const data=await api('/admin/network/promotion-plan');
+  target.replaceChildren(el('p','Узлов: '+data.node_count+' · свой канал: '+data.summary.own_channel_planned+
+   ' · платные слоты: '+data.summary.paid_channel_planned+
+   ' · без тегов: '+data.summary.tag_registration_required+
+   ' · несоответствие движка: '+data.summary.engine_tag_mismatch+
+   ' · конфликтов: '+data.summary.overlap_conflict+'.','muted'));
+  const captions={own_channel_planned:'Свой канал (план)',paid_channel_planned:'Коммерческий слот (план)',
+    paid_placement_not_approved:'Платёж/модерация требуют проверки',
+    tag_registration_required:'Тег не зарегистрирован',engine_tag_mismatch:'Тег зарегистрирован для другого движка',node_paused:'Узел приостановлен',
+    overlap_conflict:'Конфликт расписания'};
+  const list=el('ul',undefined,'core-checklist');
+  for(const n of data.nodes){
+   list.append(el('li',n.name+' · '+(captions[n.state]||n.state)+
+    (n.target_channel_url?' · '+n.target_channel_url:'')));
+  }
+  target.append(list,el('p','Ни один спонсор не переключён программно; наличие тега и записи не подтверждает реальные показы.','muted'));
+ }catch(e){target.replaceChildren(el('p','План сети недоступен: '+e.message,'muted'));}
+}
+$('network-refresh').addEventListener('click',()=>run(renderNetworkPlan));
 async function renderLaunchReadiness(){
  if(me?.role!=='admin')return;
  const target=$('launch-readiness');
@@ -509,7 +570,10 @@ async function enter(){
  const isOperator=['operator','admin'].includes(me.role);nodes=isOperator?await api('/operator/proxy-nodes'):[];
  $('identity').textContent=me.first_name||'Рекламодатель';$('logout').hidden=false;
  $('login').hidden=true;$('workspace').hidden=false;$('operator-tab').hidden=!isOperator;
- $('settings-tab').hidden=me.role!=='admin';showWorkspace('advertiser');showSettingsPane('payments');
+ $('settings-tab').hidden=me.role!=='admin';
+ $('help-operator').hidden=!isOperator;
+ $('help-admin').hidden=me.role!=='admin';
+ showWorkspace('advertiser');showSettingsPane('payments');
  $('channel-select').replaceChildren();option($('channel-select'),'','Выберите канал');channels.forEach(c=>option($('channel-select'),c.id,c.title));
  $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,t.name+' · '+money(t.price_kopecks)));
  await refresh();await loadAvailability();
@@ -548,6 +612,7 @@ $('refresh').addEventListener('click',()=>run(async()=>{await refresh();await lo
 $('queue-filter').addEventListener('change',()=>run(refresh));
 $('advertiser-tab').addEventListener('click',()=>operatorView(false));
 $('operator-tab').addEventListener('click',()=>operatorView(true));
+$('help-tab').addEventListener('click',()=>showWorkspace('help'));
 $('settings-tab').addEventListener('click',()=>run(async()=>{
  if(me?.role!=='admin')return;
  showWorkspace('settings');

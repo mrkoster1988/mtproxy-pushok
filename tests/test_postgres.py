@@ -889,6 +889,16 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(self.client.get("/api/v1" + download).status_code, 200)
         self.request("POST", "/operator/campaigns/" + cid + "/payment-review", json={"decision": "verified"})
         node = self.request("POST", "/admin/proxy-nodes", 201, json={"name": "Тестовый узел", "host": "proxy.example.org", "port": 8443})
+        # Перед активацией нужны подтверждённый канал и реестр MTProxy tag.
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute(
+                "UPDATE sponsor_channels SET telegram_channel_id=-1001234567 WHERE id=%s",
+                (channel["id"],),
+            )
+        self.request(
+            "PUT", "/admin/proxy-nodes/" + node["id"] + "/sponsor-registration",
+            json={"engine": "official_mtproxy", "ad_tag": "1234567890abcdef1234567890abcdef"},
+        )
         start = desired
         params = {"tariff_id": tariff["id"], "date_from": start.date().isoformat(), "start_time": start.strftime("%H:%M:%S"), "timezone_name": "UTC", "days": 2}
         before = self.request("GET", "/availability", params=params)
@@ -902,7 +912,9 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(busy["days"][0]["available_nodes"], 0)
         self.assertEqual(busy["days"][1]["available_nodes"], 1)
         self.request("PATCH", "/admin/proxy-nodes/" + node["id"] + "/status", 409, json={"status": "paused"})
-        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409)
+        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409, json={"tag_applied_on_node": True, "mtproxybot_promotion_selected": True,
+                       "independent_client_checked": True,
+                       "verification_note": "Проверка со второго клиента Telegram, канал показан вручную."})
         # Вторая оплаченная кампания нужна для проверки ограничения интервалов в PostgreSQL.
         with psycopg.connect(self.dsn) as conn:
             second = conn.execute("""
@@ -915,9 +927,11 @@ class PostgresIntegration(unittest.TestCase):
             """, (cid,)).fetchone()[0]
         self.request("POST", "/operator/campaigns/" + str(second) + "/schedule", 409, json={"proxy_node_id": node["id"], "start_at": start.isoformat()})
         with psycopg.connect(self.dsn) as conn:
-            conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '1 minute', scheduled_end_at=now()+interval '1 hour' WHERE id=%s", (cid,))
+            conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '20 minutes', scheduled_end_at=now()+interval '1 hour' WHERE id=%s", (cid,))
         # Активация не может полагаться только на нажатие кнопки оператора.
-        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409)
+        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409, json={"tag_applied_on_node": True, "mtproxybot_promotion_selected": True,
+                       "independent_client_checked": True,
+                       "verification_note": "Проверка со второго клиента Telegram, канал показан вручную."})
         observation_url = "/operator/campaigns/" + cid + "/display-observations"
         negative = self.request("POST", observation_url, 201, json={
             "result": "not_visible", "method": "separate_unsubscribed_client",
@@ -925,7 +939,9 @@ class PostgresIntegration(unittest.TestCase):
             "note": "Показ в отдельном клиенте не обнаружен",
         })
         self.assertEqual(negative["result"], "not_visible")
-        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409)
+        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409, json={"tag_applied_on_node": True, "mtproxybot_promotion_selected": True,
+                       "independent_client_checked": True,
+                       "verification_note": "Проверка со второго клиента Telegram, канал показан вручную."})
         positive = self.request("POST", observation_url, 201, json={
             "result": "visible", "method": "separate_unsubscribed_client",
             "observed_at": datetime.now(timezone.utc).isoformat(),
@@ -939,16 +955,54 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(public_report["result"], "visible")
         self.assertNotIn("note", public_report)
         actor = {"id": operator, "role": "admin"}
-        self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/activate")["placement_status"], "active")
+        # Simulate elapsed time after a report was written: recorded_at remains
+        # fresh, but the actual observation is no longer within 10 minutes.
+        # The SQL guard must reject the old observation, not merely trust
+        # the time at which the report was saved.
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("""UPDATE placement_observations
+                           SET observed_at=now()-interval '11 minutes',
+                               recorded_at=now()
+                           WHERE id=%s""", (positive["id"],))
+        self.request("POST", "/operator/campaigns/" + cid + "/activate", 409,
+                     json={"tag_applied_on_node": True,
+                           "mtproxybot_promotion_selected": True,
+                           "independent_client_checked": True,
+                           "verification_note": "Устаревшее наблюдение не должно разрешать запуск рекламного слота."})
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE placement_observations SET observed_at=now() WHERE id=%s",
+                         (positive["id"],))
+        self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/activate", json={"tag_applied_on_node": True, "mtproxybot_promotion_selected": True,
+                       "independent_client_checked": True,
+                       "verification_note": "Проверка со второго клиента Telegram, канал показан вручную."})["placement_status"], "active")
         self.request("POST", "/operator/campaigns/" + cid + "/complete", 422)
         self.request("POST", "/operator/campaigns/" + cid + "/complete", 422,
                      json={"tag_removed_confirmed": False,
                            "verification_method": "separate_unsubscribed_client"})
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 409,
+                     json={"tag_removed_confirmed": True,
+                           "own_channel_restored_confirmed": True,
+                           "verification_method": "separate_unsubscribed_client"})
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 422,
+                     json={"tag_removed_confirmed": True,
+                           "verification_method": "separate_unsubscribed_client"})
+        self.request("POST", "/operator/campaigns/" + cid + "/complete", 422,
+                     json={"tag_removed_confirmed": True,
+                           "own_channel_restored_confirmed": False,
+                           "verification_method": "separate_unsubscribed_client"})
+        removed = self.request("POST", observation_url, 201, json={
+            "result": "not_visible", "method": "separate_unsubscribed_client",
+            "observed_at": datetime.now(timezone.utc).isoformat(),
+            "note": "Платный канал после ручного снятия не виден в клиенте",
+        })
+        self.assertEqual(removed["result"], "not_visible")
         self.assertEqual(self.request("POST", "/operator/campaigns/" + cid + "/complete",
                          json={"tag_removed_confirmed": True,
+                               "own_channel_restored_confirmed": True,
                                "verification_method": "separate_unsubscribed_client"})["placement_status"], "completed")
         self.request("POST", "/operator/campaigns/" + cid + "/complete", 409,
                      json={"tag_removed_confirmed": True,
+                           "own_channel_restored_confirmed": True,
                            "verification_method": "separate_unsubscribed_client"})
         with psycopg.connect(self.dsn) as conn:
             completed_event = conn.execute(
@@ -957,6 +1011,9 @@ class PostgresIntegration(unittest.TestCase):
                 (cid,),
             ).fetchone()[0]
         self.assertIs(completed_event["tag_removed_confirmed"], True)
+        self.assertIs(completed_event["own_channel_restored_confirmed"], True)
+        self.assertEqual(completed_event["source"], "operator_attestation")
+        self.assertIs(completed_event["telegram_api_verified"], False)
         self.assertEqual(completed_event["verification_method"], "separate_unsubscribed_client")
         self.request("PATCH", "/admin/proxy-nodes/" + node["id"] + "/status", json={"status": "paused"})
         with psycopg.connect(self.dsn) as conn:
