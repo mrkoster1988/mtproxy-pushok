@@ -1,6 +1,7 @@
 'use strict';
 // Страницы используют общие формы и действия app.js, без второго набора API.
 (() => {
+ Object.assign(errors,{stars_checkout_disabled_until_acceptance:'Оплата Stars выключена до приёмки.',stars_link_unavailable:'Telegram временно недоступен. Счёт сохранён; повтор не меняет его сумму.',stars_payment_processing:'Платёж уже обрабатывается. Обновите статус, не оплачивайте повторно.',stars_bot_changed:'Бот для оплаты изменился. Нужна проверка владельца.',stars_price_not_configured:'Цена Stars для тарифа ещё не настроена.'});
  Object.assign(errors,{sbp_test_mode_mismatch:'Режим провайдера не совпадает с настройками сервера. Счёт не открыт; нужна проверка владельца.'});
  Object.assign(errors,{sbp_checkout_disabled_until_acceptance:'СБП выключена до настройки и приёмки.',another_payment_in_progress:'У заявки уже открыт другой платёж. Сначала проверьте его результат.',sbp_provider_unavailable:'Провайдер временно недоступен. Не оплачивайте повторно; повторный выпуск использует тот же ключ.',sbp_verification_requires_review:'Платёж не прошёл сверку. Не платите повторно; обратитесь к оператору.',sbp_creation_requires_review:'Результат выпуска счёта неизвестен слишком долго. Нужна проверка оператора.',sbp_configuration_changed:'Платёжные настройки изменились. Нужна проверка оператора.',sbp_invoice_not_created:'Счёт ещё не выпущен.',campaign_not_payable:'Заявка сейчас не ожидает новую оплату.'});
  Object.assign(errors,{sponsor_engine_mismatch:'Движок тега не совпадает с планом узла.',sponsor_tag_already_registered:'Этот тег уже зарегистрирован на другом узле.',sponsor_registration_not_found:'Сначала сохраните регистрацию спонсорского тега.',proxy_node_not_found:'Узел не найден. Обновите список.'});
@@ -143,8 +144,8 @@
   ['Как указать канал?','Используйте публичную ссылку https://t.me/channel. Исправления доступны в черновике или по запросу модератора.'],
   ['Цена и Stars','Цена фиксируется в заявке. RUB и XTR настраиваются отдельно, автоматического курса нет.'],
   ['Дата и бронь','Календарь справочный. В одобренной заявке можно получить бронь на 15 минут, если API найдёт свободный узел.'],
-  ['Как оплатить?',miniAppMode?'Откройте заявку и продолжите оплату Stars в Telegram-боте. Успешность проверяется сервером.':'Откройте заявку. Реквизиты доступны после настройки владельцем. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
-  [miniAppMode?'Telegram Stars':'Stars и СБП',miniAppMode?'Для оплаты используйте Telegram-бота. Нативный счёт Stars в Mini App будет подключён отдельно.':'Stars оформляются в Telegram-боте. СБП доступна только во внешнем кабинете после настройки владельцем. Возврат из банка не подтверждает оплату: результат сверяется сервером.'],
+  ['Как оплатить?',miniAppMode?'Откройте карточку оплаты заявки и выберите Stars. Успешность проверяется сервером.':'Откройте заявку. Реквизиты доступны после настройки владельцем. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
+  [miniAppMode?'Telegram Stars':'Stars и СБП',miniAppMode?'Счёт Stars можно открыть в карточке оплаты, если приём включён владельцем.':'Stars оформляются в Telegram-боте. СБП доступна только во внешнем кабинете после настройки владельцем. Возврат из банка не подтверждает оплату: результат сверяется сервером.'],
   ['Что значит «Активно»?','Оператор отметил запуск после ручного включения тега и отдельной проверки показа. Это не автоматический счётчик показов.'],
   ['Не удаётся выполнить действие','Обновите данные, проверьте комментарий и текущий статус. При завершении сессии войдите снова. Не повторяйте оплату вслепую.']
  ];
@@ -193,14 +194,42 @@
   table(reportRows,own.map(c=>[link(c.channel_title||c.id.slice(0,8),'campaign/'+c.id),badge(c.placement_status),button('Открыть отчёт',async()=>{reportRows.querySelectorAll('.campaign-report').forEach(x=>x.remove());await showCampaignReport(c,reportRows);}),button('Скачать CSV',()=>downloadCampaignCsv(c))]),['Кампания','Размещение','История','Экспорт']);
   const approved=own.filter(c=>c.moderation_status==='approved');
   table(paymentRows,approved.map(c=>[link(c.channel_title||c.id.slice(0,8),'payments/'+c.id),money(c.price_kopecks_snapshot),badge(c.payment_status),link('Открыть оплату','payments/'+c.id)]),['Кампания','Цена заявки','Статус','Действие']);
-  paymentRows.prepend(el('p',miniAppMode?'Для оплаты сначала требуется одобрение канала. Stars оформляются через бота при включении на сервере.':'Для оплаты сначала требуется одобрение канала. СБП — во внешнем кабинете после настройки владельцем. Stars — через бота при включении на сервере.','muted'));
+  paymentRows.prepend(el('p',miniAppMode?'Для оплаты сначала требуется одобрение канала. Stars доступны в карточке оплаты при включении на сервере.':'Для оплаты сначала требуется одобрение канала. СБП — во внешнем кабинете после настройки владельцем. Stars — через бота при включении на сервере.','muted'));
   operatorNodes.replaceChildren();if(me.role==='operator')table(operatorNodes,nodes.map(n=>[n.name,n.host+':'+n.port,n.status==='active'?'В реестре: активен':'На паузе']),['Узел','Адрес','Статус реестра']);
   metrics('sponsors',[['Узлов в реестре',nodes.length,'Доступность отдельно не проверялась']]);
   if(state.route)renderSelected();
  }
  function routeParts(){const p=location.hash.replace(/^#\/?/,'').split('/');return [Object.hasOwn(routes,p[0])?p[0]:'dashboard',p[1]||''];}
+ async function renderStars(c,panel){
+  const session=token,base='/campaigns/'+c.id+'/stars';
+  const current=()=>panel.isConnected&&session===token&&me;
+  panel.replaceChildren(el('p','Проверяем состояние Stars…'));
+  try{
+   const data=await api(base);if(!current())return;
+   panel.replaceChildren(el('h3','Оплата Telegram Stars'));
+   if(data.payment_status==='verified'){panel.append(el('p','Оплата подтверждена сервером.'));return;}
+   if(data.amount_xtr)panel.append(el('p','Стоимость счёта: '+data.amount_xtr+' XTR'));
+   if(!data.available)panel.append(el('p','Оплата Stars выключена до настройки и приёмки.'));
+   if(data.available&&!data.amount_xtr)panel.append(el('p','Цена Stars ещё не настроена владельцем.'));
+   if(data.processing)panel.append(el('p','Платёж обрабатывается. Не оплачивайте повторно.'));
+   else if(data.available&&data.amount_xtr&&data.payment_status==='awaiting_payment'){
+    const pay=button('Оплатить Stars',async()=>{
+     if(!window.pushokMiniApp.canPay())throw Error('Обновите Telegram для оплаты Stars.');
+     const invoice=await api(base+'/checkout',{method:'POST'});if(!current())return;
+     if(invoice.amount_xtr!==data.amount_xtr){notice('Стоимость Stars обновилась. Проверьте сумму перед оплатой.');await renderStars(c,panel);return;}
+     panel.append(el('p','Счёт открыт. Результат будет проверен сервером.','muted'));
+     await window.pushokMiniApp.payInvoice(invoice.invoice_url);
+     if(!current())return;
+     // invoiceClosed("paid") не является доказательством. Только API после bot receipt.
+     await refresh();if(current())await renderStars(c,panel);
+    });panel.append(pay);
+   }
+   panel.append(button('Обновить статус оплаты',async()=>{await refresh();if(current())await renderStars(c,panel);}));
+   panel.append(el('p','Закрытие окна оплаты не подтверждает перевод. Если статус ещё не обновился, проверьте его позже.','muted'));
+  }catch(e){if(current()){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку Stars',()=>renderStars(c,panel)));}}
+ }
  async function renderSbp(c,panel){
-  if(miniAppMode){panel.replaceChildren(el('h3','Оплата Telegram Stars'),el('p','Оплата Stars пока оформляется в Telegram-боте; стоимость в XTR подтверждается там перед оплатой. Если вы уже оплатили, обновите статус перед повторной попыткой.'));return;}
+  if(miniAppMode){await renderStars(c,panel);return;}
   const base='/campaigns/'+c.id+'/sbp';
   async function paint(data){
    if(!panel.isConnected)return;
@@ -245,7 +274,7 @@
   if(name==='payments'&&id){
    paymentRows.replaceChildren();const c=state.campaigns.find(c=>c.id===id&&c.moderation_status==='approved');
    paymentRows.append(link('← Все оплаты','payments'));
-   if(c){const panel=el('section',undefined,'panel sbp-checkout');paymentRows.append(card(c,false),panel,botLink(),el('p',miniAppMode?'Продолжите оплату Stars в боте. Статус заявки обновляется по данным сервера.':'Stars: продолжите в Telegram-боте, если приём включён. Ручной чек — запасной способ по инструкции владельца.','muted'));void renderSbp(c,panel);}
+   if(c){const panel=el('section',undefined,'panel sbp-checkout');paymentRows.append(card(c,false),panel,botLink(),el('p',miniAppMode?'Статус оплаты Stars обновляется по данным сервера.':'Stars: продолжите в Telegram-боте, если приём включён. Ручной чек — запасной способ по инструкции владельца.','muted'));void renderSbp(c,panel);}
    else paymentRows.append(el('p','Заявка недоступна или ещё не одобрена.'));
   }
  }

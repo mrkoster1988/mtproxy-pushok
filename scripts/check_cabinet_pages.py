@@ -398,6 +398,7 @@ def main():
                         colorScheme:'light',safeAreaInset:{top:18,bottom:24},contentSafeAreaInset:{top:12,bottom:16},
                         ready(){window.__miniReady=true},expand(){window.__miniExpanded=true},
                         onEvent(name,fn){window.__miniEvents[name]=fn},openTelegramLink(url){window.__miniLink=url},
+                        openInvoice(url,callback){window.__miniInvoiceUrl=url;window.__miniInvoiceCallback=callback},
                         BackButton:{show(){window.__miniBackVisible=true},hide(){window.__miniBackVisible=false},onClick(fn){window.__miniBack=fn}}}};
                     """.replace('RAW_DATA',json.dumps(raw)))
                     page=context.new_page();page.on('pageerror',lambda error:failures.append(str(error)))
@@ -428,6 +429,49 @@ def main():
                     assert not any('/sbp' in url or '/payment-instructions' in url or '/payment-proofs' in url for _,url in mini_requests)
                     mini.get_by_role('link',name='Открыть @mtproxy_pushok_bot',exact=True).click()
                     assert mini.evaluate('window.__miniLink')=='https://t.me/mtproxy_pushok_bot'
+                    go(mini,'create')
+                    mini.locator('#channel-select').select_option(index=1)
+                    mini.locator('#campaign-form button[type=submit]').click()
+                    expect(mini.locator('[data-page=campaign]')).to_be_visible()
+                    stars_cid=mini.evaluate("location.hash.split('/')[2]")
+                    with psycopg.connect(PostgresIntegration.dsn) as connection:
+                        connection.execute("UPDATE campaigns SET moderation_status='approved',payment_status='awaiting_payment' WHERE id=%s",(stars_cid,))
+                    refresh(mini);go(mini,'payments/'+stars_cid)
+                    expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата Stars выключена')
+                    from app import stars_checkout
+                    from app.bot_stars import parse_attempt
+                    prepared=[]
+                    def invoice_link(token,invoice):
+                        prepared.append(invoice);return 'https://t.me/$stars-fixture'
+                    with patch.dict(os.environ,{'PUSHOK_STARS_PAYMENTS_ENABLED':'1','TELEGRAM_BOT_TOKEN':'12345:fixture-secret',
+                                               'BOT_INTERNAL_SECRET':'b'*64,'DATABASE_URL':PostgresIntegration.dsn}), \
+                            patch.object(stars_checkout,'create_invoice_link',side_effect=invoice_link):
+                        refresh(mini)
+                        expect(mini.locator('.sbp-checkout')).to_contain_text('200 XTR')
+                        mini.get_by_role('button',name='Оплатить Stars',exact=True).click()
+                        mini.wait_for_function('typeof window.__miniInvoiceCallback==="function"')
+                        assert mini.evaluate('window.__miniInvoiceUrl')=='https://t.me/$stars-fixture'
+                        mini.evaluate("window.__miniInvoiceCallback('cancelled');window.__miniInvoiceCallback=null")
+                        expect(mini.get_by_role('button',name='Оплатить Stars',exact=True)).to_be_enabled()
+                        mini.get_by_role('button',name='Оплатить Stars',exact=True).click()
+                        mini.wait_for_function('typeof window.__miniInvoiceCallback==="function"')
+                        mini.evaluate("window.__miniInvoiceCallback('paid');window.__miniInvoiceCallback=null")
+                        expect(mini.get_by_role('button',name='Оплатить Stars',exact=True)).to_be_enabled()
+                        expect(mini.locator('.sbp-checkout')).not_to_contain_text('Оплата подтверждена сервером')
+                        assert len(prepared)==1 and prepared[0].stars_amount==200
+                        with psycopg.connect(PostgresIntegration.dsn) as connection:
+                            assert connection.execute('SELECT payment_status FROM campaigns WHERE id=%s',(stars_cid,)).fetchone()[0]=='awaiting_payment'
+                        headers={'X-Pushok-Bot-Secret':'b'*64}
+                        pc={'query_id':'mini-browser-checkout','telegram_user_id':99116000,
+                            'invoice_payload':prepared[0].invoice_payload,'currency':'XTR','total_amount':200}
+                        response=PostgresIntegration.client.post('/api/v1/internal/bot/stars/precheckout',json=pc,headers=headers)
+                        assert response.status_code==200 and response.json()['ok']
+                        receipt={k:v for k,v in pc.items() if k!='query_id'}|{'telegram_payment_charge_id':'mini-browser-charge'}
+                        response=PostgresIntegration.client.post('/api/v1/internal/bot/stars/settle',json=receipt,headers=headers)
+                        assert response.status_code==200 and response.json()['status']=='applied'
+                        mini.get_by_role('button',name='Обновить статус оплаты',exact=True).click()
+                        expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата подтверждена сервером')
+                        mini.screenshot(path=str(output/'19-miniapp-stars.png'),full_page=True)
                     for width in (320,390):
                         mini.set_viewport_size({'width':width,'height':844})
                         assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2')

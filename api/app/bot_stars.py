@@ -72,8 +72,13 @@ def authorize(secret: str | None, response: Response) -> None:
 
 
 def locked_attempt(conn, attempt_id: UUID):
+    # Один порядок блокировок с выдачей счёта: сначала кампания, затем попытка.
     return conn.execute(
-        """SELECT a.id, a.campaign_id, a.amount, a.currency, a.status,
+        """WITH locked_campaign AS MATERIALIZED (
+               SELECT c.id FROM campaigns c JOIN payment_attempts a ON a.campaign_id=c.id
+               WHERE a.id=%s AND a.provider='telegram_stars' FOR UPDATE OF c
+           )
+           SELECT a.id, a.campaign_id, a.amount, a.currency, a.status,
                   a.provider_payment_id, a.payer_telegram_user_id, a.expires_at,
                   a.precheckout_query_id, a.precheckout_approved_at,
                   c.advertiser_user_id, c.moderation_status, c.payment_status,
@@ -81,11 +86,12 @@ def locked_attempt(conn, attempt_id: UUID):
                   t.is_active AS tariff_is_active
            FROM payment_attempts AS a
            JOIN campaigns AS c ON c.id=a.campaign_id
+           JOIN locked_campaign AS lc ON lc.id=c.id
            JOIN users AS u ON u.id=c.advertiser_user_id
            JOIN tariffs AS t ON t.id=c.tariff_id
            WHERE a.id=%s AND a.provider='telegram_stars'
              AND a.payment_channel='telegram_bot'
-           FOR UPDATE OF a, c""", (attempt_id,),
+           FOR UPDATE OF a""", (attempt_id, attempt_id),
     ).fetchone()
 
 
@@ -109,10 +115,15 @@ def prepare_invoice(
     x_pushok_bot_secret: str | None = Header(default=None),
 ) -> StarsPrepareOutput:
     authorize(x_pushok_bot_secret, response)
+    return prepare_for_user(os.environ["DATABASE_URL"], payload)
+
+
+def prepare_for_user(dsn, payload: StarsPrepareInput) -> StarsPrepareOutput:
+    """Общий счёт для доверенного обработчика бота и авторизованного кабинета."""
     if not stars_invoices_enabled():
         raise HTTPException(409, "stars_checkout_disabled_until_acceptance")
     try:
-        with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=3,
+        with psycopg.connect(dsn, connect_timeout=3,
                              row_factory=dict_row) as conn:
             c = conn.execute(
                 """SELECT c.id, c.moderation_status, c.payment_status,

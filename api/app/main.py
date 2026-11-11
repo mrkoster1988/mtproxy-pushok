@@ -40,7 +40,7 @@ from .placement_report import build_campaign_report, PUBLIC_EVENTS
 from .report_export import render_campaign_csv
 from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
-from . import sbp_checkout, sbp_admin
+from . import sbp_checkout, sbp_admin, stars_checkout
 from .miniapp_auth import validate_init_data
 from .sbp_webhook import router as sbp_webhook_router
 from .sbp_provider import SBPProviderError
@@ -756,7 +756,10 @@ def upload_payment_proof(
             if campaign["payment_status"] not in {"awaiting_payment", "rejected"}:
                 raise HTTPException(status_code=409, detail="payment_proof_not_expected")
             if connection.execute("""SELECT 1 FROM payment_attempts WHERE campaign_id=%s
-                                      AND provider='sbp' AND status IN ('created','pending') LIMIT 1""",
+                                      AND status IN ('created','pending') AND (
+                                          provider='sbp' OR (provider='telegram_stars' AND (
+                                              status='created' OR expires_at IS NULL OR expires_at>now()
+                                              OR precheckout_approved_at IS NOT NULL))) LIMIT 1""",
                                   (campaign_id,)).fetchone():
                 raise HTTPException(409, 'another_payment_in_progress')
 
@@ -2190,6 +2193,26 @@ def admin_sbp_retry(attempt_id: UUID, body: SBPAdminRetryRequest,
                     response: Response, admin=Depends(require_admin)):
     return _sbp_admin_action(lambda: sbp_admin.request_recheck(
         DATABASE_URL, attempt_id, admin['id'], body.revision, body.note), response)
+
+
+def _stars_web_action(action, campaign_id, user, response):
+    response.headers['Cache-Control'] = 'private, no-store'
+    try:
+        return action(DATABASE_URL, campaign_id, user['id'])
+    except stars_checkout.StarsLinkError:
+        raise HTTPException(503, 'stars_link_unavailable') from None
+    except psycopg.Error:
+        raise HTTPException(503, 'database_unavailable') from None
+
+
+@app.get('/api/v1/campaigns/{campaign_id}/stars', tags=['payments'])
+def read_stars_checkout(campaign_id: UUID, response: Response, user=Depends(get_current_user)):
+    return _stars_web_action(stars_checkout.read_checkout, campaign_id, user, response)
+
+
+@app.post('/api/v1/campaigns/{campaign_id}/stars/checkout', tags=['payments'])
+def create_stars_checkout(campaign_id: UUID, response: Response, user=Depends(get_current_user)):
+    return _stars_web_action(stars_checkout.checkout, campaign_id, user, response)
 
 
 @app.get('/api/v1/campaigns/{campaign_id}/sbp', tags=['payments'])

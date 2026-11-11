@@ -980,6 +980,53 @@ class PostgresIntegration(unittest.TestCase):
         finally:
             main.TELEGRAM_BOT_TOKEN, main.SESSION_SIGNING_KEY = old_token, old_key
 
+    def test_stars_miniapp_link_retry_snapshot_owner_and_settlement(self):
+        from app import stars_checkout
+        from app.stars_checkout import StarsLinkError
+        from concurrent.futures import ThreadPoolExecutor
+        cid, owner, tid = self._sbp_fixture()
+        env={'PUSHOK_MINIAPP_ENABLED':'1','PUSHOK_STARS_PAYMENTS_ENABLED':'1',
+             'TELEGRAM_BOT_TOKEN':'12345:fixture-secret','BOT_INTERNAL_SECRET':'b'*64,'DATABASE_URL':self.dsn}
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':owner,'role':'advertiser'}
+        self.addCleanup(main.app.dependency_overrides.clear)
+        base='/campaigns/'+str(cid)+'/stars'
+        with patch.dict(os.environ,env),patch.object(stars_checkout,'create_invoice_link',side_effect=StarsLinkError('timeout')):
+            self.request('POST',base+'/checkout',503)
+            with psycopg.connect(self.dsn) as conn:
+                aid=conn.execute("SELECT id FROM payment_attempts WHERE campaign_id=%s AND provider='telegram_stars'",(cid,)).fetchone()[0]
+                conn.execute('UPDATE tariffs SET stars_price_xtr=999 WHERE id=(SELECT tariff_id FROM campaigns WHERE id=%s)',(cid,))
+        with patch.dict(os.environ,env),patch.object(stars_checkout,'create_invoice_link',return_value='https://t.me/$fixture') as transport:
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                results=list(pool.map(lambda _:stars_checkout.checkout(self.dsn,cid,owner),range(3)))
+            self.assertEqual({r['attempt_id'] for r in results},{str(aid)})
+            self.assertEqual({r['amount_xtr'] for r in results},{180})
+            self.assertEqual(transport.call_count,1)
+            self.assertEqual(transport.call_args.args[1].stars_amount,180)
+            self.assertEqual(self.request('GET',base)['payment_status'],'awaiting_payment')
+            self.request('POST','/campaigns/'+str(cid)+'/payment-proofs',409,files={'file':('fixture.pdf',b'%PDF-1.4\n%%EOF','application/pdf')})
+            main.app.dependency_overrides[main.get_current_user]=lambda:{'id':uuid4(),'role':'advertiser'}
+            self.request('POST',base+'/checkout',404)
+            self.request('GET',base,404)
+            self.assertEqual(transport.call_count,1)
+            main.app.dependency_overrides[main.get_current_user]=lambda:{'id':owner,'role':'advertiser'}
+            headers={'X-Pushok-Bot-Secret':'b'*64}
+            pc={'query_id':'mini-'+str(aid),'telegram_user_id':tid,'invoice_payload':'stars:'+str(aid),'currency':'XTR','total_amount':180}
+            self.assertFalse(self.request('POST','/internal/bot/stars/precheckout',headers=headers,json={**pc,'telegram_user_id':tid+1})['ok'])
+            from app.bot_stars import precheckout, StarsPrecheckoutInput
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                decisions=list(pool.map(lambda q:precheckout(StarsPrecheckoutInput(**{**pc,'query_id':q}),main.Response(),'b'*64).ok,
+                                        [pc['query_id'],pc['query_id']+'-other']))
+            self.assertEqual(sorted(decisions),[False,True])
+            self.request('POST',base+'/checkout',409)
+            self.assertTrue(self.request('GET',base)['processing'])
+            receipt={k:v for k,v in pc.items() if k!='query_id'}|{'telegram_payment_charge_id':'mini-charge-'+str(aid)}
+            with patch.dict(os.environ,{'PUSHOK_STARS_PAYMENTS_ENABLED':'0'}):
+                self.assertEqual(self.request('POST','/internal/bot/stars/settle',headers=headers,json=receipt)['status'],'applied')
+                self.assertEqual(self.request('POST','/internal/bot/stars/settle',headers=headers,json=receipt)['status'],'already_processed')
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT payment_status,placement_status FROM campaigns WHERE id=%s',(cid,)).fetchone(),('verified','not_scheduled'))
+                self.assertEqual(conn.execute('SELECT count(*) FROM payment_attempts WHERE campaign_id=%s',(cid,)).fetchone()[0],1)
+
     def test_miniapp_login_same_account_replay_and_revocation(self):
         from test_miniapp_auth import signed_data
         cid, owner, telegram_id = self._sbp_fixture()
