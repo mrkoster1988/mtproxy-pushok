@@ -143,6 +143,8 @@ def main():
                     headers={"Authorization": "Bearer " + sessions['advertiser']})
                 assert forbidden.status == 403
                 go(advertiser, "channels")
+                advertiser.locator('[data-page=channels] .page-heading a').click()
+                expect(advertiser.locator('#channel-form [name=title]')).to_be_focused()
                 advertiser.locator('#channel-form [name=title]').fill('Тестовый канал')
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://example.org/not-telegram')
                 advertiser.locator('#channel-form button').click()
@@ -302,6 +304,8 @@ def main():
                     if route == 'settings':
                         expect(page.locator('#settings-stars-counts')).to_contain_text('Тарифов')
                         page.locator('#settings-payments-tab').click()
+                    page.evaluate("window.scrollTo({top:0,left:0,behavior:'instant'})")
+                    page.wait_for_function('window.scrollY === 0')
                     page.screenshot(path=str(output / (name + '.png')), full_page=True)
                 for width in (320, 390, 768):
                     admin.set_viewport_size({"width": width, "height": 844})

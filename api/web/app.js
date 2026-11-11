@@ -354,7 +354,8 @@ $('engine-mode').addEventListener('change',()=>{
 });
 $('engine-preview').addEventListener('click',()=>run(async()=>{
  const plan=await api('/admin/proxy-engines/recommend',{method:'POST',body:engineRequest()});
- $('engine-advice').textContent='План: '+plan.title+' · '+plan.availability+
+ const availability={installer_available_unverified:'установщик есть, реальная установка не проверена',experimental_image:'экспериментальный контейнер',adapter_only:'только адаптер, установщик ещё не готов'};
+ $('engine-advice').textContent='План: '+plan.title+' · '+(availability[plan.availability]||'требуется отдельная проверка')+
   '. Не установлено и не проверено. Смена работающего прокси не выполняется.';
 }));
 async function renderLaunchReadiness(){
@@ -476,7 +477,7 @@ function renderNodes(){
   const box=el('div',undefined,'card');
   box.append(el('h3',n.name),el('p',n.host+':'+n.port+' · '+(n.status==='active'?'Доступен для расписания':'На паузе')));
   box.append(el('p','План движка: '+(engineTitles[n.target_engine]||'Не выбран (старый узел)')+
-    ' · '+(n.engine_selection_mode||'legacy')+'. Установка и доступность не проверены.','muted'));
+    ' · '+({auto:'автовыбор',manual:'вручную',legacy:'старый узел'}[n.engine_selection_mode]||'старый узел')+'. Установка и доступность не проверены.','muted'));
   box.append(button('Изменить план движка',async()=>{
    if(!confirm('Изменить только план движка? Реальный прокси не будет переключён.'))return;
    await api('/admin/proxy-nodes/'+n.id+'/engine-plan',{method:'PATCH',body:engineRequest()});
@@ -570,7 +571,12 @@ for(const pane of ['payments','tariffs','system']){
 }
 run(async()=>{
  try{tariffs=await api('/tariffs');updatePublicPrice();}catch(e){$('hero-tariff-price').textContent='Цена временно недоступна';}
- const config=await api('/public-config');window.cabinetBotConfig=config;if(window.cabinet)window.cabinet.config(config);if(config.telegram_bot_username&&/^[A-Za-z0-9_]+$/.test(config.telegram_bot_username)){
+ const config=await api('/public-config');window.cabinetBotConfig=config;if(window.cabinet)window.cabinet.config(config);
+ const botShortcut=document.querySelector('.hero-link-primary');
+ const validBot=/^[A-Za-z0-9_]{5,32}$/.test(config.telegram_bot_username||'');
+ if(validBot){botShortcut.href='https://t.me/'+config.telegram_bot_username;botShortcut.removeAttribute('aria-disabled');}
+ else{botShortcut.removeAttribute('href');botShortcut.setAttribute('aria-disabled','true');botShortcut.textContent='Telegram-бот не настроен';}
+ if(validBot){
  const script=document.createElement('script');script.src='https://telegram.org/js/telegram-widget.js?22';script.async=true;script.dataset.telegramLogin=config.telegram_bot_username;script.dataset.size='large';script.dataset.onauth='onTelegramAuth(user)';$('telegram-login').append(script);$('login-note').textContent='Вход подтверждается в Telegram.';
 }else $('login-note').textContent='Администратору нужно настроить Telegram-бота для входа.';
  if(token)await enter();

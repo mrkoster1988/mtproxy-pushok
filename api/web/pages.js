@@ -53,7 +53,7 @@
  function table(target,rows,headers){
   target.replaceChildren();
   if(!rows.length){empty(target,'Пока нет данных.');return;}
-  const wrap=el('div',undefined,'table-scroll'),t=el('table'),head=el('thead'),tr=el('tr');
+  const wrap=el('div',undefined,'table-scroll'),t=el('table'),head=el('thead'),tr=el('tr');wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label','Таблица данных. При необходимости прокрутите по горизонтали.');
   headers.forEach(text=>{const th=el('th',text);th.scope='col';tr.append(th);});head.append(tr);t.append(head);
   const body=el('tbody');rows.forEach(row=>{const r=el('tr');row.forEach(value=>{const cell=el('td');cell.append(typeof value==='string'?document.createTextNode(value):value);r.append(cell);});body.append(r);});
   t.append(body);wrap.append(t);target.append(wrap);
@@ -61,10 +61,10 @@
  function badge(value){return el('span',labels[value]||value,'badge badge--'+value);}
  function campaignRows(list){return list.map(c=>[
   link(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||c.id.slice(0,8),'campaign/'+c.id),
-  badge(c.moderation_status),badge(c.payment_status),badge(c.placement_status),money(c.price_kopecks_snapshot),
+  (()=>{const group=el('div',undefined,'status-stack');group.append(badge(c.moderation_status),badge(c.payment_status),badge(c.placement_status));return group;})(),money(c.price_kopecks_snapshot),
   date(c.scheduled_start_at),link('Открыть','campaign/'+c.id)
  ]);}
- const campaignHeaders=['Канал','Модерация','Оплата','Размещение','Цена заявки','Начало','Действие'];
+ const campaignHeaders=['Канал','Статусы','Цена заявки','Начало','Действие'];
  function filtered(){return state.campaigns.filter(c=>
   (!state.filter||[c.moderation_status,c.payment_status,c.placement_status].includes(state.filter))&&
   [c.channel_title,c.channel_url,c.id,channels.find(x=>x.id===c.channel_id)?.title].some(v=>String(v||'').toLocaleLowerCase('ru').includes(state.search.toLocaleLowerCase('ru'))));}
@@ -90,7 +90,11 @@
  Object.entries(routes).forEach(([name,[title,subtitle]])=>{
   const page=name==='settings'?$('settings'):el('section');page.dataset.page=name;page.hidden=true;page.classList.add('cabinet-page');
   const heading=el('header',undefined,'page-heading'),titles=el('div');const h=el('h1',title);h.tabIndex=-1;titles.append(h,el('p',subtitle));heading.append(titles);
-  if(['dashboard','campaigns','channels'].includes(name))heading.append(link(name==='channels'?'+ Добавить канал':'+ Создать кампанию',name==='channels'?'channels':'create'));
+  if(['dashboard','campaigns','channels'].includes(name)){
+   const action=link(name==='channels'?'+ Добавить канал':'+ Создать кампанию',name==='channels'?'channels':'create');
+   if(name==='channels')action.addEventListener('click',event=>{event.preventDefault();const input=$('channel-form').elements.title;input.focus({preventScroll:true});input.scrollIntoView({block:'center'});});
+   heading.append(action);
+  }
   page.prepend(heading);const grid=el('div',undefined,'metrics');page.insertBefore(grid,heading.nextSibling);stats[name]=grid;
   const layout=el('div',undefined,'page-layout'),body=el('div',undefined,'page-content'),aside=el('aside',undefined,'page-help');
   aside.append(hint(hints[name]),el('h2','Как это работает'));
@@ -175,13 +179,14 @@
   metrics('campaigns',[['Всего',state.campaigns.length,'Ваши заявки'],['Ожидают оплаты',state.campaigns.filter(c=>c.payment_status==='awaiting_payment').length,'После модерации'],['Завершены',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным системы']]);
   renderQuote();metrics('calendar',[['Часовой пояс',calendarZone,'Время в календаре'],['Период',14,'Дней в запросе доступности']]);
   metrics('reports',[['Кампаний',state.campaigns.length,'В вашем аккаунте'],['В эфире',state.campaigns.filter(c=>c.placement_status==='active').length,'По ручной отметке оператора'],['Завершено',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным API']]);
-  table(channelRows,channels.map(c=>[c.title,safeChannel(c.telegram_url,c.telegram_url),link('Создать кампанию','create')]),['Название','Ссылка','Действие']);
+  table(channelRows,channels.map(c=>{const action=link('Создать кампанию','create');action.addEventListener('click',()=>{$('channel-select').value=c.id;renderQuote();});return [c.title,safeChannel(c.telegram_url,c.telegram_url),action];}),['Название','Ссылка','Действие']);
   table(summaryRows,campaignRows(state.campaigns.slice(0,5)),campaignHeaders);renderList();
   onboarding.hidden=sessionStorage.getItem('pushok-onboarding-hidden')==='1';
   createNotice.textContent=!channels.length?'Сначала добавьте канал в разделе «Мои каналы».':!tariffs.length?'Нет доступных тарифов. Обратитесь к администратору.':'Проверьте канал, тариф и желаемую дату. Отправка на модерацию доступна после создания.';
   sponsorPanel.hidden=me.role!=='admin';sponsorNode.replaceChildren();nodes.forEach(n=>option(sponsorNode,n.id,n.name));
   calendarTariff.replaceChildren();tariffs.forEach(t=>option(calendarTariff,t.id,t.name+' · '+money(t.price_kopecks)));calendarTariff.value=$('tariff-select').value;
-  botPanel.replaceChildren(el('h2','Главное меню бота'),botLink(),el('p','Кампании, статусы и оплата доступны в боте согласно настройкам сервера.'));
+  botPanel.replaceChildren(el('h2','Продолжить в Telegram'),botLink(),el('p','Кампании, статусы и оплата доступны в боте согласно настройкам сервера.'),el('h3','Сценарии в кабинете'));
+  const shortcuts=el('nav',undefined,'bot-shortcuts');shortcuts.setAttribute('aria-label','Сценарии кабинета');[['create','Разместить рекламу'],['campaigns','Мои кампании'],['payments','Оплата'],['help','Помощь']].forEach(([route,text])=>shortcuts.append(link(text,route)));botPanel.append(shortcuts);
   const own=state.campaigns;
   table(reportRows,own.map(c=>[link(c.channel_title||c.id.slice(0,8),'campaign/'+c.id),badge(c.placement_status),button('Открыть отчёт',async()=>{reportRows.querySelectorAll('.campaign-report').forEach(x=>x.remove());await showCampaignReport(c,reportRows);}),button('Скачать CSV',()=>downloadCampaignCsv(c))]),['Кампания','Размещение','История','Экспорт']);
   const approved=own.filter(c=>c.moderation_status==='approved');
@@ -223,11 +228,12 @@
   if(name==='settings')run(loadAdminSettings);
  }
  window.cabinet={go,sync(own){state.campaigns=own;state.loaded=true;document.body.dataset.cabinetLoaded='true';render();},enter(){
-  state.ready=true;document.body.classList.add('cabinet-mode');account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);
+  state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);
   nav.querySelectorAll('a').forEach(a=>a.hidden=!permitted(a.dataset.route));activate();
  },logout(){state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   [detail,paymentRows,reportRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list')].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
+  document.documentElement.style.scrollBehavior='';
   ['settings-stars-counts','settings-stars-status','settings-sbp-status','launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());
  },config(config){state.bot=/^[A-Za-z0-9_]{5,32}$/.test(config.telegram_bot_username||'')?config.telegram_bot_username:null;}};
  const fieldHelp=[
