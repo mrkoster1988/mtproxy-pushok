@@ -40,10 +40,22 @@ def campaign(identifier: str, channel: str, moderation: str, payment: str, place
 
 def demo_response(path: str, role: str) -> object:
     path = urlsplit(path).path
+    if path.endswith("/admin/payments/status"):
+        return {"stars": {"invoice_enabled_in_server_config": False,
+                         "priced_active_tariffs": 0, "recorded_successes": 0,
+                         "needs_manual_review": 0}, "sbp": {"checkout_enabled": False}}
+    if path.endswith("/admin/tariffs"):
+        return [{"id": TARIFF, "name": "1 день", "price_kopecks": 30000,
+                 "duration_seconds": 86400, "stars_price_xtr": None, "is_active": True}]
+    if path.endswith("/admin/launch-readiness"):
+        names = ("nodes_total", "nodes_active", "nodes_with_registered_tag", "campaigns_total",
+                 "moderation_pending", "payments_pending", "payments_verified",
+                 "placements_scheduled", "placements_active", "placements_completed", "manual_observations")
+        return {"statistics": dict.fromkeys(names, 0), "checks": []}
     if path.endswith("/public-config"):
         return {"telegram_bot_username": None}
     if path.endswith("/admin/pushok-core/diagnostic-plan"):
-        return {"project_version": "0.031", "execution": "not_started_by_api",
+        return {"project_version": "0.050", "execution": "not_started_by_api",
                 "steps": [
                     {"title": "Локальный TCP", "verification": "ci_only"},
                     {"title": "Некорректный 64-байтный заголовок", "verification": "ci_only"},
@@ -85,7 +97,8 @@ def demo_response(path: str, role: str) -> object:
         base = datetime.now(timezone.utc) + timedelta(days=1)
         return {"days": [
             {"start_at": (base + timedelta(days=d)).isoformat(),
-             "available_nodes": 0 if d in (2, 8) else (d % 3 + 1)}
+             "available_nodes": 0 if d in (2, 8) else (d % 3 + 1),
+             "status": "occupied" if d in (2, 8) else "available"}
             for d in range(14)
         ]}
     raise AssertionError(f"Unknown preview-only API request: {path}")
@@ -135,7 +148,7 @@ def main() -> None:
                 page.goto(url, wait_until="domcontentloaded")
                 if role != "guest":
                     page.wait_for_selector("#workspace:not([hidden])", timeout=12000)
-                    page.wait_for_selector("#campaigns .card", timeout=12000)
+                    page.wait_for_selector("body[data-cabinet-loaded=true]", timeout=12000)
                 page.evaluate("""() => {
                   const badge=document.createElement('div');
                   badge.textContent='ДЕМО · тестовые данные · не подключено к серверу';
@@ -152,37 +165,25 @@ def main() -> None:
                                    animations="disabled")
                 landing.close()
 
-                advertiser = create_page("advertiser", 1440, 900)
-                advertiser.screenshot(path=str(output / "02-advertiser.png"), full_page=True,
+                account = create_page("admin", 1440, 1000)
+                screens = [("02-dashboard", "dashboard"), ("03-channels", "channels"),
+                           ("04-create", "create"), ("05-campaigns", "campaigns"),
+                           ("06-detail", "campaign/00000000-0000-4000-8000-000000000032"),
+                           ("07-payments", "payments"), ("08-calendar", "calendar"),
+                           ("09-reports", "reports"), ("10-moderation", "moderation"),
+                           ("11-sponsors", "sponsors"), ("12-settings", "settings"),
+                           ("13-help", "help"), ("14-bot", "bot")]
+                for name, route in screens:
+                    account.evaluate("route => window.cabinet.go(route)", route)
+                    account.wait_for_selector('[data-page="' + route.split('/')[0] + '"]:not([hidden])')
+                    if route == "settings":
+                        account.wait_for_function("document.querySelector('#settings-stars-counts').textContent.includes('Тарифов')")
+                    account.screenshot(path=str(output / (name + ".png")), full_page=True,
                                        animations="disabled")
-                advertiser.close()
-
-                operator = create_page("admin", 1440, 900)
-                operator.locator("#operator-tab").click()
-                operator.wait_for_selector("#node-admin:not([hidden])", timeout=6000)
-                operator.screenshot(path=str(output / "03-operator.png"), full_page=True,
-                                    animations="disabled")
-                operator.locator("#node-admin").screenshot(
-                    path=str(output / "04-unified-engine.png"), animations="disabled")
-                operator.close()
-
+                account.close()
                 mobile = create_page("advertiser", 390, 844)
-                overflow = mobile.evaluate("""() => ({
-                  viewport: window.innerWidth,
-                  scroll: document.documentElement.scrollWidth,
-                  offenders: [...document.querySelectorAll('body *')]
-                    .filter(e => {
-                      const box=e.getBoundingClientRect();
-                      return box.right > innerWidth + 2 || box.left < -2;
-                    })
-                    .slice(0, 10)
-                    .map(e => ({tag: e.tagName, id: e.id,
-                                className: typeof e.className === 'string' ? e.className : '',
-                                right: Math.round(e.getBoundingClientRect().right)}))
-                })""")
-                if overflow["scroll"] > overflow["viewport"] + 2:
-                    raise AssertionError(f"Mobile horizontal overflow: {overflow}")
-                mobile.screenshot(path=str(output / "05-mobile.png"), full_page=True,
+                assert mobile.evaluate("document.documentElement.scrollWidth <= innerWidth + 2"), "Mobile overflow"
+                mobile.screenshot(path=str(output / "15-mobile.png"), full_page=True,
                                   animations="disabled")
                 mobile.close()
             finally:
@@ -192,7 +193,7 @@ def main() -> None:
         server.server_close()
 
     generated = sorted(output.glob("*.png"))
-    assert len(generated) == 5, f"Expected 5 previews, found {len(generated)}"
+    assert len(generated) == 15, f"Expected 15 previews, found {len(generated)}"
     for file in generated:
         assert file.stat().st_size > 8000, f"Screenshot too small: {file}"
         print(f"{file.name}: {file.stat().st_size} bytes")
