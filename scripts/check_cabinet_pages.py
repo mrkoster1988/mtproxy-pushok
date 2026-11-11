@@ -316,7 +316,7 @@ def main():
                     return {'id':identifier,**bank_state,'test':True,'captured_at':'2026-11-11T12:00:00Z',
                             'amount':{'currency':'RUB','value':'450.55'},'metadata':{'campaign_id':sbp_cid},
                             'payment_method':{'type':'sbp'}}
-                env={'PUSHOK_SBP_PAYMENTS_ENABLED':'1','PUSHOK_SBP_TEST_MODE':'1',
+                env={'PUSHOK_SBP_PAYMENTS_ENABLED':'1','PUSHOK_SBP_TEST_MODE':'1','PUSHOK_SBP_RECONCILIATION_ENABLED':'1',
                      'PUSHOK_PUBLIC_PAYMENT_HOST':'ads.example.org','YOOKASSA_SHOP_ID':'fixture-shop','YOOKASSA_SECRET_KEY':'fixture-secret'}
                 with patch.dict(os.environ,env),patch.object(sbp_provider,'create_sbp_payment',side_effect=sbp_create),patch.object(sbp_provider,'get_sbp_payment',side_effect=sbp_get):
                     refresh(advertiser)
@@ -328,6 +328,27 @@ def main():
                         advertiser.goto(base+'/?sbp_campaign='+sbp_cid)
                     expect(advertiser.locator('.sbp-checkout')).to_contain_text('Ожидается результат платежа')
                     expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Ожидается оплата')
+                    with psycopg.connect(PostgresIntegration.dsn) as connection:
+                        aid=connection.execute("UPDATE payment_attempts SET sbp_requires_review=true WHERE campaign_id=%s AND provider='sbp' RETURNING id",(sbp_cid,)).fetchone()[0]
+                    go(admin,'settings')
+                    admin.locator('#settings-payments-tab').click()
+                    review=admin.locator('[data-attempt-id="'+str(aid)+'"]')
+                    expect(review).to_contain_text('Ответ провайдера не прошёл проверку')
+                    review.get_by_label('Причина повторной сверки',exact=True).fill('short')
+                    review.get_by_role('button',name='Повторить серверную проверку',exact=True).click()
+                    assert not review.locator('textarea').evaluate('(field)=>field.validity.valid')
+                    review.get_by_label('Причина повторной сверки',exact=True).fill('Проверены настройки тестового магазина')
+                    expect(admin.locator('#notice')).to_be_hidden()
+                    admin.set_viewport_size({'width':320,'height':900})
+                    assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'SBP review overflows mobile'
+                    admin.set_viewport_size({'width':1440,'height':1000})
+                    admin.evaluate('window.scrollTo(0,0)')
+                    admin.screenshot(path=str(output/'16-sbp-review.png'),full_page=True)
+                    review.get_by_role('button',name='Повторить серверную проверку',exact=True).click()
+                    expect(admin.locator('#notice')).to_contain_text('Повтор поставлен в очередь')
+                    with psycopg.connect(PostgresIntegration.dsn) as connection:
+                        assert connection.execute("SELECT status,sbp_requires_review FROM payment_attempts WHERE id=%s",(aid,)).fetchone()==('pending',False)
+                        assert connection.execute("SELECT count(*) FROM audit_events WHERE campaign_id=%s AND event_type='sbp_admin_retry_requested'",(sbp_cid,)).fetchone()[0]==1
                     bank_state.update(status='succeeded',paid=True)
                     advertiser.get_by_role('button',name='Проверить платёж СБП',exact=True).click()
                     expect(advertiser.locator('.sbp-checkout')).to_contain_text('Платёж подтверждён серверной сверкой')

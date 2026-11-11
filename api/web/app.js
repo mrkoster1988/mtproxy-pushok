@@ -30,6 +30,7 @@ function showWorkspace(view){
 }
 function operatorView(on){showWorkspace(on?'operator':'advertiser');}
 function showSettingsPane(pane){
+ $('notice').hidden=true;
  const selected=['payments','tariffs','system'].includes(pane)?pane:'payments';
  for(const name of ['payments','tariffs','system']){
   $('settings-'+name).hidden=name!==selected;
@@ -63,9 +64,63 @@ async function renderPaymentSettings(){
   target.textContent='Статус платежей недоступен: '+e.message;
  }
 }
+let sbpReviewRequest=0;
+async function renderSBPReview(offset=0){
+ if(me?.role!=='admin')return;
+ const request=++sbpReviewRequest,session=token,target=$('sbp-review-list');
+ target.replaceChildren(el('p','Загрузка попыток СБП…','muted'));
+ const reasons={creation_unknown:'Результат создания неизвестен. Нужна сверка с банком по сохранённой попытке; новый счёт здесь не создаётся.',
+  configuration_changed:'Магазин или режим изменён. Проверьте серверные настройки.',
+  verification_requires_review:'Ответ провайдера не прошёл проверку. Проверьте сумму, валюту, магазин и режим.',
+  provider_retry:'Сетевая ошибка: запланирована повторная проверка.',awaiting_provider:'Ожидается результат у провайдера.'};
+ try{
+  const data=await api('/admin/payments/sbp/attempts?offset='+offset+'&limit=20');
+  if(request!==sbpReviewRequest||session!==token||me?.role!=='admin')return;
+  target.replaceChildren();
+  if(!data.background_enabled)target.append(el('p','Фоновая сверка выключена сервером. Повторы недоступны.','muted'));
+  if(!data.items.length)target.append(el('p','Ожидающих и спорных попыток нет.','empty'));
+  for(const a of data.items){
+   const card=el('article',undefined,'settings-method');card.dataset.attemptId=a.id;
+   card.append(el('h4','Кампания '+a.campaign_id),
+    el('p',money(a.amount)+' · '+(a.sbp_test_mode===true?'Тестовый режим':a.sbp_test_mode===false?'Боевой режим':'Режим не сохранён')),
+    el('p','Попытка: '+a.id,'muted'),
+    el('p','Платёж провайдера: '+(a.provider_payment_id||'ID ещё не получен'),'muted'),
+    el('p',reasons[a.reason]||'Требуется проверка состояния.'),
+    el('p','Сетевых ошибок подряд: '+a.sbp_check_failures+' · Следующая проверка: '+date(a.sbp_next_check_at),'muted'));
+   if(a.can_retry){
+    const form=el('form'),label=el('label','Причина повторной сверки'),note=el('textarea');
+    note.required=true;note.minLength=12;note.maxLength=300;note.rows=2;
+    note.placeholder='Что проверили и почему повторяем (12–300 символов)';label.append(note);
+    const submit=el('button','Повторить серверную проверку');submit.type='submit';
+    form.append(label,submit);form.addEventListener('submit',event=>{
+     event.preventDefault();if(!form.reportValidity())return;
+     run(async()=>{
+      await api('/admin/payments/sbp/attempts/'+a.id+'/retry',{method:'POST',body:{revision:a.sbp_check_revision,note:note.value.trim()}});
+      notice('Повтор поставлен в очередь. Это ещё не подтверждение оплаты.',true);
+      await Promise.all([renderSBPReview(offset),renderPaymentSettings()]);
+     },submit);
+    });card.append(form);
+   }
+   target.append(card);
+  }
+  const nav=el('div',undefined,'actions');
+  nav.append(button('Обновить список',()=>renderSBPReview(offset)));
+  if(offset)nav.append(button('Предыдущие попытки',()=>renderSBPReview(Math.max(0,offset-20))));
+  if(data.has_more)nav.append(button('Следующие попытки',()=>renderSBPReview(offset+20)));
+  target.append(nav);
+ }catch(e){
+  if(request!==sbpReviewRequest||session!==token||me?.role!=='admin')return;
+  target.replaceChildren(el('p','Не удалось получить очередь: '+e.message,'muted'),button('Повторить загрузку',()=>renderSBPReview(offset)));
+ }
+}
+Object.assign(errors,{sbp_reconciliation_disabled:'Фоновая сверка выключена сервером.',
+ sbp_review_note_required:'Укажите причину повторной проверки: 12–300 символов.',
+ sbp_attempt_not_found:'Попытка не найдена.',sbp_attempt_not_retryable:'Попытку уже нельзя отправить на повтор. Обновите список.',
+ sbp_attempt_changed:'Состояние изменилось. Обновите список перед повтором.'});
+
 async function loadAdminSettings(){
  if(me?.role!=='admin')return;
- await Promise.all([renderPaymentSettings(),renderTariffAdmin(),
+ await Promise.all([renderPaymentSettings(),renderSBPReview(),renderTariffAdmin(),
                     renderCoreReadiness(),renderLaunchReadiness()]);
 }
 

@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import psycopg
-from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -40,7 +40,7 @@ from .placement_report import build_campaign_report, PUBLIC_EVENTS
 from .report_export import render_campaign_csv
 from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
-from . import sbp_checkout
+from . import sbp_checkout, sbp_admin
 from .sbp_webhook import router as sbp_webhook_router
 from .sbp_provider import SBPProviderError
 from .sbp_reconcile import SBPReconcileError
@@ -2142,6 +2142,33 @@ def _sbp_action(action, campaign_id, user, response):
         raise HTTPException(409, 'sbp_verification_requires_review') from exc
     except psycopg.Error as exc:
         raise HTTPException(503, 'database_unavailable') from exc
+
+
+class SBPAdminRetryRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    revision: int = Field(ge=0, strict=True)
+    note: str = Field(min_length=12, max_length=300)
+
+
+def _sbp_admin_action(action, response):
+    response.headers['Cache-Control'] = 'private, no-store'
+    try:
+        return action()
+    except psycopg.Error as exc:
+        raise HTTPException(503, 'database_unavailable') from exc
+
+
+@app.get('/api/v1/admin/payments/sbp/attempts', tags=['admin'])
+def admin_sbp_attempts(response: Response, offset: int = Query(0, ge=0, le=100000),
+                       limit: int = Query(50, ge=1, le=100), admin=Depends(require_admin)):
+    return _sbp_admin_action(lambda: sbp_admin.list_attempts(DATABASE_URL, offset=offset, limit=limit), response)
+
+
+@app.post('/api/v1/admin/payments/sbp/attempts/{attempt_id}/retry', tags=['admin'])
+def admin_sbp_retry(attempt_id: UUID, body: SBPAdminRetryRequest,
+                    response: Response, admin=Depends(require_admin)):
+    return _sbp_admin_action(lambda: sbp_admin.request_recheck(
+        DATABASE_URL, attempt_id, admin['id'], body.revision, body.note), response)
 
 
 @app.get('/api/v1/campaigns/{campaign_id}/sbp', tags=['payments'])

@@ -992,6 +992,56 @@ class PostgresIntegration(unittest.TestCase):
                 VALUES(%s,%s,%s,%s,'SBP fixture',86400,30055,'RUB','approved','awaiting_payment')""",(campaign,owner,channel,tariff))
         return campaign,owner,telegram_id
 
+    def test_sbp_admin_retry_audit_stale_revision_and_worker_race(self):
+        from app import sbp_admin, sbp_checkout, sbp_provider, sbp_worker
+        cid, owner, _ = self._sbp_fixture()
+        pid = 'bank-' + str(cid)
+        env = {'PUSHOK_SBP_PAYMENTS_ENABLED': '1', 'PUSHOK_SBP_TEST_MODE': '1',
+               'PUSHOK_SBP_RECONCILIATION_ENABLED': '1', 'PUSHOK_PUBLIC_PAYMENT_HOST': 'ads.example.org',
+               'YOOKASSA_SHOP_ID': 'fixture-shop', 'YOOKASSA_SECRET_KEY': 'fixture-secret'}
+        with patch.dict(os.environ, env), patch.object(sbp_provider, 'create_sbp_payment',
+                return_value={'payment_id': pid, 'confirmation_url': 'https://pay.example/fixture'}):
+            aid = UUID(sbp_checkout.create_checkout(self.dsn, cid, owner)['attempt_id'])
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE payment_attempts SET sbp_requires_review=true,sbp_check_failures=3 WHERE id=%s", (aid,))
+            listing = sbp_admin.list_attempts(self.dsn, limit=100)
+            item = next(x for x in listing['items'] if x['id'] == aid)
+            self.assertTrue(item['can_retry'])
+            self.assertEqual(item['reason'], 'verification_requires_review')
+            self.assertNotIn('sbp_shop_id', item)
+            self.assertNotIn('sbp_confirmation_url', item)
+            main.app.dependency_overrides[main.require_admin] = lambda: {'id': owner, 'role': 'admin'}
+            self.addCleanup(main.app.dependency_overrides.clear)
+            path = '/admin/payments/sbp/attempts/'+str(aid)+'/retry'
+            note = 'Проверили магазин и режим, повторяем сверку'
+            with patch.object(sbp_provider, 'get_sbp_payment') as bank:
+                self.assertEqual(self.request('POST', path, json={'revision': 0, 'note': note})['status'], 'queued')
+                self.request('POST', path, 409, json={'revision': 0, 'note': note})
+                bank.assert_not_called()
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT status,sbp_requires_review,sbp_check_failures,sbp_check_revision FROM payment_attempts WHERE id=%s', (aid,)).fetchone(), ('pending', False, 0, 1))
+                self.assertEqual(conn.execute("SELECT count(*) FROM audit_events WHERE campaign_id=%s AND event_type='sbp_admin_retry_requested'", (cid,)).fetchone()[0], 1)
+                conn.execute("UPDATE payment_attempts SET sbp_next_check_at='2000-01-01' WHERE id=%s", (aid,))
+            def interleaved_verify(attempt_dsn, attempt_id):
+                with psycopg.connect(self.dsn) as conn:
+                    revision = conn.execute('SELECT sbp_check_revision FROM payment_attempts WHERE id=%s', (aid,)).fetchone()[0]
+                sbp_admin.request_recheck(self.dsn, aid, owner, revision, note)
+                # Старый worker не должен затереть более новый запрос администратора.
+                raise sbp_worker.SBPVerificationError('payment_test_mode_mismatch')
+            with patch.object(sbp_worker, 'verify_background', side_effect=interleaved_verify):
+                self.assertEqual(sbp_worker.service_once(self.dsn, apply=True, limit=1)['superseded'], 1)
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT sbp_check_result,sbp_requires_review,sbp_check_revision FROM payment_attempts WHERE id=%s', (aid,)).fetchone(), ('admin_retry_queued', False, 3))
+                conn.execute("UPDATE payment_attempts SET sbp_next_check_at='2000-01-01' WHERE id=%s", (aid,))
+            payment = {'id': pid, 'status': 'succeeded', 'paid': True, 'test': True,
+                       'amount': {'currency': 'RUB', 'value': '300.55'},
+                       'metadata': {'campaign_id': str(cid)}, 'payment_method': {'type': 'sbp'},
+                       'captured_at': '2026-11-11T12:00:00Z'}
+            with patch.object(sbp_provider, 'get_sbp_payment', return_value=payment):
+                self.assertEqual(sbp_worker.service_once(self.dsn, apply=True, limit=1)['settled'], 1)
+            self.request('POST', path, 409, json={'revision': 4, 'note': note})
+            self.assertFalse(any(x['id'] == aid for x in sbp_admin.list_attempts(self.dsn, limit=100)['items']))
+
     def test_sbp_webhook_untrusted_hint_replay_and_authoritative_settlement(self):
         from app import sbp_checkout, sbp_provider, sbp_worker
         cid, owner, _ = self._sbp_fixture()

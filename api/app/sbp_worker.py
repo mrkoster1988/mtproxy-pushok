@@ -29,7 +29,7 @@ def service_once(dsn, *, apply=False, limit=20):
     """
     if not 1 <= limit <= 100:
         raise ValueError('limit_out_of_range')
-    result = dict(checked=0, pending=0, settled=0, retry=0, review=0)
+    result = dict(checked=0, pending=0, settled=0, retry=0, review=0, superseded=0)
     if apply and os.getenv('PUSHOK_SBP_RECONCILIATION_ENABLED', '0') != '1':
         return {**result, 'status': 'disabled'}
     with psycopg.connect(dsn, connect_timeout=3, autocommit=True, row_factory=dict_row,
@@ -38,7 +38,7 @@ def service_once(dsn, *, apply=False, limit=20):
             return {**result, 'status': 'busy'}
         try:
             rows = conn.execute(
-                """SELECT id,sbp_check_failures FROM payment_attempts
+                """SELECT id,sbp_check_failures,sbp_check_revision FROM payment_attempts
                    WHERE provider='sbp' AND status='pending' AND provider_payment_id IS NOT NULL
                      AND NOT sbp_requires_review AND sbp_next_check_at<=now()
                    ORDER BY sbp_next_check_at,id LIMIT %s""", (limit,)).fetchall()
@@ -46,8 +46,15 @@ def service_once(dsn, *, apply=False, limit=20):
                 return {**result, 'status': 'dry_run', 'due_in_batch': len(rows)}
             for row in rows:
                 # Автокоммит: после аварии попытка снова доступна; банк не вызывается POST.
-                conn.execute("""UPDATE payment_attempts SET sbp_next_check_at=now()+interval '60 seconds'
-                                WHERE id=%s""", (row['id'],))
+                claimed = conn.execute("""UPDATE payment_attempts
+                                SET sbp_next_check_at=now()+interval '60 seconds',
+                                    sbp_check_revision=sbp_check_revision+1
+                                WHERE id=%s AND status='pending' AND sbp_check_revision=%s
+                                RETURNING sbp_check_revision""",
+                                (row['id'], row['sbp_check_revision'])).fetchone()
+                if claimed is None:
+                    result['superseded'] += 1
+                    continue
                 failures = 0
                 review = False
                 delay = 60
@@ -62,11 +69,12 @@ def service_once(dsn, *, apply=False, limit=20):
                     # Не подтверждаем спорные суммы/магазин/режим; никакого текста ответа в логах.
                     review = True
                     code = 'review'
-                conn.execute("""UPDATE payment_attempts SET sbp_next_check_at=now()+(%s * interval '1 second'),
+                finished = conn.execute("""UPDATE payment_attempts SET sbp_next_check_at=now()+(%s * interval '1 second'),
                                 sbp_check_failures=%s,sbp_check_result=%s,sbp_requires_review=%s
-                                WHERE id=%s""", (delay, failures, code, review, row['id']))
+                                WHERE id=%s AND sbp_check_revision=%s RETURNING id""",
+                             (delay, failures, code, review, row['id'], claimed['sbp_check_revision'])).fetchone()
                 result['checked'] += 1
-                result[code] += 1
+                result[code if finished else 'superseded'] += 1
             return {**result, 'status': 'processed'}
         finally:
             conn.execute('SELECT pg_advisory_unlock(%s)', (_LOCK,))
