@@ -123,7 +123,7 @@ class BotStarsAPITests(unittest.TestCase):
 
     def test_valid_precheckout_records_query(self):
         db = fake_db({**row(), "precheckout_query_id": None},
-                     {"valid": True}, None)
+                     {"valid": True}, {"id": ATT})
         with patch("app.bot_stars.psycopg.connect", return_value=db):
             r = self.client.post("/api/v1/internal/bot/stars/precheckout",
                  json={"query_id": "pc-1", "telegram_user_id": 42,
@@ -132,12 +132,13 @@ class BotStarsAPITests(unittest.TestCase):
         self.assertTrue(r.json()["ok"])
         self.assertIn("precheckout_approved_at",
                       db.__enter__.return_value.execute.call_args_list[2].args[0])
+        self.assertIn("RETURNING id", db.__enter__.return_value.execute.call_args_list[2].args[0])
 
     def test_successful_receipt_updates_campaign(self):
         receipt = {"id": 9, "handling_status": "received", "total_amount": 180,
                    "currency": "XTR", "payer_telegram_user_id": 42,
                    "attempt_id": None}
-        db = fake_db(None, receipt, row(), None, None, None, None)
+        db = fake_db(None, receipt, row(), {"id": ATT}, {"id": CID}, None, None)
         with patch("app.bot_stars.psycopg.connect", return_value=db):
             r = self.client.post("/api/v1/internal/bot/stars/settle",
                  json={"telegram_user_id": 42, "invoice_payload": "stars:" + str(ATT),
@@ -147,6 +148,51 @@ class BotStarsAPITests(unittest.TestCase):
         self.assertEqual(r.json()["status"], "applied")
         queries = [c.args[0] for c in db.__enter__.return_value.execute.call_args_list]
         self.assertTrue(any("UPDATE campaigns SET payment_status='verified'" in x for x in queries))
+
+    def test_precheckout_update_must_affect_pending_attempt(self):
+        db = fake_db({**row(), "precheckout_query_id": None},
+                     {"valid": True}, None)
+        with patch("app.bot_stars.psycopg.connect", return_value=db):
+            r = self.client.post("/api/v1/internal/bot/stars/precheckout",
+                 json={"query_id": "pc-1", "telegram_user_id": 42,
+                       "invoice_payload": "stars:" + str(ATT),
+                       "currency": "XTR", "total_amount": 180}, headers=H)
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertFalse(r.json()["ok"])
+        self.assertIn("RETURNING id", db.__enter__.return_value.execute.call_args_list[-1].args[0])
+
+    def test_settlement_requires_updated_attempt_before_campaign_or_audit(self):
+        receipt = {"id": 9, "handling_status": "received", "total_amount": 180,
+                   "currency": "XTR", "payer_telegram_user_id": 42,
+                   "attempt_id": None}
+        db = fake_db(None, receipt, row(), None)
+        with patch("app.bot_stars.psycopg.connect", return_value=db):
+            r = self.client.post("/api/v1/internal/bot/stars/settle",
+                json={"telegram_user_id": 42, "invoice_payload": "stars:" + str(ATT),
+                      "currency": "XTR", "total_amount": 180,
+                      "telegram_payment_charge_id": "charge-1"}, headers=H)
+        self.assertEqual(r.status_code, 503, r.text)
+        self.assertEqual(r.json()["detail"], "stars_attempt_changed_retry")
+        queries = [c.args[0] for c in db.__enter__.return_value.execute.call_args_list]
+        self.assertIn("RETURNING id", queries[-1])
+        self.assertFalse(any("UPDATE campaigns" in q or "stars_payment_verified" in q for q in queries))
+
+    def test_settlement_requires_updated_campaign_before_receipt_audit(self):
+        receipt = {"id": 9, "handling_status": "received", "total_amount": 180,
+                   "currency": "XTR", "payer_telegram_user_id": 42,
+                   "attempt_id": None}
+        db = fake_db(None, receipt, row(), {"id": ATT}, None)
+        with patch("app.bot_stars.psycopg.connect", return_value=db):
+            r = self.client.post("/api/v1/internal/bot/stars/settle",
+                json={"telegram_user_id": 42, "invoice_payload": "stars:" + str(ATT),
+                      "currency": "XTR", "total_amount": 180,
+                      "telegram_payment_charge_id": "charge-1"}, headers=H)
+        self.assertEqual(r.status_code, 503, r.text)
+        self.assertEqual(r.json()["detail"], "stars_campaign_changed_retry")
+        queries = [c.args[0] for c in db.__enter__.return_value.execute.call_args_list]
+        self.assertIn("RETURNING id", queries[-1])
+        self.assertFalse(any("handling_status='applied'" in q or
+                             "stars_payment_verified" in q for q in queries))
 
     def test_unknown_receipt_is_saved_for_review(self):
         receipt = {"id": 9, "handling_status": "received", "total_amount": 180,
