@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from psycopg.rows import dict_row
 
 from .bot_stars import prepare_for_user, StarsPrepareInput, parse_attempt
+from .telegram_environment import bot_api_url, is_test_environment
 from .payment_gate import stars_invoices_enabled
 
 
@@ -33,7 +34,7 @@ def create_invoice_link(token, prepared):
     body = {'title': prepared.title, 'description': prepared.description,
             'payload': prepared.invoice_payload, 'provider_token': '', 'currency': 'XTR',
             'prices': [{'label': 'Спонсорство MTProxy', 'amount': prepared.stars_amount}]}
-    request = Request('https://api.telegram.org/bot'+token+'/createInvoiceLink',
+    request = Request(bot_api_url(token, 'createInvoiceLink'),
                       data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'}, method='POST')
     try:
         with build_opener(_NoRedirect).open(request, timeout=8) as response:
@@ -72,6 +73,7 @@ def read_checkout(dsn, cid, uid):
     return {'payment_status': campaign['payment_status'], 'attempt_status': attempt['status'] if attempt else 'not_created',
             'amount_xtr': attempt['amount'] if attempt else campaign['stars_price_xtr'],
             'available': stars_invoices_enabled() and os.getenv('PUSHOK_MINIAPP_ENABLED', '0') == '1',
+            'test_environment': is_test_environment(),
             'processing': bool(attempt and attempt['status'] == 'pending' and attempt['precheckout_approved_at'])}
 
 
@@ -91,6 +93,8 @@ def checkout(dsn, cid, uid):
             or campaign['moderation_status'] != 'approved' or campaign['payment_status'] != 'awaiting_payment'
             or campaign['placement_status'] != 'not_scheduled' or not campaign['is_active']):
             raise HTTPException(409, 'campaign_not_payable')
+        if attempt['telegram_test_environment'] != is_test_environment():
+            raise HTTPException(409, 'stars_environment_changed')
         if attempt['precheckout_approved_at'] is not None:
             raise HTTPException(409, 'stars_payment_processing')
         if attempt['stars_invoice_bot_id'] not in (None, bot_id):

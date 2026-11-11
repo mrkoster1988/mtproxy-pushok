@@ -5,6 +5,7 @@
 """
 import json
 import os
+from .telegram_environment import bot_api_url
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -19,7 +20,7 @@ class TelegramUnavailable(Exception):
 
 def _telegram_call(token: str, method: str, payload: dict) -> dict:
     request = Request(
-        "https://api.telegram.org/bot" + token + "/" + method,
+        bot_api_url(token, method),
         data=json.dumps(payload).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -48,7 +49,7 @@ def verify_channel_admin(username: str, telegram_user_id: int) -> int:
     if not token or token.startswith("REPLACE_") or ":" not in token:
         raise TelegramUnavailable("telegram_token_unconfigured")
     bot = _telegram_call(token, "getMe", {})
-    if str(bot.get("username") or "").lower() != "mtproxy_pushok_bot" or bot.get("is_bot") is not True:
+    if str(bot.get("username") or "").lower() != os.getenv("TELEGRAM_BOT_USERNAME", "mtproxy_pushok_bot").lower() or bot.get("is_bot") is not True:
         raise TelegramUnavailable("unexpected_telegram_bot")
     bot_id = bot.get("id")
     if type(bot_id) is not int or bot_id <= 0:

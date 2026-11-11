@@ -108,7 +108,7 @@ class BotStarsAPITests(unittest.TestCase):
         self.assertEqual(r.json()["stars_amount"], 180)
         self.assertEqual(r.json()["invoice_payload"], "stars:" + str(ATT))
         self.assertEqual(db.__enter__.return_value.execute.call_args_list[5].args[1],
-                         (CID, 180, 42))
+                         (CID, 180, 42, False))
 
     def test_precheckout_mismatch_denies_without_writes(self):
         db = fake_db(row())

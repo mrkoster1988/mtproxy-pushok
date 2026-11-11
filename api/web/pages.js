@@ -207,6 +207,7 @@
   try{
    const data=await api(base);if(!current())return;
    panel.replaceChildren(el('h3','Оплата Telegram Stars'));
+   if(data.test_environment)panel.append(el('p','Тестовая среда Telegram · тестовые Stars'));
    if(data.payment_status==='verified'){panel.append(el('p','Оплата подтверждена сервером.'));return;}
    if(data.amount_xtr)panel.append(el('p','Стоимость счёта: '+data.amount_xtr+' XTR'));
    if(!data.available)panel.append(el('p','Оплата Stars выключена до настройки и приёмки.'));

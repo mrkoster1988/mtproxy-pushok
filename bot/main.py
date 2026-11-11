@@ -8,6 +8,7 @@ from uuid import UUID
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
+from .telegram_environment import bot_api_url, environment_name
 from .wizard import DraftWizard, format_tariff
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
@@ -86,7 +87,8 @@ def _internal_api(route, payload):
     request = Request(
         "http://api:8000/api/v1/internal/bot/" + route,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", "X-Pushok-Bot-Secret": secret},
+        headers={"Content-Type": "application/json", "X-Pushok-Bot-Secret": secret,
+                 "X-Pushok-Telegram-Environment": environment_name()},
         method="POST",
     )
     with urlopen(request, timeout=5) as stream:
@@ -507,7 +509,7 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
 
 
 def telegram_call(token, method, payload, timeout=40):
-    req = Request("https://api.telegram.org/bot" + token + "/" + method,
+    req = Request(bot_api_url(token, method),
                   data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                   headers={"Content-Type": "application/json"}, method="POST")
     with urlopen(req, timeout=timeout) as stream:
