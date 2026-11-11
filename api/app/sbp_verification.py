@@ -13,12 +13,13 @@ class SBPVerificationError(ValueError):
     """Provider response does not match the order snapshot."""
 
 
-def verify_sbp_payment(
+def validate_sbp_identity(
     payment: Mapping[str, Any],
     *,
     expected_payment_id: str,
     expected_campaign_id: str,
     expected_kopecks: int,
+    expected_test: bool | None = None,
 ) -> str:
     """Return provider payment ID only for an exact, captured SBP payment.
 
@@ -36,10 +37,8 @@ def verify_sbp_payment(
 
     if payment.get("id") != expected_payment_id:
         raise SBPVerificationError("payment_id_mismatch")
-    if payment.get("status") != "succeeded" or payment.get("paid") is not True:
-        raise SBPVerificationError("payment_not_succeeded")
-    if payment.get("captured_at") is None:
-        raise SBPVerificationError("payment_not_captured")
+    if expected_test is not None and payment.get('test') is not expected_test:
+        raise SBPVerificationError('payment_test_mode_mismatch')
     method = payment.get("payment_method")
     if not isinstance(method, Mapping) or method.get("type") != "sbp":
         raise SBPVerificationError("payment_method_mismatch")
@@ -61,3 +60,19 @@ def verify_sbp_payment(
     if rub * 100 != expected_kopecks:
         raise SBPVerificationError("amount_mismatch")
     return expected_payment_id
+
+
+def verify_sbp_payment(payment: Mapping[str, Any], *, expected_payment_id: str,
+                       expected_campaign_id: str, expected_kopecks: int) -> str:
+    """Только окончательный захваченный платёж может подтверждать заказ."""
+    identifier = validate_sbp_identity(payment, expected_payment_id=expected_payment_id,
+        expected_campaign_id=expected_campaign_id, expected_kopecks=expected_kopecks)
+    if payment.get('status') != 'succeeded' or payment.get('paid') is not True:
+        raise SBPVerificationError('payment_not_succeeded')
+    if payment.get('captured_at') is None:
+        raise SBPVerificationError('payment_not_captured')
+    refunded = payment.get('refunded_amount')
+    if refunded is not None and (not isinstance(refunded, Mapping)
+        or refunded.get('currency') != 'RUB' or refunded.get('value') != '0.00'):
+        raise SBPVerificationError('payment_has_refund')
+    return identifier

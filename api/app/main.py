@@ -40,6 +40,10 @@ from .placement_report import build_campaign_report, PUBLIC_EVENTS
 from .report_export import render_campaign_csv
 from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
+from . import sbp_checkout
+from .sbp_provider import SBPProviderError
+from .sbp_reconcile import SBPReconcileError
+from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
@@ -728,6 +732,10 @@ def upload_payment_proof(
                 raise HTTPException(status_code=404, detail="campaign_not_found")
             if campaign["payment_status"] not in {"awaiting_payment", "rejected"}:
                 raise HTTPException(status_code=409, detail="payment_proof_not_expected")
+            if connection.execute("""SELECT 1 FROM payment_attempts WHERE campaign_id=%s
+                                      AND provider='sbp' AND status IN ('created','pending') LIMIT 1""",
+                                  (campaign_id,)).fetchone():
+                raise HTTPException(409, 'another_payment_in_progress')
 
             storage_key, stored_path = _store_payment_proof(data, suffix)
             proof = connection.execute(
@@ -1703,8 +1711,9 @@ def read_payment_settings(
             "refund_workflow_verified": False,
         },
         "sbp": {
-            "integration": "not_implemented",
-            "checkout_enabled": False,
+            "integration": "external_web_checkout",
+            "checkout_enabled": sbp_checkout.settings()['enabled'],
+            "test_mode": sbp_checkout.settings()['test_mode'],
             "recorded_successes": int(safe.get("recorded_sbp_payments") or 0),
             "provider_verified": False,
         },
@@ -2108,6 +2117,40 @@ def get_payment_instructions(
     }
 
 
+
+
+def _sbp_action(action, campaign_id, user, response):
+    response.headers['Cache-Control'] = 'private, no-store'
+    try:
+        return action(DATABASE_URL, campaign_id, user['id'])
+    except HTTPException:
+        raise
+    except SBPProviderError as exc:
+        if str(exc) == 'sbp_test_mode_mismatch':
+            raise HTTPException(409, 'sbp_test_mode_mismatch') from exc
+        raise HTTPException(503, 'sbp_provider_unavailable') from exc
+    except (SBPReconcileError, SBPVerificationError) as exc:
+        raise HTTPException(409, 'sbp_verification_requires_review') from exc
+    except psycopg.Error as exc:
+        raise HTTPException(503, 'database_unavailable') from exc
+
+
+@app.get('/api/v1/campaigns/{campaign_id}/sbp', tags=['payments'])
+def read_sbp_checkout(campaign_id: UUID, response: Response,
+                      user: dict[str, Any] = Depends(get_current_user)):
+    return _sbp_action(sbp_checkout.read_checkout, campaign_id, user, response)
+
+
+@app.post('/api/v1/campaigns/{campaign_id}/sbp/checkout', tags=['payments'])
+def create_sbp_checkout(campaign_id: UUID, response: Response,
+                        user: dict[str, Any] = Depends(get_current_user)):
+    return _sbp_action(sbp_checkout.create_checkout, campaign_id, user, response)
+
+
+@app.post('/api/v1/campaigns/{campaign_id}/sbp/reconcile', tags=['payments'])
+def verify_sbp_checkout(campaign_id: UUID, response: Response,
+                        user: dict[str, Any] = Depends(get_current_user)):
+    return _sbp_action(sbp_checkout.verify_checkout, campaign_id, user, response)
 
 
 @app.get("/api/v1/availability", tags=["calendar"])

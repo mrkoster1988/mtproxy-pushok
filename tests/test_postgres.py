@@ -979,3 +979,98 @@ class PostgresIntegration(unittest.TestCase):
             self.request("GET", "/me", 401, headers=headers)
         finally:
             main.TELEGRAM_BOT_TOKEN, main.SESSION_SIGNING_KEY = old_token, old_key
+
+    def _sbp_fixture(self):
+        owner, channel, tariff, campaign = (uuid4() for _ in range(4))
+        telegram_id = owner.int % (2**60)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("INSERT INTO users(id,telegram_user_id) VALUES(%s,%s)",(owner,telegram_id))
+            conn.execute("INSERT INTO sponsor_channels(id,owner_user_id,telegram_url,title) VALUES(%s,%s,%s,'SBP fixture')",(channel,owner,'https://t.me/test_'+channel.hex[:10]))
+            conn.execute("INSERT INTO tariffs(id,name,duration_seconds,price_kopecks,stars_price_xtr) VALUES(%s,'SBP fixture',86400,30055,180)",(tariff,))
+            conn.execute("""INSERT INTO campaigns(id,advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,
+                duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,moderation_status,payment_status)
+                VALUES(%s,%s,%s,%s,'SBP fixture',86400,30055,'RUB','approved','awaiting_payment')""",(campaign,owner,channel,tariff))
+        return campaign,owner,telegram_id
+
+    def test_sbp_web_retry_verification_owner_and_price_snapshot(self):
+        from app import sbp_provider
+        cid,owner,telegram_id=self._sbp_fixture()
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':owner,'role':'advertiser'}
+        self.addCleanup(main.app.dependency_overrides.clear)
+        base='/campaigns/'+str(cid)+'/sbp'
+        env={'PUSHOK_SBP_PAYMENTS_ENABLED':'1','PUSHOK_SBP_TEST_MODE':'1',
+             'PUSHOK_PUBLIC_PAYMENT_HOST':'ads.example.org','YOOKASSA_SHOP_ID':'fixture-shop',
+             'YOOKASSA_SECRET_KEY':'fixture-secret','PUSHOK_STARS_PAYMENTS_ENABLED':'1','BOT_INTERNAL_SECRET':'b'*64}
+        calls=[]
+        def create(**kwargs):
+            calls.append(kwargs)
+            if len(calls)==1:raise sbp_provider.SBPProviderError('simulated_timeout')
+            return {'payment_id':'bank-'+str(cid),'confirmation_url':'https://pay.example/fixture','status':'pending'}
+        payment={'id':'bank-'+str(cid),'status':'pending','paid':False,'test':True,
+                 'amount':{'currency':'RUB','value':'300.55'},'metadata':{'campaign_id':str(cid)},
+                 'payment_method':{'type':'sbp'},'captured_at':'2026-11-11T12:00:00Z'}
+        with patch.dict(os.environ,env),patch.object(sbp_provider,'create_sbp_payment',side_effect=create),patch.object(sbp_provider,'get_sbp_payment',side_effect=lambda _:dict(payment)):
+            self.request('POST',base+'/checkout',503)
+            self.assertEqual(self.request('GET',base)['status'],'created')
+            invoice=self.request('POST',base+'/checkout',json={'amount':1,'return_url':'https://evil.example'})
+            self.assertEqual(invoice['amount_kopecks'],30055)
+            self.assertEqual(self.request('POST',base+'/checkout')['attempt_id'],invoice['attempt_id'])
+            self.assertEqual(len(calls),2)
+            self.assertEqual(calls[0],calls[1])
+            self.assertEqual(calls[1]['return_url'],'https://ads.example.org/?sbp_campaign='+str(cid))
+            self.request('POST','/campaigns/'+str(cid)+'/payment-proofs',409,files={'file':('test.pdf',b'%PDF-1.4\n%%EOF','application/pdf')})
+            blocked=self.client.post('/api/v1/internal/bot/stars/prepare',headers={'X-Pushok-Bot-Secret':'b'*64},json={'telegram_user_id':telegram_id,'campaign_id':str(cid)})
+            self.assertEqual(blocked.status_code,409,blocked.text)
+            self.assertEqual(blocked.json()['detail'],'another_payment_in_progress')
+            with patch.dict(os.environ,{'PUSHOK_SBP_PAYMENTS_ENABLED':'0'}):
+                self.assertEqual(self.request('POST',base+'/reconcile')['status'],'pending')
+            payment.update(status='succeeded',paid=True,test=False)
+            self.request('POST',base+'/reconcile',409)
+            payment['test']=True;payment['amount']['value']='301.00'
+            self.request('POST',base+'/reconcile',409)
+            payment['amount']['value']='300.55';payment['refunded_amount']={'currency':'RUB','value':'1.00'}
+            self.request('POST',base+'/reconcile',409)
+            payment.pop('refunded_amount')
+            with patch.dict(os.environ,{'PUSHOK_SBP_PAYMENTS_ENABLED':'0'}):
+                self.assertEqual(self.request('POST',base+'/reconcile')['payment_status'],'verified')
+                self.assertEqual(self.request('POST',base+'/reconcile')['status'],'succeeded')
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute("SELECT payment_status,placement_status FROM campaigns WHERE id=%s",(cid,)).fetchone(),('verified','not_scheduled'))
+                self.assertEqual(conn.execute("SELECT count(*) FROM audit_events WHERE campaign_id=%s AND event_type='sbp_payment_verified'",(cid,)).fetchone()[0],1)
+            main.app.dependency_overrides[main.get_current_user]=lambda:{'id':uuid4(),'role':'advertiser'}
+            with patch.object(sbp_provider,'get_sbp_payment') as bank:
+                self.request('POST',base+'/reconcile',404);bank.assert_not_called()
+
+    def test_sbp_web_parallel_checkout_cancel_and_unknown_old_request(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from app import sbp_checkout,sbp_provider
+        cid,owner,_=self._sbp_fixture()
+        self.addCleanup(main.app.dependency_overrides.clear)
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':owner,'role':'advertiser'}
+        env={'PUSHOK_SBP_PAYMENTS_ENABLED':'1','PUSHOK_SBP_TEST_MODE':'1',
+             'PUSHOK_PUBLIC_PAYMENT_HOST':'ads.example.org','YOOKASSA_SHOP_ID':'fixture-shop','YOOKASSA_SECRET_KEY':'fixture-secret'}
+        calls=[]
+        def create(**kwargs):
+            calls.append(kwargs);time.sleep(.04)
+            return {'payment_id':str(uuid4()),'confirmation_url':'https://pay.example/fixture','status':'pending'}
+        with patch.dict(os.environ,env),patch.object(sbp_provider,'create_sbp_payment',side_effect=create):
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                results=list(pool.map(lambda _:sbp_checkout.create_checkout(self.dsn,cid,owner),range(3)))
+            self.assertEqual(len(calls),1)
+            self.assertEqual(len({r['attempt_id'] for r in results}),1)
+            with psycopg.connect(self.dsn) as conn:
+                pid=conn.execute("SELECT provider_payment_id FROM payment_attempts WHERE campaign_id=%s",(cid,)).fetchone()[0]
+            canceled={'id':pid,'status':'canceled','paid':False,'test':True,'amount':{'currency':'RUB','value':'300.55'},'metadata':{'campaign_id':str(cid)},'payment_method':{'type':'sbp'}}
+            with patch.object(sbp_provider,'get_sbp_payment',return_value=canceled):
+                self.assertEqual(sbp_checkout.verify_checkout(self.dsn,cid,owner)['status'],'failed')
+                self.assertEqual(sbp_checkout.verify_checkout(self.dsn,cid,owner)['status'],'failed')
+            sbp_checkout.create_checkout(self.dsn,cid,owner)
+            self.assertNotEqual(calls[0]['idempotence_key'],calls[1]['idempotence_key'])
+        cid2,owner2,_=self._sbp_fixture()
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':owner2,'role':'advertiser'}
+        with patch.dict(os.environ,env),patch.object(sbp_provider,'create_sbp_payment',side_effect=sbp_provider.SBPProviderError('timeout')):
+            self.request('POST','/campaigns/'+str(cid2)+'/sbp/checkout',503)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE payment_attempts SET created_at=now()-interval '24 hours' WHERE campaign_id=%s",(cid2,))
+        with patch.dict(os.environ,env),patch.object(sbp_provider,'create_sbp_payment') as bank:
+            self.request('POST','/campaigns/'+str(cid2)+'/sbp/checkout',409);bank.assert_not_called()

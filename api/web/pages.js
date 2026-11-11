@@ -1,6 +1,8 @@
 'use strict';
 // Страницы используют общие формы и действия app.js, без второго набора API.
 (() => {
+ Object.assign(errors,{sbp_test_mode_mismatch:'Режим провайдера не совпадает с настройками сервера. Счёт не открыт; нужна проверка владельца.'});
+ Object.assign(errors,{sbp_checkout_disabled_until_acceptance:'СБП выключена до настройки и приёмки.',another_payment_in_progress:'У заявки уже открыт другой платёж. Сначала проверьте его результат.',sbp_provider_unavailable:'Провайдер временно недоступен. Не оплачивайте повторно; повторный выпуск использует тот же ключ.',sbp_verification_requires_review:'Платёж не прошёл сверку. Не платите повторно; обратитесь к оператору.',sbp_creation_requires_review:'Результат выпуска счёта неизвестен слишком долго. Нужна проверка оператора.',sbp_configuration_changed:'Платёжные настройки изменились. Нужна проверка оператора.',sbp_invoice_not_created:'Счёт ещё не выпущен.',campaign_not_payable:'Заявка сейчас не ожидает новую оплату.'});
  Object.assign(errors,{sponsor_engine_mismatch:'Движок тега не совпадает с планом узла.',sponsor_tag_already_registered:'Этот тег уже зарегистрирован на другом узле.',sponsor_registration_not_found:'Сначала сохраните регистрацию спонсорского тега.',proxy_node_not_found:'Узел не найден. Обновите список.'});
  const state={campaigns:[],search:'',filter:'',route:'',bot:null,ready:false,loaded:false};
  const routes={
@@ -142,7 +144,7 @@
   ['Цена и Stars','Цена фиксируется в заявке. RUB и XTR настраиваются отдельно, автоматического курса нет.'],
   ['Дата и бронь','Календарь справочный. В одобренной заявке можно получить бронь на 15 минут, если API найдёт свободный узел.'],
   ['Как оплатить?','Откройте заявку. Реквизиты доступны после настройки владельцем. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
-  ['Stars и СБП','Stars оформляются в Telegram-боте, если разрешены сервером. Веб-эквайринг СБП сейчас не подключён. Не оплачивайте по неподтверждённым реквизитам.'],
+  ['Stars и СБП','Stars оформляются в Telegram-боте. СБП доступна только во внешнем кабинете после настройки владельцем. Возврат из банка не подтверждает оплату: результат сверяется сервером.'],
   ['Что значит «Активно»?','Оператор отметил запуск после ручного включения тега и отдельной проверки показа. Это не автоматический счётчик показов.'],
   ['Не удаётся выполнить действие','Обновите данные, проверьте комментарий и текущий статус. При завершении сессии войдите снова. Не повторяйте оплату вслепую.']
  ];
@@ -191,12 +193,45 @@
   table(reportRows,own.map(c=>[link(c.channel_title||c.id.slice(0,8),'campaign/'+c.id),badge(c.placement_status),button('Открыть отчёт',async()=>{reportRows.querySelectorAll('.campaign-report').forEach(x=>x.remove());await showCampaignReport(c,reportRows);}),button('Скачать CSV',()=>downloadCampaignCsv(c))]),['Кампания','Размещение','История','Экспорт']);
   const approved=own.filter(c=>c.moderation_status==='approved');
   table(paymentRows,approved.map(c=>[link(c.channel_title||c.id.slice(0,8),'payments/'+c.id),money(c.price_kopecks_snapshot),badge(c.payment_status),link('Открыть оплату','payments/'+c.id)]),['Кампания','Цена заявки','Статус','Действие']);
-  paymentRows.prepend(el('p','Для оплаты сначала требуется одобрение канала. СБП в веб-кабинете не подключена. Stars — через бота при включении на сервере.','muted'));
+  paymentRows.prepend(el('p','Для оплаты сначала требуется одобрение канала. СБП — во внешнем кабинете после настройки владельцем. Stars — через бота при включении на сервере.','muted'));
   operatorNodes.replaceChildren();if(me.role==='operator')table(operatorNodes,nodes.map(n=>[n.name,n.host+':'+n.port,n.status==='active'?'В реестре: активен':'На паузе']),['Узел','Адрес','Статус реестра']);
   metrics('sponsors',[['Узлов в реестре',nodes.length,'Доступность отдельно не проверялась']]);
   if(state.route)renderSelected();
  }
  function routeParts(){const p=location.hash.replace(/^#\/?/,'').split('/');return [Object.hasOwn(routes,p[0])?p[0]:'dashboard',p[1]||''];}
+ async function renderSbp(c,panel){
+  const base='/campaigns/'+c.id+'/sbp';
+  async function paint(data){
+   if(!panel.isConnected)return;
+   panel.replaceChildren(el('h3','СБП · внешний сайт'));
+   panel.append(el('p','Сумма заявки: '+money(data.amount_kopecks)));
+   if(data.test_mode)panel.append(el('p','Настроен ТЕСТОВЫЙ РЕЖИМ. Сервер проверяет режим счёта перед показом ссылки.','sbp-test-note'));
+   const statuses={not_created:'Счёт не выставлен.',created:'Результат выпуска счёта ещё не подтверждён. Повторный запрос использует тот же ключ.',pending:'Ожидается результат платежа. Не переводите деньги повторно.',succeeded:'Платёж подтверждён серверной сверкой.',failed:'Платёж отменён провайдером.'};
+   const status=el('p',statuses[data.status]||'Нужна проверка оператора.');status.setAttribute('role','status');panel.append(status);
+   if(!data.available)panel.append(el('p','Новые счета СБП выключены или настройки не завершены.','muted'));
+   if(data.can_create&&['not_created','created','failed'].includes(data.status))panel.append(button(data.status==='created'?'Повторить выпуск счёта':'Выставить счёт СБП',async()=>{
+    await paint(await api(base+'/checkout',{method:'POST'}));
+   }));
+   if(data.confirmation_url){
+    try{const u=new URL(data.confirmation_url);if(u.protocol==='https:'&&!u.username&&!u.password){const a=el('a','Перейти к оплате СБП');a.href=u.href;a.target='_self';a.rel='noreferrer';panel.append(a);}}catch{}
+   }
+   if(data.can_verify)panel.append(button('Проверить платёж СБП',async()=>{
+    const result=await api(base+'/reconcile',{method:'POST'});
+    if(result.payment_status==='verified'){await refresh();notice('Результат СБП подтверждён сервером.',true);}
+    else await paint(result);
+   }));
+   panel.closest('.page-content').querySelectorAll('input[aria-label="Подтверждение оплаты"]').forEach(input=>input.disabled=['created','pending'].includes(data.status));
+   if(['created','pending'].includes(data.status)){
+    panel.append(el('p','Пока этот счёт не проверен или не отменён провайдером, не переходите к другому способу оплаты.','muted'));
+   }
+   if(state.returnCampaign===c.id){
+    state.returnCampaign=null;
+    if(data.can_verify){const result=await api(base+'/reconcile',{method:'POST'});if(result.payment_status==='verified'){await refresh();notice('Платёж после возврата подтверждён сервером.',true);}else await paint(result);}
+   }
+  }
+  panel.append(el('p','Загрузка состояния СБП…'));
+  try{await paint(await api(base));}catch(e){if(panel.isConnected){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку СБП',()=>renderSbp(c,panel)));}}
+ }
  function permitted(name){return !(['moderation','sponsors'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(name==='settings'&&me?.role!=='admin');}
  function renderSelected(){
   const [name,id]=routeParts();
@@ -209,7 +244,7 @@
   if(name==='payments'&&id){
    paymentRows.replaceChildren();const c=state.campaigns.find(c=>c.id===id&&c.moderation_status==='approved');
    paymentRows.append(link('← Все оплаты','payments'));
-   if(c){paymentRows.append(card(c,false),botLink(),el('p','Stars: продолжите в Telegram-боте, если приём включён. СБП: веб-оплата недоступна. Проверка статуса — кнопкой «Обновить».','muted'));}
+   if(c){const panel=el('section',undefined,'panel sbp-checkout');paymentRows.append(card(c,false),panel,botLink(),el('p','Stars: продолжите в Telegram-боте, если приём включён. Ручной чек — запасной способ по инструкции владельца.','muted'));void renderSbp(c,panel);}
    else paymentRows.append(el('p','Заявка недоступна или ещё не одобрена.'));
   }
  }
@@ -228,6 +263,8 @@
   if(name==='settings')run(loadAdminSettings);
  }
  window.cabinet={go,sync(own){state.campaigns=own;state.loaded=true;document.body.dataset.cabinetLoaded='true';render();},enter(){
+  const url=new URL(location.href),returned=url.searchParams.get('sbp_campaign');
+  if(returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);
   nav.querySelectorAll('a').forEach(a=>a.hidden=!permitted(a.dataset.route));activate();
  },logout(){state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;

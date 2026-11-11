@@ -52,8 +52,8 @@ async function renderPaymentSettings(){
    ' · Оплат зарегистрировано в БД: '+stars.recorded_successes+
    ' · Нужна ручная сверка: '+stars.needs_manual_review;
   $('settings-sbp-status').textContent=sbp.checkout_enabled?
-   'СБП разрешена сервером (приёмка отдельно).':
-   'СБП не подключена: оплату провести нельзя.';
+   'СБП разрешена сервером · '+(sbp.test_mode?'тестовый режим.':'боевой режим; приёмка отдельно.'):
+   'СБП выключена до настройки и приёмки.';
   target.textContent='Данные БД и конфигурации не подтверждают приёмку Telegram, возвраты и банковский эквайринг. Секреты не отображаются.';
  }catch(e){
   $('settings-stars-status').textContent='Не удалось получить состояние Stars.';
@@ -191,6 +191,7 @@ function showCampaignReport(c, box){
    '. Файлы доступны только операторам.','muted'));
   panel.append(el('h4','История действий'));
   const eventNames={campaign_submitted:'Заявка отправлена',campaign_moderated:'Модерация',
+   sbp_invoice_created:'Выставлен счёт СБП',sbp_payment_verified:'СБП подтверждена сервером',sbp_payment_canceled:'СБП отменена',
    payment_proof_submitted:'Чек отправлен',payment_reviewed:'Проверка оплаты',
    placement_scheduled:'Время назначено',placement_activated_manually:'Оператор активировал',
    placement_completed_manually:'Оператор завершил'};
