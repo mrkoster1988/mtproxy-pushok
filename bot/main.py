@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import re
 import time
 from uuid import UUID
 from urllib.error import HTTPError, URLError
@@ -13,6 +14,16 @@ from .delivery_inbox import DeliveryInbox
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
+
+
+def configured_bot_username():
+    """Имя бота берётся из мастера установки, а не из чужого проекта."""
+    username = os.getenv("TELEGRAM_BOT_USERNAME", BOT_USERNAME)
+    if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
+        raise RuntimeError("Неверный TELEGRAM_BOT_USERNAME в настройках")
+    return username.lower()
+
+
 COMMANDS = frozenset(("start", "advertise", "campaigns", "tariffs", "channels", "help", "paysupport"))
 LOG = logging.getLogger("pushok.bot")
 
@@ -465,7 +476,7 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
     if not isinstance(content, str) or not content.startswith("/"):
         return None
     parts = content.split(maxsplit=1)[0][1:].split("@", 1)
-    if len(parts) == 2 and parts[1].lower() != BOT_USERNAME:
+    if len(parts) == 2 and parts[1].lower() != configured_bot_username():
         return None
     command = parts[0].lower()
     if command not in COMMANDS:
@@ -488,7 +499,7 @@ def telegram_call(token, method, payload, timeout=40):
 def validate_bot(token):
     """Проверить правильность токена и отсутствие webhook перед polling."""
     info = telegram_call(token, "getMe", {})
-    if info.get("username", "").lower() != BOT_USERNAME:
+    if info.get("username", "").lower() != configured_bot_username():
         raise RuntimeError("Токен принадлежит другому Telegram-боту")
     webhook = telegram_call(token, "getWebhookInfo", {})
     if webhook.get("url"):
