@@ -141,10 +141,29 @@ def create_checkout(dsn, campaign_id, user_id):
 
 
 def verify_checkout(dsn, campaign_id, user_id):
-    # Сверка уже выставленного счёта работает и после выключения новых счетов.
+    return _verify_checkout(dsn, campaign_id, user_id)
+
+
+def verify_background(dsn, attempt_id):
+    """Внутренний worker проверяет конкретную попытку, а не последний счёт кампании."""
     with psycopg.connect(dsn, connect_timeout=3, row_factory=dict_row) as conn:
+        row = conn.execute(
+            """SELECT a.campaign_id,c.advertiser_user_id FROM payment_attempts a
+               JOIN campaigns c ON c.id=a.campaign_id
+               WHERE a.id=%s AND a.provider='sbp'""", (attempt_id,)).fetchone()
+    if row is None:
+        raise SBPReconcileError('attempt_not_found')
+    return _verify_checkout(dsn, row['campaign_id'], row['advertiser_user_id'], attempt_id)
+
+
+def _verify_checkout(dsn, campaign_id, user_id, attempt_id=None):
+    # Сверка уже выставленного счёта работает и после выключения новых счетов.
+    with psycopg.connect(dsn, connect_timeout=3, row_factory=dict_row,
+                         options='-c lock_timeout=5000 -c statement_timeout=15000') as conn:
         campaign = _campaign(conn, campaign_id, user_id)
-        attempt = _attempt(conn, campaign_id)
+        attempt = (conn.execute(
+            "SELECT * FROM payment_attempts WHERE id=%s AND campaign_id=%s AND provider='sbp' FOR UPDATE",
+            (attempt_id, campaign_id)).fetchone() if attempt_id else _attempt(conn, campaign_id))
         if not attempt or not attempt['provider_payment_id']:
             raise HTTPException(409, 'sbp_invoice_not_created')
         cfg = settings()
@@ -165,4 +184,5 @@ def verify_checkout(dsn, campaign_id, user_id):
                                 VALUES(%s,%s,'sbp_payment_canceled')""", (user_id,campaign_id))
         elif payment.get('status') != 'pending' or attempt['status'] != 'pending':
             raise SBPReconcileError('payment_state_conflict')
-        return _view(_campaign(conn, campaign_id, user_id), _attempt(conn, campaign_id), cfg)
+        return _view(_campaign(conn, campaign_id, user_id), conn.execute(
+            'SELECT * FROM payment_attempts WHERE id=%s', (attempt['id'],)).fetchone(), cfg)

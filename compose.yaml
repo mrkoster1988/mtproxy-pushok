@@ -37,6 +37,26 @@ services:
       - bot-api
       - payment-egress
 
+  # По умолчанию бездействует: отдельный серверный флаг сверки равен 0.
+  sbp-worker:
+    build:
+      context: ./api
+    command: ["python", "-m", "app.sbp_worker", "--apply"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - internal
+      - payment-egress
+
   # Запускается только с --profile bot. Не имеет доступа к внутренней сети API/БД.
   bot:
     profiles: ["bot"]

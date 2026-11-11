@@ -1695,7 +1695,11 @@ def read_payment_settings(
                         AS recorded_stars_payments,
                   (SELECT count(*) FROM payment_attempts
                    WHERE provider='sbp' AND status='succeeded')
-                        AS recorded_sbp_payments"""
+                        AS recorded_sbp_payments,
+                  (SELECT count(*) FROM payment_attempts WHERE provider='sbp'
+                   AND status='pending' AND sbp_requires_review) AS sbp_review,
+                  (SELECT count(*) FROM payment_attempts WHERE provider='sbp'
+                   AND status='pending' AND NOT sbp_requires_review) AS sbp_pending"""
             ).fetchone()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
@@ -1715,6 +1719,9 @@ def read_payment_settings(
             "checkout_enabled": sbp_checkout.settings()['enabled'],
             "test_mode": sbp_checkout.settings()['test_mode'],
             "recorded_successes": int(safe.get("recorded_sbp_payments") or 0),
+            "background_enabled": os.getenv('PUSHOK_SBP_RECONCILIATION_ENABLED', '0') == '1',
+            "pending_checks": int(safe.get('sbp_pending') or 0),
+            "needs_manual_review": int(safe.get('sbp_review') or 0),
             "provider_verified": False,
         },
         "operator_can_enable_payments_from_ui": False,
