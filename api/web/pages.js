@@ -195,6 +195,7 @@
  function permitted(name){return !(['moderation','sponsors'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(name==='settings'&&me?.role!=='admin');}
  function renderSelected(){
   const [name,id]=routeParts();
+  if(name!=='campaign'){detail.replaceChildren();metrics('campaign',[]);}
   if(name==='campaign'){
    detail.replaceChildren();const c=state.campaigns.find(c=>c.id===id);
    if(c){detail.append(card(c,false));metrics('campaign',[['Модерация',labels[c.moderation_status],'По данным API'],['Оплата',labels[c.payment_status],'По данным API'],['Размещение',labels[c.placement_status],'По данным API'],['Окончание',date(c.scheduled_end_at),'Назначенный период']]);}
@@ -211,13 +212,14 @@
  function activate(){
   if(!me||!state.ready)return;
   let [name]=routeParts();
-  if(!permitted(name)){notice('Этот раздел недоступен вашей роли.');history.replaceState(null,'','#/dashboard');name='dashboard';}
+  if(!permitted(name)){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}
+  if($('notice').dataset.route!==location.hash)$('notice').hidden=true;
   state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.insertBefore(calendar,calendarOrigin.querySelector('button[type="submit"]'));
   nav.querySelectorAll('a').forEach(a=>{const active=a.dataset.route===name||(name==='create'||name==='campaign')&&a.dataset.route==='campaigns';a.classList.toggle('selected',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   menuState(false);
-  render();pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
+  render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
   if(name==='settings')run(loadAdminSettings);
  }
  window.cabinet={go,sync(own){state.campaigns=own;state.loaded=true;document.body.dataset.cabinetLoaded='true';render();},enter(){

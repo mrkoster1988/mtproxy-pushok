@@ -200,7 +200,7 @@ def main():
 
                 image_bytes = io.BytesIO()
                 Image.new('RGB', (64, 64), 'teal').save(image_bytes, format='PNG')
-                advertiser.get_by_label('Подтверждение оплаты', exact=True).set_input_files(
+                advertiser.locator('[data-page=payments]').get_by_label('Подтверждение оплаты', exact=True).set_input_files(
                     {"name": "test-receipt.png", "mimeType": "image/png", "buffer": image_bytes.getvalue()})
                 advertiser.get_by_role('button', name='Загрузить чек', exact=True).click()
                 expect(advertiser.locator('[data-page=payments]')).to_contain_text('Чек на проверке')
@@ -213,7 +213,7 @@ def main():
                 operator.get_by_role('button', name='Отклонить чек', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Нужен читаемый чек')
                 refresh(advertiser)
-                advertiser.get_by_label('Подтверждение оплаты', exact=True).set_input_files(
+                advertiser.locator('[data-page=payments]').get_by_label('Подтверждение оплаты', exact=True).set_input_files(
                     {"name": "test-receipt-again.png", "mimeType": "image/png", "buffer": image_bytes.getvalue()})
                 advertiser.get_by_role('button', name='Загрузить чек', exact=True).click()
                 expect(advertiser.locator('[data-page=payments]')).to_contain_text('Чек на проверке')
