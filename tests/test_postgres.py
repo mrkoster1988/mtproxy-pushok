@@ -992,6 +992,75 @@ class PostgresIntegration(unittest.TestCase):
                 VALUES(%s,%s,%s,%s,'SBP fixture',86400,30055,'RUB','approved','awaiting_payment')""",(campaign,owner,channel,tariff))
         return campaign,owner,telegram_id
 
+    def test_sbp_webhook_untrusted_hint_replay_and_authoritative_settlement(self):
+        from app import sbp_checkout, sbp_provider, sbp_worker
+        cid, owner, _ = self._sbp_fixture()
+        pid = 'bank-' + str(cid)
+        env = {'DATABASE_URL': self.dsn, 'PUSHOK_SBP_PAYMENTS_ENABLED': '1',
+               'PUSHOK_SBP_TEST_MODE': '1', 'PUSHOK_SBP_RECONCILIATION_ENABLED': '1',
+               'PUSHOK_SBP_WEBHOOK_ENABLED': '1', 'PUSHOK_PUBLIC_PAYMENT_HOST': 'ads.example.org',
+               'YOOKASSA_SHOP_ID': 'fixture-shop', 'YOOKASSA_SECRET_KEY': 'fixture-secret'}
+        payload = {'type': 'notification', 'event': 'payment.succeeded', 'object': {
+            'id': pid, 'status': 'succeeded', 'paid': True, 'test': False,
+            'metadata': {'campaign_id': str(uuid4())}, 'amount': {'currency': 'USD', 'value': '1.00'}}}
+        payment = {'id': pid, 'status': 'pending', 'paid': False, 'test': True,
+                   'amount': {'currency': 'RUB', 'value': '300.55'},
+                   'metadata': {'campaign_id': str(cid)}, 'payment_method': {'type': 'sbp'},
+                   'captured_at': '2026-11-11T12:00:00Z'}
+        path = '/api/v1/payments/sbp/webhook'
+        with patch.dict(os.environ, env), patch.object(sbp_provider, 'create_sbp_payment',
+                return_value={'payment_id': pid, 'confirmation_url': 'https://pay.example/fixture'}):
+            aid = sbp_checkout.create_checkout(self.dsn, cid, owner)['attempt_id']
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE payment_attempts SET sbp_next_check_at=now()+interval '1 day' WHERE id=%s", (aid,))
+            with patch.object(sbp_provider, 'get_sbp_payment') as bank:
+                known = self.client.post(path, json=payload)
+                unknown = self.client.post(path, json={**payload, 'object': {'id': 'unknown-' + str(uuid4())}})
+                self.assertEqual((known.status_code, known.content), (unknown.status_code, unknown.content))
+                self.assertEqual(known.status_code, 200)
+                bank.assert_not_called()
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT status,sbp_webhook_received_at IS NOT NULL,sbp_next_check_at<=now() FROM payment_attempts WHERE id=%s', (aid,)).fetchone(), ('pending', True, True))
+                self.assertEqual(conn.execute('SELECT payment_status FROM campaigns WHERE id=%s', (cid,)).fetchone()[0], 'awaiting_payment')
+                conn.execute("UPDATE payment_attempts SET sbp_next_check_at='2000-01-01' WHERE id=%s", (aid,))
+            with patch.object(sbp_provider, 'get_sbp_payment', return_value=payment):
+                self.assertEqual(sbp_worker.service_once(self.dsn, apply=True, limit=1)['pending'], 1)
+            with psycopg.connect(self.dsn) as conn:
+                before = conn.execute('SELECT sbp_next_check_at,sbp_webhook_received_at FROM payment_attempts WHERE id=%s', (aid,)).fetchone()
+            self.assertEqual(self.client.post(path, json=payload).status_code, 200)
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT sbp_next_check_at,sbp_webhook_received_at FROM payment_attempts WHERE id=%s', (aid,)).fetchone(), before)
+                conn.execute("UPDATE payment_attempts SET sbp_next_check_at='2000-01-01' WHERE id=%s", (aid,))
+            with patch.object(sbp_provider, 'get_sbp_payment', return_value={**payment, 'status': 'succeeded', 'paid': True}):
+                self.assertEqual(sbp_worker.service_once(self.dsn, apply=True, limit=1)['settled'], 1)
+            self.assertEqual(self.client.post(path, json=payload).status_code, 200)
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT payment_status,placement_status FROM campaigns WHERE id=%s', (cid,)).fetchone(), ('verified', 'not_scheduled'))
+                self.assertEqual(conn.execute("SELECT count(*) FROM audit_events WHERE campaign_id=%s AND event_type='sbp_payment_verified'", (cid,)).fetchone()[0], 1)
+
+    def test_sbp_webhook_preserves_backoff_and_manual_review(self):
+        from app import sbp_checkout, sbp_provider
+        cid, owner, _ = self._sbp_fixture()
+        pid = 'bank-' + str(cid)
+        env = {'DATABASE_URL': self.dsn, 'PUSHOK_SBP_PAYMENTS_ENABLED': '1',
+               'PUSHOK_SBP_TEST_MODE': '1', 'PUSHOK_SBP_RECONCILIATION_ENABLED': '1',
+               'PUSHOK_SBP_WEBHOOK_ENABLED': '1', 'PUSHOK_PUBLIC_PAYMENT_HOST': 'ads.example.org',
+               'YOOKASSA_SHOP_ID': 'fixture-shop', 'YOOKASSA_SECRET_KEY': 'fixture-secret'}
+        with patch.dict(os.environ, env), patch.object(sbp_provider, 'create_sbp_payment',
+                return_value={'payment_id': pid, 'confirmation_url': 'https://pay.example/fixture'}):
+            aid = sbp_checkout.create_checkout(self.dsn, cid, owner)['attempt_id']
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE payment_attempts SET sbp_check_failures=2,sbp_next_check_at=now()+interval '1 hour' WHERE id=%s", (aid,))
+                before = conn.execute('SELECT sbp_next_check_at FROM payment_attempts WHERE id=%s', (aid,)).fetchone()[0]
+            payload = {'type': 'notification', 'event': 'payment.canceled', 'object': {'id': pid}}
+            self.assertEqual(self.client.post('/api/v1/payments/sbp/webhook', json=payload).status_code, 200)
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT status,sbp_check_failures,sbp_next_check_at FROM payment_attempts WHERE id=%s', (aid,)).fetchone(), ('pending', 2, before))
+                conn.execute('UPDATE payment_attempts SET sbp_requires_review=true,sbp_webhook_received_at=NULL WHERE id=%s', (aid,))
+            self.assertEqual(self.client.post('/api/v1/payments/sbp/webhook', json=payload).status_code, 200)
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT sbp_requires_review,sbp_webhook_received_at FROM payment_attempts WHERE id=%s', (aid,)).fetchone(), (True, None))
+
     def test_sbp_background_retry_settle_gate_and_worker_lock(self):
         from app import sbp_checkout, sbp_provider, sbp_worker
         cid, owner, _ = self._sbp_fixture()
