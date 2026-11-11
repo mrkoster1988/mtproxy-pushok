@@ -69,12 +69,15 @@ def reconcile_sbp_attempt(conn, attempt_id: UUID, *,
     ).fetchone()
     if updated is None:
         raise SBPReconcileError("campaign_changed")
-    conn.execute(
+    settled = conn.execute(
         """UPDATE payment_attempts
            SET status='succeeded', settled_at=now()
-           WHERE id=%s AND status='pending' AND provider_payment_id=%s""",
+           WHERE id=%s AND status='pending' AND provider_payment_id=%s
+           RETURNING id""",
         (attempt_id, verified_id),
-    )
+    ).fetchone()
+    if settled is None:
+        raise SBPReconcileError("attempt_changed")
     conn.execute(
         """INSERT INTO audit_events(actor_user_id, campaign_id, event_type, details_json)
            VALUES(%s,%s,'sbp_payment_verified',

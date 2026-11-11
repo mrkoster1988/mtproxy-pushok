@@ -40,8 +40,9 @@ class Cursor:
 
 
 class FakeConnection:
-    def __init__(self, row=None):
+    def __init__(self, row=None, *, attempt_update_found=True):
         self.row = row if row is not None else attempt()
+        self.attempt_update_found = attempt_update_found
         self.writes = []
 
     def execute(self, sql, params):
@@ -50,7 +51,10 @@ class FakeConnection:
         if "UPDATE campaigns" in sql:
             self.writes.append(sql)
             return Cursor({"id": CAMPAIGN})
-        if "UPDATE payment_attempts" in sql or "INSERT INTO audit_events" in sql:
+        if "UPDATE payment_attempts" in sql:
+            self.writes.append(sql)
+            return Cursor({"id": ATTEMPT} if self.attempt_update_found else None)
+        if "INSERT INTO audit_events" in sql:
             self.writes.append(sql)
             return Cursor()
         raise AssertionError("Unexpected SQL")
@@ -100,3 +104,12 @@ def test_bad_attempt_never_mutates(change):
     with pytest.raises(SBPReconcileError):
         reconcile_sbp_attempt(db, ATTEMPT, fetch_payment=lambda _: payment())
     assert db.writes == []
+
+
+def test_attempt_update_must_affect_one_row_before_audit():
+    db = FakeConnection(attempt_update_found=False)
+    with pytest.raises(SBPReconcileError, match="attempt_changed"):
+        reconcile_sbp_attempt(db, ATTEMPT, fetch_payment=lambda _: payment())
+    assert len(db.writes) == 2
+    assert "RETURNING id" in db.writes[-1]
+    assert not any("INSERT INTO audit_events" in sql for sql in db.writes)
