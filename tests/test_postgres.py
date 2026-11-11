@@ -1003,6 +1003,7 @@ class PostgresIntegration(unittest.TestCase):
             self.assertEqual(transport.call_count,1)
             self.assertEqual(transport.call_args.args[1].stars_amount,180)
             self.assertEqual(self.request('GET',base)['payment_status'],'awaiting_payment')
+            self.request('POST','/campaigns/'+str(cid)+'/payment-proofs',409,files={'file':('fixture.pdf',b'%PDF-1.4\n%%EOF','application/pdf')})
             main.app.dependency_overrides[main.get_current_user]=lambda:{'id':uuid4(),'role':'advertiser'}
             self.request('POST',base+'/checkout',404)
             self.request('GET',base,404)
@@ -1011,7 +1012,11 @@ class PostgresIntegration(unittest.TestCase):
             headers={'X-Pushok-Bot-Secret':'b'*64}
             pc={'query_id':'mini-'+str(aid),'telegram_user_id':tid,'invoice_payload':'stars:'+str(aid),'currency':'XTR','total_amount':180}
             self.assertFalse(self.request('POST','/internal/bot/stars/precheckout',headers=headers,json={**pc,'telegram_user_id':tid+1})['ok'])
-            self.assertTrue(self.request('POST','/internal/bot/stars/precheckout',headers=headers,json=pc)['ok'])
+            from app.bot_stars import precheckout, StarsPrecheckoutInput
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                decisions=list(pool.map(lambda q:precheckout(StarsPrecheckoutInput(**{**pc,'query_id':q}),main.Response(),'b'*64).ok,
+                                        [pc['query_id'],pc['query_id']+'-other']))
+            self.assertEqual(sorted(decisions),[False,True])
             self.request('POST',base+'/checkout',409)
             self.assertTrue(self.request('GET',base)['processing'])
             receipt={k:v for k,v in pc.items() if k!='query_id'}|{'telegram_payment_charge_id':'mini-charge-'+str(aid)}

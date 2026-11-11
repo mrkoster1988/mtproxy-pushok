@@ -756,7 +756,10 @@ def upload_payment_proof(
             if campaign["payment_status"] not in {"awaiting_payment", "rejected"}:
                 raise HTTPException(status_code=409, detail="payment_proof_not_expected")
             if connection.execute("""SELECT 1 FROM payment_attempts WHERE campaign_id=%s
-                                      AND provider='sbp' AND status IN ('created','pending') LIMIT 1""",
+                                      AND status IN ('created','pending') AND (
+                                          provider='sbp' OR (provider='telegram_stars' AND (
+                                              status='created' OR expires_at IS NULL OR expires_at>now()
+                                              OR precheckout_approved_at IS NOT NULL))) LIMIT 1""",
                                   (campaign_id,)).fetchone():
                 raise HTTPException(409, 'another_payment_in_progress')
 

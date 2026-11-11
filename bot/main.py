@@ -70,7 +70,7 @@ def message_for(command):
     if command == "campaigns":
         return "📋 Просмотр личных кампаний через бота ещё не подключён."
     if command == "tariffs":
-        return "💎 Актуальная стоимость тарифа доступна в кабинете. Оплата пока не подключена."
+        return "💎 Актуальная стоимость и доступность оплаты указаны в кабинете."
     if command == "paysupport":
         return ("💬 Помощь с оплатой Stars и возвратами: " + CHANNEL_URL +
                 ". Укажите номер заявки и дату платежа. Не передавайте никому токены.")
@@ -296,7 +296,7 @@ def command_text(command, actor, chat_id, campaign_loader=None, tariff_loader=No
     if command == "tariffs" and tariff_loader is not None:
         try:
             return ("💎 Актуальный тариф: " + format_tariff(tariff_loader()) +
-                    "\nОплата Stars и СБП ещё не подключена.")
+                    "\nДоступность оплаты смотрите в карточке одобренной заявки.")
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
             LOG.warning("Не удалось прочитать тариф: %s", type(exc).__name__)
             return "💎 Тариф временно недоступен. Проверьте цену в кабинете."
