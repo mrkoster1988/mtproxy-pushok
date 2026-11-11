@@ -45,6 +45,7 @@ services:
     restart: unless-stopped
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-mtproxy_pushok_bot}
       BOT_INTERNAL_SECRET: ${BOT_INTERNAL_SECRET:-}
     read_only: true
     security_opt:
