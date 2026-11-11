@@ -26,6 +26,19 @@ def signed_data(token='fixture-token', **changes):
 
 
 class MiniAppAuthTests(unittest.TestCase):
+    def test_client_entry_is_separate_and_config_has_no_secrets(self):
+        with TestClient(main.app) as client:
+            page = client.get('/miniapp')
+            self.assertEqual(page.status_code, 200)
+            self.assertEqual(page.headers['cache-control'], 'no-store')
+            self.assertIn('data-miniapp="true"', page.text)
+            self.assertLess(page.text.index('/assets/miniapp.js'), page.text.index('/assets/app.js'))
+            self.assertNotIn('/assets/miniapp.js', client.get('/').text)
+            with patch.dict(os.environ, {'PUSHOK_MINIAPP_ENABLED': '0'}):
+                self.assertEqual(client.get('/api/v1/miniapp/config').json(), {'enabled': False})
+            with patch.dict(os.environ, {'PUSHOK_MINIAPP_ENABLED': '1'}):
+                self.assertEqual(client.get('/api/v1/miniapp/config').json(), {'enabled': True})
+
     def test_correct_signature_and_reordered_replay_identity(self):
         raw = signed_data()
         result = validate_init_data(raw, 'fixture-token')

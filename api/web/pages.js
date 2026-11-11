@@ -143,8 +143,8 @@
   ['Как указать канал?','Используйте публичную ссылку https://t.me/channel. Исправления доступны в черновике или по запросу модератора.'],
   ['Цена и Stars','Цена фиксируется в заявке. RUB и XTR настраиваются отдельно, автоматического курса нет.'],
   ['Дата и бронь','Календарь справочный. В одобренной заявке можно получить бронь на 15 минут, если API найдёт свободный узел.'],
-  ['Как оплатить?','Откройте заявку. Реквизиты доступны после настройки владельцем. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
-  ['Stars и СБП','Stars оформляются в Telegram-боте. СБП доступна только во внешнем кабинете после настройки владельцем. Возврат из банка не подтверждает оплату: результат сверяется сервером.'],
+  ['Как оплатить?',miniAppMode?'Откройте заявку и продолжите оплату Stars в Telegram-боте. Успешность проверяется сервером.':'Откройте заявку. Реквизиты доступны после настройки владельцем. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
+  [miniAppMode?'Telegram Stars':'Stars и СБП',miniAppMode?'Для оплаты используйте Telegram-бота. Нативный счёт Stars в Mini App будет подключён отдельно.':'Stars оформляются в Telegram-боте. СБП доступна только во внешнем кабинете после настройки владельцем. Возврат из банка не подтверждает оплату: результат сверяется сервером.'],
   ['Что значит «Активно»?','Оператор отметил запуск после ручного включения тега и отдельной проверки показа. Это не автоматический счётчик показов.'],
   ['Не удаётся выполнить действие','Обновите данные, проверьте комментарий и текущий статус. При завершении сессии войдите снова. Не повторяйте оплату вслепую.']
  ];
@@ -193,13 +193,14 @@
   table(reportRows,own.map(c=>[link(c.channel_title||c.id.slice(0,8),'campaign/'+c.id),badge(c.placement_status),button('Открыть отчёт',async()=>{reportRows.querySelectorAll('.campaign-report').forEach(x=>x.remove());await showCampaignReport(c,reportRows);}),button('Скачать CSV',()=>downloadCampaignCsv(c))]),['Кампания','Размещение','История','Экспорт']);
   const approved=own.filter(c=>c.moderation_status==='approved');
   table(paymentRows,approved.map(c=>[link(c.channel_title||c.id.slice(0,8),'payments/'+c.id),money(c.price_kopecks_snapshot),badge(c.payment_status),link('Открыть оплату','payments/'+c.id)]),['Кампания','Цена заявки','Статус','Действие']);
-  paymentRows.prepend(el('p','Для оплаты сначала требуется одобрение канала. СБП — во внешнем кабинете после настройки владельцем. Stars — через бота при включении на сервере.','muted'));
+  paymentRows.prepend(el('p',miniAppMode?'Для оплаты сначала требуется одобрение канала. Stars оформляются через бота при включении на сервере.':'Для оплаты сначала требуется одобрение канала. СБП — во внешнем кабинете после настройки владельцем. Stars — через бота при включении на сервере.','muted'));
   operatorNodes.replaceChildren();if(me.role==='operator')table(operatorNodes,nodes.map(n=>[n.name,n.host+':'+n.port,n.status==='active'?'В реестре: активен':'На паузе']),['Узел','Адрес','Статус реестра']);
   metrics('sponsors',[['Узлов в реестре',nodes.length,'Доступность отдельно не проверялась']]);
   if(state.route)renderSelected();
  }
  function routeParts(){const p=location.hash.replace(/^#\/?/,'').split('/');return [Object.hasOwn(routes,p[0])?p[0]:'dashboard',p[1]||''];}
  async function renderSbp(c,panel){
+  if(miniAppMode){panel.replaceChildren(el('h3','Оплата Telegram Stars'),el('p','Оплата Stars пока оформляется в Telegram-боте; стоимость в XTR подтверждается там перед оплатой. Если вы уже оплатили, обновите статус перед повторной попыткой.'));return;}
   const base='/campaigns/'+c.id+'/sbp';
   async function paint(data){
    if(!panel.isConnected)return;
@@ -244,7 +245,7 @@
   if(name==='payments'&&id){
    paymentRows.replaceChildren();const c=state.campaigns.find(c=>c.id===id&&c.moderation_status==='approved');
    paymentRows.append(link('← Все оплаты','payments'));
-   if(c){const panel=el('section',undefined,'panel sbp-checkout');paymentRows.append(card(c,false),panel,botLink(),el('p','Stars: продолжите в Telegram-боте, если приём включён. Ручной чек — запасной способ по инструкции владельца.','muted'));void renderSbp(c,panel);}
+   if(c){const panel=el('section',undefined,'panel sbp-checkout');paymentRows.append(card(c,false),panel,botLink(),el('p',miniAppMode?'Продолжите оплату Stars в боте. Статус заявки обновляется по данным сервера.':'Stars: продолжите в Telegram-боте, если приём включён. Ручной чек — запасной способ по инструкции владельца.','muted'));void renderSbp(c,panel);}
    else paymentRows.append(el('p','Заявка недоступна или ещё не одобрена.'));
   }
  }
@@ -261,10 +262,11 @@
   menuState(false);
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
   if(name==='settings')run(loadAdminSettings);
+  if(miniAppMode)window.pushokMiniApp.syncNavigation();
  }
  window.cabinet={go,sync(own){state.campaigns=own;state.loaded=true;document.body.dataset.cabinetLoaded='true';render();},enter(){
   const url=new URL(location.href),returned=url.searchParams.get('sbp_campaign');
-  if(returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
+  if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);
   nav.querySelectorAll('a').forEach(a=>a.hidden=!permitted(a.dataset.route));activate();
  },logout(){$('sbp-review-list').replaceChildren();state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
