@@ -122,6 +122,20 @@ class PlacementCompletionTests(unittest.TestCase):
             response = self.client.post(TARGET, json=VALID)
         self.assertEqual(response.status_code, 404, response.text)
 
+    def test_release_gate_matches_completion_api_contract(self):
+        doc = (ROOT / "docs/MVP_RELEASE_GATE.md").read_text(encoding="utf-8")
+        for required in (
+            '"tag_removed_confirmed":true',
+            '"own_channel_restored_confirmed":true',
+            '"verification_method":"separate_unsubscribed_client"',
+            "not_visible", "observed_at", "recorded_at",
+            "telegram_api_verified=false",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, doc)
+        self.assertIn("HTTP **422**", doc)
+        self.assertIn("HTTP **409**", doc)
+
     def test_cabinet_requires_manual_confirmation(self):
         js = (ROOT / "api/web/app.js").read_text(encoding="utf-8")
         self.assertIn("tag_removed_confirmed:true", js)
