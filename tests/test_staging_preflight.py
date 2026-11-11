@@ -1,4 +1,5 @@
 """Защита предпускового сценария от опасных команд и раскрытия секретов."""
+import json
 import os
 import subprocess
 import tempfile
@@ -33,7 +34,8 @@ class StagingPreflightTests(unittest.TestCase):
                 self.assertNotIn(unsafe, script)
 
     def run_in_isolated_directory(self, mode, *, token="", username="",
-                                  db_url=None, env_mode=0o600, stars="0"):
+                                  db_url=None, env_mode=0o600, stars="0",
+                                  compose_config=None):
         """Fake Docker: check command choice without starting any service."""
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)
@@ -57,12 +59,25 @@ class StagingPreflightTests(unittest.TestCase):
             (base / ".env").chmod(env_mode)
             docker = base / "bin/docker"
             docker.write_text(
-                '#!/bin/sh\nprintf "%s\\\n" "$*" >> "$DOCKER_CALLS"\n',
+                '#!/bin/sh\nprintf "%s\\\n" "$*" >> "$DOCKER_CALLS"\n'
+                'case "$*" in\n'
+                '  *"config --format json"*) cat "$DOCKER_CONFIG_JSON";;\n'
+                'esac\n',
                 encoding="utf-8")
+            (base / "compose-config.json").write_text(json.dumps(
+                compose_config if compose_config is not None else {
+                    "services": {
+                        "api": {"ports": [{"host_ip": "127.0.0.1",
+                                           "target": 8000, "published": "8010"}]},
+                        "db": {},
+                        "bot": {},
+                    }
+                }), encoding="utf-8")
             docker.chmod(0o755)
             env = os.environ.copy()
             env["PATH"] = str(base / "bin") + os.pathsep + env.get("PATH", "")
             env["DOCKER_CALLS"] = str(base / "docker-calls.txt")
+            env["DOCKER_CONFIG_JSON"] = str(base / "compose-config.json")
             proc = subprocess.run(
                 ["bash", str(base / "scripts/staging_preflight.sh"), mode],
                 capture_output=True, text=True, env=env, check=False)
@@ -75,6 +90,7 @@ class StagingPreflightTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("compose version", calls)
         self.assertIn("compose config --quiet", calls)
+        self.assertIn("compose config --format json", calls)
         self.assertNotIn("--profile bot", calls)
 
     def test_external_database_rejected_without_printing_credentials(self):
@@ -106,6 +122,40 @@ class StagingPreflightTests(unittest.TestCase):
         self.assertIn("PUSHOK_STARS_PAYMENTS_ENABLED=0", proc.stderr)
         self.assertNotIn("config --quiet", calls)
 
+    def test_public_api_binding_rejected(self):
+        config = {"services": {"api": {"ports": [{"host_ip": "0.0.0.0",
+            "target": 8000, "published": "8010"}]}, "db": {}}}
+        proc, calls = self.run_in_isolated_directory("--cabinet-only",
+                                                      compose_config=config)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("public_or_unexpected_api_port", proc.stderr)
+        self.assertIn("config --format json", calls)
+
+    def test_public_extra_service_rejected(self):
+        config = {"services": {"api": {"ports": [{"host_ip": "127.0.0.1",
+            "target": 8000, "published": "8010"}]}, "db": {},
+            "caddy": {"ports": [{"host_ip": "0.0.0.0",
+                                "target": 443, "published": "443"}]}}}
+        proc, _ = self.run_in_isolated_directory("--cabinet-only",
+                                                 compose_config=config)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("unexpected_published_service_port", proc.stderr)
+
+    def test_host_network_is_rejected(self):
+        config = {"services": {"api": {"ports": [{"host_ip": "127.0.0.1",
+            "target": 8000, "published": "8010"}]}, "db": {"network_mode": "host"}}}
+        proc, _ = self.run_in_isolated_directory("--cabinet-only",
+                                                 compose_config=config)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("host_network_or_privileged", proc.stderr)
+
+    def test_no_api_loopback_port_is_rejected(self):
+        config = {"services": {"api": {}, "db": {}}}
+        proc, _ = self.run_in_isolated_directory("--cabinet-only",
+                                                 compose_config=config)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("api_requires_single_loopback_binding", proc.stderr)
+
     def test_bot_mode_rejects_missing_token_before_compose_config(self):
         proc, calls = self.run_in_isolated_directory(
             "--with-bot", username="pushok_testing")
@@ -119,6 +169,7 @@ class StagingPreflightTests(unittest.TestCase):
             username="pushok_testing")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("compose --profile bot config --quiet", calls)
+        self.assertIn("compose --profile bot config --format json", calls)
         self.assertNotIn("123456789:", proc.stdout + proc.stderr)
 
 

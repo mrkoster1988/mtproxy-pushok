@@ -109,5 +109,53 @@ if [[ "$MODE" == "--with-bot" ]]; then
 else
   docker compose config --quiet
 fi
-echo "Docker Compose: конфигурация валидна для выбранного режима."
+
+# Compose --quiet проверяет лишь схему. Проверяем фактически объединённый
+# config (включая override.yaml), чтобы лишний сервис не открыл порт.
+# JSON может содержать секреты — не записываем его в журнал или файл.
+check_private_ports() {
+  python3 -c '
+import json
+import sys
+
+def deny(reason):
+    print("STAGING_BLOCKED: " + reason, file=sys.stderr)
+    raise SystemExit(1)
+
+try:
+    config = json.load(sys.stdin)
+except (ValueError, UnicodeDecodeError):
+    deny("compose_config_not_json")
+services = config.get("services")
+if not isinstance(services, dict) or not {"api", "db"}.issubset(services):
+    deny("api_or_db_service_missing")
+
+for service_name, service in services.items():
+    if not isinstance(service, dict):
+        deny("invalid_service_config")
+    if service.get("network_mode") == "host" or service.get("privileged") is True:
+        deny("host_network_or_privileged_service_forbidden")
+    published = service.get("ports") or []
+    if not isinstance(published, list):
+        deny("invalid_ports")
+    if service_name != "api" and published:
+        deny("unexpected_published_service_port")
+    for item in published:
+        if not isinstance(item, dict):
+            deny("unresolved_port_binding")
+        host = item.get("host_ip")
+        if host not in ("127.0.0.1", "::1") or item.get("target") != 8000:
+            deny("public_or_unexpected_api_port")
+api_ports = services["api"].get("ports") or []
+if len(api_ports) != 1:
+    deny("api_requires_single_loopback_binding")
+print("Staging Compose: только API:8000 привязан к loopback, остальные порты не опубликованы.")
+'
+}
+if [[ "$MODE" == "--with-bot" ]]; then
+  docker compose --profile bot config --format json | check_private_ports
+else
+  docker compose config --format json | check_private_ports
+fi
+echo "Docker Compose: схема и приватные пробросы портов проверены."
 echo "Проверка завершена: контейнеры, сеть, БД и Telegram не изменялись."
