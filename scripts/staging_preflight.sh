@@ -33,6 +33,7 @@ fi
 # Секреты читаются локально, но никогда не печатаются.
 python3 - <<'PY'
 from pathlib import Path
+from urllib.parse import urlsplit, unquote
 import re
 import sys
 import os
@@ -56,6 +57,35 @@ missing = [k for k in required if not values.get(k) or values[k].startswith("REP
 if missing:
     print("Отсутствуют или не настроены поля: " + ", ".join(missing), file=sys.stderr)
     sys.exit(1)
+# Ни один секрет из .env не должен быть доступен другим пользователям.
+if Path(".env").stat().st_mode & 0o077:
+    print("Слишком открытые права .env: выполните chmod 600 .env.", file=sys.stderr)
+    sys.exit(1)
+
+# Это встроенный Docker Compose: API должен подключаться ТОЛЬКО к своей БД
+# через внутреннее имя службы db, с теми же учётными данными.
+try:
+    url = urlsplit(values["DATABASE_URL"])
+    valid_database = (
+        url.scheme in ("postgresql", "postgres")
+        and url.hostname == "db"
+        and url.port == 5432
+        and unquote(url.username or "") == values["POSTGRES_USER"]
+        and unquote(url.password or "") == values["POSTGRES_PASSWORD"]
+        and unquote(url.path) == "/" + values["POSTGRES_DB"]
+        and not url.query and not url.fragment
+    )
+except ValueError:
+    valid_database = False
+if not valid_database:
+    print("DATABASE_URL не соответствует внутреннему PostgreSQL из .env; внешняя БД запрещена для staging.", file=sys.stderr)
+    sys.exit(1)
+
+# Предпусковая проверка не должна случайно разрешать реальные счета Stars.
+if values.get("PUSHOK_STARS_PAYMENTS_ENABLED", "0") not in ("", "0"):
+    print("Для staging оставьте PUSHOK_STARS_PAYMENTS_ENABLED=0.", file=sys.stderr)
+    sys.exit(1)
+
 if not re.fullmatch(r"[0-9a-f]{64}", values["BOT_INTERNAL_SECRET"]):
     print("BOT_INTERNAL_SECRET должен быть из 64 строчных hex-символов.", file=sys.stderr)
     sys.exit(1)
