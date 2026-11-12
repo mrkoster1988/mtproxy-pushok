@@ -1,6 +1,16 @@
 name: Pushok Icons - Telegram emoji pack
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'api/web/pushok-icons.svg'
+      - 'bot/button_icons.py'
+      - 'bot/main.py'
+      - 'scripts/*pushok_emoji*.py'
+      - 'tests/test_*emoji*.py'
+      - 'tests/test_pushok_button_icons.py'
+      - '.github/workflows/pushok-icons.yml'
   pull_request:
     paths:
       - 'api/web/pushok-icons.svg'
@@ -8,6 +18,11 @@ on:
       - 'tests/test_export_pushok_emoji.py'
       - 'scripts/build_pushok_emoji_manifest.py'
       - 'tests/test_pushok_emoji_manifest.py'
+      - 'scripts/prepare_pushok_emoji_ids.py'
+      - 'tests/test_prepare_pushok_emoji_ids.py'
+      - 'bot/button_icons.py'
+      - 'bot/main.py'
+      - 'tests/test_pushok_button_icons.py'
       - '.github/workflows/pushok-icons.yml'
 permissions:
   contents: read
@@ -32,6 +47,10 @@ jobs:
         run: python scripts/export_pushok_emoji.py --sprite api/web/pushok-icons.svg --output .build/pushok-emoji
       - name: Test action-to-icon manifest
         run: python -m unittest discover -s tests -p test_pushok_emoji_manifest.py -v
+      - name: Validate ID configuration and unchanged bot actions
+        run: |
+          python -m unittest discover -s tests -p test_prepare_pushok_emoji_ids.py -v
+          python -m unittest discover -s tests -p test_pushok_button_icons.py -v
       - name: Create verifiable Telegram emoji manifest
         run: python scripts/build_pushok_emoji_manifest.py --input .build/pushok-emoji --output .build/pushok-emoji/manifest.json
       - name: Verify exported PNG files
@@ -50,7 +69,7 @@ jobs:
               assert file.stat().st_size <= 128 * 1024, file
           print(f'Validated {len(files)} PNG emoji files')
           PY
-      - name: Upload private CI artifact (no Telegram publication)
+      - name: Upload CI artifact (no Telegram publication)
         uses: actions/upload-artifact@v4
         with:
           name: pushok-custom-emoji-png

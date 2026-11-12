@@ -13,6 +13,12 @@ CONFIG_ENV = "PUSHOK_BUTTON_EMOJI_JSON"
 ENABLED_ENV = "PUSHOK_BUTTON_ICONS_ENABLED"
 
 
+def is_valid_icon_id(value):
+    """Проверка формата; существование ID подтверждается только в Telegram."""
+    return (isinstance(value, str) and _VALID_ID.fullmatch(value) is not None
+            and int(value) > 0)
+
+
 def configured_icons():
     if os.getenv(ENABLED_ENV) != "1":
         return {}
@@ -21,14 +27,13 @@ def configured_icons():
         return {}
     try:
         data = json.loads(raw)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
         return {}
     if not isinstance(data, dict):
         return {}
     return {
         key: value for key, value in data.items()
-        if key in ALLOWED and isinstance(value, str)
-        and _VALID_ID.fullmatch(value) is not None
+        if key in ALLOWED and is_valid_icon_id(value)
     }
 
 
@@ -36,6 +41,6 @@ def decorate(button, action, icons=None):
     """Возвращает новый словарь кнопки, не меняя callback/url/настройки покупки."""
     icon_id = (configured_icons() if icons is None else icons).get(action)
     result = dict(button)
-    if isinstance(icon_id, str) and _VALID_ID.fullmatch(icon_id):
+    if action in ALLOWED and is_valid_icon_id(icon_id):
         result["icon_custom_emoji_id"] = icon_id
     return result

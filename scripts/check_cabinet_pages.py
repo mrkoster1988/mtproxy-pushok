@@ -108,6 +108,40 @@ def main():
                     page.evaluate("route => window.cabinet.go(route)", route)
                     expect(page.locator('[data-page="' + (expected_page or route.split('/')[0]) + '"]')).to_be_visible()
 
+                def check_navigation_icons(page):
+                    # Проверяем внешний SVG через настоящий static route и отрисованный <use>.
+                    import xml.etree.ElementTree as ET
+                    response = page.request.get(base + '/assets/pushok-icons.svg')
+                    assert response.status == 200, 'SVG sprite is not served'
+                    assert 'image/svg+xml' in response.headers.get('content-type', '')
+                    symbols = {node.get('id') for node in ET.fromstring(response.body()).iter()
+                               if node.tag.endswith('symbol')}
+                    menu = {'dashboard': ('home', 'Главная'), 'channels': ('channel', 'Мои каналы'),
+                            'campaigns': ('campaign', 'Кампании'), 'payments': ('wallet', 'Оплата'),
+                            'calendar': ('calendar', 'Календарь'), 'reports': ('chart', 'Отчёты'),
+                            'moderation': ('moderation', 'Модерация'), 'sponsors': ('server', 'Узлы'),
+                            'settings': ('settings', 'Настройки'), 'help': ('support', 'Помощь'),
+                            'bot': ('channel', 'Telegram-бот')}
+                    expect(page.locator('#cabinet-sidebar nav a')).to_have_count(len(menu))
+                    for route, (icon, title) in menu.items():
+                        assert 'pi-' + icon in symbols
+                        link = page.locator('#cabinet-sidebar nav a[data-route="' + route + '"]')
+                        expect(link).to_have_attribute('href', '#/' + route)
+                        expect(link).to_have_text(title)
+                        expect(link.locator('svg')).to_have_attribute('aria-hidden', 'true')
+                        expect(link.locator('svg')).to_have_attribute('focusable', 'false')
+                        expect(link.locator('use')).to_have_attribute('href', '/assets/pushok-icons.svg#pi-' + icon)
+                        if link.is_visible():
+                            expect(link).to_have_accessible_name(title)
+                    page.wait_for_function("""() => {
+                        const icons = [...document.querySelectorAll('#cabinet-sidebar nav svg')]
+                          .filter(svg => svg.getBoundingClientRect().width > 0);
+                        return icons.length > 0 && icons.every(svg => {
+                          const box = svg.getBBox();
+                          return box.width > 0 && box.height > 0;
+                        });
+                    }""")
+
                 def refresh(page):
                     with page.expect_response(lambda r: r.url.endswith('/campaigns') and r.request.method == 'GET'):
                         page.locator('#refresh').click()
@@ -357,6 +391,8 @@ def main():
                     advertiser.screenshot(path=str(output/'15-sbp-verified.png'),full_page=True)
 
                 refresh(admin)
+                check_navigation_icons(advertiser)
+                check_navigation_icons(admin)
                 screens = [('01-dashboard', 'dashboard'), ('02-channels', 'channels'),
                     ('03-create', 'create'), ('04-campaigns', 'campaigns'),
                     ('05-detail', 'campaign/' + campaign_id), ('06-payment', 'payments/' + campaign_id),
@@ -378,11 +414,18 @@ def main():
                     for _, route in screens:
                         go(admin, route)
                         assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), (width, route)
-                    if width == 390:
+                    if width in (320, 390):
                         go(admin, 'dashboard')
                         expect(admin.locator('#cabinet-sidebar')).to_have_attribute('inert', '')
                         admin.locator('.cabinet-topbar .menu-toggle').click()
                         expect(admin.locator('#cabinet-sidebar')).to_have_class('cabinet-sidebar is-open')
+                        check_navigation_icons(admin)
+                        assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth + 2')
+                        admin.screenshot(path=str(output / f'20-mobile-menu-{width}.png'), full_page=True)
+                        admin.locator('#cabinet-sidebar nav a[data-route="channels"]').click()
+                        expect(admin.locator('[data-page="channels"]')).to_be_visible()
+                        expect(admin.locator('#cabinet-sidebar')).to_have_attribute('inert', '')
+                        admin.locator('.cabinet-topbar .menu-toggle').click()
                         admin.keyboard.press('Escape')
                         expect(admin.locator('#cabinet-sidebar')).to_have_attribute('inert', '')
                         admin.screenshot(path=str(output / '14-mobile.png'), full_page=True)
@@ -476,10 +519,18 @@ def main():
                         mini.set_viewport_size({'width':width,'height':844})
                         assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
                     go(mini,'dashboard');mini.screenshot(path=str(output/'17-miniapp-light.png'),full_page=True)
+                    mini.locator('.cabinet-topbar .menu-toggle').click()
+                    check_navigation_icons(mini)
+                    mini.screenshot(path=str(output/'21-miniapp-menu-light.png'),full_page=True)
+                    mini.keyboard.press('Escape')
                     mini.evaluate("window.Telegram.WebApp.colorScheme='dark';window.__miniEvents.themeChanged()")
                     expect(mini.locator('body')).to_have_attribute('data-miniapp-theme','dark')
                     assert mini.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--mini-safe-top").trim()')=='18px'
                     mini.screenshot(path=str(output/'18-miniapp-dark.png'),full_page=True)
+                    mini.locator('.cabinet-topbar .menu-toggle').click()
+                    check_navigation_icons(mini)
+                    mini.screenshot(path=str(output/'22-miniapp-menu-dark.png'),full_page=True)
+                    mini.keyboard.press('Escape')
                     mini_token=mini.evaluate("sessionStorage.getItem('pushok-miniapp-session')")
                     _,mini_sid,_=api._decode_session_token(mini_token)
                     with psycopg.connect(PostgresIntegration.dsn) as connection:
