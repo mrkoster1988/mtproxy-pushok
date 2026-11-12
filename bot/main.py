@@ -13,6 +13,7 @@ from .wizard import DraftWizard, format_tariff
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
 from .delivery_inbox import DeliveryInbox
+from .button_icons import decorate, configured_icons
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
@@ -57,6 +58,17 @@ def keyboard():
     url = miniapp_url()
     if url:
         result['inline_keyboard'].insert(0, [{'text': '🐱 Открыть Mini App', 'web_app': {'url': url}}])
+    # Необязательные фирменные иконки; без реальных IDs структура кнопок не меняется.
+    icons = configured_icons()
+    for row in result['inline_keyboard']:
+        for position, button in enumerate(row):
+            action = button.get('callback_data')
+            if action is None and button.get('url') == CHANNEL_URL:
+                action = 'channels'
+            if action is None and 'web_app' in button:
+                action = 'miniapp'
+            if action:
+                row[position] = decorate(button, action, icons)
     return result
 
 

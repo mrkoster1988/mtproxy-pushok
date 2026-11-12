@@ -425,3 +425,8 @@ body.cabinet-mode{--bg:#f2f7fb;--surface:#fff;--surface-2:#edf5f9;--surface-3:#e
 .miniapp-mode[data-miniapp-theme=dark] .cabinet-topbar input{background:#0b1728;color:var(--text)}
 .miniapp-mode #miniapp-login h1{color:var(--text)}
 .miniapp-mode[data-miniapp-theme=light] #miniapp-login button{background:#e3f5f3;color:#075358}
+
+/* Pushok Sketch Icons: custom nav pictograms, matching the dark pencil palette. */
+.cabinet-sidebar nav a.pushok-nav-link{display:flex;align-items:center;gap:11px}
+.pushok-nav-icon{width:20px;height:20px;flex:0 0 20px;opacity:.95}
+@media (prefers-reduced-motion: reduce){.pushok-nav-icon{transition:none}}

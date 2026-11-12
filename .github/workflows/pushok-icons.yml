@@ -1,0 +1,80 @@
+name: Pushok Icons - Telegram emoji pack
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'api/web/pushok-icons.svg'
+      - 'bot/button_icons.py'
+      - 'bot/main.py'
+      - 'scripts/*pushok_emoji*.py'
+      - 'tests/test_*emoji*.py'
+      - 'tests/test_pushok_button_icons.py'
+      - '.github/workflows/pushok-icons.yml'
+  pull_request:
+    paths:
+      - 'api/web/pushok-icons.svg'
+      - 'scripts/export_pushok_emoji.py'
+      - 'tests/test_export_pushok_emoji.py'
+      - 'scripts/build_pushok_emoji_manifest.py'
+      - 'tests/test_pushok_emoji_manifest.py'
+      - 'scripts/prepare_pushok_emoji_ids.py'
+      - 'tests/test_prepare_pushok_emoji_ids.py'
+      - 'bot/button_icons.py'
+      - 'bot/main.py'
+      - 'tests/test_pushok_button_icons.py'
+      - '.github/workflows/pushok-icons.yml'
+permissions:
+  contents: read
+jobs:
+  telegram-emoji:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install local render dependencies
+        run: python -m pip install 'CairoSVG==2.7.1' 'Pillow==11.3.0'
+      - name: Validate icon source
+        run: python -m unittest discover -s tests -p test_export_pushok_emoji.py -v
+      - name: Export PNG icons for Telegram
+        run: python scripts/export_pushok_emoji.py --sprite api/web/pushok-icons.svg --output .build/pushok-emoji
+      - name: Test action-to-icon manifest
+        run: python -m unittest discover -s tests -p test_pushok_emoji_manifest.py -v
+      - name: Validate ID configuration and unchanged bot actions
+        run: |
+          python -m unittest discover -s tests -p test_prepare_pushok_emoji_ids.py -v
+          python -m unittest discover -s tests -p test_pushok_button_icons.py -v
+      - name: Create verifiable Telegram emoji manifest
+        run: python scripts/build_pushok_emoji_manifest.py --input .build/pushok-emoji --output .build/pushok-emoji/manifest.json
+      - name: Verify exported PNG files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          files = sorted(Path('.build/pushok-emoji').glob('*.png'))
+          assert len(files) >= 8, 'Unexpectedly small emoji pack'
+          for file in files:
+              with Image.open(file) as image:
+                  assert image.format == 'PNG', file
+                  assert image.size == (100, 100), file
+                  assert image.mode in ('RGBA', 'LA'), file
+                  assert image.getbbox() is not None, file
+              assert file.stat().st_size <= 128 * 1024, file
+          print(f'Validated {len(files)} PNG emoji files')
+          PY
+      - name: Upload CI artifact (no Telegram publication)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pushok-custom-emoji-png
+          path: |
+            .build/pushok-emoji/*.png
+            .build/pushok-emoji/manifest.json
+          retention-days: 14
+          if-no-files-found: error
