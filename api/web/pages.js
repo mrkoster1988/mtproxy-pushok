@@ -74,8 +74,14 @@
  const shell=el('div',undefined,'cabinet-shell'),sidebar=el('aside',undefined,'cabinet-sidebar');sidebar.id='cabinet-sidebar';
  const brand=link('✳ puShok · MTProxy','dashboard');brand.className='cabinet-brand';sidebar.append(brand);
  const nav=el('nav');nav.setAttribute('aria-label','Разделы страниц кабинета');
- const menu=[['dashboard','⌂','Главная'],['channels','▣','Мои каналы'],['campaigns','▤','Кампании'],['payments','◇','Оплата'],['calendar','▦','Календарь'],['reports','▥','Отчёты'],['moderation','✓','Модерация'],['sponsors','⬡','Узлы'],['settings','⚙','Настройки'],['help','?','Помощь'],['bot','↗','Telegram-бот']];
- menu.forEach(([name,icon,title])=>{const a=link(icon+'  '+title,name);a.dataset.route=name;nav.append(a);});sidebar.append(nav);
+ const menu=[['dashboard','home','Главная'],['channels','channel','Мои каналы'],['campaigns','campaign','Кампании'],['payments','wallet','Оплата'],['calendar','calendar','Календарь'],['reports','chart','Отчёты'],['moderation','moderation','Модерация'],['sponsors','server','Узлы'],['settings','settings','Настройки'],['help','support','Помощь'],['bot','channel','Telegram-бот']];
+ menu.forEach(([name,icon,title])=>{
+   const a=link(title,name);a.dataset.route=name;a.classList.add('pushok-nav-link');
+   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+   svg.classList.add('pushok-nav-icon');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.setAttribute('viewBox','0 0 24 24');
+   const use=document.createElementNS('http://www.w3.org/2000/svg','use');
+   use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);nav.append(a);
+ });sidebar.append(nav);
  sidebar.append(el('p','Подсказки и инструкции доступны в каждом разделе.','sidebar-note'));
  const stage=el('div',undefined,'cabinet-stage'),bar=el('div',undefined,'cabinet-topbar');
  const mobileMenu=window.matchMedia?.('(max-width:760px)');
