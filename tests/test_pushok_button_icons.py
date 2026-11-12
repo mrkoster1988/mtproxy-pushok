@@ -26,6 +26,20 @@ class TestButtonIcons(unittest.TestCase):
                 self.assertEqual(configured_icons(), {})
                 self.assertEqual(decorate({"text": "Ок"}, "advertise"), {"text": "Ок"})
 
+    def test_real_bot_keyboard_retains_callback_and_links(self):
+        from bot.main import keyboard, CHANNEL_URL
+        with patch.dict(os.environ, {
+            "PUSHOK_BUTTON_ICONS_ENABLED": "1",
+            "PUSHOK_BUTTON_EMOJI_JSON": '{"advertise":"123456789012","channels":"123456789013"}',
+            "PUSHOK_MINIAPP_ENABLED": "0",
+        }):
+            rows = keyboard()["inline_keyboard"]
+        self.assertEqual(rows[0][0]["callback_data"], "advertise")
+        self.assertEqual(rows[0][0]["icon_custom_emoji_id"], "123456789012")
+        channel = next(b for row in rows for b in row if b.get("url") == CHANNEL_URL)
+        self.assertEqual(channel["icon_custom_emoji_id"], "123456789013")
+        self.assertNotIn("icon_custom_emoji_id", rows[1][0])
+
 
 if __name__ == "__main__":
     unittest.main()
