@@ -71,3 +71,33 @@ class SetupPlanTests(unittest.TestCase):
         text=self.invoke("3\n3\n1\n\n3\n\n1\n2\n",expected_code=1)
         self.assertIn("Тестовый Telegram настраивается только",text)
         self.assertNotIn("Начать установку пакетов",text)
+
+    def test_invalid_domains_are_retried_before_installation(self):
+        invalid=['ads.-example.org','ads.example-.org','ads..example.org',
+                 'https://ads.example.org','ads.example.org/path','ads.example.org:443',
+                 '127.0.0.1','ads.example.org.','ads_example.org',
+                 'a'*64+'.example.org',('a'*63+'.')*4+'org']
+        for domain in invalid:
+            with self.subTest(domain=domain):
+                text=self.invoke("2\n1\n\n1\n"+domain+"\nads.example.org\n\n2\n2\n1\n")
+                self.assertIn('Введите DNS-домен',text)
+                self.assertIn('Домен кабинета: ads.example.org',text)
+
+    def test_valid_domain_case_and_label_boundary(self):
+        for domain in ['ADS.EXAMPLE.ORG','a'*63+'.example.org']:
+            with self.subTest(domain=domain):
+                text=self.invoke("2\n1\n\n1\n"+domain+"\n\n2\n2\n1\n")
+                self.assertIn('Домен кабинета: '+domain.lower(),text)
+                self.assertNotIn('Введите DNS-домен',text)
+
+    def test_bad_token_and_owner_id_are_retried_without_leaking_secrets(self):
+        token='12345:fixture_secret'
+        bad_tokens=['0:fixture_secret','12345:short','1'*17+':fixture_secret']
+        text=self.invoke("2\n2\n\n\n1\n1\n"+'\n'.join(bad_tokens)+"\n"+token+"\nfixture_bot\n1\n4503599627370496\n@owner\n42\n2\n1\n")
+        self.assertEqual(text.count('Ожидается токен вида'),len(bad_tokens))
+        self.assertEqual(text.count('Нужен числовой Telegram ID'),2)
+        self.assertIn('Telegram ID владельца: 42',text)
+        for secret in bad_tokens+[token]: self.assertNotIn(secret,text)
+
+    def test_existing_invalid_token_refuses_bot_launch_without_changes(self):
+        self.invoke("2\n4\n",existing_env='TELEGRAM_BOT_TOKEN=1:short\nTELEGRAM_BOT_USERNAME=fixture_bot\nBOT_INTERNAL_SECRET='+'b'*64+'\n',expected_code=1)

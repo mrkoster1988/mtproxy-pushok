@@ -49,14 +49,28 @@ ask() {
   [[ -n "$input_value" ]] || input_value="$fallback"
   printf -v "$target" '%s' "$input_value"
 }
+valid_cabinet_domain() {
+  local domain="$1" label
+  local -a labels
+  (( ${#domain} <= 253 )) || return 1
+  [[ "$domain" =~ \.[A-Za-z]{2,63}$ ]] || return 1
+  [[ "$domain" != *..* ]] || return 1
+  IFS='.' read -r -a labels <<< "$domain"
+  for label in "${labels[@]}"; do
+    [[ "$label" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]] || return 1
+  done
+}
+valid_bot_token() {
+  [[ "$1" =~ ^[1-9][0-9]{0,15}:[A-Za-z0-9_-]{10,256}$ ]]
+}
 domain_input() {
   local target="$1" answer
   while true; do
     ask answer "Домен кабинета без https:// и пути" "ads.pushok.shop"
-    if [[ "$answer" =~ ^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$ ]] && [[ "$answer" == *.* && "$answer" != *..* ]]; then
-      printf -v "$target" '%s' "$answer"; return
+    if valid_cabinet_domain "$answer"; then
+      printf -v "$target" '%s' "${answer,,}"; return
     fi
-    echo "Введите домен, например ads.example.ru." >&2
+    echo "Введите DNS-домен, например ads.example.ru: без https://, пути, порта и IP; части до 63 символов без дефиса по краям." >&2
   done
 }
 install_docker() {
@@ -126,7 +140,7 @@ if [[ "$COMPONENTS" != 1 ]]; then
       saved_token="$(sed -n 's/^TELEGRAM_BOT_TOKEN=//p' "$ROOT_DIR/.env" | head -n 1)"
       saved_username="$(sed -n 's/^TELEGRAM_BOT_USERNAME=//p' "$ROOT_DIR/.env" | head -n 1)"
       saved_secret="$(sed -n 's/^BOT_INTERNAL_SECRET=//p' "$ROOT_DIR/.env" | head -n 1)"
-      if [[ ! "$saved_token" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]] ||
+      if ! valid_bot_token "$saved_token" ||
          [[ ! "$saved_username" =~ ^[A-Za-z0-9_]{5,32}$ ]] ||
          [[ ! "$saved_secret" =~ ^[0-9a-f]{64}$ ]]; then
         echo "Для запуска бота в .env нужны TELEGRAM_BOT_TOKEN, TELEGRAM_BOT_USERNAME и 64-значный BOT_INTERNAL_SECRET. Файл не изменён." >&2
@@ -172,7 +186,7 @@ if [[ "$COMPONENTS" != 1 ]]; then
       fi
       while true; do
         read -r -s -u 3 -p "Токен бота из BotFather (скрыт): " BOT_TOKEN; echo >&2
-        [[ "$BOT_TOKEN" =~ ^[0-9]+:[a-zA-Z0-9_-]+$ ]] && break
+        valid_bot_token "$BOT_TOKEN" && break
         echo "Ожидается токен вида 123456:ABC..." >&2
       done
       while true; do
@@ -183,7 +197,8 @@ if [[ "$COMPONENTS" != 1 ]]; then
       if [[ "$ADMIN_SETUP" == 1 ]]; then
         while true; do
           ask ADMIN_ID "Числовой Telegram ID владельца" ""
-          [[ "$ADMIN_ID" =~ ^[1-9][0-9]{0,17}$ ]] && break
+          [[ "$ADMIN_ID" =~ ^[1-9][0-9]{0,15}$ ]] && ((ADMIN_ID < 4503599627370496)) && break
+          echo "Нужен числовой Telegram ID от 1 до 4503599627370495, а не @username или телефон." >&2
         done
       fi
     fi
