@@ -572,8 +572,11 @@ $('node-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
 },e.submitter);});
 async function refresh(){
  if(!token)return;
+ const refreshSession=token,refreshUser=me?.id;
+ const current=()=>token===refreshSession&&me?.id===refreshUser;
  const selectedChannel=$('channel-select').value,selectedTariff=$('tariff-select').value;
  const [own,currentChannels,currentTariffs]=await Promise.all([api('/campaigns'),api('/channels'),api('/me/tariffs')]);
+ if(!current())return;
  const calendarChanged=JSON.stringify(tariffs.map(t=>[t.id,t.duration_seconds]))!==JSON.stringify(currentTariffs.map(t=>[t.id,t.duration_seconds]));
  channels=currentChannels;tariffs=currentTariffs;updatePublicPrice();
  $('channel-select').replaceChildren();option($('channel-select'),'','Выберите канал');channels.forEach(c=>option($('channel-select'),c.id,c.title));
@@ -585,9 +588,9 @@ async function refresh(){
  ownCampaigns=own;
  if(!own.length)$('campaigns').append(el('div','Заявок пока нет. Добавьте канал и создайте первое размещение.','empty'));
  if(me&&['operator','admin'].includes(me.role)){
-  nodes=await api('/operator/proxy-nodes');renderNodes();
+  const currentNodes=await api('/operator/proxy-nodes');if(!current())return;nodes=currentNodes;renderNodes();
   if(me.role==='admin'&&!$('settings').hidden)await loadAdminSettings();
-  const queue=await api('/operator/campaigns');operatorCampaigns=queue;
+  const queue=await api('/operator/campaigns');if(!current())return;operatorCampaigns=queue;
   $('queue-count').textContent=queue.length+' заявок';
   if(window.pushokApproval)window.pushokApproval.sync(queue);
   else $('queue').replaceChildren(...queue.map(c=>card(c,true)));

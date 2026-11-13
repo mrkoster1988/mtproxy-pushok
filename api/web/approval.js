@@ -64,7 +64,7 @@ window.pushokApproval=(()=>{
    option(decision,'changes_requested','Запросить исправления');option(decision,'rejected','Отклонить канал');field(f,'Решение',decision);
    const comment=note(f,'Комментарий рекламодателю'),submit=el('button','Отправить решение');submit.type='submit';f.append(submit);extra.append(f);
    f.addEventListener('submit',e=>{e.preventDefault();if(f.reportValidity())void perform(()=>post('moderation',{decision:decision.value,comment:comment.value.trim()}),'Решение отправлено рекламодателю.');});
-  }else if(c.moderation_status!=='approved')content.append(el('h3','Ожидаем рекламодателя'),el('p','Рекламодатель должен исправить и отправить заявку на проверку.'));
+  }else if(c.moderation_status!=='approved')content.append(el('h3',c.moderation_status==='rejected'?'Заявка отклонена':'Ожидаем рекламодателя'),el('p',c.moderation_status==='rejected'?'Рекламодатель увидит причину отказа и сможет создать новую заявку.':'Рекламодатель должен исправить и отправить заявку на проверку.'));
   else if(c.payment_status==='proof_submitted'){
    const block=form('2. Проверьте оплату','Подтвердить оплату',()=>post('payment-review',{decision:'verified'}));
    block.f.append(button('Посмотреть чеки',async()=>{
