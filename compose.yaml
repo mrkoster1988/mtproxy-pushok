@@ -64,6 +64,7 @@ services:
   bot:
     volumes:
       - ./.control:/var/lib/mtproxy-pushok/control:ro
+      - mtproxy-pushok-bot-navigation:/var/lib/mtproxy-pushok/navigation
     profiles: ["bot"]
     build:
       context: .
@@ -76,6 +77,7 @@ services:
       PUSHOK_TELEGRAM_TEST_ENVIRONMENT: ${PUSHOK_TELEGRAM_TEST_ENVIRONMENT:-0}
       PUSHOK_MINIAPP_ENABLED: ${PUSHOK_MINIAPP_ENABLED:-0}
       PUSHOK_MINIAPP_URL: ${PUSHOK_MINIAPP_URL:-}
+      PUSHOK_BOT_NAV_DB: /var/lib/mtproxy-pushok/navigation/state.sqlite3
       PUSHOK_BUTTON_ICONS_ENABLED: ${PUSHOK_BUTTON_ICONS_ENABLED:-0}
       PUSHOK_BUTTON_EMOJI_JSON: ${PUSHOK_BUTTON_EMOJI_JSON:-}
     read_only: true
@@ -88,6 +90,7 @@ services:
       - bot-api
 
 volumes:
+  mtproxy-pushok-bot-navigation:
   mtproxy-pushok-db:
   mtproxy-pushok-proofs:
 

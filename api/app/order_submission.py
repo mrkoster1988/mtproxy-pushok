@@ -24,7 +24,7 @@ def create_order(dsn, payload, user):
                                     (saved["campaign_id"], user["id"])).fetchone()
             # Перечитываем роль под блокировкой: она могла измениться после проверки сессии.
             actor = conn.execute("SELECT role FROM users WHERE id=%s FOR SHARE", (user["id"],)).fetchone()
-            tariff = conn.execute("SELECT * FROM tariffs WHERE id=%s AND is_active FOR SHARE",
+            tariff = conn.execute("SELECT * FROM tariffs WHERE id=%s AND is_active AND archived_at IS NULL FOR SHARE",
                                   (payload.tariff_id,)).fetchone()
             if not actor or not tariff or (tariff["admin_only"] and actor["role"] != "admin"):
                 raise HTTPException(404, "active_tariff_not_found")
@@ -34,7 +34,7 @@ def create_order(dsn, payload, user):
             if payload.requested_start_at and payload.requested_start_at <= datetime.now(timezone.utc):
                 raise HTTPException(422, "schedule_start_must_be_future")
             if payload.channel_id:
-                channel = conn.execute("SELECT id FROM sponsor_channels WHERE id=%s AND owner_user_id=%s FOR UPDATE",
+                channel = conn.execute("SELECT id FROM sponsor_channels WHERE id=%s AND owner_user_id=%s AND archived_at IS NULL FOR UPDATE",
                                        (payload.channel_id, user["id"])).fetchone()
                 if not channel:
                     raise HTTPException(404, "channel_or_active_tariff_not_found")
@@ -51,8 +51,10 @@ def create_order(dsn, payload, user):
                 conn.execute("""INSERT INTO sponsor_channels(owner_user_id,telegram_url,title)
                                 VALUES(%s,%s,%s) ON CONFLICT(owner_user_id,telegram_url) DO NOTHING""",
                              (user["id"], url, title))
-                channel = conn.execute("SELECT id FROM sponsor_channels WHERE owner_user_id=%s AND telegram_url=%s FOR UPDATE",
+                channel = conn.execute("SELECT id,archived_at FROM sponsor_channels WHERE owner_user_id=%s AND telegram_url=%s FOR UPDATE",
                                        (user["id"], url)).fetchone()
+            if channel.get('archived_at'):
+                raise HTTPException(409, 'management_restore_channel')
             campaign = conn.execute("""
                 INSERT INTO campaigns(advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,
                     duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,requested_start_at,

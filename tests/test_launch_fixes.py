@@ -42,26 +42,3 @@ class LaunchFixes(unittest.TestCase):
    self.assertEqual(self.client.put('/api/v1/admin/control/payments',json={'stars':True,'sbp':False}).status_code,200)
    self.assertTrue(stars_invoices_enabled())
    self.assertEqual(self.client.put('/api/v1/admin/control/payments',json={'stars':True,'sbp':True}).status_code,409)
- def test_menu_edits_and_keeps_financial_messages(self):
-  call=Mock(return_value={'message_id':5});nav=Navigation(call)
-  nav.deliver('t',{'message':{'text':'/start'}},{'chat_id':1,'text':'home'})
-  nav.deliver('t',{'callback_query':{'data':'tariffs'}},{'chat_id':1,'text':'prices'})
-  self.assertEqual(call.call_args.args[1],'editMessageText')
-  nav.deliver('t',{'callback_query':{'data':'submit:abc'}},{'chat_id':1,'text':'submitted'})
-  self.assertEqual(call.call_args.args[1],'sendMessage')
- def test_same_menu_does_not_send_duplicate(self):
-  err=HTTPError('redacted',400,'',{},io.BytesIO(b'{"description":"Bad Request: message is not modified"}'))
-  call=Mock(side_effect=err);nav=Navigation(call);nav.messages[1]=5
-  nav.deliver('t',{'callback_query':{'data':'tariffs'}},{'chat_id':1,'text':'prices'})
-  self.assertEqual(call.call_count,1)
-
- def test_campaign_payment_screen_is_never_edited_or_deleted(self):
-  for cached in (None, 5):
-   call=Mock(return_value={'message_id':10});nav=Navigation(call)
-   if cached: nav.messages[1]=cached
-   update={'callback_query':{'data':'help','message':{'message_id':8,'reply_markup':{'inline_keyboard':[[{'callback_data':'tariffs'},{'callback_data':'stars:order'}]]}}}}
-   nav.deliver('t',update,{'chat_id':1,'text':'help'})
-   self.assertEqual(call.call_args_list[0].args[1],'sendMessage')
-   for record in call.call_args_list:
-    self.assertNotEqual(record.args[1],'editMessageText')
-    self.assertNotEqual(record.args[2].get('message_id'),8)

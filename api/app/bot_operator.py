@@ -99,7 +99,7 @@ def operator_queue(
                        btrim(c.currency_snapshot) AS currency
                 FROM campaigns c
                 JOIN sponsor_channels sc ON sc.id = c.channel_id
-                WHERE c.moderation_status = 'pending'
+                WHERE c.moderation_status = 'pending' AND c.archived_at IS NULL
                 ORDER BY c.created_at ASC, c.id ASC
                 LIMIT 5
                 """,
@@ -185,7 +185,7 @@ def operator_decision(
                                           THEN 'awaiting_payment'
                                           ELSE payment_status END,
                     moderator_comment = %s, updated_at = now()
-                WHERE id = %s AND moderation_status = 'pending'
+                WHERE id = %s AND moderation_status = 'pending' AND archived_at IS NULL
                 RETURNING id AS campaign_id, moderation_status, payment_status
                 """,
                 (payload.decision, payload.decision, comment, payload.campaign_id),

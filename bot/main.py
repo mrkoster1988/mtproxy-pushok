@@ -1,5 +1,6 @@
 """Минимальный Telegram-бот MTProxy Pushok. Python standard library."""
 import json
+import io
 import logging
 import os
 import re
@@ -31,6 +32,7 @@ def configured_bot_username():
 
 COMMANDS = frozenset(("start", "advertise", "campaigns", "tariffs", "channels", "help", "paysupport"))
 LOG = logging.getLogger("pushok.bot")
+_navigation = None
 
 
 def miniapp_url():
@@ -536,6 +538,12 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
 
 
 def telegram_call(token, method, payload, timeout=40):
+    if _navigation is not None and method in ('sendMessage', 'sendInvoice'):
+        return _navigation.managed_call(token, method, payload, timeout=timeout)
+    return raw_telegram_call(token, method, payload, timeout=timeout)
+
+
+def raw_telegram_call(token, method, payload, timeout=40):
     # Оформляем только меню; запросы счетов, оплаты и возвратов не изменяем.
     if method in ("sendMessage", "editMessageText", "editMessageReplyMarkup"):
         payload = with_button_styles(payload)
@@ -560,7 +568,8 @@ def telegram_call(token, method, payload, timeout=40):
             finally:
                 exc.close()
             if not icon_rejection(result):
-                raise
+                # Навигации нужны описания not modified / not found после чтения тела.
+                raise HTTPError(exc.url, exc.code, exc.msg, exc.headers, io.BytesIO(raw)) from None
         if not attempt and plain_payload is not None and icon_rejection(result):
             LOG.warning("Telegram отклонил иконку кнопки; одна отправка меню без иконок")
             payload = plain_payload
@@ -581,6 +590,7 @@ def validate_bot(token):
 
 
 def run():
+    global _navigation
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     if not token or token.startswith("REPLACE_"):
         raise SystemExit("Требуется TELEGRAM_BOT_TOKEN в окружении.")
@@ -595,7 +605,8 @@ def run():
     wizard = DraftWizard(create_campaign_draft, enabled=ready, tariff_loader=fetch_current_tariff)
     operator_inbox = OperatorInbox(operator_queue, operator_decide, operator_unsubscribe, miniapp_loader=miniapp_url)
     delivery_inbox = DeliveryInbox(admin_delivery_report, admin_retry_advertiser_notice)
-    navigation = Navigation(telegram_call)
+    navigation = Navigation(raw_telegram_call, path=os.getenv('PUSHOK_BOT_NAV_DB'))
+    _navigation = navigation
     next_notification_poll = time.monotonic()
     offset = None
     while True:
@@ -606,6 +617,7 @@ def run():
             for update in updates:
                 next_offset = update["update_id"] + 1
                 if process_stars_update(update, token):
+                    navigation.incoming(token, update)
                     offset = next_offset
                     continue
                 response = response_for(update, campaign_loader=fetch_campaigns, wizard=wizard,
@@ -628,9 +640,11 @@ def run():
                     _internal_api,
                     lambda payload: telegram_call(token, "sendMessage", payload, timeout=4),
                 )
+                navigation.cleanup_pending(token)
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
             # Не включать str(exc): HTTPError содержит URL с секретным токеном.
-            LOG.warning("Ошибка Telegram API: %s, повтор через 5 сек.", type(exc).__name__)
+            LOG.warning("Ошибка Telegram API: %s%s, повтор через 5 сек.", type(exc).__name__,
+                        (' HTTP ' + str(exc.code)) if isinstance(exc, HTTPError) else '')
             time.sleep(5)
 
 

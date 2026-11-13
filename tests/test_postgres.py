@@ -1531,3 +1531,91 @@ class PostgresIntegration(unittest.TestCase):
             conn.execute("UPDATE payment_attempts SET created_at=now()-interval '24 hours' WHERE campaign_id=%s",(cid2,))
         with patch.dict(os.environ,env),patch.object(sbp_provider,'create_sbp_payment') as bank:
             self.request('POST','/campaigns/'+str(cid2)+'/sbp/checkout',409);bank.assert_not_called()
+
+    def _management_fixture(self, ready=False):
+        main.app.dependency_overrides.clear()
+        owner, admin, stranger, channel, node, tariff, campaign = [uuid4() for _ in range(7)]
+        with psycopg.connect(self.dsn) as conn:
+            for uid, role in [(owner,'advertiser'),(admin,'admin'),(stranger,'advertiser')]:
+                conn.execute('INSERT INTO users(id,telegram_user_id,role) VALUES(%s,%s,%s)',(uid,uid.int % 900000000000000,role))
+            conn.execute("INSERT INTO tariffs(id,name,duration_seconds,price_kopecks,currency) VALUES(%s,'Management fixture',3600,0,'RUB')",(tariff,))
+            conn.execute("INSERT INTO proxy_nodes(id,name,host,port) VALUES(%s,'Management fixture',%s,8443)",(node,'management-'+node.hex+'.example.org'))
+            conn.execute('INSERT INTO sponsor_channels(id,owner_user_id,title,telegram_url) VALUES(%s,%s,%s,%s)',(channel,owner,'Management fixture','https://t.me/mgmt_'+channel.hex))
+            conn.execute("INSERT INTO campaigns(id,advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,moderation_status,payment_status) VALUES(%s,%s,%s,%s,'Management fixture',3600,0,'RUB',%s,%s)",
+                         (campaign,owner,channel,tariff,'approved' if ready else 'draft','verified' if ready else 'not_required'))
+        def cleanup():
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET placement_status='cancelled' WHERE id=%s",(campaign,))
+                conn.execute("UPDATE proxy_nodes SET status='paused' WHERE id=%s",(node,))
+                conn.execute('UPDATE tariffs SET is_active=false WHERE id=%s',(tariff,))
+            main.app.dependency_overrides.clear()
+        self.addCleanup(cleanup)
+        return dict(owner=owner,admin=admin,stranger=stranger,channel=channel,node=node,tariff=tariff,campaign=campaign)
+
+    def test_management_ownership_edit_archive_and_restore(self):
+        f=self._management_fixture()
+        actor={'id':f['owner'],'role':'advertiser'}
+        main.app.dependency_overrides[main.get_current_user]=lambda:actor
+        path='/channels/'+str(f['channel'])
+        self.request('PATCH',path,json={'title':'Changed channel','telegram_url':'https://t.me/management_fixture'})
+        self.request('PATCH','/campaigns/'+str(f['campaign']),json={'tariff_id':str(f['tariff']),'requested_start_at':None})
+        actor={'id':f['stranger'],'role':'advertiser'}
+        self.request('DELETE',path,404)
+        self.request('DELETE','/campaigns/'+str(f['campaign']),404)
+        actor={'id':f['owner'],'role':'advertiser'}
+        self.request('DELETE','/campaigns/'+str(f['campaign']))
+        self.assertFalse(any(c['id']==str(f['campaign']) for c in self.request('GET','/campaigns')))
+        self.request('DELETE',path)
+        self.assertFalse(any(c['id']==str(f['channel']) for c in self.request('GET','/channels')))
+        archive=self.request('GET','/management/archive')['items']
+        self.assertEqual({x['kind'] for x in archive},{'channels','campaigns'})
+        self.request('POST','/management/archive/campaigns/'+str(f['campaign'])+'/restore',409)
+        self.request('POST','/management/archive/channels/'+str(f['channel'])+'/restore')
+        self.request('POST','/management/archive/campaigns/'+str(f['campaign'])+'/restore')
+        self.assertTrue(any(c['id']==str(f['campaign']) for c in self.request('GET','/campaigns')))
+        with psycopg.connect(self.dsn) as conn:
+            row=conn.execute('SELECT placement_status,archived_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
+            self.assertEqual(row,('not_scheduled',None))
+            self.assertGreater(conn.execute('SELECT count(*) FROM audit_events WHERE campaign_id=%s',(f['campaign'],)).fetchone()[0],0)
+
+    def test_management_future_slot_move_remove_and_node_guards(self):
+        f=self._management_fixture(ready=True)
+        actor={'id':f['admin'],'role':'admin'}
+        main.app.dependency_overrides[main.get_current_user]=lambda:actor
+        start=datetime.now(timezone.utc)+timedelta(days=5)
+        path='/operator/campaigns/'+str(f['campaign'])
+        response=self.client.get('/api/v1'+path+'/available-nodes',params={'start_at':start.isoformat()})
+        self.assertEqual(response.status_code,200,response.text)
+        self.assertIn(str(f['node']),{n['id'] for n in response.json()['nodes']})
+        self.request('POST',path+'/schedule',json={'proxy_node_id':str(f['node']),'start_at':start.isoformat()})
+        self.request('DELETE','/admin/proxy-nodes/'+str(f['node']),409)
+        self.request('DELETE','/campaigns/'+str(f['campaign']),409)
+        self.request('PATCH',path+'/slot',json={'proxy_node_id':str(f['node']),'start_at':(start+timedelta(days=1)).isoformat()})
+        self.request('DELETE',path+'/slot')
+        with psycopg.connect(self.dsn) as conn:
+            row=conn.execute('SELECT payment_status,placement_status,proxy_node_id FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
+            self.assertEqual(row,('verified','not_scheduled',None))
+        self.request('PATCH','/admin/proxy-nodes/'+str(f['node']),json={'name':'Updated node','host':'updated-'+f['node'].hex+'.example.org','port':9443})
+        self.request('DELETE','/admin/proxy-nodes/'+str(f['node']))
+        self.assertFalse(any(n['id']==str(f['node']) for n in self.request('GET','/operator/proxy-nodes')))
+        self.request('POST','/management/archive/nodes/'+str(f['node'])+'/restore')
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT status FROM proxy_nodes WHERE id=%s',(f['node'],)).fetchone()[0],'paused')
+        actor={'id':f['owner'],'role':'advertiser'}
+        self.request('DELETE','/admin/proxy-nodes/'+str(f['node']),403)
+        self.request('POST','/management/archive/nodes/'+str(f['node'])+'/restore',404)
+
+    def test_management_paid_campaign_archive_is_blocked_and_pending_invoice_preserved(self):
+        f=self._management_fixture()
+        actor={'id':f['owner'],'role':'advertiser'}
+        main.app.dependency_overrides[main.get_current_user]=lambda:actor
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET moderation_status='approved',payment_status='verified',price_kopecks_snapshot=30000 WHERE id=%s",(f['campaign'],))
+        self.request('DELETE','/campaigns/'+str(f['campaign']),409)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertIsNone(conn.execute('SELECT archived_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()[0])
+            conn.execute("UPDATE campaigns SET payment_status='awaiting_payment' WHERE id=%s",(f['campaign'],))
+            conn.execute("INSERT INTO payment_attempts(campaign_id,provider,payment_channel,amount,currency) VALUES(%s,'telegram_stars','telegram_bot',37,'XTR')",(f['campaign'],))
+        self.request('DELETE','/campaigns/'+str(f['campaign']),409)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT status FROM payment_attempts WHERE campaign_id=%s',(f['campaign'],)).fetchone()[0],'created')

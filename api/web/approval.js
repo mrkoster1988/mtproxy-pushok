@@ -48,12 +48,13 @@ window.pushokApproval=(()=>{
    if(busy)return;busy=true;box.querySelectorAll('button,input,select,textarea').forEach(n=>n.disabled=true);feedback.textContent='Сохраняем…';
    try{validSession();await fn(validSession);validSession();
     try{await refresh();notice(message,true);}catch{feedback.textContent='Действие выполнено. Обновите данные перед следующим шагом.';content.replaceChildren(button('Обновить состояние',refresh));}
-   }catch(e){if(session===token&&me?.id===user)feedback.textContent=e.message;}
+   }catch(e){if(session===token&&me?.id===user){feedback.textContent=e.message;feedback.scrollIntoView({block:'nearest'});}}
    finally{busy=false;if(box.isConnected)box.querySelectorAll('button,input,select,textarea').forEach(n=>n.disabled=false);}
   }
   const post=(path,body)=>api('/operator/campaigns/'+c.id+'/'+path,{method:'POST',body});
   function form(title,label,fn){
    content.append(el('h3',title));const f=el('form'),submit=el('button',label);submit.type='submit';
+   f.addEventListener('invalid',event=>{event.preventDefault();feedback.textContent='Заполните поле «'+(event.target.getAttribute('aria-label')||'значение')+'». Для слота нужны активный узел и дата начала.';event.target.focus();feedback.scrollIntoView({block:'nearest'});},{capture:true});
    f.addEventListener('submit',event=>{event.preventDefault();if(!f.reportValidity())return;void perform(guard=>fn(guard),'Заявка обновлена. Следующий этап — здесь же.');});
    content.append(f);return {f,submit,finish(){f.append(submit);}};
   }
@@ -79,11 +80,13 @@ window.pushokApproval=(()=>{
   }else if(c.payment_status!=='verified'){
    content.append(el('h3','2. Ожидаем оплату'),el('p',c.payment_status==='refunded'?'Оплата возвращена. Размещение недоступно.':'Рекламодатель оплачивает свою заявку. Stars и СБП подтверждаются сервером; загруженный чек появится здесь для проверки.'),button('Проверить статус оплаты',refresh));
   }else if(c.placement_status==='not_scheduled'){
-   const block=form('3. Назначьте размещение','Назначить слот',()=>post('schedule',{proxy_node_id:select.value,start_at:new Date(start.value).toISOString()}));
+   const block=form('3. Назначьте размещение','Назначить слот',async guard=>{if(new Date(start.value).getTime()<=Date.now())throw Error('Начало уже прошло. Выберите будущее время или нажмите «Через 2 минуты».');const free=await api('/operator/campaigns/'+c.id+'/available-nodes?'+new URLSearchParams({start_at:new Date(start.value).toISOString()}));guard();if(!free.nodes.some(n=>n.id===select.value))throw Error('Узел занят на выбранный период или недоступен. Проверьте свободные узлы и выберите другое время.');await post('schedule',{proxy_node_id:select.value,start_at:new Date(start.value).toISOString()});});
    const select=el('select');select.required=true;option(select,'','Выберите узел');const active=nodes.filter(n=>n.status==='active');active.forEach(n=>option(select,n.id,n.name));if(active.length===1)select.value=active[0].id;field(block.f,'Прокси-узел',select);
    const start=el('input');start.type='datetime-local';start.required=true;const requested=new Date(c.requested_start_at),d=requested.getTime()>Date.now()?requested:new Date(Date.now()+5*60000);start.value=localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');field(block.f,'Начало размещения',start);
    block.f.append(el('p','Часовой пояс: '+calendarZone+'. Окончание рассчитает сервер по тарифу.','muted'));
-   if(!active.length){block.f.append(el('p','Нет активных узлов. Администратору нужно подготовить узел в разделе «Узлы».'));block.submit.disabled=true;}
+   if(!active.length){block.f.append(el('p','Нет активных узлов для расписания. Подготовьте узел либо разрешите планирование на существующем узле ниже.'));if(me.role==='admin')for(const n of nodes.filter(n=>n.status==='paused'))block.f.append(button('Разрешить планирование: '+n.name,()=>perform(()=>api('/admin/proxy-nodes/'+n.id+'/status',{method:'PATCH',body:{status:'active'}}),'Узел доступен для планирования. Подключение MTProxy проверяется отдельно.')));}
+   const availability=el('p',undefined,'muted');availability.setAttribute('role','status');
+   block.f.append(button('Через 2 минуты',()=>{const d=new Date(Date.now()+120000);start.value=localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}),button('Проверить свободные узлы',async()=>{if(!start.value)throw Error('Укажите дату начала.');const data=await api('/operator/campaigns/'+c.id+'/available-nodes?'+new URLSearchParams({start_at:new Date(start.value).toISOString()}));if(!box.isConnected||token!==session)return;const old=select.value;select.replaceChildren();option(select,'','Выберите узел');data.nodes.forEach(n=>option(select,n.id,n.name));if(data.nodes.some(n=>n.id===old))select.value=old;else if(data.nodes.length===1)select.value=data.nodes[0].id;availability.textContent=data.nodes.length?'Свободных узлов: '+data.nodes.length+'. Окончание: '+date(data.ends_at):'На весь период тарифа свободных узлов нет. Измените время или снимите прежний будущий слот.';}),availability);
    block.finish();
   }else if(c.placement_status==='scheduled'){
    content.append(el('p','Назначено: '+date(c.scheduled_start_at)+' — '+date(c.scheduled_end_at)));
@@ -104,6 +107,7 @@ window.pushokApproval=(()=>{
    block.f.append(el('p','Период: '+date(c.scheduled_start_at)+' — '+date(c.scheduled_end_at)));
    check(block.f,'Выключил тег и проверил отсутствие спонсора в отдельном аккаунте');block.finish();
   }
+  if(window.pushokManagement)box.append(window.pushokManagement.campaignActions(c,true));
   const history=details('История и документы',box);
   history.append(el('p','Номер заявки: '+c.id),el('p','Желаемое начало: '+date(c.requested_start_at)),button('Отчёт по кампании',()=>showCampaignReport(c,history)),button('Выгрузить CSV',()=>downloadCampaignCsv(c)));
   if(['scheduled','active','completed'].includes(c.placement_status))history.append(button('Журнал проверок',async()=>{
@@ -117,7 +121,7 @@ window.pushokApproval=(()=>{
   }));
  }
  async function download(path,name){const session=token;const response=await fetch('/api/v1'+path,{headers:{Authorization:'Bearer '+token}});if(!response.ok)throw Error('Не удалось скачать файл. Обновите состояние.');const blob=await response.blob();if(session!==token||!me)return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
- return {sync(items){if(currentUser!==me?.id){selected='';currentUser=me?.id;}campaigns=items;render();},render,clear(){campaigns=[];selected='';currentUser='';root.replaceChildren();$('queue-filter').hidden=false;$('queue-count').hidden=false;}};
+ return {resetSelection(){selected='';},sync(items){if(currentUser!==me?.id){selected='';currentUser=me?.id;}campaigns=items;render();},render,clear(){campaigns=[];selected='';currentUser='';root.replaceChildren();$('queue-filter').hidden=false;$('queue-count').hidden=false;}};
 })();
 
 if(me&&['admin','operator'].includes(me.role))window.pushokApproval.sync(operatorCampaigns);

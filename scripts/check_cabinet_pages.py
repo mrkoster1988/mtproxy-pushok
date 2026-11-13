@@ -120,7 +120,7 @@ def main():
                             'campaigns': ('campaign', 'Кампании'), 'payments': ('wallet', 'Оплата'),
                             'calendar': ('calendar', 'Календарь'), 'reports': ('chart', 'Отчёты'),
                             'moderation': ('moderation', 'Модерация'), 'sponsors': ('server', 'Узлы'),
-                            'settings': ('settings', 'Настройки'), 'help': ('support', 'Помощь'),
+                            'settings': ('settings', 'Настройки'), 'help': ('support', 'Подсказки и инструкции'), 'archive': ('campaign','Удалённые'),
                             'bot': ('channel', 'Telegram-бот')}
                     expect(page.locator('#cabinet-sidebar nav a')).to_have_count(len(menu))
                     for route, (icon, title) in menu.items():
@@ -271,7 +271,27 @@ def main():
                 operator.get_by_label('Проверил поступление денег, сумму и назначение платежа', exact=True).check()
                 operator.get_by_role('button', name='Подтвердить оплату', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Оплата подтверждена')
+                # Пустой выбор объясняется рядом с формой, а не выглядит как молчание.
+                operator.get_by_label('Прокси-узел', exact=True).select_option('')
+                operator.get_by_role('button', name='Назначить слот', exact=True).click()
+                expect(operator.locator('.approval-feedback')).to_contain_text('Заполните поле')
+                operator.get_by_role('button', name='Проверить свободные узлы', exact=True).click()
+                expect(operator.get_by_label('Прокси-узел', exact=True).locator('option')).to_have_count(2)
                 operator.get_by_label('Прокси-узел', exact=True).select_option(index=1)
+                operator.get_by_label('Начало размещения', exact=True).fill(tomorrow + 'T12:00')
+                operator.get_by_role('button', name='Назначить слот', exact=True).click()
+                expect(operator.locator('#queue')).to_contain_text('Запланировано')
+
+                operator.locator('summary').filter(has_text='Изменить или удалить заявку').click()
+                operator.get_by_role('button', name='Изменить слот', exact=True).click()
+                operator.get_by_label('Новое начало слота', exact=True).fill(tomorrow + 'T15:00')
+                operator.get_by_role('button', name='Сохранить изменения', exact=True).click()
+                expect(operator.locator('#notice')).to_contain_text('Изменения сохранены')
+                operator.locator('summary').filter(has_text='Изменить или удалить заявку').click()
+                operator.once('dialog', lambda dialog: dialog.accept())
+                operator.get_by_role('button', name='Снять будущий слот', exact=True).click()
+                expect(operator.locator('#queue')).to_contain_text('Слот не назначен')
+                expect(operator.locator('#queue')).to_contain_text('Оплата подтверждена')
                 operator.get_by_label('Начало размещения', exact=True).fill(tomorrow + 'T12:00')
                 operator.get_by_role('button', name='Назначить слот', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Запланировано')
@@ -317,7 +337,7 @@ def main():
                 expect(admin.locator('#tariff-admin-name')).to_have_value('1 день')
                 admin.locator('#tariff-admin-rub').fill('450.55')
                 admin.locator('#tariff-admin-stars').fill('200')
-                admin.locator('#tariff-admin-form button').click()
+                admin.locator('#tariff-admin-form button[type=submit]').click()
                 expect(admin.locator('#notice')).to_contain_text('Настройки тарифа сохранены')
                 refresh(advertiser)
                 go(advertiser, 'campaign/' + campaign_id)
@@ -617,18 +637,18 @@ def main():
                 expect(admin.locator('#tariff-admin-stars')).to_have_attribute('placeholder','Не требуется')
                 admin.locator('#tariff-admin-hours').fill('48')
                 with admin.expect_response(lambda r:'/admin/tariffs/' in r.url and r.request.method=='PUT') as private_saved:
-                    admin.locator('#tariff-admin-form button').click()
+                    admin.locator('#tariff-admin-form button[type=submit]').click()
                 assert private_saved.value.status==200 and private_saved.value.json()['admin_only'] is True
                 assert private_saved.value.json()['price_kopecks']==0 and private_saved.value.json()['duration_seconds']==172800
                 expect(admin.locator('#tariff-admin-hours')).to_have_value('48')
-                expect(admin.locator('#tariff-admin-form button')).to_be_enabled()
+                expect(admin.locator('#tariff-admin-form button[type=submit]')).to_be_enabled()
                 admin.set_viewport_size({'width':390,'height':844})
                 admin.screenshot(path=str(output/'26-admin-free-tariff-mobile.png'), full_page=True)
                 admin.locator('#tariff-admin-select').select_option('00000000-0000-4000-8000-000000000001')
                 admin.locator('#tariff-admin-rub').fill('0')
                 admin.locator('#tariff-admin-stars').fill('0')
                 with admin.expect_response(lambda r:'/admin/tariffs/' in r.url and r.request.method=='PUT') as saved:
-                    admin.locator('#tariff-admin-form button').click()
+                    admin.locator('#tariff-admin-form button[type=submit]').click()
                 assert saved.value.status==200 and saved.value.json()['price_kopecks']==0
                 expect(admin.locator('#notice')).to_contain_text('Настройки тарифа сохранены')
                 expect(admin.locator('#tariff-admin-rub')).to_have_value('0.00')
@@ -658,6 +678,81 @@ def main():
                         expect(admin.locator('#icons-status')).to_contain_text('Сохранено')
                         assert api.control.read('emoji-map.json')['help']=='123456789'
                         admin.screenshot(path=str(output/'25-icon-settings-mobile.png'),full_page=True)
+                # CRUD через реальный API, сохранённые сессии и видимые формы.
+                def authenticated(role, method, path, body=None):
+                    page = admin if role == 'admin' else advertiser
+                    response = page.request.fetch(base + '/api/v1' + path, method=method,
+                        headers={'Authorization':'Bearer '+sessions[role]}, data=body)
+                    assert response.ok, (path, response.status, response.text())
+                    return response.json()
+
+                managed_channel=authenticated('advertiser','POST','/channels',{'title':'Канал управления','telegram_url':'https://t.me/pushok_management_ui'})
+                advertiser.set_viewport_size({'width':390,'height':844})
+                refresh(advertiser)
+                go(advertiser,'channels')
+                row=advertiser.locator('[data-page=channels] tr').filter(has_text='Канал управления')
+                row.get_by_role('button',name='Изменить канал',exact=True).click()
+                row.get_by_label('Название канала',exact=True).fill('Изменённый канал управления')
+                row.get_by_role('button',name='Сохранить изменения',exact=True).click()
+                expect(advertiser.locator('[data-page=channels]')).to_contain_text('Изменённый канал управления')
+                row=advertiser.locator('[data-page=channels] tr').filter(has_text='Изменённый канал управления')
+                advertiser.once('dialog',lambda dialog:dialog.accept())
+                row.get_by_role('button',name='Удалить из списка',exact=True).click()
+                expect(advertiser.locator('[data-page=channels]')).not_to_contain_text('Изменённый канал управления')
+                go(advertiser,'archive')
+                advertiser.get_by_role('button',name='Восстановить',exact=True).click()
+                expect(advertiser.locator('[data-page=archive]')).to_contain_text('Удалённых объектов нет')
+                public_tariffs=authenticated('advertiser','GET','/me/tariffs')
+                edited=authenticated('advertiser','POST','/campaigns',{'channel_id':managed_channel['id'],'tariff_id':public_tariffs[0]['id']})
+                refresh(advertiser)
+                go(advertiser,'create/'+edited['id'])
+                advertiser.locator('summary').filter(has_text='Изменить или удалить заявку').click()
+                advertiser.get_by_role('button',name='Изменить тариф и дату',exact=True).click()
+                advertiser.get_by_label('Желаемое начало',exact=True).fill(tomorrow+'T16:00')
+                advertiser.get_by_role('button',name='Сохранить изменения',exact=True).click()
+                expect(advertiser.locator('#notice')).to_contain_text('Изменения сохранены')
+                advertiser.locator('summary').filter(has_text='Изменить или удалить заявку').click()
+                advertiser.once('dialog',lambda dialog:dialog.accept())
+                advertiser.get_by_role('button',name='Удалить из списка',exact=True).click()
+                go(advertiser,'archive')
+                advertiser.get_by_role('button',name='Восстановить',exact=True).click()
+                expect(advertiser.locator('[data-page=archive]')).to_contain_text('Удалённых объектов нет')
+
+                admin.set_viewport_size({'width':390,'height':844})
+                go(admin,'sponsors')
+                admin.locator('#node-form [name=name]').fill('Узел управления')
+                admin.locator('#node-form [name=host]').fill('management-ui.example.org')
+                admin.locator('#engine-mode').select_option('auto')
+                admin.locator('#node-form button[type=submit]').click()
+                node=admin.locator('#nodes-list .card').filter(has_text='Узел управления')
+                node.locator('summary').filter(has_text='Изменить или удалить узел').click()
+                node.get_by_role('button',name='Изменить узел',exact=True).click()
+                node.get_by_label('Название узла',exact=True).fill('Изменённый узел управления')
+                node.get_by_role('button',name='Сохранить изменения',exact=True).click()
+                node=admin.locator('#nodes-list .card').filter(has_text='Изменённый узел управления')
+                expect(node).to_be_visible()
+                node.locator('summary').filter(has_text='Изменить или удалить узел').click()
+                admin.once('dialog',lambda dialog:dialog.accept())
+                node.get_by_role('button',name='Удалить из списка',exact=True).click()
+                go(admin,'archive')
+                admin.get_by_role('button',name='Восстановить',exact=True).click()
+                expect(admin.locator('[data-page=archive]')).to_contain_text('Удалённых объектов нет')
+
+                go(admin,'sponsors')
+                admin.evaluate('window.scrollTo(0,600)')
+                expect(admin.locator('.cabinet-topbar')).to_be_visible()
+                assert abs(admin.locator('.cabinet-topbar').bounding_box()['y']) <= 2
+                admin.locator('.top-help summary').click()
+                expect(admin.locator('.help-popup')).to_be_visible()
+                assert admin.locator('.help-popup').bounding_box()['width'] <= 310
+                assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth + 2')
+                admin.screenshot(path=str(output/'31-sticky-menu-help-mobile.png'),full_page=True)
+                admin.keyboard.press('Escape')
+                expect(admin.locator('.help-popup')).to_be_hidden()
+                admin.evaluate('window.scrollTo(0,0)')
+                go(advertiser,'channels')
+                advertiser.screenshot(path=str(output/'32-management-actions-mobile.png'),full_page=True)
+                advertiser.set_viewport_size({'width':1440,'height':1000})
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))
