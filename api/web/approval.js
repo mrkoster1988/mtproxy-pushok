@@ -9,7 +9,7 @@ window.pushokApproval=(()=>{
   if(c.payment_status!=='verified')return 1;
   return {not_scheduled:2,scheduled:3,active:4,completed:5}[c.placement_status]??5;
  }
- function field(form,title,input){const label=el('label',title);label.append(input);form.append(label);return input;}
+ function field(form,title,input){input.setAttribute('aria-label',title);const label=el('label',title);label.append(input);form.append(label);return input;}
  function check(form,text){const input=el('input');input.type='checkbox';input.required=true;field(form,text,input).className='approval-check';return input;}
  function note(form,title){const input=el('textarea');input.required=true;input.minLength=12;input.maxLength=2000;input.rows=3;return field(form,title,input);}
  function details(title,parent){const d=el('details');d.append(el('summary',title));parent.append(d);return d;}
@@ -22,6 +22,7 @@ window.pushokApproval=(()=>{
   const list=filtered();
   if(!selected&&list.length===1)selected=list[0].id;
   const c=campaigns.find(item=>item.id===selected);
+  $('queue-filter').hidden=Boolean(c);$('queue-count').hidden=Boolean(c);
   root.replaceChildren();$('queue-count').textContent=list.length+' заявок';
   if(!c){
    if(selected)root.append(el('p','Заявка не найдена или недоступна. Обновите список.','empty'));
@@ -31,7 +32,7 @@ window.pushokApproval=(()=>{
   }
   const box=el('article',undefined,'approval-card');box.dataset.campaignId=c.id;root.append(box);
   const choose=el('select');choose.setAttribute('aria-label','Выбрать рекламную заявку');
-  option(choose,'','Все заявки');for(const item of campaigns)option(choose,item.id,(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;
+  option(choose,'','Все заявки');for(const item of campaigns)option(choose,item.id,(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;choose.hidden=campaigns.length===1;
   choose.addEventListener('change',()=>{selected=choose.value;window.cabinet.go(selected?'moderation/'+selected:'moderation');});box.append(choose);
   box.append(el('h2',c.channel_title||'Рекламная заявка'));
   if(c.channel_url){try{const url=new URL(c.channel_url);if(url.protocol==='https:'&&['t.me','telegram.me'].includes(url.hostname)){const a=el('a','Открыть канал в Telegram');a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';box.append(a);}}catch{}}
@@ -116,7 +117,7 @@ window.pushokApproval=(()=>{
   }));
  }
  async function download(path,name){const response=await fetch('/api/v1'+path,{headers:{Authorization:'Bearer '+token}});if(!response.ok)throw Error('Не удалось скачать файл. Обновите состояние.');const url=URL.createObjectURL(await response.blob()),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
- return {sync(items){if(currentUser!==me?.id){selected='';currentUser=me?.id;}campaigns=items;render();},render,clear(){campaigns=[];selected='';currentUser='';root.replaceChildren();}};
+ return {sync(items){if(currentUser!==me?.id){selected='';currentUser=me?.id;}campaigns=items;render();},render,clear(){campaigns=[];selected='';currentUser='';root.replaceChildren();$('queue-filter').hidden=false;$('queue-count').hidden=false;}};
 })();
 
 if(me&&['admin','operator'].includes(me.role))window.pushokApproval.sync(operatorCampaigns);

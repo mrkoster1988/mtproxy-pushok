@@ -88,7 +88,7 @@ def main():
                     context.add_init_script(
                         "sessionStorage.setItem('pushok-session', " + repr(sessions[role]) + ")")
                     page = context.new_page()
-                    page.on("pageerror", lambda error: failures.append(str(error)))
+                    page.on("pageerror", lambda error: (failures.append(str(error)), print("BROWSER_ERROR:", error, flush=True)))
                     # Never allow external requests, including Telegram and acquiring.
                     page.route("**/*", lambda route: route.continue_()
                                if route.request.url.startswith(base + "/") else route.abort())
