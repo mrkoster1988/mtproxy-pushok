@@ -53,6 +53,10 @@ jobs:
           printf 'MTPROXY_SECRET_FILE=%s\nMTPROXY_PORT=19443\nMTPROXY_BIND_IP=127.0.0.1\n' "$tmp/secret.env" > "$tmp/settings"
           docker compose --project-name mtproxy-pushok-official-test --env-file "$tmp/settings" -f compose.proxy-official.yaml config --quiet
       - run: bash -n scripts/staging_preflight.sh
+      - name: Check staging preflight with real Compose and synthetic secrets
+        env:
+          PUSHOK_COMPOSE_PREFLIGHT_TESTS: '1'
+        run: python3 -m unittest discover -s tests -p test_staging_compose.py -v
       - run: bash -n scripts/smoke.sh
       - run: sh -n scripts/check_backup_restore.sh
       - run: sh -n scripts/compose_checks.sh

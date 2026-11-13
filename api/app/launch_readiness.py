@@ -77,7 +77,7 @@ def build_launch_readiness(counts: dict) -> dict:
         "payments_automatically_verified": False,
         "changes_applied": False,
         "recommended_next_steps": [
-            "Восстановить GitHub/GitLab CI и выполнить тесты с временной PostgreSQL",
+            "Подтвердить успешный GitHub Actions на SHA версии, включая временную PostgreSQL",
             "Проверить MTProxy, спонсора и снятие тега в отдельном Telegram-клиенте",
             "Проверить заказ, модерацию, оплату, слот и отчёт на staging",
             "Проверить установщик, секреты, бэкапы и восстановление на VPS",
