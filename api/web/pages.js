@@ -193,7 +193,7 @@
   onboarding.hidden=sessionStorage.getItem('pushok-onboarding-hidden')==='1';
   createNotice.textContent=!channels.length?'Сначала добавьте канал в разделе «Мои каналы».':!tariffs.length?'Нет доступных тарифов. Обратитесь к администратору.':'Проверьте канал, тариф и желаемую дату. Отправка на модерацию доступна после создания.';
   sponsorPanel.hidden=me.role!=='admin';sponsorNode.replaceChildren();nodes.forEach(n=>option(sponsorNode,n.id,n.name));
-  calendarTariff.replaceChildren();tariffs.forEach(t=>option(calendarTariff,t.id,t.name+' · '+money(t.price_kopecks)));calendarTariff.value=$('tariff-select').value;
+  calendarTariff.replaceChildren();tariffs.forEach(t=>option(calendarTariff,t.id,tariffLabel(t)));calendarTariff.value=$('tariff-select').value;
   botPanel.replaceChildren(el('h2','Продолжить в Telegram'),botLink(),el('p','Кампании, статусы и оплата доступны в боте согласно настройкам сервера.'),el('h3','Сценарии в кабинете'));
   const shortcuts=el('nav',undefined,'bot-shortcuts');shortcuts.setAttribute('aria-label','Сценарии кабинета');[['create','Разместить рекламу'],['campaigns','Мои кампании'],['payments','Оплата'],['help','Помощь']].forEach(([route,text])=>shortcuts.append(link(text,route)));botPanel.append(shortcuts);
   const own=state.campaigns;

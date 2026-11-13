@@ -4,7 +4,7 @@ const miniAppMode=document.body.dataset.miniapp==='true';
 const sessionKey=miniAppMode?'pushok-miniapp-session':'pushok-session';
 let token=miniAppMode?'':sessionStorage.getItem(sessionKey)||'',me=null,channels=[],tariffs=[],nodes=[],ownCampaigns=[];
 const labels={draft:'Черновик',pending:'На модерации',approved:'Канал одобрен',rejected:'Отклонено',changes_requested:'Нужны исправления',not_required:'Оплата после одобрения',awaiting_payment:'Ожидается оплата',proof_submitted:'Чек на проверке',verified:'Оплата подтверждена',refunded:'Возврат',not_scheduled:'Слот не назначен',scheduled:'Запланировано',active:'Размещение активно',completed:'Завершено',cancelled:'Отменено'};
-const errors={evidence_integrity_failed:'Скриншот повреждён или изменён после загрузки.',evidence_invalid_metadata:'Данные файла некорректны.',evidence_file_missing:'Файл не найден в хранилище.',invalid_integrity_limit:'Проверка ограничена 1–100 файлами.',evidence_empty:'Выберите изображение.',evidence_too_large:'Скриншот должен быть меньше 5 МБ.',evidence_corrupt_image:'Не удалось прочитать изображение.',unsupported_evidence_format:'Поддерживаются только PNG и JPEG.',evidence_format_mismatch:'Тип файла не соответствует изображению.',evidence_dimensions_invalid:'Изображение слишком велико.',evidence_already_attached:'У этого отчёта уже есть скриншот.',evidence_observation_unavailable:'Добавить файл можно только к собственному отчёту за последние сутки.',evidence_storage_unavailable:'Хранилище скриншотов временно недоступно.',placement_not_ready_for_observation:'Проверять показ можно только в запланированный период после подтверждённой оплаты.',observation_timezone_required:'Для проверки нужен часовой пояс.',observation_outside_placement_window:'Время наблюдения должно быть внутри рекламного периода.',observation_not_recent:'Наблюдение должно быть выполнено не более 10 минут назад.',observation_note_too_short:'Укажите подробности проверки (от 12 символов).',active_slot_hold_not_found:'Активной брони нет.',slot_start_requires_timezone:'Укажите время с часовым поясом.',slot_start_out_of_range:'Выберите время в пределах ближайших 90 дней.',campaign_not_holdable:'Бронирование доступно только после модерации и до подтверждения оплаты.',slot_held_by_another_campaign:'Место занято другой бронью.',slot_hold_conflict:'Бронь уже существует. Обновите состояние.',invalid_calendar_range:'Выберите период в пределах ближайших 90 дней, не больше 31 дня.',invalid_calendar_timezone:'Часовой пояс не поддерживается.',active_tariff_not_found:'Тариф больше недоступен. Обновите страницу.',payment_instructions_not_configured:'Реквизиты ещё не настроены. Дождитесь инструкции администратора перед оплатой.',campaign_not_editable:'Заявку сейчас нельзя редактировать или отправить повторно.',channel_in_review_or_approved:'Этот канал связан с заявкой на проверке или одобренным размещением. Его изменение заблокировано.',admin_role_required:'Действие доступно владельцу.',invalid_proxy_host:'Укажите домен или IP без протокола и порта.',proxy_node_already_exists:'Этот адрес и порт уже добавлены.',proxy_node_has_placements:'На узле есть запланированное или активное размещение. Сначала завершите его.',authentication_required:'Войдите через Telegram.',session_revoked_or_expired:'Сессия завершена. Войдите снова.',telegram_login_expired:'Данные входа устарели. Повторите вход.',telegram_login_replayed:'Повторите вход через Telegram.',telegram_login_invalid_signature:'Telegram не подтвердил вход.',database_unavailable:'База данных временно недоступна.',invalid_telegram_channel_url:'Укажите ссылку вида https://t.me/channel.',channel_title_required:'Введите название канала.',channel_already_added:'Этот канал уже добавлен.',payment_proof_too_large:'Файл должен быть меньше 5 МБ.',unsupported_payment_proof_format:'Загрузите JPEG, PNG или PDF.',payment_proof_content_type_mismatch:'Тип файла не соответствует содержимому.',payment_proof_storage_unavailable:'Хранилище чеков временно недоступно.',proxy_node_slot_unavailable:'Этот слот уже занят. Выберите другое время или узел.',placement_not_in_active_window:'Активация доступна только в назначенное время.',campaign_not_ready_for_placement:'Для размещения нужны одобрение канала и подтверждённая оплата.',operator_role_required:'Нужны права оператора.',payment_proof_not_expected:'Заявка сейчас не ожидает чек.',campaign_not_draft:'Эта заявка уже отправлена.',campaign_not_pending:'Заявка уже обработана.',payment_proof_not_pending_review:'Оплата уже обработана.',channel_or_active_tariff_not_found:'Выберите свой канал и действующий тариф.',schedule_start_must_be_future:'Выберите время в будущем.'};
+const errors={evidence_integrity_failed:'Скриншот повреждён или изменён после загрузки.',evidence_invalid_metadata:'Данные файла некорректны.',evidence_file_missing:'Файл не найден в хранилище.',invalid_integrity_limit:'Проверка ограничена 1–100 файлами.',evidence_empty:'Выберите изображение.',evidence_too_large:'Скриншот должен быть меньше 5 МБ.',evidence_corrupt_image:'Не удалось прочитать изображение.',unsupported_evidence_format:'Поддерживаются только PNG и JPEG.',evidence_format_mismatch:'Тип файла не соответствует изображению.',evidence_dimensions_invalid:'Изображение слишком велико.',evidence_already_attached:'У этого отчёта уже есть скриншот.',evidence_observation_unavailable:'Добавить файл можно только к собственному отчёту за последние сутки.',evidence_storage_unavailable:'Хранилище скриншотов временно недоступно.',placement_not_ready_for_observation:'Проверять показ можно только в запланированный период после подтверждённой оплаты.',observation_timezone_required:'Для проверки нужен часовой пояс.',observation_outside_placement_window:'Время наблюдения должно быть внутри рекламного периода.',observation_not_recent:'Наблюдение должно быть выполнено не более 10 минут назад.',observation_note_too_short:'Укажите подробности проверки (от 12 символов).',active_slot_hold_not_found:'Активной брони нет.',slot_start_requires_timezone:'Укажите время с часовым поясом.',slot_start_out_of_range:'Выберите время в пределах ближайших 90 дней.',campaign_not_holdable:'Бронирование доступно только после модерации и до подтверждения оплаты.',slot_held_by_another_campaign:'Место занято другой бронью.',slot_hold_conflict:'Бронь уже существует. Обновите состояние.',invalid_calendar_range:'Выберите период в пределах ближайших 90 дней, не больше 31 дня.',invalid_calendar_timezone:'Часовой пояс не поддерживается.',active_tariff_not_found:'Тариф больше недоступен. Обновите страницу.',payment_instructions_not_configured:'Реквизиты ещё не настроены. Дождитесь инструкции администратора перед оплатой.',campaign_not_editable:'Заявку сейчас нельзя редактировать или отправить повторно.',channel_in_review_or_approved:'Этот канал связан с заявкой на проверке или одобренным размещением. Его изменение заблокировано.',admin_tariff_required:'Тариф доступен только администратору.',admin_tariff_must_be_free:'Админский тариф всегда бесплатный: 0 ₽, без Stars.',admin_role_required:'Действие доступно владельцу.',invalid_proxy_host:'Укажите домен или IP без протокола и порта.',proxy_node_already_exists:'Этот адрес и порт уже добавлены.',proxy_node_has_placements:'На узле есть запланированное или активное размещение. Сначала завершите его.',authentication_required:'Войдите через Telegram.',session_revoked_or_expired:'Сессия завершена. Войдите снова.',telegram_login_expired:'Данные входа устарели. Повторите вход.',telegram_login_replayed:'Повторите вход через Telegram.',telegram_login_invalid_signature:'Telegram не подтвердил вход.',database_unavailable:'База данных временно недоступна.',invalid_telegram_channel_url:'Укажите ссылку вида https://t.me/channel.',channel_title_required:'Введите название канала.',channel_already_added:'Этот канал уже добавлен.',payment_proof_too_large:'Файл должен быть меньше 5 МБ.',unsupported_payment_proof_format:'Загрузите JPEG, PNG или PDF.',payment_proof_content_type_mismatch:'Тип файла не соответствует содержимому.',payment_proof_storage_unavailable:'Хранилище чеков временно недоступно.',proxy_node_slot_unavailable:'Этот слот уже занят. Выберите другое время или узел.',placement_not_in_active_window:'Активация доступна только в назначенное время.',campaign_not_ready_for_placement:'Для размещения нужны одобрение канала и подтверждённая оплата.',operator_role_required:'Нужны права оператора.',payment_proof_not_expected:'Заявка сейчас не ожидает чек.',campaign_not_draft:'Эта заявка уже отправлена.',campaign_not_pending:'Заявка уже обработана.',payment_proof_not_pending_review:'Оплата уже обработана.',channel_or_active_tariff_not_found:'Выберите свой канал и действующий тариф.',schedule_start_must_be_future:'Выберите время в будущем.'};
 function notice(message,ok=false){$('notice').textContent=message;$('notice').className=ok?'ok':'';$('notice').hidden=false;$('notice').dataset.route=location.hash;}
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x;}
 function button(text,fn){const b=el('button',text);b.type='button';b.addEventListener('click',()=>run(fn,b));return b;}
@@ -483,8 +483,10 @@ async function renderCoreReadiness(){
 }
 let adminTariffs=[];
 
+function tariffLabel(t){return t.name+' · '+(t.admin_only?'Бесплатно · только для администраторов':money(t.price_kopecks));}
 function updatePublicPrice(){
- const t=tariffs.find(x=>x.duration_seconds===86400)||tariffs[0];
+ const publicTariffs=tariffs.filter(t=>!t.admin_only);
+ const t=publicTariffs.find(x=>x.duration_seconds===86400)||publicTariffs[0];
  if(!t){
   $('hero-tariff-price').textContent='Уточняйте цену';
   $('hero-tariff-duration').textContent='';
@@ -501,6 +503,9 @@ function fillTariffAdmin(){
  $('tariff-admin-rub').value=(tariff.price_kopecks/100).toFixed(2);
  $('tariff-admin-stars').value=tariff.stars_price_xtr===null?'':String(tariff.stars_price_xtr);
  $('tariff-admin-active').checked=tariff.is_active;
+ $('tariff-admin-rub').readOnly=!!tariff.admin_only;
+ $('tariff-admin-stars').readOnly=!!tariff.admin_only;
+ $('tariff-admin-access').hidden=!tariff.admin_only;
 }
 async function renderTariffAdmin(){
  if(me?.role!=='admin')return;
@@ -508,7 +513,7 @@ async function renderTariffAdmin(){
   adminTariffs=await api('/admin/tariffs');
   const select=$('tariff-admin-select'),previous=select.value;
   select.replaceChildren();
-  adminTariffs.forEach(t=>option(select,t.id,t.name+' · '+money(t.price_kopecks)));
+  adminTariffs.forEach(t=>option(select,t.id,tariffLabel(t)));
   if(adminTariffs.some(t=>t.id===previous))select.value=previous;
   fillTariffAdmin();
   $('tariff-admin-status').textContent='Изменения тарифа применяются к новым заявкам. Доступность выставления счетов Stars проверяйте в разделе «Платежи».';
@@ -532,9 +537,9 @@ $('tariff-admin-form').addEventListener('submit',e=>{e.preventDefault();run(asyn
              is_active:$('tariff-admin-active').checked};
  await api('/admin/tariffs/'+chosen,{method:'PUT',body});
  await renderTariffAdmin();
- tariffs=await api('/tariffs');updatePublicPrice();
+ tariffs=await api('/me/tariffs');updatePublicPrice();
  $('tariff-select').replaceChildren();
- tariffs.forEach(t=>option($('tariff-select'),t.id,t.name+' · '+money(t.price_kopecks)));
+ tariffs.forEach(t=>option($('tariff-select'),t.id,tariffLabel(t)));
  await loadAvailability();
  await renderPaymentSettings();
  notice('Настройки тарифа сохранены. Старые заказы не изменены. Платежи не запущены.',true);
@@ -566,12 +571,12 @@ $('node-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
 async function refresh(){
  if(!token)return;
  const selectedChannel=$('channel-select').value,selectedTariff=$('tariff-select').value;
- const [own,currentChannels,currentTariffs]=await Promise.all([api('/campaigns'),api('/channels'),api('/tariffs')]);
+ const [own,currentChannels,currentTariffs]=await Promise.all([api('/campaigns'),api('/channels'),api('/me/tariffs')]);
  const calendarChanged=JSON.stringify(tariffs.map(t=>[t.id,t.duration_seconds]))!==JSON.stringify(currentTariffs.map(t=>[t.id,t.duration_seconds]));
  channels=currentChannels;tariffs=currentTariffs;updatePublicPrice();
  $('channel-select').replaceChildren();option($('channel-select'),'','Выберите канал');channels.forEach(c=>option($('channel-select'),c.id,c.title));
  if(channels.some(c=>c.id===selectedChannel))$('channel-select').value=selectedChannel;
- $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,t.name+' · '+money(t.price_kopecks)));
+ $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,tariffLabel(t)));
  if(tariffs.some(t=>t.id===selectedTariff))$('tariff-select').value=selectedTariff;
  if(calendarChanged){try{await loadAvailability();}catch(e){notice(e.message);}}
  $('campaigns').replaceChildren(...own.map(c=>card(c,false)));$('campaign-count').textContent=own.length+' заявок';
@@ -587,13 +592,13 @@ async function refresh(){
  if(window.cabinet)window.cabinet.sync(own);
 }
 async function enter(){
- me=await api('/me');channels=await api('/channels');tariffs=await api('/tariffs');updatePublicPrice();
+ me=await api('/me');channels=await api('/channels');tariffs=await api('/me/tariffs');updatePublicPrice();
  const isOperator=['operator','admin'].includes(me.role);nodes=isOperator?await api('/operator/proxy-nodes'):[];
  $('identity').textContent=me.first_name||'Рекламодатель';$('logout').hidden=false;
  $('login').hidden=true;$('workspace').hidden=false;$('operator-tab').hidden=!isOperator;
  $('settings-tab').hidden=me.role!=='admin';if(!window.cabinet)showWorkspace('advertiser');showSettingsPane('payments');
  $('channel-select').replaceChildren();option($('channel-select'),'','Выберите канал');channels.forEach(c=>option($('channel-select'),c.id,c.title));
- $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,t.name+' · '+money(t.price_kopecks)));
+ $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,tariffLabel(t)));
  try{await refresh();}finally{window.cabinetBootReady=true;if(window.cabinet)window.cabinet.enter();}await loadAvailability();
 }
 
@@ -602,6 +607,7 @@ const calendarZone=Intl.DateTimeFormat().resolvedOptions().timeZone||'Europe/Mos
 let calendarRequest=0;
 function clearRequestedDate(){$('requested-start').value='';$('calendar-selection').textContent='Дата пока не выбрана.';for(const b of $('availability-days').children)b.setAttribute('aria-pressed','false');}
 async function loadAvailability(){
+ $('tariff-access-hint').hidden=!tariffs.find(t=>t.id===$('tariff-select').value)?.admin_only;
  const request=++calendarRequest;clearRequestedDate();
  if(!$('tariff-select').value)return;
  $('availability-days').replaceChildren(el('p','Загрузка свободных дат…','muted'));
@@ -640,7 +646,7 @@ for(const pane of ['payments','tariffs','system']){
 }
 run(async()=>{
  if(miniAppMode){await window.pushokMiniApp.start();return;}
- try{tariffs=await api('/tariffs');updatePublicPrice();}catch(e){$('hero-tariff-price').textContent='Цена временно недоступна';}
+ try{const publicTariffs=await api('/tariffs');if(!me)tariffs=publicTariffs;updatePublicPrice();}catch(e){$('hero-tariff-price').textContent='Цена временно недоступна';}
  const config=await api('/public-config');window.cabinetBotConfig=config;if(window.cabinet)window.cabinet.config(config);
  const botShortcut=document.querySelector('.hero-link-primary');
  const validBot=/^[A-Za-z0-9_]{5,32}$/.test(config.telegram_bot_username||'');

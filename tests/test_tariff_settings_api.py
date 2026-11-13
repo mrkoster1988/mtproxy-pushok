@@ -56,6 +56,7 @@ class TariffSettingsTests(unittest.TestCase):
             {"stars_price_xtr": -3},
             {"duration_seconds": 0}, {"name": "    "},
             {"is_active": "maybe"},
+            {"admin_only": False},
         ]
         with patch("app.main.psycopg.connect") as db:
             for update in invalid:

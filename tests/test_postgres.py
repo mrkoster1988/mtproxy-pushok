@@ -858,6 +858,81 @@ class PostgresIntegration(unittest.TestCase):
                 "SELECT to_regclass('public.bot_operator_notice_outbox') IS NOT NULL"
             ).fetchone()[0])
 
+    @patch.object(main, "SESSION_SIGNING_KEY", "a" * 64)
+    def test_admin_tariff_access_with_real_sessions_and_free_lifecycle(self):
+        main.app.dependency_overrides.clear()
+        tariff = '7f5b60e4-ecf1-4bc3-9e3a-cd5153f4a001'
+        actors = {}
+        with psycopg.connect(self.dsn) as conn:
+            for role in ('admin', 'operator', 'advertiser'):
+                uid, sid, channel = uuid4(), uuid4(), uuid4()
+                conn.execute('INSERT INTO users(id,telegram_user_id,role) VALUES(%s,%s,%s)',
+                             (uid, 10**12 + uuid4().int % 10**12, role))
+                conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')", (sid, uid))
+                conn.execute("INSERT INTO sponsor_channels(id,owner_user_id,telegram_url,title) VALUES(%s,%s,'https://t.me/admin_tariff_test','Тест')", (channel, uid))
+                actors[role] = (uid, {'Authorization': 'Bearer ' + main._create_session_token(uid, sid)}, channel)
+        self.request('GET', '/me/tariffs', 401)
+        self.assertNotIn(tariff, [t['id'] for t in self.request('GET', '/tariffs')])
+        # Даже авторизация администратора и подставленные query-параметры не меняют публичный каталог.
+        public = self.request('GET', '/tariffs', headers=actors['admin'][1], params={'include_admin':'true'})
+        self.assertNotIn(tariff, [t['id'] for t in public])
+        params = {'tariff_id':tariff, 'date_from':(datetime.now(timezone.utc)+timedelta(days=2)).date().isoformat(),
+                  'days':1, 'timezone_name':'UTC'}
+        for role, (uid, headers, channel) in actors.items():
+            response = self.client.get('/api/v1/me/tariffs', headers=headers, params={'role':'admin'})
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.headers['cache-control'], 'no-store')
+            private = [t for t in response.json() if t['id'] == tariff]
+            self.assertEqual(bool(private), role == 'admin')
+            self.request('GET', '/availability', 200 if role == 'admin' else 404, headers=headers, params=params)
+            if role != 'admin':
+                self.request('POST', '/campaigns', 404, headers=headers, json={'channel_id':str(channel),'tariff_id':tariff})
+        uid, headers, channel = actors['admin']
+        campaign = self.request('POST', '/campaigns', 201, headers=headers, json={'channel_id':str(channel),'tariff_id':tariff})
+        self.assertEqual(campaign['price_kopecks_snapshot'], 0)
+        self.assertEqual(campaign['moderation_status'], 'draft')
+        cid = campaign['id']
+        self.request('POST', '/campaigns/'+cid+'/submit', headers=headers)
+        approved = self.request('POST', '/operator/campaigns/'+cid+'/moderation', headers=headers, json={'decision':'approved'})
+        self.assertEqual(approved['payment_status'], 'verified')
+        self.assertEqual(approved['placement_status'], 'not_scheduled')
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM payment_attempts WHERE campaign_id=%s', (cid,)).fetchone()[0], 0)
+            conn.execute("UPDATE users SET role='advertiser' WHERE id=%s", (uid,))
+        # Действующая сессия после понижения роли больше не даёт служебный тариф.
+        self.assertNotIn(tariff, [t['id'] for t in self.request('GET', '/me/tariffs', headers=headers)])
+        self.request('POST', '/campaigns', 404, headers=headers, json={'channel_id':str(channel),'tariff_id':tariff})
+        # SQL-вставка фонового сервиса тоже защищена, даже если обойти фильтр API.
+        with self.assertRaises(psycopg.errors.InsufficientPrivilege):
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("""INSERT INTO campaigns(advertiser_user_id,channel_id,tariff_id,
+                    tariff_name_snapshot,duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot)
+                    SELECT %s,%s,id,name,duration_seconds,price_kopecks,currency FROM tariffs WHERE id=%s""", (uid,channel,tariff))
+
+    def test_admin_tariff_is_always_free_and_migration_preserves_settings(self):
+        tariff = '7f5b60e4-ecf1-4bc3-9e3a-cd5153f4a001'
+        admin = uuid4()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("INSERT INTO users(id,telegram_user_id,role) VALUES(%s,%s,'admin')", (admin,10**12+uuid4().int%10**12))
+        main.app.dependency_overrides[main.require_admin] = lambda: {'id':admin,'role':'admin'}
+        body = {'name':'Администратор','duration_seconds':86400,'price_kopecks':0,'stars_price_xtr':None,'is_active':True}
+        path = '/admin/tariffs/'+tariff
+        try:
+            self.request('PUT', path, 422, json={**body,'price_kopecks':100})
+            self.request('PUT', path, 422, json={**body,'stars_price_xtr':1})
+            self.request('PUT', path, 422, json={**body,'admin_only':False})
+            edited = self.request('PUT', path, json={**body,'name':'Служебный','duration_seconds':172800,'is_active':False})
+            self.assertTrue(edited['admin_only'])
+            with psycopg.connect(self.dsn) as conn:
+                for _ in range(2):
+                    conn.execute((ROOT / 'database/023_admin_free_tariff.sql').read_text())
+                self.assertEqual(conn.execute('SELECT name,duration_seconds,price_kopecks,stars_price_xtr,is_active,admin_only FROM tariffs WHERE id=%s', (tariff,)).fetchone(),
+                                 ('Служебный',172800,0,None,False,True))
+                self.assertEqual(conn.execute('SELECT count(*) FROM tariffs WHERE admin_only').fetchone()[0], 1)
+        finally:
+            self.request('PUT', path, json=body)
+            main.app.dependency_overrides.clear()
+
     def test_free_tariff_moderation_without_external_payment(self):
         owner, operator, tariff = uuid4(), uuid4(), uuid4()
         with psycopg.connect(self.dsn) as conn:

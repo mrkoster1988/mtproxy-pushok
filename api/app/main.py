@@ -21,7 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from psycopg.errors import ExclusionViolation, UniqueViolation
+from psycopg.errors import CheckViolation, ExclusionViolation, InsufficientPrivilege, UniqueViolation
 from psycopg.rows import dict_row
 from .bot_routes import router as bot_router
 from .bot_stars import router as bot_stars_router
@@ -49,7 +49,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.052",
+    version="0.053",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -104,6 +104,7 @@ class TariffResponse(BaseModel):
     duration_seconds: int
     price_kopecks: int
     currency: str
+    admin_only: bool = False
 
 
 class TariffAdminResponse(TariffResponse):
@@ -113,6 +114,7 @@ class TariffAdminResponse(TariffResponse):
 
 class TariffSettingsUpdate(BaseModel):
     """Редактируем тариф, не меняя уже зафиксированные цены заказов."""
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=100)
     duration_seconds: int = Field(ge=3600, le=31536000)
     price_kopecks: int = Field(ge=0, le=100000000)
@@ -477,27 +479,38 @@ def logout(user: dict[str, Any] = Depends(get_current_user)) -> None:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
 
 
-@app.get("/api/v1/tariffs", response_model=list[TariffResponse], tags=["tariffs"])
-def list_tariffs() -> list[TariffResponse]:
+def _available_tariffs(*, include_admin: bool = False) -> list[TariffResponse]:
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3) as connection:
             rows = connection.execute(
                 """
-                SELECT id, name, duration_seconds, price_kopecks, currency
+                SELECT id, name, duration_seconds, price_kopecks, currency, admin_only
                 FROM tariffs
-                WHERE is_active = TRUE
-                ORDER BY duration_seconds, price_kopecks
-                """
+                WHERE is_active = TRUE AND (NOT admin_only OR %s)
+                ORDER BY admin_only, duration_seconds, price_kopecks, id
+                """, (include_admin,),
             ).fetchall()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [
         TariffResponse(
             id=row[0], name=row[1], duration_seconds=row[2],
-            price_kopecks=row[3], currency=row[4].strip(),
+            price_kopecks=row[3], currency=row[4].strip(), admin_only=row[5],
         )
         for row in rows
     ]
+
+
+@app.get("/api/v1/tariffs", response_model=list[TariffResponse], tags=["tariffs"])
+def list_tariffs() -> list[TariffResponse]:
+    """Публичный каталог никогда не включает служебные тарифы."""
+    return _available_tariffs()
+
+
+@app.get("/api/v1/me/tariffs", response_model=list[TariffResponse], tags=["tariffs"])
+def list_available_tariffs(response: Response, user=Depends(get_current_user)):
+    response.headers["Cache-Control"] = "no-store"
+    return _available_tariffs(include_admin=user["role"] == "admin")
 
 
 @app.post("/api/v1/channels", response_model=ChannelResponse, status_code=201, tags=["channels"])
@@ -552,6 +565,7 @@ def create_campaign(
                        t.price_kopecks, t.currency, %s
                 FROM sponsor_channels AS c
                 JOIN tariffs AS t ON t.id = %s AND t.is_active = TRUE
+                  AND (NOT t.admin_only OR %s)
                 WHERE c.id = %s AND c.owner_user_id = %s
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
                           duration_seconds_snapshot, price_kopecks_snapshot,
@@ -560,8 +574,12 @@ def create_campaign(
                           scheduled_end_at, moderator_comment
                 """,
                 (user["id"], payload.requested_start_at, payload.tariff_id,
-                 payload.channel_id, user["id"]),
+                 user["role"] == "admin", payload.channel_id, user["id"]),
             ).fetchone()
+    except InsufficientPrivilege as exc:
+        if exc.diag.message_primary == "admin_tariff_required":
+            raise HTTPException(status_code=403, detail="admin_tariff_required") from None
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if row is None:
@@ -1783,8 +1801,8 @@ def list_admin_tariffs(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             rows = connection.execute(
                 """SELECT id, name, duration_seconds, price_kopecks, currency,
-                          is_active, stars_price_xtr
-                   FROM tariffs ORDER BY duration_seconds, id"""
+                          is_active, stars_price_xtr, admin_only
+                   FROM tariffs ORDER BY admin_only, duration_seconds, id"""
             ).fetchall()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
@@ -1806,7 +1824,7 @@ def update_admin_tariff(
                        stars_price_xtr = %s, is_active = %s
                    WHERE id = %s AND btrim(currency) = 'RUB'
                    RETURNING id, name, duration_seconds, price_kopecks,
-                             currency, stars_price_xtr, is_active""",
+                             currency, stars_price_xtr, is_active, admin_only""",
                 (payload.name, payload.duration_seconds, payload.price_kopecks,
                  payload.stars_price_xtr, payload.is_active, tariff_id),
             ).fetchone()
@@ -1825,6 +1843,10 @@ def update_admin_tariff(
             )
     except HTTPException:
         raise
+    except CheckViolation as exc:
+        if exc.diag.constraint_name == "tariffs_admin_free_check":
+            raise HTTPException(status_code=422, detail="admin_tariff_must_be_free") from None
+        raise HTTPException(status_code=503, detail="database_unavailable") from exc
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return TariffAdminResponse(**{**row, "currency": row["currency"].strip()})
@@ -2277,8 +2299,9 @@ def get_availability(
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             tariff = connection.execute(
-                "SELECT duration_seconds FROM tariffs WHERE id = %s AND is_active = TRUE",
-                (tariff_id,),
+                """SELECT duration_seconds FROM tariffs WHERE id = %s AND is_active = TRUE
+                   AND (NOT admin_only OR %s)""",
+                (tariff_id, user["role"] == "admin"),
             ).fetchone()
             if tariff is None:
                 raise HTTPException(status_code=404, detail="active_tariff_not_found")
@@ -2341,8 +2364,8 @@ def miniapp_client():
     html = (WEB_DIR / 'index.html').read_text()
     html = html.replace('initial-scale=1', 'initial-scale=1, viewport-fit=cover')
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
-    html = html.replace('<script src="/assets/app.js?v=052"',
-                        '<script src="/assets/miniapp.js?v=052" defer></script>\n  <script src="/assets/app.js?v=052"')
+    html = html.replace('<script src="/assets/app.js?v=053"',
+                        '<script src="/assets/miniapp.js?v=053" defer></script>\n  <script src="/assets/app.js?v=053"')
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
