@@ -6,7 +6,7 @@
 однократно установите новую версию и службу (root, /opt/mtproxy-pushok):
 
 ```bash
-cd /opt/mtproxy-pushok && git fetch origin release/stable && git merge --ff-only FETCH_HEAD && bash scripts/install_updater.sh
+cd /opt/mtproxy-pushok && git fetch origin release/stable && git merge --ff-only FETCH_HEAD && bash scripts/install_updater.sh --enable-stars
 ```
 
 Затем закройте Mini App и откройте снова. Настройки → Система → «Установить обновление».
@@ -20,7 +20,7 @@ cd /opt/mtproxy-pushok && git fetch origin release/stable && git merge --ff-only
 
 ## Оплата
 
-Настройки → Платежи → «Принимать Telegram Stars» → сохранить. Проверяется наличие
+Команда выше включает Stars с текущим токеном и режимом Telegram. Для ручного управления: Настройки → Платежи → «Принимать Telegram Stars» → сохранить. Проверяется наличие
 токена; цена XTR задаётся отдельно. Успех оплаты подтверждается только Telegram,
 не закрытием окна оплаты. Не считать живую оплату проверенной до успешного заказа.
 

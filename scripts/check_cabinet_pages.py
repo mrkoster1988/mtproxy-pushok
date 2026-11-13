@@ -314,7 +314,8 @@ def main():
                     headers={"Authorization": "Bearer " + sessions['outsider']})
                 assert response.status == 404
 
-                # Search, Back/Forward and help remain usable after mutations.
+                # Search is intentionally limited to campaign screens.
+                go(advertiser, 'campaigns')
                 advertiser.get_by_label('Поиск кампаний', exact=True).fill('несуществующий канал')
                 advertiser.get_by_label('Поиск кампаний', exact=True).press('Enter')
                 expect(advertiser.locator('#campaigns')).to_contain_text('Поиск не дал результатов')
@@ -547,6 +548,7 @@ def main():
                     expect(outside.locator('#workspace')).to_be_hidden()
                     other=mini_page(signed_data(user=json.dumps({'id':99116000,'first_name':'Mini App тест'}),query_id='mini-client-logout'))
                     expect(other.locator('body')).to_have_class('miniapp-mode cabinet-mode')
+                    other.locator('.cabinet-topbar .menu-toggle').click()
                     other.locator('#logout').click()
                     expect(other.locator('#miniapp-login')).to_contain_text('Вы вышли')
                     other.reload()
@@ -557,6 +559,27 @@ def main():
                         disabled=mini_page(disabled_raw)
                         expect(disabled.locator('#miniapp-login')).to_contain_text('пока не включён')
                         expect(disabled.locator('#workspace')).to_be_hidden()
+                # v0.051: compact settings, free tariff, and payment control form.
+                go(admin, 'settings')
+                expect(admin.get_by_label('Поиск кампаний', exact=True)).to_be_hidden()
+                admin.locator('#settings-tariffs-tab').click()
+                admin.locator('#tariff-admin-rub').fill('0')
+                admin.locator('#tariff-admin-stars').fill('0')
+                admin.locator('#tariff-admin-form button').click()
+                expect(admin.locator('#notice')).to_contain_text('Настройки тарифа сохранены')
+                toggle = admin.locator('#tariff-admin-active').bounding_box()
+                assert toggle['width'] <= 48 and toggle['height'] <= 32, toggle
+                admin.set_viewport_size({'width':390,'height':844})
+                admin.screenshot(path=str(output/'23-settings-free-mobile.png'), full_page=True)
+                assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth')
+                admin.locator('#settings-payments-tab').click()
+                with patch.dict(os.environ, {'PUSHOK_CONTROL_DIR':str(Path(PostgresIntegration.storage.name)/'control'),
+                                           'TELEGRAM_BOT_TOKEN':'123456:fixture_token_for_browser'}):
+                    admin.locator('#enable-stars').check()
+                    admin.locator('#payment-switches button').click()
+                    expect(admin.locator('#notice')).to_contain_text('Настройки оплаты сохранены')
+                    expect(admin.locator('#enable-stars')).to_be_checked()
+                    admin.screenshot(path=str(output/'24-payment-controls-mobile.png'), full_page=True)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))

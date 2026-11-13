@@ -858,6 +858,32 @@ class PostgresIntegration(unittest.TestCase):
                 "SELECT to_regclass('public.bot_operator_notice_outbox') IS NOT NULL"
             ).fetchone()[0])
 
+    def test_free_tariff_moderation_without_external_payment(self):
+        owner, operator, tariff = uuid4(), uuid4(), uuid4()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("INSERT INTO users(id, telegram_user_id, role) VALUES (%s, 99505101, 'advertiser'), (%s, 99505102, 'admin')", (owner, operator))
+            conn.execute("INSERT INTO tariffs(id,name,duration_seconds,price_kopecks,currency) VALUES (%s,'Бесплатно',86400,0,'RUB')", (tariff,))
+        actor = {"id": owner, "role": "advertiser"}
+        main.app.dependency_overrides[main.get_current_user] = lambda: actor
+        try:
+            channel = self.request('POST', '/channels', 201, json={'title':'Бесплатный канал','telegram_url':'https://t.me/pushok_free_test'})
+            campaign = self.request('POST', '/campaigns', 201, json={'channel_id':channel['id'],'tariff_id':str(tariff)})
+            self.assertEqual(campaign['payment_status'], 'not_required')
+            self.assertEqual(campaign['moderation_status'], 'draft')
+            cid = campaign['id']
+            self.request('POST', '/campaigns/'+cid+'/submit')
+            actor = {'id':operator, 'role':'admin'}
+            approved = self.request('POST', '/operator/campaigns/'+cid+'/moderation', json={'decision':'approved'})
+            self.assertEqual(approved['payment_status'], 'verified')
+            self.assertEqual(approved['placement_status'], 'not_scheduled')
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT count(*) FROM payment_attempts WHERE campaign_id=%s', (cid,)).fetchone()[0], 0)
+                # Повторная миграция сохраняет тариф и состояние кампании.
+                conn.execute((ROOT / 'database/022_free_tariffs.sql').read_text())
+                self.assertEqual(conn.execute('SELECT price_kopecks_snapshot FROM campaigns WHERE id=%s', (cid,)).fetchone()[0], 0)
+        finally:
+            main.app.dependency_overrides.clear()
+
     def test_campaign_lifecycle_and_slot_collision(self):
         owner, operator = uuid4(), uuid4()
         with psycopg.connect(self.dsn) as conn:

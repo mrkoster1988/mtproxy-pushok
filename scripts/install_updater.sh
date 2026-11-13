@@ -13,6 +13,7 @@ After=docker.service network-online.target
 Type=oneshot
 WorkingDirectory=/opt/mtproxy-pushok
 ExecStart=/usr/bin/python3 /opt/mtproxy-pushok/scripts/updater.py
+ExecStopPost=/usr/bin/python3 /opt/mtproxy-pushok/scripts/updater.py --finalize
 TimeoutStartSec=3600
 UMask=0077
 UNIT
@@ -30,4 +31,8 @@ printf '{"version":1}\n' > .control/installed.json
 chown 10001:10001 .control/installed.json
 chmod 0600 .control/installed.json
 systemctl enable --now mtproxy-pushok-updater.path
-if [[ "${1:-}" != --install-only ]]; then python3 scripts/updater.py --bootstrap; fi
+if [[ "${1:-}" != --install-only ]]; then
+  args=(--bootstrap)
+  [[ "${1:-}" != --enable-stars ]] || args+=(--enable-stars)
+  python3 scripts/updater.py "${args[@]}"
+fi

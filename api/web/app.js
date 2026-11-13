@@ -294,7 +294,7 @@ function card(c,op){
    }));
   }
   addHoldAction(c,box,actions);
-  if(!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected','proof_submitted','verified'].includes(c.payment_status)){
+  if(c.price_kopecks_snapshot>0&&!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected','proof_submitted','verified'].includes(c.payment_status)){
    actions.append(button('Реквизиты и сумма',async()=>{
     if(box.querySelector('.payment-instructions'))return;
     const data=await api('/campaigns/'+c.id+'/payment-instructions');
@@ -321,7 +321,7 @@ function card(c,op){
    }));
   }
   if(['draft','changes_requested'].includes(c.moderation_status))actions.append(button(c.moderation_status==='changes_requested'?'Отправить повторно':'Отправить на модерацию',async()=>{await api('/campaigns/'+c.id+'/submit',{method:'POST'});await refresh();notice('Заявка отправлена на проверку.',true);}));
-  if(!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected'].includes(c.payment_status)){
+  if(c.price_kopecks_snapshot>0&&!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected'].includes(c.payment_status)){
    const input=el('input');input.type='file';input.accept='image/jpeg,image/png,application/pdf';input.setAttribute('aria-label','Подтверждение оплаты');
    actions.append(input,button('Загрузить чек',async()=>{if(!input.files[0])throw Error('Выберите чек.');if(input.files[0].size>5*1024*1024)throw Error('Файл должен быть меньше 5 МБ.');const data=new FormData();data.append('file',input.files[0]);await api('/campaigns/'+c.id+'/payment-proofs',{method:'POST',body:data});await refresh();notice('Чек отправлен на проверку.',true);}));
   }

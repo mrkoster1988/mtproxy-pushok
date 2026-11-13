@@ -199,7 +199,7 @@
   const own=state.campaigns;
   table(reportRows,own.map(c=>[link(c.channel_title||c.id.slice(0,8),'campaign/'+c.id),badge(c.placement_status),button('Открыть отчёт',async()=>{reportRows.querySelectorAll('.campaign-report').forEach(x=>x.remove());await showCampaignReport(c,reportRows);}),button('Скачать CSV',()=>downloadCampaignCsv(c))]),['Кампания','Размещение','История','Экспорт']);
   const approved=own.filter(c=>c.moderation_status==='approved');
-  table(paymentRows,approved.map(c=>[link(c.channel_title||c.id.slice(0,8),'payments/'+c.id),money(c.price_kopecks_snapshot),badge(c.payment_status),link('Открыть оплату','payments/'+c.id)]),['Кампания','Цена заявки','Статус','Действие']);
+  table(paymentRows,approved.map(c=>[link(c.channel_title||c.id.slice(0,8),'payments/'+c.id),money(c.price_kopecks_snapshot),(c.price_kopecks_snapshot===0?'Бесплатно':badge(c.payment_status)),link(c.price_kopecks_snapshot===0?'Открыть размещение':'Открыть оплату','payments/'+c.id)]),['Кампания','Цена заявки','Статус','Действие']);
   paymentRows.prepend(el('p',miniAppMode?'Для оплаты сначала требуется одобрение канала. Stars доступны в карточке оплаты при включении на сервере.':'Для оплаты сначала требуется одобрение канала. СБП — во внешнем кабинете после настройки владельцем. Stars — через бота при включении на сервере.','muted'));
   operatorNodes.replaceChildren();if(me.role==='operator')table(operatorNodes,nodes.map(n=>[n.name,n.host+':'+n.port,n.status==='active'?'В реестре: активен':'На паузе']),['Узел','Адрес','Статус реестра']);
   metrics('sponsors',[['Узлов в реестре',nodes.length,'Доступность отдельно не проверялась']]);
@@ -236,6 +236,8 @@
   }catch(e){if(current()){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку Stars',()=>renderStars(c,panel)));}}
  }
  async function renderSbp(c,panel){
+  if(c.price_kopecks_snapshot===0){panel.replaceChildren(el('h3','Бесплатное размещение'),el('p',c.moderation_status==='approved'?'Канал одобрен. Оплата не требуется; время размещения назначит оператор.':'После одобрения канала оплата не потребуется.'));return;}
+
   if(miniAppMode){await renderStars(c,panel);return;}
   const base='/campaigns/'+c.id+'/sbp';
   async function paint(data){
