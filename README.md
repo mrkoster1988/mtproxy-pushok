@@ -32,7 +32,7 @@ MTProxy Pushok — самостоятельный проект для устан
 Для нового отдельного VPS с **Ubuntu 24.04 LTS**. Войдите по SSH и выполните `sudo -i`, затем вставьте команду целиком:
 
 ```bash
-bash -c 'set -e; test "$(id -u)" -eq 0 || { echo "Сначала войдите как root: sudo -i"; exit 1; }; test ! -e /opt/mtproxy-pushok || { echo "Каталог /opt/mtproxy-pushok уже существует. Используйте раздел повторного запуска инструкции."; exit 1; }; apt-get update; apt-get install -y git ca-certificates; git clone --branch main --single-branch https://github.com/mrkoster1988/mtproxy-pushok.git /opt/mtproxy-pushok; cd /opt/mtproxy-pushok; exec bash setup.sh'
+bash -c 'set -e; test "$(id -u)" -eq 0 || { echo "Сначала войдите как root: sudo -i"; exit 1; }; test ! -e /opt/mtproxy-pushok || { echo "Каталог /opt/mtproxy-pushok уже существует. Используйте раздел повторного запуска инструкции."; exit 1; }; apt-get update; apt-get install -y git ca-certificates python3 util-linux; git clone --branch main --single-branch https://github.com/mrkoster1988/mtproxy-pushok.git /opt/mtproxy-pushok; cd /opt/mtproxy-pushok; exec bash setup.sh'
 ```
 
 Команда скачивает весь репозиторий в `/opt/mtproxy-pushok` и открывает диалог с вариантами ответов. В мастере можно выбрать прокси, кабинет или оба компонента, затем настроить Telegram, Mini App и HTTPS. Существующий каталог не перезаписывается.
@@ -115,6 +115,7 @@ Stars оформляются в Telegram, СБП — во внешнем веб-
 - [Установка: одна команда, пояснения и 19 готовых ответов](docs/INSTALL_QUICKSTART.md).
 - [Приватный стенд, обновление и резервные копии](docs/STAGING.md).
 - [Предпусковая проверка конфигурации без раскрытия секретов](docs/STAGING_PREFLIGHT.md).
+- [Повторный запуск и восстановление после ошибки установки](docs/INSTALL_RECOVERY.md).
 - [13 страниц кабинета, маршруты и API](docs/CABINET_PAGES.md).
 - [Официальный Docker MTProxy](docs/MTProxy_OFFICIAL_DOCKER.md) · [Сборка ядра](docs/SOURCE_CORE.md).
 - [Иконки интерфейса](docs/PUSHOK_ICONS.md) · [Иллюстрации и стиль](docs/assets/pushok/README.md).

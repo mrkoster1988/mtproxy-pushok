@@ -21,10 +21,10 @@
 Вставьте в SSH-терминал под root целиком:
 
 ```bash
-bash -c 'set -e; test "$(id -u)" -eq 0 || { echo "Сначала войдите как root: sudo -i"; exit 1; }; test ! -e /opt/mtproxy-pushok || { echo "Каталог /opt/mtproxy-pushok уже существует. Используйте раздел повторного запуска инструкции."; exit 1; }; apt-get update; apt-get install -y git ca-certificates; git clone --branch main --single-branch https://github.com/mrkoster1988/mtproxy-pushok.git /opt/mtproxy-pushok; cd /opt/mtproxy-pushok; exec bash setup.sh'
+bash -c 'set -e; test "$(id -u)" -eq 0 || { echo "Сначала войдите как root: sudo -i"; exit 1; }; test ! -e /opt/mtproxy-pushok || { echo "Каталог /opt/mtproxy-pushok уже существует. Используйте раздел повторного запуска инструкции."; exit 1; }; apt-get update; apt-get install -y git ca-certificates python3 util-linux; git clone --branch main --single-branch https://github.com/mrkoster1988/mtproxy-pushok.git /opt/mtproxy-pushok; cd /opt/mtproxy-pushok; exec bash setup.sh'
 ```
 
-Команда обновляет список пакетов, устанавливает Git и сертификаты, скачивает проект с GitHub в `/opt/mtproxy-pushok` и открывает мастер `setup.sh`. Она не требует заранее загружать install-файл на VPS. При наличии каталога останавливается, не удаляя его. Полное обновление Ubuntu и перезагрузка этой командой не выполняются.
+Команда обновляет список пакетов, устанавливает Git, сертификаты, Python 3 и util-linux (flock), скачивает проект с GitHub в `/opt/mtproxy-pushok` и открывает мастер `setup.sh`. Она не требует заранее загружать install-файл на VPS. При наличии каталога останавливается, не удаляя его. Полное обновление Ubuntu и перезагрузка этой командой не выполняются.
 
 Затем мастер, после вашего подтверждения, устанавливает необходимые компоненты: Docker/Compose для кабинета, PostgreSQL, API, бота, Caddy при выборе нового HTTPS; для классического MTProxy — компилятор, OpenSSL/zlib и systemd-службу. Пароли БД и внутренние секреты создаются автоматически. Отдельные драйверы не нужны.
 
@@ -154,3 +154,5 @@ bash setup.sh
 ## Предпусковая проверка после настройки
 
 Под владельцем `.env` выполните `bash scripts/staging_preflight.sh`. Проверка не изменяет файлы и не запускает сервисы; она показывает ошибки конфигурации без значений секретов. [Режим без Docker, JSON-отчёт и готовые действия при ошибках](STAGING_PREFLIGHT.md).
+
+После обновления мастер сохраняет PostgreSQL dump в приватный `.backups/`, затем применяет миграции одной транзакцией. [Что делать при ошибке, повторный запуск и границы резервной копии](INSTALL_RECOVERY.md). Для кабинета нужны Python 3 и `flock` (util-linux); они обычно есть в Ubuntu 24.04, мастер проверяет их наличие.

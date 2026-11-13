@@ -62,9 +62,9 @@ class UnifiedBotInstallerTests(unittest.TestCase):
 
     def test_only_one_compose_project_for_cabinet_and_bot(self):
         source = SOURCE.read_text(encoding="utf-8")
-        self.assertIn("docker compose --profile bot config --quiet", source)
-        self.assertIn("docker compose --profile bot up --build -d", source)
-        self.assertIn("docker compose --profile bot ps -q --status running bot", source)
+        self.assertIn('bash scripts/staging_preflight.sh "${preflight_args[@]}"', source)
+        self.assertIn("compose --profile bot up --build -d", source)
+        self.assertIn("compose --profile bot ps -q --status running bot", source)
         self.assertNotIn("docker compose down -v", source)
 
     def test_shell_syntax(self):

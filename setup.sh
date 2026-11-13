@@ -21,11 +21,15 @@ if [[ "$*" == "--core-tcp-plan" ]]; then
   python3 "$ROOT/scripts/core_tcp_smoke.py" --plan
   exit 0
 fi
+[[ $# -eq 0 || "$*" == "--plan" ]] || { echo "Неизвестный параметр. Используйте bash setup.sh --help." >&2; exit 2; }
 PLAN=false
 [[ "$*" != "--plan" ]] || PLAN=true
 ROOT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 if ! { exec 3</dev/tty; } 2>/dev/null; then exec 3<&0; fi
-trap 'echo "Установка остановлена. Существующие данные не удалены; проверьте сообщение выше." >&2' ERR
+INSTALL_STAGE="диалог настройки"
+trap 'echo "Установка остановлена: $INSTALL_STAGE. Не удаляйте тома; порядок повторного запуска описан в docs/INSTALL_RECOVERY.md." >&2' ERR
+runtime() { python3 "$ROOT_DIR/scripts/installer_runtime.py" --root "$ROOT_DIR" "$@"; }
+compose() { runtime compose "$@"; }
 choose() {
   local target="$1" title="$2" fallback="$3" answer
   shift 3
@@ -131,6 +135,7 @@ MINIAPP_ENABLED=0
 MINIAPP_URL=""
 STARS_ENABLED=0
 if [[ "$COMPONENTS" != 1 ]]; then
+  [[ ! -L "$ROOT_DIR/.env" ]] || { echo ".env не должен быть символьной ссылкой." >&2; exit 1; }
   if [[ -f "$ROOT_DIR/.env" ]]; then
     choose EXISTING "Найдена существующая настройка" 1 "Сохранить настройки и обновить сервисы" "Изменить инструкцию оплаты и обновить" "Завершить без изменений" "Запустить Telegram-бота из сохранённых настроек"
     [[ "$EXISTING" != 3 ]] || exit 0
@@ -168,8 +173,8 @@ if [[ "$COMPONENTS" != 1 ]]; then
     if [[ "$HTTPS" != 3 ]]; then domain_input CABINET_DOMAIN; fi
     while true; do
       ask API_PORT "Локальный порт API" "$PORT_DEFAULT"
-      if [[ "$API_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && ((API_PORT<=65535)); then break; fi
-      echo "Порт должен быть от 1 до 65535." >&2
+      if [[ "$API_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && ((API_PORT>=1024 && API_PORT<=65535)); then break; fi
+      echo "Порт должен быть от 1024 до 65535." >&2
     done
     choose TELEGRAM "Настроить Telegram-вход?" 1 "Настроить сейчас" "Позже (вход временно недоступен)"
     BOT_TOKEN=""
@@ -225,6 +230,7 @@ if [[ "$COMPONENTS" != 1 ]]; then
   fi
 fi
 if [[ "$COMPONENTS" != 2 ]]; then
+  INSTALL_STAGE="установка MTProxy"
   if [[ "$PROXY_ENGINE" == 1 ]]; then
     echo "Движок: telegrammessenger/proxy:latest (Docker, изолированный проект)." >&2
     echo "После подтверждения будут дополнительные вопросы о порте и TAG." >&2
@@ -270,7 +276,19 @@ if "$PLAN"; then echo "План собран. Режим --plan: изменен�
 [[ "$(id -u)" == 0 ]] || { echo "Запустите: sudo bash setup.sh"; exit 1; }
 command -v apt-get >/dev/null || { echo "Требуется Ubuntu/Debian с apt."; exit 1; }
 cd "$ROOT_DIR"
+INSTALL_STAGE="блокировка установщика"
+command -v flock >/dev/null || { echo "Нужен flock из пакета util-linux." >&2; exit 1; }
+exec 9<"$ROOT_DIR"
+flock -n 9 || { echo "В этом каталоге уже работает установщик. Дождитесь его завершения." >&2; exit 1; }
 if [[ "$COMPONENTS" != 1 ]]; then
+  INSTALL_STAGE="проверка существующей конфигурации"
+  command -v python3 >/dev/null || { echo "Для кабинета нужен python3 (Ubuntu: apt-get install python3)." >&2; exit 1; }
+  preflight_args=()
+  "$BOT_LAUNCH" || preflight_args+=(--allow-telegram-deferred)
+  if ! "$NEW_CONFIG"; then
+    bash scripts/staging_preflight.sh --config-only "${preflight_args[@]}"
+  fi
+  INSTALL_STAGE="подготовка пакетов и Docker"
   if "$NEW_CONFIG"; then
     apt-get update
     apt-get install -y openssl curl iproute2
@@ -291,7 +309,8 @@ if [[ "$COMPONENTS" != 1 ]]; then
     DB_PASSWORD="$(openssl rand -hex 32)"
     SESSION_KEY="$(openssl rand -hex 32)"
     BOT_INTERNAL_SECRET="$(openssl rand -hex 32)"
-    cat > .env <<EOF
+    INSTALL_STAGE="создание приватной конфигурации"
+    runtime write-env <<EOF
 COMPOSE_PROJECT_NAME=$PROJECT_NAME
 POSTGRES_DB=mtproxy_pushok
 POSTGRES_USER=mtproxy_pushok
@@ -311,7 +330,6 @@ PUSHOK_SBP_WEBHOOK_ENABLED=0
 API_BIND_PORT=$API_PORT
 PAYMENT_INSTRUCTIONS_B64=$PAYMENT_B64
 EOF
-    chmod 0600 .env
     if [[ "$HTTPS" == 2 ]]; then
       printf '%s {\n reverse_proxy api:8000\n}\n' "$CABINET_DOMAIN" > Caddyfile
       cat > compose.override.yaml <<'EOF'
@@ -339,72 +357,62 @@ EOF
   fi
   command -v curl >/dev/null || { apt-get update; apt-get install -y curl; }
   if "$PAYMENT_CHANGED" && ! "$NEW_CONFIG"; then
-    umask 077
-    payment_env="$(mktemp .env.payments.XXXXXX)"
-    sed '/^PAYMENT_INSTRUCTIONS_B64=/d' .env > "$payment_env"
-    printf 'PAYMENT_INSTRUCTIONS_B64=%s\n' "$PAYMENT_B64" >> "$payment_env"
-    chmod 0600 "$payment_env"
-    mv "$payment_env" .env
+    INSTALL_STAGE="обновление инструкции оплаты"
+    printf '%s' "$PAYMENT_B64" | runtime set-payment
   fi
-  if "$BOT_LAUNCH"; then
-    docker compose --profile bot config --quiet
-  else
-    docker compose config --quiet
-  fi
-  docker compose up -d db
+  INSTALL_STAGE="проверка итогового Compose"
+  bash scripts/staging_preflight.sh "${preflight_args[@]}"
+  INSTALL_STAGE="ожидание PostgreSQL"
+  compose up -d db
   ready=false
   for attempt in $(seq 1 60); do
-    if docker compose exec -T db sh -c 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null; then ready=true; break; fi
+    if compose exec -T db sh -c 'pg_isready -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null; then ready=true; break; fi
     sleep 2
   done
   "$ready" || { echo "PostgreSQL не готов. Проверьте docker compose logs db."; exit 1; }
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/002_telegram_auth.sql
-  # Идемпотентная миграция: сохраняет старые заявки и добавляет защиту от повторов.
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/003_bot_draft_idempotency.sql
-  # Уведомления модераторов: таблица opt-in, существующие кампании не меняем.
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/004_operator_bot_subscriptions.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/005_operator_notice_outbox.sql
-  # Уведомления рекламодателю при любом решении модератора (веб и Telegram).
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/006_advertiser_notice_outbox.sql
-  # Реестр официальных MTProxyBot ad_tag без изменения живого прокси.
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/007_proxy_sponsor_registration.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/008_official_docker_engine.sql
-  # Безопасная повторяемая миграция: старые proxy_nodes остаются без target_engine.
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/009_unified_engine_selection.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/010_slot_holds.sql
-  # Журнал ручного наблюдения спонсорского показа, без автозапуска Telegram.
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/011_placement_observations.sql
-  # Скриншоты ручных проверок (приватная миграция).
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/012_placement_evidence.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/013_payment_attempts.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/014_flexible_tariff_prices.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/015_stars_checkout.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/016_sbp_web_checkout.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/017_sbp_background.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/018_sbp_webhook.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/019_sbp_review_revision.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/020_stars_invoice_link.sql
-  docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < database/021_telegram_test_environment.sql
+  INSTALL_STAGE="резервная копия PostgreSQL перед миграциями"
+  runtime backup
+  INSTALL_STAGE="миграции базы данных"
+  migrations=(
+    database/002_telegram_auth.sql
+    database/003_bot_draft_idempotency.sql
+    database/004_operator_bot_subscriptions.sql
+    database/005_operator_notice_outbox.sql
+    database/006_advertiser_notice_outbox.sql
+    database/007_proxy_sponsor_registration.sql
+    database/008_official_docker_engine.sql
+    database/009_unified_engine_selection.sql
+    database/010_slot_holds.sql
+    database/011_placement_observations.sql
+    database/012_placement_evidence.sql
+    database/013_payment_attempts.sql
+    database/014_flexible_tariff_prices.sql
+    database/015_stars_checkout.sql
+    database/016_sbp_web_checkout.sql
+    database/017_sbp_background.sql
+    database/018_sbp_webhook.sql
+    database/019_sbp_review_revision.sql
+    database/020_stars_invoice_link.sql
+    database/021_telegram_test_environment.sql
+  )
+  runtime migrate "${migrations[@]}"
+  INSTALL_STAGE="назначение владельца"
   if [[ -n "$ADMIN_ID" ]]; then
     printf "INSERT INTO users (telegram_user_id, role) VALUES (%s, 'admin') ON CONFLICT (telegram_user_id) DO UPDATE SET role='admin';\n" "$ADMIN_ID" |
-      docker compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+      compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
   fi
+  INSTALL_STAGE="сборка и запуск сервисов"
   if "$BOT_LAUNCH"; then
-    docker compose --profile bot up --build -d
+    compose --profile bot up --build -d
   else
-    docker compose up --build -d
+    compose up --build -d
   fi
-  port="$(sed -n 's/^API_BIND_PORT=//p' .env)"
-  [[ -n "$port" ]] || port=8000
-  ready=false
-  for attempt in $(seq 1 60); do
-    if curl -fsS "http://127.0.0.1:$port/health/ready" >/dev/null; then ready=true; break; fi
-    sleep 2
-  done
-  "$ready" || { echo "API не готов. Проверьте docker compose logs api."; exit 1; }
+  INSTALL_STAGE="проверка ответа API и соединения с БД"
+  port="$(runtime port)"
+  runtime wait-api
   echo "Кабинет отвечает: http://127.0.0.1:$port"
   if "$BOT_LAUNCH"; then
-    if [[ -z "$(docker compose --profile bot ps -q --status running bot)" ]]; then
+    if [[ -z "$(compose --profile bot ps -q --status running bot)" ]]; then
       echo "Бот не работает. Проверьте: docker compose --profile bot ps bot; docker compose --profile bot logs --tail=50 bot. Не публикуйте секреты." >&2
       exit 1
     fi
@@ -415,6 +423,7 @@ EOF
   echo "Домен входа Telegram зарегистрируйте у бота в BotFather."
 fi
 if [[ "$COMPONENTS" != 2 ]]; then
+  INSTALL_STAGE="установка MTProxy"
   if [[ "$PROXY_ENGINE" == 1 ]]; then
     install_docker
     if ! command -v ss >/dev/null 2>&1; then
@@ -428,4 +437,5 @@ if [[ "$COMPONENTS" != 2 ]]; then
     bash "$ROOT_DIR/install.sh" <&3
   fi
 fi
-echo "Настройка завершена. .env содержит секреты; права доступа 0600."
+echo "Настройка завершена. Живые Telegram, платежи и спонсор требуют отдельной проверки."
+if [[ "$COMPONENTS" != 1 ]]; then echo ".env: 0600. Копия PostgreSQL перед миграциями: .backups (0700). Это не полная копия установки."; fi
