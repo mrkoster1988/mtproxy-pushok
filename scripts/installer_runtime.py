@@ -115,7 +115,9 @@ def backup_database(root):
                 stdout=output, stderr=subprocess.DEVNULL, timeout=300)
             output.flush()
             os.fsync(output.fileno())
-        with destination.open('rb') as dump:
+        # Небуферизованный файл: subprocess получает fd с той же позицией,
+        # что и Python, без прочитанного заранее буфера после проверки заголовка.
+        with destination.open('rb', buffering=0) as dump:
             if dump.read(5) != b'PGDMP':
                 raise InstallError('PostgreSQL вернул неполную резервную копию.')
             dump.seek(0)

@@ -108,6 +108,9 @@ class InstallerRuntimeTests(unittest.TestCase):
             calls.append(args)
             if 'pg_restore' not in args:
                 kwargs['stdout'].write(b'PGDMPfake-test-dump')
+            else:
+                self.assertEqual(os.lseek(kwargs['stdin'].fileno(), 0, os.SEEK_CUR), 0)
+                self.assertEqual(os.read(kwargs['stdin'].fileno(), 5), b'PGDMP')
         with patch.object(runtime, 'run', side_effect=fake):
             path = runtime.backup_database(self.root)
         self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
