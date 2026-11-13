@@ -753,6 +753,14 @@ def main():
                 expect(admin.locator('.help-popup')).to_be_hidden()
                 admin.evaluate('window.scrollTo(0,0)')
                 go(advertiser,'channels')
+                expect(advertiser.locator('.channel-manager').get_by_role('button',name='Изменить канал',exact=True)).to_have_count(3)
+                for width in (390,320):
+                    advertiser.set_viewport_size({'width':width,'height':844})
+                    for action in advertiser.locator('.channel-manager .management-actions>button').all():
+                        rect=action.bounding_box()
+                        assert rect['x']>=0 and rect['x']+rect['width']<=width+1,rect
+                    assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                advertiser.set_viewport_size({'width':390,'height':844})
                 advertiser.screenshot(path=str(output/'32-management-actions-mobile.png'),full_page=True)
                 advertiser.set_viewport_size({'width':1440,'height':1000})
                 assert not failures, failures

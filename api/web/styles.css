@@ -552,3 +552,20 @@ body.miniapp-loading #workspace{visibility:hidden}
 .management-form label{display:grid;gap:6px}.management-form textarea{min-height:80px}.management-form button{min-height:44px}
 .cabinet-mode label,.cabinet-mode button,.cabinet-mode select,.cabinet-mode input{scroll-margin-top:calc(var(--mini-safe-top,0px) + 130px)}
 @media(max-width:760px){.cabinet-mode .cabinet-topbar{flex-wrap:wrap;gap:6px;padding:8px 0;min-height:60px}.cabinet-mode .cabinet-account{font-size:12px;max-width:110px}.cabinet-topbar .menu-toggle{padding:8px 10px}.cabinet-mode #notice{right:12px;max-width:calc(100vw - 24px)}.management-actions button{white-space:normal}}
+
+/* На телефоне действия канала видны сразу, без горизонтального поиска. */
+@media(max-width:760px){
+ .cabinet-mode .channel-manager .table-scroll{overflow:visible;border:0;background:transparent}
+ .cabinet-mode .channel-manager table{display:block;min-width:0;width:100%}
+ .cabinet-mode .channel-manager thead{display:none}
+ .cabinet-mode .channel-manager tbody{display:grid;gap:12px}
+ .cabinet-mode .channel-manager tr{display:grid;min-width:0;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+ .cabinet-mode .channel-manager td{display:block;min-width:0;max-width:100%;padding:6px 0;border:0;white-space:normal;overflow-wrap:anywhere}
+ .cabinet-mode .channel-manager td:first-child{min-width:0;font-weight:700}
+ .cabinet-mode .channel-manager a{white-space:normal;overflow-wrap:anywhere}
+ .cabinet-mode .channel-manager td:last-child>div>a{display:inline-block;margin:6px 0}
+ .cabinet-mode .channel-manager .management-actions{display:grid;gap:8px;margin-top:6px}
+ .cabinet-mode .channel-manager .management-actions>button{width:100%;margin:0}
+ .cabinet-mode .channel-manager .management-form{min-width:0;margin:0;padding:10px}
+ .cabinet-mode .channel-manager .management-form input{min-width:0;width:100%}
+}

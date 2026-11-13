@@ -191,6 +191,7 @@
   metrics('campaigns',[['Всего',state.campaigns.length,'Ваши заявки'],['Ожидают оплаты',state.campaigns.filter(c=>c.payment_status==='awaiting_payment').length,'После модерации'],['Завершены',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным системы']]);
   renderQuote();metrics('calendar',[['Часовой пояс',calendarZone,'Время в календаре'],['Период',14,'Дней в запросе доступности']]);
   metrics('reports',[['Кампаний',state.campaigns.length,'В вашем аккаунте'],['В эфире',state.campaigns.filter(c=>c.placement_status==='active').length,'По ручной отметке оператора'],['Завершено',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным API']]);
+  channelRows.classList.add('channel-manager');
   table(channelRows,channels.map(c=>{const action=link('Создать кампанию','create');action.addEventListener('click',()=>{$('channel-select').value=c.id;window.pushokOrder.selectChannel();renderQuote();});const tools=el('div');tools.append(action,window.pushokManagement?.channelActions(c)||el('span'));return [c.title,safeChannel(c.telegram_url,c.telegram_url),tools];}),['Название','Ссылка','Действие']);
   table(summaryRows,campaignRows(state.campaigns.slice(0,5)),campaignHeaders);renderList();
   onboarding.hidden=sessionStorage.getItem('pushok-onboarding-hidden')==='1';
