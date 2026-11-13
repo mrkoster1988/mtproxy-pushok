@@ -119,6 +119,13 @@ class TariffSettingsUpdate(BaseModel):
     stars_price_xtr: int | None = Field(ge=0, le=1000000)
     is_active: bool
 
+    @field_validator("price_kopecks")
+    @classmethod
+    def positive_sbp_minimum(cls, value):
+        if 0 < value < 100:
+            raise ValueError("price_must_be_zero_or_at_least_one_ruble")
+        return value
+
     @field_validator("stars_price_xtr")
     @classmethod
     def zero_stars(cls, value):

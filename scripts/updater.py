@@ -90,14 +90,16 @@ def main():
                 run('git', 'merge-base', '--is-ancestor', old, target)
             else:
                 target = old
+            running = run('python3', 'scripts/installer_runtime.py', 'compose', '--profile', 'bot', 'ps', '--services', '--status', 'running', capture=True).splitlines()
+            profile = ['--profile', 'bot'] if 'bot' in running else []
             # Full private archive includes DB, uploads, .env and deployment configuration.
             run('python3', 'scripts/cabinet_backup.py', 'create', '--allow-downtime')
             if target != old:
                 run('git', 'merge', '--ff-only', target)
-            run('python3', 'scripts/installer_runtime.py', 'compose', '--profile', 'bot', 'build')
+            run('python3', 'scripts/installer_runtime.py', 'compose', *profile, 'build')
             migrations = sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'database').glob('*.sql') if not p.name.startswith('001_'))
             run('python3', 'scripts/installer_runtime.py', 'migrate', *migrations)
-            run('python3', 'scripts/installer_runtime.py', 'compose', '--profile', 'bot', 'up', '-d')
+            run('python3', 'scripts/installer_runtime.py', 'compose', *profile, 'up', '-d')
             run('python3', 'scripts/installer_runtime.py', 'wait-api')
             run('python3', 'scripts/repair_proxy.py')
             if '--enable-stars' in sys.argv and '--bootstrap' in sys.argv:

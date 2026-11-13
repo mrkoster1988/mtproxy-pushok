@@ -81,3 +81,16 @@ class UpdaterTests(unittest.TestCase):
             updater.main()
         run.assert_not_called()
         self.assertEqual(json.loads((self.root / '.control/status.json').read_text())['state'], 'failed')
+
+    def test_bot_profile_preserves_running_selection(self):
+        for running, expected in [('api\ndb\n', False), ('api\ndb\nbot\n', True)]:
+            self.request()
+            self.commands.clear()
+            def run(*args, **kwargs):
+                if 'ps' in args:
+                    return running
+                return self.fake_run(*args, **kwargs)
+            with patch.object(updater, 'run', side_effect=run):
+                updater.main()
+            up = next(c for c in self.commands if 'up' in c)
+            self.assertEqual('--profile' in up, expected)

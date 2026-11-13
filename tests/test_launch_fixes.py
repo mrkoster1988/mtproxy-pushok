@@ -54,3 +54,14 @@ class LaunchFixes(unittest.TestCase):
   call=Mock(side_effect=err);nav=Navigation(call);nav.messages[1]=5
   nav.deliver('t',{'callback_query':{'data':'tariffs'}},{'chat_id':1,'text':'prices'})
   self.assertEqual(call.call_count,1)
+
+ def test_campaign_payment_screen_is_never_edited_or_deleted(self):
+  for cached in (None, 5):
+   call=Mock(return_value={'message_id':10});nav=Navigation(call)
+   if cached: nav.messages[1]=cached
+   update={'callback_query':{'data':'help','message':{'message_id':8,'reply_markup':{'inline_keyboard':[[{'callback_data':'tariffs'},{'callback_data':'stars:order'}]]}}}}
+   nav.deliver('t',update,{'chat_id':1,'text':'help'})
+   self.assertEqual(call.call_args_list[0].args[1],'sendMessage')
+   for record in call.call_args_list:
+    self.assertNotEqual(record.args[1],'editMessageText')
+    self.assertNotEqual(record.args[2].get('message_id'),8)

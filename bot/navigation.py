@@ -18,12 +18,9 @@ class Navigation:
         if command not in TRANSIENT:
             return self.call(token, 'sendMessage', payload)
         old = self.messages.get(chat)
-        # После рестарта редактируем только меню со знакомыми навигационными кнопками.
-        source = cb.get('message') or {}
-        buttons = [b for row in source.get('reply_markup', {}).get('inline_keyboard', []) for b in row]
-        if cb and any(b.get('callback_data') == 'tariffs' for b in buttons):
-            old = source.get('message_id')
-        if old:
+        # Только ID меню, которое мы сами создали. Кнопки меню встречаются и у счетов.
+        source_id = (cb.get('message') or {}).get('message_id')
+        if old and (source_id is None or source_id == old):
             try:
                 result = self.call(token, 'editMessageText', dict(payload, message_id=old))
                 self.messages[chat] = old

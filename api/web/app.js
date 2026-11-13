@@ -520,6 +520,8 @@ $('tariff-admin-form').addEventListener('submit',e=>{e.preventDefault();run(asyn
     !Number.isInteger(kopecks)||kopecks<0||kopecks>100000000||
     (stars!==null&&(!Number.isInteger(stars)||stars<0||stars>1000000)))
   throw Error('Укажите допустимую цену, длительность и количество Stars.');
+ if(kopecks>0&&kopecks<100)throw Error('Для СБП укажите от 1 ₽; для бесплатного тарифа — 0 ₽.');
+ if(kopecks===0&&stars>0)throw Error('Для бесплатного тарифа укажите 0 Stars или оставьте поле пустым.');
  const body={name:$('tariff-admin-name').value.trim(),duration_seconds:duration,
              price_kopecks:kopecks,stars_price_xtr:stars,
              is_active:$('tariff-admin-active').checked};
