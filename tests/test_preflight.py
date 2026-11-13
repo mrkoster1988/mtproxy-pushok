@@ -25,7 +25,6 @@ def fixture(root: Path) -> None:
         "database/002_second.sql": "SELECT 2;\n",
         "database/003_third.sql": "SELECT 3;\n",
         ".github/workflows/check.yml": "python3 scripts/preflight.py\npython -m unittest discover -s tests -v\n",
-        ".gitlab-ci.yml": "python3 scripts/preflight.py\npython -m unittest discover -s tests -v\n",
     }
     for relative, content in files.items():
         path = root / relative

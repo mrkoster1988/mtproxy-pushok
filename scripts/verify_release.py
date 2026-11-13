@@ -97,8 +97,7 @@ def verify(root, mode="offline", *, allow_test_db=False, env=None):
         allowed = (
             allow_test_db
             and env.get("PUSHOK_TEST_DB_ALLOWED") == "1"
-            and allowed_test_dsn(dsn, ci=env.get("CI") == "true"
-                                 or env.get("GITLAB_CI") == "true")
+            and allowed_test_dsn(dsn, ci=env.get("CI") == "true")
         )
         checks.append(result("isolated_test_database", allowed,
                              "explicit_opt_in_marker_and_test_postgres_required"))
