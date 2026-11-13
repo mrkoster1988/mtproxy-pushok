@@ -37,7 +37,14 @@ def main():
         source = source.replace(marker, marker + '\n# pushok explicit route\nset -- "$@" --address '+local+' --nat-info '+local+':'+public)
         tmp = runner.with_suffix('.new')
         tmp.write_text(source);tmp.chmod(0o755);tmp.replace(runner)
-        subprocess.run(['systemctl','restart','mtproxy-pushok.service'],check=True)
+        try:
+            subprocess.run(['systemctl','restart','mtproxy-pushok.service'],check=True)
+            subprocess.run(['systemctl','is-active','--quiet','mtproxy-pushok.service'],check=True)
+        except subprocess.CalledProcessError:
+            # Ошибка запуска возвращает предыдущий runner, без смены секрета.
+            shutil.copy2(backup, runner)
+            subprocess.run(['systemctl','restart','mtproxy-pushok.service'],check=False)
+            raise
     subprocess.run(['systemctl','is-active','--quiet','mtproxy-pushok.service'],check=True)
     root = Path(__file__).resolve().parent.parent
     if (root / '.env').exists():

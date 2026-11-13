@@ -64,7 +64,7 @@
  function badge(value){return el('span',labels[value]||value,'badge badge--'+value);}
  function campaignRows(list){return list.map(c=>[
   link(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||c.id.slice(0,8),'campaign/'+c.id),
-  (()=>{const group=el('div',undefined,'status-stack');group.append(badge(c.moderation_status),badge(c.payment_status),badge(c.placement_status));return group;})(),money(c.price_kopecks_snapshot),
+  (()=>{const group=el('div',undefined,'status-stack');group.append(badge(c.moderation_status),(c.price_kopecks_snapshot===0?el('span','Бесплатно','badge'):badge(c.payment_status)),badge(c.placement_status));return group;})(),money(c.price_kopecks_snapshot),
   date(c.scheduled_start_at),link('Открыть','campaign/'+c.id)
  ]);}
  const campaignHeaders=['Канал','Статусы','Цена заявки','Начало','Действие'];
@@ -181,7 +181,7 @@
   metrics('dashboard',[
    ['Активные кампании',state.campaigns.filter(c=>c.placement_status==='active').length,'По статусу размещения'],
    ['На модерации',state.campaigns.filter(c=>c.moderation_status==='pending').length,'Ожидают решения'],
-   ['Оплата подтверждена',state.campaigns.filter(c=>c.payment_status==='verified').length,'Количество заявок'],
+   ['Оплата подтверждена',state.campaigns.filter(c=>c.payment_status==='verified'&&c.price_kopecks_snapshot>0).length,'Количество заявок'],
    ['Ближайший запуск',date(state.campaigns.filter(c=>c.placement_status==='scheduled'&&c.scheduled_start_at&&new Date(c.scheduled_start_at)>new Date()).map(c=>c.scheduled_start_at).sort()[0]),'По назначенному расписанию']
   ]);
   metrics('channels',[['Каналов',channels.length,'Добавлены в кабинет']]);
@@ -277,7 +277,7 @@
   if(name!=='campaign'){detail.replaceChildren();metrics('campaign',[]);}
   if(name==='campaign'){
    detail.replaceChildren();const c=state.campaigns.find(c=>c.id===id);
-   if(c){detail.append(card(c,false));metrics('campaign',[['Модерация',labels[c.moderation_status],'По данным API'],['Оплата',labels[c.payment_status],'По данным API'],['Размещение',labels[c.placement_status],'По данным API'],['Окончание',date(c.scheduled_end_at),'Назначенный период']]);}
+   if(c){detail.append(card(c,false));metrics('campaign',[['Модерация',labels[c.moderation_status],'По данным API'],['Оплата',c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status],'По данным API'],['Размещение',labels[c.placement_status],'По данным API'],['Окончание',date(c.scheduled_end_at),'Назначенный период']]);}
    else{empty(detail,'Кампания не найдена или недоступна вашему аккаунту.');metrics('campaign',[]);}
   }
   if(name==='payments'&&id){

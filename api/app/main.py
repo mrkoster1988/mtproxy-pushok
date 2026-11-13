@@ -1862,7 +1862,7 @@ def read_launch_readiness(
                   (SELECT count(*) FROM campaigns) AS campaigns_total,
                   (SELECT count(*) FROM campaigns WHERE moderation_status = 'pending') AS moderation_pending,
                   (SELECT count(*) FROM campaigns WHERE payment_status = 'proof_submitted') AS payments_pending,
-                  (SELECT count(*) FROM campaigns WHERE payment_status = 'verified') AS payments_verified,
+                  (SELECT count(*) FROM campaigns WHERE payment_status = 'verified' AND price_kopecks_snapshot > 0) AS payments_verified,
                   (SELECT count(*) FROM campaigns WHERE placement_status = 'scheduled') AS placements_scheduled,
                   (SELECT count(*) FROM campaigns WHERE placement_status = 'active') AS placements_active,
                   (SELECT count(*) FROM campaigns WHERE placement_status = 'completed') AS placements_completed,

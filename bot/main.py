@@ -292,7 +292,7 @@ def format_campaigns(campaigns):
     lines = ["📋 Ваши последние рекламные заявки:"]
     for index, campaign in enumerate(campaigns[:10], 1):
         title = " ".join(str(campaign.get("channel_title") or "Без названия").split())[:64]
-        price = campaign.get("price_kopecks_snapshot", 0)
+        price = campaign.get("price_kopecks_snapshot")
         currency = (campaign.get("currency_snapshot") or "RUB").strip()
         price_text = (f"{price / 100:g} ₽" if currency == "RUB" and type(price) is int
                       else "Цена в кабинете")
@@ -300,7 +300,7 @@ def format_campaigns(campaigns):
             f"\n{index}. {title}\n"
             f"Тариф: {campaign.get('tariff_name_snapshot', '—')} · {price_text}\n"
             f"Модерация: {moderation.get(campaign.get('moderation_status'), '—')}\n"
-            f"Оплата: {payment.get(campaign.get('payment_status'), '—')}\n"
+            f"Оплата: {'Не требуется — бесплатно' if price == 0 else payment.get(campaign.get('payment_status'), '—')}\n"
             f"Размещение: {placement.get(campaign.get('placement_status'), '—')}"
         )
     lines.append("\nПоказаны до 10 последних заявок. Подробности доступны в кабинете.")

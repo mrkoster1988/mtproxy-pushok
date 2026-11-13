@@ -475,3 +475,15 @@ body.miniapp-loading #workspace{visibility:hidden}
  .page-help{margin-top:16px}.cabinet-sidebar #logout{margin:16px 0}
 }
 @media(prefers-reduced-motion:reduce){.pushok-runner{animation:none}}
+
+.emoji-gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:8px;margin:16px 0}
+.emoji-gallery figure{margin:0;text-align:center;padding:6px;border:1px solid var(--line);border-radius:12px}
+.emoji-gallery img{width:48px;height:48px;object-fit:contain;font-size:10px}
+.emoji-selection{width:32px;height:32px;object-fit:contain;vertical-align:middle;margin-left:8px}
+
+.cabinet-topbar{min-height:64px;margin-bottom:16px}
+.cabinet-mode label:has(input[type=checkbox]){display:flex;align-items:center;gap:8px;min-height:40px}
+.cabinet-mode label input[type=checkbox]{margin:0!important}
+#payment-switches{margin-bottom:18px}
+.settings-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.settings-nav button{padding:10px 8px}

@@ -580,6 +580,19 @@ def main():
                     expect(admin.locator('#notice')).to_contain_text('Настройки оплаты сохранены')
                     expect(admin.locator('#enable-stars')).to_be_checked()
                     admin.screenshot(path=str(output/'24-payment-controls-mobile.png'), full_page=True)
+                    # Каталог искусственный: проверяем выбор настоящей картинки в форме без Telegram.
+                    icon_bytes=io.BytesIO();Image.new('RGBA',(48,48),'orange').save(icon_bytes,format='PNG')
+                    catalog=[{'id':'123456789','emoji':'🐱','image':'data:image/png;base64,'+base64.b64encode(icon_bytes.getvalue()).decode()}]
+                    api.control.write('emoji-catalog.json',catalog)
+                    admin.locator('#settings-system-tab').click()
+                    with patch.object(api.emoji_settings,'fetch',return_value=catalog):
+                        admin.locator('#icons-import').click()
+                        expect(admin.locator('.emoji-gallery img')).to_have_count(1)
+                        admin.locator('#icons-mapping select[name=help]').select_option('123456789')
+                        admin.locator('#icons-form button[type=submit]').click()
+                        expect(admin.locator('#icons-status')).to_contain_text('Сохранено')
+                        assert api.control.read('emoji-map.json')['help']=='123456789'
+                        admin.screenshot(path=str(output/'25-icon-settings-mobile.png'),full_page=True)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))

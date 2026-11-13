@@ -48,18 +48,18 @@ async function renderPaymentSettings(){
   const report=await api('/admin/payments/status');
   const stars=report.stars,sbp=report.sbp;
   $('settings-stars-status').textContent=stars.invoice_enabled_in_server_config?
-   'Выставление счетов разрешено серверной конфигурацией; реальные испытания НЕ ПОДТВЕРЖДЕНЫ.':
-   'Реальные счета заблокированы серверной конфигурацией.';
+   'Приём Stars включён. Проверьте оплату первым заказом.':
+   'Приём Stars выключен. Включите переключатель выше и сохраните.';
   $('settings-stars-counts').textContent=
    'Тарифов с ценой XTR: '+stars.priced_active_tariffs+
    ' · Оплат зарегистрировано в БД: '+stars.recorded_successes+
    ' · Нужна ручная сверка: '+stars.needs_manual_review;
   $('settings-sbp-status').textContent=sbp.checkout_enabled?
-   'СБП разрешена сервером · '+(sbp.test_mode?'тестовый режим.':'боевой режим; приёмка отдельно.'):
-   'СБП выключена до настройки и приёмки.';
+   'Приём СБП включён · '+(sbp.test_mode?'тестовый режим.':'реальные платежи.'):
+   'Приём СБП выключен. Настройте магазин и включите переключатель.';
   $('settings-sbp-status').textContent+=' Фоновая сверка: '+(sbp.background_enabled?'разрешена сервером':'выключена')+
    ' · Ожидают проверки: '+sbp.pending_checks+' · Нужна ручная сверка: '+sbp.needs_manual_review;
-  target.textContent='Данные БД и конфигурации не подтверждают приёмку Telegram, возвраты и банковский эквайринг. Секреты не отображаются.';
+  target.textContent='Статус заказа меняется после подтверждения платежа провайдером.';
  }catch(e){
   $('settings-stars-status').textContent='Не удалось получить состояние Stars.';
   $('settings-sbp-status').textContent='Нет подтверждения подключения СБП.';
@@ -229,7 +229,7 @@ function showCampaignReport(c, box){
   const pairs=[
    ['Тариф',data.tariff.name+' · '+money(data.tariff.price_kopecks)],
    ['Модерация',labels[data.moderation_status]||data.moderation_status],
-   ['Оплата',labels[data.payment_status]||data.payment_status],
+   ['Оплата',data.price_kopecks_snapshot===0?'Бесплатно':labels[data.payment_status]||data.payment_status],
    ['Размещение',labels[data.placement_status]||data.placement_status],
    ['Начало',date(data.scheduled_start_at)],
    ['Окончание',date(data.scheduled_end_at)]
@@ -645,9 +645,12 @@ run(async()=>{
  if(token)await enter();
 });
 
+let displayedVersion=null;
 async function loadControl(){
  if(me?.role!=='admin')return;
  const c=await api('/admin/control');
+ if(displayedVersion&&displayedVersion!==c.version&&c.update.state==='succeeded'){location.reload();return;}
+ displayedVersion=c.version;
  $('enable-stars').checked=c.stars;$('enable-sbp').checked=c.sbp;
  $('enable-sbp').disabled=!c.sbp_configured;
  $('payment-config-note').textContent=c.sbp_configured?(c.sbp_test_mode?'СБП: тестовый магазин. Реальные списания не включены.':'СБП: рабочий магазин настроен.'):'Для СБП задайте YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и PUSHOK_PUBLIC_PAYMENT_HOST на сервере. Stars настраиваются отдельно.';
@@ -670,14 +673,24 @@ setInterval(()=>{if(me?.role==='admin'&&!$('settings-system').hidden)loadControl
 function showIcons(data){
  const names={miniapp:'Mini App',advertise:'Разместить рекламу',campaigns:'Мои кампании',tariffs:'Тарифы',channels:'Наш канал',help:'Помощь'};
  const target=$('icons-mapping');target.replaceChildren();
+ const gallery=el('div',undefined,'emoji-gallery');
+ data.items.forEach((item,i)=>{
+  const tile=el('figure'),image=el('img');image.alt='PushokIcons '+(i+1);
+  if(item.image?.startsWith('data:image/png;base64,'))image.src=item.image;
+  else image.alt='Миниатюра недоступна';
+  tile.append(image,el('figcaption',String(i+1)));gallery.append(tile);
+ });target.append(gallery);
  for(const [key,name] of Object.entries(names)){
   const label=el('label',name),select=el('select');select.name=key;option(select,'','Обычная иконка');
   data.items.forEach((item,i)=>option(select,item.id,(item.emoji||'Иконка')+' · '+(i+1)+' · '+item.id));
-  select.value=data.mapping[key]||'';label.append(select);target.append(label);
+  const thumb=el('img');thumb.className='emoji-selection';thumb.alt='Выбранная иконка';
+  const update=()=>{const item=data.items.find(x=>x.id===select.value);thumb.hidden=!item?.image;if(item?.image?.startsWith('data:image/png;base64,'))thumb.src=item.image;};
+  select.value=data.mapping[key]||'';select.addEventListener('change',update);update();
+  label.append(thumb,select);target.append(label);
  }
  $('icons-status').textContent=data.items.length?'Получено иконок: '+data.items.length:'Набор ещё не загружен.';
 }
-$('icons-import').addEventListener('click',()=>run(async()=>{showIcons(await api('/admin/icons/import',{method:'POST'}));}));
+$('icons-import').addEventListener('click',()=>run(async()=>{showIcons(await api('/admin/icons/import',{method:'POST'}));},$('icons-import')));
 $('icons-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
  const mapping=Object.fromEntries([...new FormData(e.target)].filter(([,v])=>v));
  await api('/admin/icons',{method:'PUT',body:mapping});$('icons-status').textContent='Сохранено. Откройте меню бота для проверки.';
