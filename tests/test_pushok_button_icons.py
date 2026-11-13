@@ -59,7 +59,7 @@ class TestButtonIcons(unittest.TestCase):
                                  for row in payment_baseline["inline_keyboard"] for b in row), 1)
             os.environ["PUSHOK_BUTTON_ICONS_ENABLED"] = "1"
             decorated = keyboard()
-            self.assertEqual({b["icon_custom_emoji_id"] for row in decorated["inline_keyboard"] for b in row}, set(mapping.values()))
+            self.assertEqual({b["icon_custom_emoji_id"] for row in decorated["inline_keyboard"] for b in row}, {v for k,v in mapping.items() if k != "miniapp"})
             for row in decorated["inline_keyboard"]:
                 for button in row:
                     button.pop("icon_custom_emoji_id")

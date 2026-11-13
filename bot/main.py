@@ -59,7 +59,7 @@ def keyboard():
     ]}
     url = miniapp_url()
     if url:
-        result['inline_keyboard'].insert(0, [{'text': '🐱 Открыть Mini App', 'web_app': {'url': url}}])
+        result['inline_keyboard'][0] = [{'text': '📢 Разместить рекламу', 'web_app': {'url': url + '#/create'}}]
     # Необязательные фирменные иконки; без реальных IDs структура кнопок не меняется.
     icons = configured_icons()
     for row in result['inline_keyboard']:
@@ -68,7 +68,7 @@ def keyboard():
             if action is None and button.get('url') == CHANNEL_URL:
                 action = 'channels'
             if action is None and 'web_app' in button:
-                action = 'miniapp'
+                action = 'advertise'
             if action:
                 row[position] = decorate(button, action, icons)
     return result
@@ -481,6 +481,19 @@ def process_stars_update(update, token, internal_api=None, send=None):
 def response_for(update, campaign_loader=None, wizard=None, submitter=None,
                  operator_inbox=None, delivery_inbox=None, tariff_loader=None):
     """Вернуть (sendMessage_payload, callback_query_id) либо None."""
+    # Старые кнопки и /advertise тоже открывают ту же единую форму.
+    launch = miniapp_url()
+    callback = update.get('callback_query') or {}
+    message = update.get('message') or {}
+    chat = ((callback.get('message') or {}) if callback else message).get('chat') or {}
+    actor = (callback or message).get('from') or {}
+    command = str(message.get('text') or '').split(maxsplit=1)
+    command = command[0].lower() if command else ''
+    advertise = callback.get('data') == 'advertise' or command in ('/advertise', '/advertise@' + configured_bot_username().lower())
+    if launch and advertise and chat.get('type') == 'private' and type(actor.get('id')) is int and actor.get('id') == chat.get('id'):
+        if wizard is not None:
+            wizard.sessions.pop(actor['id'], None)
+        return ({'chat_id': chat['id'], 'text': '📢 Канал, тариф, дата и отправка на проверку — на одной странице. После одобрения оплата появится в этой же заявке.', 'reply_markup': keyboard()}, callback.get('id'))
     if delivery_inbox is not None:
         delivery_reply = delivery_inbox.handle(update)
         if delivery_reply is not None:
@@ -580,7 +593,7 @@ def run():
     secret = os.getenv("BOT_INTERNAL_SECRET", "")
     ready = len(secret) == 64 and all(c in "0123456789abcdef" for c in secret)
     wizard = DraftWizard(create_campaign_draft, enabled=ready, tariff_loader=fetch_current_tariff)
-    operator_inbox = OperatorInbox(operator_queue, operator_decide, operator_unsubscribe)
+    operator_inbox = OperatorInbox(operator_queue, operator_decide, operator_unsubscribe, miniapp_loader=miniapp_url)
     delivery_inbox = DeliveryInbox(admin_delivery_report, admin_retry_advertiser_notice)
     navigation = Navigation(telegram_call)
     next_notification_poll = time.monotonic()

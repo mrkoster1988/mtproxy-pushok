@@ -518,3 +518,20 @@ body.miniapp-loading #workspace{visibility:hidden}
  [data-page=create] .campaign-panel{padding:16px!important}
  .miniapp-mode .cabinet-topbar{margin-bottom:0;min-height:48px}
 }
+
+/* Одна заявка оператора: текущий шаг и краткая история. */
+[data-page="moderation"] .page-help,[data-page="moderation"] .metrics{display:none}
+[data-page="moderation"] .page-layout{display:block}
+.approval-card,.approval-summary{padding:20px;border:1px solid var(--border,#34505e);border-radius:18px;background:var(--surface,#152a3b);margin-bottom:16px;min-width:0;overflow-wrap:anywhere}
+.approval-card h2{margin:16px 0 8px;font-size:1.4rem}.approval-card h3{font-size:1.15rem;margin:0 0 12px}
+.approval-price{font-weight:650}.approval-status{font-size:.9rem;color:var(--muted,#b4c9d0)}
+.approval-progress{display:flex;flex-wrap:wrap;gap:8px;padding:0;list-style:none;margin:18px 0}
+.approval-progress li{padding:7px 10px;border-radius:12px;background:#0c1c2d;color:#c0d0dc;font-size:.85rem}
+.approval-progress [aria-current="step"]{background:#13b7aa;color:#062c31;font-weight:700}.approval-progress .done{color:#7de6b6}
+.approval-current{border-top:1px solid #34505e;padding-top:18px}.approval-current form{display:grid;gap:14px}
+.approval-card label{display:grid;gap:6px}.approval-card label:has(.approval-check){display:flex;align-items:flex-start;gap:10px;line-height:1.5}
+.approval-card input.approval-check{width:20px;height:20px;min-height:20px;flex:0 0 20px;margin-top:2px;padding:0;accent-color:#13b7aa}
+.approval-card details{margin-top:18px}.approval-card details form{margin-top:14px}.approval-card summary{cursor:pointer;min-height:44px;align-content:center}
+.approval-card button{min-height:44px;white-space:normal}.approval-feedback:empty{display:none}.approval-feedback{padding:12px;background:#102c3b;border-radius:10px}
+.approval-proofs{display:flex;flex-wrap:wrap;gap:8px}
+@media(max-width:760px){.approval-card,.approval-summary{padding:14px}.approval-progress{gap:5px}.approval-progress li{font-size:.78rem;padding:6px 8px}}

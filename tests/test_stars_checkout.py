@@ -55,7 +55,7 @@ class MiniAppButtonTests(unittest.TestCase):
         def links():
             return [button for row in keyboard()['inline_keyboard'] for button in row if 'web_app' in button]
         with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'1','PUSHOK_MINIAPP_URL':'https://ads.example.org/miniapp'}):
-            self.assertEqual(links()[0]['web_app']['url'],'https://ads.example.org/miniapp')
+            self.assertEqual(links()[0]['web_app']['url'],'https://ads.example.org/miniapp#/create')
             for url in ('http://ads.example.org/miniapp','https://user:pass@ads.example.org/miniapp',
                         'https://ads.example.org/miniapp?secret=x','https://ads.example.org/miniapp#x',
                         'https://127.0.0.1/miniapp','https://ads.example.org/other'):
