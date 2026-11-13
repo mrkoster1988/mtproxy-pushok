@@ -46,6 +46,19 @@ class StagingComposeTests(unittest.TestCase):
 ''')
         self.assertTrue(self.check_config(0)['compose_checked'])
 
+    def test_deferred_telegram_matches_compose_defaults(self):
+        text = self.env.read_text()
+        text = text.replace('TELEGRAM_BOT_TOKEN=123456789:TEST_ONLY_secret_123456789', 'TELEGRAM_BOT_TOKEN=')
+        text = text.replace('TELEGRAM_BOT_USERNAME=mtproxy_pushok_bot', 'TELEGRAM_BOT_USERNAME=')
+        text = text.replace('PUSHOK_MINIAPP_ENABLED=1', 'PUSHOK_MINIAPP_ENABLED=0')
+        text = text.replace('PUSHOK_TELEGRAM_TEST_ENVIRONMENT=1', 'PUSHOK_TELEGRAM_TEST_ENVIRONMENT=0')
+        self.env.write_text(text)
+        proc = subprocess.run(['bash', str(ROOT / 'scripts/staging_preflight.sh'), '--root', str(self.root),
+                               '--allow-telegram-deferred', '--json'], capture_output=True, text=True, timeout=40)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertFalse(json.loads(proc.stdout)['telegram_verified'])
+        self.check_config(1)  # Без явного разрешения пустой токен не принимается.
+
     def test_database_exposure_blocked(self):
         (self.root / 'compose.override.yaml').write_text('''services:
   db:

@@ -60,6 +60,10 @@ jobs:
       - run: bash -n scripts/smoke.sh
       - run: sh -n scripts/check_backup_restore.sh
       - run: sh -n scripts/compose_checks.sh
+      - name: Check installer backup, restore and migration rollback in disposable PostgreSQL
+        env:
+          PUSHOK_INSTALLER_COMPOSE_TESTS: '1'
+        run: python3 -m unittest discover -s tests -p test_installer_compose.py -v
       - run: bash scripts/smoke.sh
 
   rust-core:

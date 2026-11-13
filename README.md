@@ -115,6 +115,7 @@ Stars оформляются в Telegram, СБП — во внешнем веб-
 - [Установка: одна команда, пояснения и 19 готовых ответов](docs/INSTALL_QUICKSTART.md).
 - [Приватный стенд, обновление и резервные копии](docs/STAGING.md).
 - [Предпусковая проверка конфигурации без раскрытия секретов](docs/STAGING_PREFLIGHT.md).
+- [Повторный запуск и восстановление после ошибки установки](docs/INSTALL_RECOVERY.md).
 - [13 страниц кабинета, маршруты и API](docs/CABINET_PAGES.md).
 - [Официальный Docker MTProxy](docs/MTProxy_OFFICIAL_DOCKER.md) · [Сборка ядра](docs/SOURCE_CORE.md).
 - [Иконки интерфейса](docs/PUSHOK_ICONS.md) · [Иллюстрации и стиль](docs/assets/pushok/README.md).

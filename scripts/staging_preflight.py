@@ -80,8 +80,13 @@ def valid_miniapp(value):
         return False
 
 
-def validate_values(values, add):
-    missing = [key for key in REQUIRED if not values.get(key) or values[key].upper().startswith("REPLACE_")]
+def validate_values(values, add, *, allow_telegram_deferred=False):
+    deferred = (allow_telegram_deferred and not values.get("TELEGRAM_BOT_TOKEN")
+                and not values.get("TELEGRAM_BOT_USERNAME")
+                and all(values.get(key, "0") == "0" for key in (
+                    "PUSHOK_MINIAPP_ENABLED", "PUSHOK_STARS_PAYMENTS_ENABLED", "PUSHOK_TELEGRAM_TEST_ENVIRONMENT")))
+    required = [key for key in REQUIRED if not (deferred and key == "TELEGRAM_BOT_TOKEN")]
+    missing = [key for key in required if not values.get(key) or values[key].upper().startswith("REPLACE_")]
     add("required", not missing, "Обязательные поля настроены." if not missing else "Настройте: " + ", ".join(missing))
     secrets = [values.get(key, "") for key in ("POSTGRES_PASSWORD", "SESSION_SIGNING_KEY", "BOT_INTERNAL_SECRET")]
     add("secrets", all(len(value) >= 32 for value in secrets) and len(set(secrets)) == len(secrets)
@@ -104,8 +109,9 @@ def validate_values(values, add):
         "API_BIND_PORT: целое число от 1024 до 65535.")
     add("project_name", bool(re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,62}", values.get("COMPOSE_PROJECT_NAME", "mtproxy-pushok"))),
         "Имя Compose-проекта: до 63 строчных букв, цифр, дефисов и подчёркиваний.")
-    add("telegram", bool(re.fullmatch(r"[1-9][0-9]{0,15}:[A-Za-z0-9_-]{10,256}", values.get("TELEGRAM_BOT_TOKEN", "")))
-        and bool(re.fullmatch(r"[A-Za-z0-9_]{5,32}", values.get("TELEGRAM_BOT_USERNAME", "mtproxy_pushok_bot"))),
+    add("telegram", deferred or (bool(re.fullmatch(r"[1-9][0-9]{0,15}:[A-Za-z0-9_-]{10,256}", values.get("TELEGRAM_BOT_TOKEN", "")))
+        and bool(re.fullmatch(r"[A-Za-z0-9_]{5,32}", values.get("TELEGRAM_BOT_USERNAME", "mtproxy_pushok_bot")))),
+        "Telegram отложен: вход, бот, Mini App и Stars не проверены." if deferred else
         "Проверьте формат токена и username бота (без @). Подлинность токена здесь не проверяется.")
     invalid = [key for key in FLAGS if values.get(key, "0") not in ("0", "1")]
     add("feature_flags", not invalid, "Флаги должны быть 0 или 1." + (" Исправьте: " + ", ".join(invalid) if invalid else ""))
@@ -146,12 +152,28 @@ def compose_policy(config, values):
     defaults.update(PUSHOK_SBP_TEST_MODE="1", TELEGRAM_BOT_USERNAME="mtproxy_pushok_bot")
     for name, keys in expected.items():
         actual = services[name].get("environment", {})
-        if any(actual.get(key, defaults.get(key, "")) != values.get(key, defaults.get(key, "")) for key in keys):
-            return False
+        for key in keys:
+            expected_value = values.get(key, defaults.get(key, ""))
+            if name == "bot" and key == "TELEGRAM_BOT_USERNAME" and not expected_value:
+                expected_value = defaults[key]  # Compose использует ${VAR:-default}.
+            if actual.get(key, defaults.get(key, "")) != expected_value:
+                return False
     return True
 
 
-def inspect(root, *, config_only=False):
+def command_environment():
+    return {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "TMPDIR", "DOCKER_CONFIG") if key in os.environ}
+
+
+def compose_command(root, values):
+    command = ["docker", "compose", "--project-directory", str(root), "--env-file", str(root / ".env"),
+               "--project-name", values.get("COMPOSE_PROJECT_NAME", "mtproxy-pushok"), "-f", str(root / "compose.yaml")]
+    if (root / "compose.override.yaml").exists():
+        command.extend(["-f", str(root / "compose.override.yaml")])
+    return command
+
+
+def inspect(root, *, config_only=False, allow_telegram_deferred=False):
     root = Path(root).resolve()
     checks = []
 
@@ -159,7 +181,7 @@ def inspect(root, *, config_only=False):
         checks.append({"check": name, "passed": bool(passed), "details": details})
 
     # Ignore inherited application/Compose/Git overrides; use this directory.
-    env = {key: os.environ[key] for key in ("PATH", "HOME", "LANG", "TMPDIR", "DOCKER_CONFIG") if key in os.environ}
+    env = command_environment()
     values = {}
     try:
         values = read_env(root / ".env")
@@ -169,7 +191,7 @@ def inspect(root, *, config_only=False):
     except ConfigError as exc:
         add("env_file", False, str(exc))
     if checks[-1]["passed"]:
-        validate_values(values, add)
+        validate_values(values, add, allow_telegram_deferred=allow_telegram_deferred)
     try:
         tracked = subprocess.run(["git", "ls-files", "--", ".env"], cwd=root, env=env,
                                  capture_output=True, timeout=10, check=False)
@@ -179,10 +201,7 @@ def inspect(root, *, config_only=False):
         add("env_not_tracked", False, "Не удалось проверить индекс Git за 10 секунд.")
     compose_checked = False
     if not config_only and all(check["passed"] for check in checks):
-        command = ["docker", "compose", "--project-directory", str(root), "--env-file", str(root / ".env"),
-                   "--project-name", values.get("COMPOSE_PROJECT_NAME", "mtproxy-pushok"), "-f", str(root / "compose.yaml")]
-        if (root / "compose.override.yaml").exists():
-            command.extend(["-f", str(root / "compose.override.yaml")])
+        command = compose_command(root, values)
         command.extend(["--profile", "bot", "config", "--format", "json"])
         try:
             result = subprocess.run(command, cwd=root, env=env, capture_output=True, timeout=20, check=False)
@@ -203,8 +222,9 @@ def main():
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--config-only", action="store_true", help="Проверить .env и индекс Git без Docker")
     parser.add_argument("--json", action="store_true", help="Отчёт JSON без значений конфигурации")
+    parser.add_argument("--allow-telegram-deferred", action="store_true", help="Разрешить пустые токен/username только при выключенных Mini App, Stars и тестовой среде")
     args = parser.parse_args()
-    report = inspect(args.root, config_only=args.config_only)
+    report = inspect(args.root, config_only=args.config_only, allow_telegram_deferred=args.allow_telegram_deferred)
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:

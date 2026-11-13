@@ -101,3 +101,13 @@ class SetupPlanTests(unittest.TestCase):
 
     def test_existing_invalid_token_refuses_bot_launch_without_changes(self):
         self.invoke("2\n4\n",existing_env='TELEGRAM_BOT_TOKEN=1:short\nTELEGRAM_BOT_USERNAME=fixture_bot\nBOT_INTERNAL_SECRET='+'b'*64+'\n',expected_code=1)
+
+    def test_privileged_port_is_retried(self):
+        text=self.invoke("2\n2\n\n443\n8010\n2\n2\n1\n")
+        self.assertIn("Порт должен быть от 1024 до 65535", text)
+
+    def test_unknown_option_does_not_open_dialog(self):
+        result=subprocess.run(["bash", str(SOURCE), "--unknown"], input="", text=True, capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Неизвестный параметр", result.stderr)
+        self.assertNotIn("Что установить", result.stderr)
