@@ -23,12 +23,13 @@ def _reply(chat_id, text, callback_id=None, buttons=None):
 
 
 class OperatorInbox:
-    def __init__(self, queue_loader, decider, unsubscribe, clock=None):
+    def __init__(self, queue_loader, decider, unsubscribe, clock=None, miniapp_loader=None):
         self.queue_loader = queue_loader
         self.decider = decider
         self.unsubscribe = unsubscribe
         self.clock = clock or time.monotonic
         self.awaiting_reason = {}
+        self.miniapp_loader = miniapp_loader
 
     @staticmethod
     def _failure(exception):
@@ -77,6 +78,7 @@ class OperatorInbox:
             lines = ["📋 Очередь модерации (до 5 заявок):\n",
                      "🔔 Уведомления включены. Выключить: /moderation_off"]
             buttons = []
+            miniapp = self.miniapp_loader() if self.miniapp_loader else None
             for index, row in enumerate(queue["pending"][:5], start=1):
                 campaign_id = UUID(str(row["campaign_id"]))
                 title = " ".join(str(row["channel_title"]).split())[:64]
@@ -84,6 +86,10 @@ class OperatorInbox:
                 price_text = f"{price // 100} ₽" if type(price) is int else "—"
                 lines.append(f"\n{index}. {title} — {price_text}\n"
                              f"{str(row['channel_url'])[:160]}")
+                if miniapp:
+                    buttons.append([{'text': f'📋 {index}. Разобрать заявку целиком',
+                                     'web_app': {'url': miniapp + '#/moderation/' + str(campaign_id)}}])
+                    continue
                 buttons.append([
                     {"text": f"✅ {index}", "callback_data": f"review:approve:{campaign_id}"},
                     {"text": f"❌ {index}", "callback_data": f"review:reject:{campaign_id}"},

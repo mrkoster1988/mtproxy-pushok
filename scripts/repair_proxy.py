@@ -23,7 +23,8 @@ def main():
     public = str(ipaddress.IPv4Address(socket.gethostbyname(host)))
     if not ipaddress.ip_address(public).is_global:
         raise RuntimeError('Proxy host must resolve to a public IPv4')
-    help_text = subprocess.run([str(binary), '--help'], capture_output=True, text=True).stderr
+    help_result = subprocess.run([str(binary), '--help'], capture_output=True, text=True, timeout=10)
+    help_text = help_result.stdout + help_result.stderr
     if '--address' not in help_text or '--nat-info' not in help_text:
         raise RuntimeError('Proxy build lacks address options')
     source = runner.read_text()
