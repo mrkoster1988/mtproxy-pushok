@@ -487,3 +487,6 @@ body.miniapp-loading #workspace{visibility:hidden}
 #payment-switches{margin-bottom:18px}
 .settings-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .settings-nav button{padding:10px 8px}
+
+#tariff-admin-fields{border:0;margin:0;padding:0;min-width:0}
+#tariff-admin-fields:disabled{opacity:.65}

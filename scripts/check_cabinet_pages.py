@@ -565,8 +565,11 @@ def main():
                 admin.locator('#settings-tariffs-tab').click()
                 admin.locator('#tariff-admin-rub').fill('0')
                 admin.locator('#tariff-admin-stars').fill('0')
-                admin.locator('#tariff-admin-form button').click()
+                with admin.expect_response(lambda r:'/admin/tariffs/' in r.url and r.request.method=='PUT') as saved:
+                    admin.locator('#tariff-admin-form button').click()
+                assert saved.value.status==200 and saved.value.json()['price_kopecks']==0
                 expect(admin.locator('#notice')).to_contain_text('Настройки тарифа сохранены')
+                expect(admin.locator('#tariff-admin-rub')).to_have_value('0.00')
                 toggle = admin.locator('#tariff-admin-active').bounding_box()
                 assert toggle['width'] <= 48 and toggle['height'] <= 32, toggle
                 admin.set_viewport_size({'width':390,'height':844})

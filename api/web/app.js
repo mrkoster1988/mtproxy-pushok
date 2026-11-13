@@ -120,12 +120,17 @@ Object.assign(errors,{sbp_reconciliation_disabled:'Фоновая сверка �
  sbp_attempt_not_found:'Попытка не найдена.',sbp_attempt_not_retryable:'Попытку уже нельзя отправить на повтор. Обновите список.',
  sbp_attempt_changed:'Состояние изменилось. Обновите список перед повтором.'});
 
-async function loadAdminSettings(){
- if(me?.role!=='admin')return;
- await loadControl();
- showIcons(await api('/admin/icons'));
- await Promise.all([renderPaymentSettings(),renderSBPReview(),renderTariffAdmin(),
-                    renderCoreReadiness(),renderLaunchReadiness()]);
+let adminSettingsLoad=null;
+function loadAdminSettings(){
+ if(me?.role!=='admin')return Promise.resolve();
+ if(adminSettingsLoad)return adminSettingsLoad;
+ $('tariff-admin-fields').disabled=true;
+ adminSettingsLoad=(async()=>{
+  const results=await Promise.allSettled([loadControl(),api('/admin/icons').then(showIcons),
+   renderPaymentSettings(),renderSBPReview(),renderTariffAdmin(),renderCoreReadiness(),renderLaunchReadiness()]);
+  const failed=results.find(x=>x.status==='rejected');if(failed)throw failed.reason;
+ })().finally(()=>{$('tariff-admin-fields').disabled=false;adminSettingsLoad=null;});
+ return adminSettingsLoad;
 }
 
 const holdEligibility=c=>c.moderation_status==='approved' &&
