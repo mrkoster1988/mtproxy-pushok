@@ -530,7 +530,8 @@ body.miniapp-loading #workspace{visibility:hidden}
 .approval-progress [aria-current="step"]{background:#13b7aa;color:#062c31;font-weight:700}.approval-progress .done{color:#7de6b6}
 .approval-current{border-top:1px solid #34505e;padding-top:18px}.approval-current form{display:grid;gap:14px}
 .approval-card label{display:grid;gap:6px}.approval-card label:has(.approval-check){display:flex;align-items:flex-start;gap:10px;line-height:1.5}
-.approval-card input.approval-check{width:20px;height:20px;min-height:20px;flex:0 0 20px;margin-top:2px;padding:0;accent-color:#13b7aa}
+.approval-card input.approval-check{appearance:auto!important;width:20px!important;height:20px!important;min-height:20px!important;flex:0 0 20px;margin:2px 0 0!important;padding:0!important;border-radius:4px!important;background:revert!important;border:revert!important;accent-color:#13b7aa}
+.approval-card input.approval-check::before{display:none!important}
 .approval-card details{margin-top:18px}.approval-card details form{margin-top:14px}.approval-card summary{cursor:pointer;min-height:44px;align-content:center}
 .approval-card button{min-height:44px;white-space:normal}.approval-feedback:empty{display:none}.approval-feedback{padding:12px;background:var(--surface-2,#102c3b);color:var(--text);border-radius:10px}
 .approval-proofs{display:flex;flex-wrap:wrap;gap:8px}
