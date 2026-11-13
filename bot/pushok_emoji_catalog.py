@@ -5,6 +5,11 @@ PACK_NAME = "PushokIcons"
 CATALOG_SCHEMA = "pushok-telegram-emoji-catalog-v1"
 
 
+def valid_file_id(value):
+    return (isinstance(value, str) and 0 < len(value) <= 1024
+            and all(33 <= ord(c) <= 126 for c in value))
+
+
 def validate_sticker_set(sticker_set, expected_count=12):
     if type(expected_count) is not int or not 1 <= expected_count <= 200:
         raise ValueError("Ожидаемое число значков должно быть от 1 до 200")
@@ -25,15 +30,25 @@ def validate_sticker_set(sticker_set, expected_count=12):
             raise ValueError("Некорректный или повторяющийся custom_emoji_id")
         seen.add(icon_id)
         file_id, emoji = sticker.get("file_id"), sticker.get("emoji")
-        if (not isinstance(file_id, str) or not file_id or len(file_id) > 1024
-                or any(ord(c) < 33 or ord(c) > 126 for c in file_id)):
+        if not valid_file_id(file_id):
             raise ValueError("Отсутствует или повреждён file_id")
         # Поле emoji в Bot API необязательно; отсутствие не угадываем.
         if emoji is not None and (not isinstance(emoji, str) or not emoji or len(emoji) > 64
                                   or any(ord(c) < 32 for c in emoji)):
             raise ValueError("Некорректный связанный emoji")
-        cleaned.append({"type": "custom_emoji", "custom_emoji_id": icon_id,
-                        "emoji": emoji, "file_id": file_id})
+        entry = {"type": "custom_emoji", "custom_emoji_id": icon_id,
+                 "emoji": emoji, "file_id": file_id}
+        for flag in ("is_animated", "is_video"):
+            if flag in sticker:
+                if type(sticker[flag]) is not bool:
+                    raise ValueError("Некорректный формат значка")
+                entry[flag] = sticker[flag]
+        thumbnail = sticker.get("thumbnail")
+        if thumbnail is not None:
+            if not isinstance(thumbnail, dict) or not valid_file_id(thumbnail.get("file_id")):
+                raise ValueError("Некорректная миниатюра значка")
+            entry["thumbnail"] = {"file_id": thumbnail["file_id"]}
+        cleaned.append(entry)
     return {"name": PACK_NAME, "sticker_type": "custom_emoji", "stickers": cleaned}
 
 

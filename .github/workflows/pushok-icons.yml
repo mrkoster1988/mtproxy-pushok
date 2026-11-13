@@ -7,6 +7,8 @@ on:
       - 'api/web/pushok-icons.svg'
       - 'bot/button_icons.py'
       - 'bot/pushok_emoji_catalog.py'
+      - 'bot/pushok_emoji_picker.py'
+      - 'bot/templates/pushok_emoji_picker.html'
       - 'bot/main.py'
       - 'scripts/*pushok_emoji*.py'
       - 'tests/test_*emoji*.py'
@@ -20,12 +22,16 @@ on:
       - 'scripts/build_pushok_emoji_manifest.py'
       - 'tests/test_pushok_emoji_manifest.py'
       - 'scripts/fetch_pushok_emoji_catalog.py'
+      - 'scripts/check_pushok_emoji_picker.py'
+      - 'tests/test_pushok_emoji_picker.py'
       - 'tests/test_fetch_pushok_emoji_catalog.py'
       - 'tests/test_pushok_emoji_delivery.py'
       - 'scripts/prepare_pushok_emoji_ids.py'
       - 'tests/test_prepare_pushok_emoji_ids.py'
       - 'bot/button_icons.py'
       - 'bot/pushok_emoji_catalog.py'
+      - 'bot/pushok_emoji_picker.py'
+      - 'bot/templates/pushok_emoji_picker.html'
       - 'bot/main.py'
       - 'tests/test_pushok_button_icons.py'
       - '.github/workflows/pushok-icons.yml'
@@ -45,7 +51,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install local render dependencies
-        run: python -m pip install 'CairoSVG==2.7.1' 'Pillow==11.3.0'
+        run: python -m pip install 'CairoSVG==2.7.1' 'Pillow==11.3.0' 'playwright==1.56.0'
       - name: Validate icon source
         run: python -m unittest discover -s tests -p test_export_pushok_emoji.py -v
       - name: Export PNG icons for Telegram
@@ -56,6 +62,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_prepare_pushok_emoji_ids.py -v
           python -m unittest discover -s tests -p test_fetch_pushok_emoji_catalog.py -v
+          python -m unittest discover -s tests -p test_pushok_emoji_picker.py -v
           python -m unittest discover -s tests -p test_pushok_emoji_delivery.py -v
           python -m unittest discover -s tests -p test_pushok_button_icons.py -v
       - name: Create verifiable Telegram emoji manifest
@@ -83,5 +90,22 @@ jobs:
           path: |
             .build/pushok-emoji/*.png
             .build/pushok-emoji/manifest.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: Check local image selection, downloads and mobile layout
+        run: |
+          browser_path="$(command -v google-chrome || command -v chromium || true)"
+          if [ -n "$browser_path" ]; then
+            python scripts/check_pushok_emoji_picker.py --browser-executable "$browser_path"
+          else
+            python -m playwright install --with-deps chromium
+            python scripts/check_pushok_emoji_picker.py
+          fi
+      - name: Attach picker screenshots (synthetic IDs only)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pushok-emoji-picker-check
+          path: .build/emoji-picker-check/picker-*.png
           retention-days: 14
           if-no-files-found: error
