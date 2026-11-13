@@ -1557,7 +1557,11 @@ class PostgresIntegration(unittest.TestCase):
         actor={'id':f['owner'],'role':'advertiser'}
         main.app.dependency_overrides[main.get_current_user]=lambda:actor
         path='/channels/'+str(f['channel'])
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE sponsor_channels SET telegram_channel_id=%s WHERE id=%s',(-1000000000000-f['channel'].int%1000000000,f['channel']))
         self.request('PATCH',path,json={'title':'Changed channel','telegram_url':'https://t.me/management_fixture'})
+        with psycopg.connect(self.dsn) as conn:
+            self.assertIsNone(conn.execute('SELECT telegram_channel_id FROM sponsor_channels WHERE id=%s',(f['channel'],)).fetchone()[0])
         self.request('PATCH','/campaigns/'+str(f['campaign']),json={'tariff_id':str(f['tariff']),'requested_start_at':None})
         actor={'id':f['stranger'],'role':'advertiser'}
         self.request('DELETE',path,404)

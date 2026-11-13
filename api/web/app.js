@@ -641,7 +641,7 @@ window.onTelegramAuth=data=>run(async()=>{const session=await api('/auth/telegra
 $('channel-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{await api('/channels',{method:'POST',body:Object.fromEntries(new FormData(e.target))});e.target.reset();await enter();notice('Канал добавлен.',true);},e.submitter);});
 
 $('logout').addEventListener('click',()=>run(async()=>{await api('/auth/logout',{method:'POST'});sessionStorage.removeItem(sessionKey);if(miniAppMode)window.pushokMiniApp.signedOut();else location.reload();}));
-$('refresh').addEventListener('click',()=>run(async()=>{await refresh();await loadAvailability();}));
+$('refresh').addEventListener('click',()=>run(async()=>{await refresh();await loadAvailability();},$('refresh')));
 $('queue-filter').addEventListener('change',()=>run(refresh));
 $('advertiser-tab').addEventListener('click',()=>operatorView(false));
 $('operator-tab').addEventListener('click',()=>operatorView(true));

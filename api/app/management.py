@@ -77,8 +77,8 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
             if not ch:
                 raise HTTPException(404, 'channel_not_found')
             channel_unused(conn, channel_id)
-            row = conn.execute('UPDATE sponsor_channels SET title=%s,telegram_url=%s WHERE id=%s RETURNING id,title,telegram_url',
-                               (payload.title.strip(), 'https://t.me/'+match[1].lower(), channel_id)).fetchone()
+            row = conn.execute('UPDATE sponsor_channels SET title=%s,telegram_channel_id=CASE WHEN telegram_url IS DISTINCT FROM %s THEN NULL ELSE telegram_channel_id END,telegram_url=%s WHERE id=%s RETURNING id,title,telegram_url',
+                               (payload.title.strip(), 'https://t.me/'+match[1].lower(), 'https://t.me/'+match[1].lower(), channel_id)).fetchone()
             event(conn, user, 'channel_updated', {'channel_id': channel_id})
             return row
 
