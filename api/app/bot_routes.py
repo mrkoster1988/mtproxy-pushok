@@ -127,7 +127,7 @@ def get_bot_tariff_quote(
             row = connection.execute(
                 """SELECT name, duration_seconds, price_kopecks,
                           currency, stars_price_xtr
-                   FROM tariffs WHERE id = %s AND is_active = TRUE
+                   FROM tariffs WHERE id = %s AND is_active = TRUE AND NOT admin_only
                      AND price_kopecks > 0 AND btrim(currency) = 'RUB'""",
                 (DAY_TARIFF_ID,),
             ).fetchone()
@@ -186,7 +186,7 @@ def create_bot_campaign_draft(
                 """
                 SELECT id, name, duration_seconds, price_kopecks, currency
                 FROM tariffs
-                WHERE id = %s AND is_active = TRUE
+                WHERE id = %s AND is_active = TRUE AND NOT admin_only
                   AND duration_seconds > 0 AND price_kopecks > 0
                   AND btrim(currency) = 'RUB'
                 """,
