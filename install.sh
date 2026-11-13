@@ -23,7 +23,7 @@ read -r -p "Тег спонсора из @MTProxybot [$OLD_TAG]: " PROXY_TAG
 if [[ -z "$PROXY_TAG" ]]; then PROXY_TAG="$OLD_TAG"; fi
 if [[ -n "$PROXY_TAG" && ! "$PROXY_TAG" =~ ^[A-Fa-f0-9]{32}$ ]]; then echo "Тег должен быть 32-значным hex-кодом из @MTProxybot." >&2; exit 1; fi
 
-if ! command -v ss >/dev/null 2>&1; then apt-get update; DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2; fi
+if ! command -v ss >/dev/null 2>&1; then apt-get update; DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y iproute2; fi
 if systemctl is-active --quiet mtproxy-pushok.service; then
   echo "MTProxy Pushok уже работает; обновлю его конфигурацию."
 elif ss -lntH "( sport = :$PROXY_PORT )" | grep -q .; then
@@ -32,7 +32,7 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y git curl build-essential libssl-dev zlib1g-dev openssl
+apt-get -o DPkg::Lock::Timeout=600 install -y git curl build-essential libssl-dev zlib1g-dev openssl
 if [[ -d /opt/MTProxy/.git ]]; then
   git -C /opt/MTProxy pull --ff-only
 elif [[ -e /opt/MTProxy ]]; then
@@ -141,3 +141,5 @@ echo "MTProxy Pushok запущен на TCP-порту $PROXY_PORT."
 echo "Ссылка для Telegram: tg://proxy?server=$PROXY_HOST&port=$PROXY_PORT&secret=dd$PROXY_SECRET"
 echo "Журнал: journalctl -u mtproxy-pushok -f"
 echo "Зарегистрируйте прокси через @MTProxybot (/newproxy); установщик примет выданный тег при повторном запуске."
+
+if [[ -f "$(dirname "$0")/scripts/repair_proxy.py" ]]; then python3 "$(dirname "$0")/scripts/repair_proxy.py"; fi

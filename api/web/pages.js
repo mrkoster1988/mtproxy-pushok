@@ -95,7 +95,7 @@
  const searchForm=el('form'),search=el('input');search.type='search';search.placeholder='Поиск кампаний по каналу или номеру';search.setAttribute('aria-label','Поиск кампаний');
  searchForm.append(search);searchForm.addEventListener('submit',e=>{e.preventDefault();state.search=search.value.trim();go('campaigns');renderList();});
  const account=el('span',undefined,'cabinet-account');account.id='cabinet-account';
- const refreshButton=$('refresh');bar.append(toggle,searchForm,account,refreshButton,$('logout'));stage.append(bar);shell.append(sidebar,stage);workspace.prepend(shell);
+ const refreshButton=$('refresh');bar.append(toggle,account,refreshButton);sidebar.append($('logout'));bar.append(searchForm);stage.append(bar);shell.append(sidebar,stage);workspace.prepend(shell);
  Object.entries(routes).forEach(([name,[title,subtitle]])=>{
   const page=name==='settings'?$('settings'):el('section');page.dataset.page=name;page.hidden=true;page.classList.add('cabinet-page');
   const heading=el('header',undefined,'page-heading'),titles=el('div');const h=el('h1',title);h.tabIndex=-1;titles.append(h,el('p',subtitle));heading.append(titles);
@@ -297,6 +297,7 @@
   nav.querySelectorAll('a').forEach(a=>{const active=a.dataset.route===name||(name==='create'||name==='campaign')&&a.dataset.route==='campaigns';a.classList.toggle('selected',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   menuState(false);
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
+  searchForm.hidden=!['campaigns','moderation'].includes(name);
   if(name==='settings')run(loadAdminSettings);
   if(miniAppMode)window.pushokMiniApp.syncNavigation();
  }

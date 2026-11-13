@@ -91,14 +91,14 @@ install_docker() {
     fi
   done
   apt-get update
-  apt-get install -y ca-certificates curl
+  apt-get -o DPkg::Lock::Timeout=600 install -y ca-certificates curl
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
   arch="$(dpkg --print-architecture)"
   printf 'Types: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: noble\nComponents: stable\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/docker.asc\n' "$arch" > /etc/apt/sources.list.d/docker.sources
   apt-get update
-  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  apt-get -o DPkg::Lock::Timeout=600 install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
   systemctl enable --now docker
 }
 
@@ -117,7 +117,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v0.050 — мастер настройки" >&2
+echo "MTProxy Pushok v0.051 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
 PROXY_ENGINE=""
@@ -282,7 +282,7 @@ exec 9<"$ROOT_DIR"
 flock -n 9 || { echo "В этом каталоге уже работает установщик. Дождитесь его завершения." >&2; exit 1; }
 if [[ "$COMPONENTS" != 1 ]]; then
   INSTALL_STAGE="проверка существующей конфигурации"
-  command -v python3 >/dev/null || { echo "Для кабинета нужен python3 (Ubuntu: apt-get install python3)." >&2; exit 1; }
+  command -v python3 >/dev/null || { echo "Для кабинета нужен python3 (Ubuntu: apt-get -o DPkg::Lock::Timeout=600 install python3)." >&2; exit 1; }
   preflight_args=()
   "$BOT_LAUNCH" || preflight_args+=(--allow-telegram-deferred)
   if ! "$NEW_CONFIG"; then
@@ -291,7 +291,7 @@ if [[ "$COMPONENTS" != 1 ]]; then
   INSTALL_STAGE="подготовка пакетов и Docker"
   if "$NEW_CONFIG"; then
     apt-get update
-    apt-get install -y openssl curl iproute2
+    apt-get -o DPkg::Lock::Timeout=600 install -y openssl curl iproute2
     if ss -lntH "( sport = :$API_PORT )" | grep -q .; then echo "Локальный порт $API_PORT занят."; exit 1; fi
     if [[ "$HTTPS" == 2 ]] && ss -lntH '( sport = :80 or sport = :443 )' | grep -q .; then
       echo "80/443 заняты. Выберите вариант с существующим reverse proxy."; exit 1
@@ -355,11 +355,12 @@ networks:
 EOF
     fi
   fi
-  command -v curl >/dev/null || { apt-get update; apt-get install -y curl; }
+  command -v curl >/dev/null || { apt-get update; apt-get -o DPkg::Lock::Timeout=600 install -y curl; }
   if "$PAYMENT_CHANGED" && ! "$NEW_CONFIG"; then
     INSTALL_STAGE="обновление инструкции оплаты"
     printf '%s' "$PAYMENT_B64" | runtime set-payment
   fi
+  install -d -o 10001 -g 10001 -m 0700 .control
   INSTALL_STAGE="проверка итогового Compose"
   bash scripts/staging_preflight.sh "${preflight_args[@]}"
   INSTALL_STAGE="ожидание PostgreSQL"
@@ -394,6 +395,7 @@ EOF
     database/019_sbp_review_revision.sql
     database/020_stars_invoice_link.sql
     database/021_telegram_test_environment.sql
+    database/022_free_tariffs.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"
@@ -428,7 +430,7 @@ if [[ "$COMPONENTS" != 2 ]]; then
     install_docker
     if ! command -v ss >/dev/null 2>&1; then
       apt-get update
-      apt-get install -y iproute2
+      apt-get -o DPkg::Lock::Timeout=600 install -y iproute2
     fi
     echo "Далее: официальный Docker MTProxy, отдельный проект и подтверждение." >&2
     bash "$ROOT_DIR/install_official_docker.sh" <&3
@@ -439,3 +441,5 @@ if [[ "$COMPONENTS" != 2 ]]; then
 fi
 echo "Настройка завершена. Живые Telegram, платежи и спонсор требуют отдельной проверки."
 if [[ "$COMPONENTS" != 1 ]]; then echo ".env: 0600. Копия PostgreSQL перед миграциями: .backups (0700). Это не полная копия установки."; fi
+
+if [[ "$COMPONENTS" != 1 && "$PWD" == /opt/mtproxy-pushok ]]; then bash scripts/install_updater.sh --install-only; fi

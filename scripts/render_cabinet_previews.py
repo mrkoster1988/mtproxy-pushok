@@ -40,6 +40,10 @@ def campaign(identifier: str, channel: str, moderation: str, payment: str, place
 
 def demo_response(path: str, role: str) -> object:
     path = urlsplit(path).path
+    if path.endswith('/admin/control'):
+        return {'version':'0.051','stars':False,'sbp':False,'sbp_configured':False,'updater_installed':True,'update':{'state':'idle'},'requested':False}
+    if path.endswith('/admin/icons'):
+        return {'items':[], 'mapping':{}}
     if path.endswith('/sbp'):
         return {'available': False, 'test_mode': True, 'amount_kopecks': 30000,
                 'status': 'not_created', 'can_create': False, 'can_verify': False,

@@ -6,6 +6,7 @@ Telegram принимает только зарегистрированные cu
 import json
 import os
 import re
+from pathlib import Path
 
 ALLOWED = frozenset(["advertise","campaigns","tariffs","channels","help","miniapp"])
 _VALID_ID = re.compile(r"^[0-9]{5,32}$")
@@ -20,6 +21,12 @@ def is_valid_icon_id(value):
 
 
 def configured_icons():
+    try:
+        configured = json.loads(Path('/var/lib/mtproxy-pushok/control/emoji-map.json').read_text())
+        if isinstance(configured, dict):
+            return {k:v for k,v in configured.items() if k in ALLOWED and is_valid_icon_id(v)}
+    except (OSError, ValueError):
+        pass
     if os.getenv(ENABLED_ENV) != "1":
         return {}
     raw = os.getenv(CONFIG_ENV, "")

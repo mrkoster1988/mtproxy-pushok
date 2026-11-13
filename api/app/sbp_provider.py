@@ -7,6 +7,7 @@ The feature gate defaults to OFF until staging and contract acceptance.
 import base64
 import json
 import os
+from .control import flag
 import re
 from collections.abc import Mapping
 from urllib.error import HTTPError, URLError
@@ -29,7 +30,7 @@ class _NoRedirect(HTTPRedirectHandler):
 
 
 def sbp_enabled() -> bool:
-    return os.getenv("PUSHOK_SBP_PAYMENTS_ENABLED", "0") == "1"
+    return flag("sbp", os.getenv("PUSHOK_SBP_PAYMENTS_ENABLED", "0") == "1")
 
 
 def _credentials() -> tuple[str, str]:

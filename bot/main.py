@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
 from .telegram_environment import bot_api_url, environment_name
 from .wizard import DraftWizard, format_tariff
+from .navigation import Navigation
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
 from .delivery_inbox import DeliveryInbox
@@ -523,7 +524,7 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
 def telegram_call(token, method, payload, timeout=40):
     # Повтор допустим лишь после однозначного отказа отправить меню из-за иконки.
     # Счета, платежи, таймауты, 429 и 5xx никогда не повторяются этим механизмом.
-    plain_payload = without_button_icons(payload) if method == "sendMessage" else None
+    plain_payload = without_button_icons(payload) if method in ("sendMessage", "editMessageText") else None
     for attempt in range(2):
         req = Request(bot_api_url(token, method),
                       data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
@@ -577,6 +578,7 @@ def run():
     wizard = DraftWizard(create_campaign_draft, enabled=ready, tariff_loader=fetch_current_tariff)
     operator_inbox = OperatorInbox(operator_queue, operator_decide, operator_unsubscribe)
     delivery_inbox = DeliveryInbox(admin_delivery_report, admin_retry_advertiser_notice)
+    navigation = Navigation(telegram_call)
     next_notification_poll = time.monotonic()
     offset = None
     while True:
@@ -599,7 +601,7 @@ def run():
                     if callback_id:
                         telegram_call(token, "answerCallbackQuery",
                                       {"callback_query_id": callback_id})
-                    telegram_call(token, "sendMessage", payload)
+                    navigation.deliver(token, update, payload)
                 # Не подтверждать update до завершения обработки.
                 offset = next_offset
             if ready and time.monotonic() >= next_notification_poll:

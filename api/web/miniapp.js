@@ -4,12 +4,13 @@ window.pushokMiniApp=(()=>{
  let app=null,busy=false,loaded=false;
  const cacheKey='pushok-miniapp-init-hash',exitKey='pushok-miniapp-signed-out';
  const panel=document.createElement('section');panel.id='miniapp-login';panel.className='panel';
- const title=document.createElement('h1');title.textContent='Кабинет MTProxy Pushok';
+ const title=document.createElement('h1');title.textContent='Пушок готовит кабинет…';
  const status=document.createElement('p');status.setAttribute('role','status');
  const retry=document.createElement('button');retry.type='button';retry.textContent='Повторить вход';
- panel.append(title,status,retry);document.querySelector('main').prepend(panel);
+ const runner=document.createElement('img');runner.src='/assets/pushok-running.svg';runner.alt='Бегущий Пушок';runner.className='pushok-runner';
+ panel.append(runner,title,status,retry);document.querySelector('main').prepend(panel);
  document.body.classList.add('miniapp-mode');
- function message(text,canRetry=false){panel.hidden=false;status.textContent=text;retry.hidden=!canRetry;}
+ function message(text,canRetry=false){document.body.classList.add('miniapp-loading');panel.classList.toggle('load-failed',canRetry);panel.hidden=false;status.textContent=text;retry.hidden=!canRetry;}
  function clear(){token='';sessionStorage.removeItem(sessionKey);sessionStorage.removeItem(cacheKey);}
  function end(text){
   clear();if(window.cabinet)window.cabinet.logout();
@@ -74,7 +75,7 @@ window.pushokMiniApp=(()=>{
     const session=await api('/auth/telegram/miniapp',{method:'POST',body:{init_data:app.initData}});
     token=session.access_token;sessionStorage.setItem(sessionKey,token);sessionStorage.setItem(cacheKey,fingerprint);sessionStorage.removeItem(exitKey);
    }
-   await enter();panel.hidden=true;syncNavigation();
+   await enter();panel.hidden=true;document.body.classList.remove('miniapp-loading');syncNavigation();
   }catch(e){
    if(!token)message(e.message==='sdk_unavailable'?'Не удалось загрузить Telegram. Проверьте соединение и повторите.':
     'Вход не завершён. Закройте Mini App и откройте заново. Если ошибка повторяется, обратитесь к владельцу.',e.message==='sdk_unavailable'||!e.status||e.status>=500);

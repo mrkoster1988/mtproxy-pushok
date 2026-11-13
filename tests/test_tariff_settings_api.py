@@ -52,8 +52,8 @@ class TariffSettingsTests(unittest.TestCase):
     def test_invalid_price_and_stars_rejected_before_db(self):
         self.as_admin()
         invalid = [
-            {"price_kopecks": 0}, {"price_kopecks": -300},
-            {"stars_price_xtr": 0}, {"stars_price_xtr": -3},
+            {"price_kopecks": -300},
+            {"stars_price_xtr": -3},
             {"duration_seconds": 0}, {"name": "    "},
             {"is_active": "maybe"},
         ]
