@@ -306,7 +306,7 @@ def main():
                 expect(advertiser.locator('[data-page=campaign] .meta')).to_contain_text('300')
                 assert '450' not in advertiser.locator('[data-page=campaign] .meta').inner_text()
                 go(advertiser, 'create')
-                expect(advertiser.locator('[data-page=create] .metrics')).to_contain_text('450,55')
+                expect(advertiser.locator('#order-summary')).to_contain_text('450,55')
 
                 outsider = new_page('outsider')
                 go(outsider, 'campaign/' + campaign_id)
