@@ -63,9 +63,9 @@
  }
  function badge(value){return el('span',labels[value]||value,'badge badge--'+value);}
  function campaignRows(list){return list.map(c=>[
-  link(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||c.id.slice(0,8),'campaign/'+c.id),
+  link(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||c.id.slice(0,8),'create/'+c.id),
   (()=>{const group=el('div',undefined,'status-stack');group.append(badge(c.moderation_status),(c.price_kopecks_snapshot===0?el('span','Бесплатно','badge'):badge(c.payment_status)),badge(c.placement_status));return group;})(),money(c.price_kopecks_snapshot),
-  date(c.scheduled_start_at),link('Открыть','campaign/'+c.id)
+  date(c.scheduled_start_at),link('Открыть','create/'+c.id)
  ]);}
  const campaignHeaders=['Канал','Статусы','Цена заявки','Начало','Действие'];
  function filtered(){return state.campaigns.filter(c=>
@@ -274,6 +274,7 @@
  function renderSelected(){
   const [name,id]=routeParts();
   if(name!=='campaign'){detail.replaceChildren();metrics('campaign',[]);}
+  if(name!=='create')$('order-result').replaceChildren();
   if(name==='create'){
    const result=$('order-result');$('campaign-form').hidden=Boolean(id);result.hidden=!id;result.replaceChildren();
    if(id){
@@ -308,7 +309,7 @@
   state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
-  nav.querySelectorAll('a').forEach(a=>{const active=a.dataset.route===name||(name==='create'||name==='campaign')&&a.dataset.route==='campaigns';a.classList.toggle('selected',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  nav.querySelectorAll('a').forEach(a=>{const active=a.dataset.route===name||name==='campaign'&&a.dataset.route==='campaigns';a.classList.toggle('selected',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   menuState(false);
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
   searchForm.hidden=!['campaigns','moderation'].includes(name);
