@@ -69,5 +69,7 @@ window.pushokOrder=(()=>{
    feedback(error.message+(attempt?' Повторная отправка с тем же ключом безопасна.':''));
   }finally{busy=false;if(me?.id===user){sync();if(!$('order-feedback').hidden)$('order-feedback').scrollIntoView({block:'nearest'});}}
  });
+ // API мог завершить загрузку раньше этого отложенного скрипта.
+ if(me)sync();
  return {sync,summary,selectChannel(){mode(false);summary();},reset(){owner=null;initialized=false;attempt=null;busy=false;fields.disabled=false;feedback('');}};
 })();
