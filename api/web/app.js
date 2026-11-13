@@ -483,7 +483,7 @@ async function renderCoreReadiness(){
 }
 let adminTariffs=[];
 
-function tariffLabel(t){return t.name+' · '+(t.admin_only?'Бесплатно · только для администраторов':money(t.price_kopecks));}
+function tariffLabel(t){return t.name+' · '+(t.admin_only?'Бесплатно':money(t.price_kopecks));}
 function updatePublicPrice(){
  const publicTariffs=tariffs.filter(t=>!t.admin_only);
  const t=publicTariffs.find(x=>x.duration_seconds===86400)||publicTariffs[0];
@@ -505,6 +505,7 @@ function fillTariffAdmin(){
  $('tariff-admin-active').checked=tariff.is_active;
  $('tariff-admin-rub').readOnly=!!tariff.admin_only;
  $('tariff-admin-stars').readOnly=!!tariff.admin_only;
+ $('tariff-admin-stars').placeholder=tariff.admin_only?'Не требуется':'Не настроено';
  $('tariff-admin-access').hidden=!tariff.admin_only;
 }
 async function renderTariffAdmin(){

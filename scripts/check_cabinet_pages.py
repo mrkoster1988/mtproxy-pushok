@@ -573,12 +573,14 @@ def main():
                 expect(admin.locator('#tariff-admin-access')).to_be_visible()
                 expect(admin.locator('#tariff-admin-rub')).to_have_attribute('readonly','')
                 expect(admin.locator('#tariff-admin-stars')).to_have_attribute('readonly','')
+                expect(admin.locator('#tariff-admin-stars')).to_have_attribute('placeholder','Не требуется')
                 admin.locator('#tariff-admin-hours').fill('48')
                 with admin.expect_response(lambda r:'/admin/tariffs/' in r.url and r.request.method=='PUT') as private_saved:
                     admin.locator('#tariff-admin-form button').click()
                 assert private_saved.value.status==200 and private_saved.value.json()['admin_only'] is True
                 assert private_saved.value.json()['price_kopecks']==0 and private_saved.value.json()['duration_seconds']==172800
                 expect(admin.locator('#tariff-admin-hours')).to_have_value('48')
+                expect(admin.locator('#tariff-admin-form button')).to_be_enabled()
                 admin.set_viewport_size({'width':390,'height':844})
                 admin.screenshot(path=str(output/'26-admin-free-tariff-mobile.png'), full_page=True)
                 admin.locator('#tariff-admin-select').select_option('00000000-0000-4000-8000-000000000001')
