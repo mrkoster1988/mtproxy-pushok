@@ -68,6 +68,7 @@ def main():
         for width in (1280, 390, 320):
             page.set_viewport_size({"width": width, "height": 1000})
             assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+            assert page.locator(".card button, .meta").evaluate_all("nodes => nodes.every(n => n.scrollWidth <= n.clientWidth)")
             assert page.locator(".picture img").evaluate_all("imgs => imgs.every(i => i.complete && i.naturalWidth > 0)")
             page.screenshot(path=str(args.out / f"picker-{width}.png"), full_page=True)
         for key in ALLOWED:
