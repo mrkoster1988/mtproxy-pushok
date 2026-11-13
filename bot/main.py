@@ -13,7 +13,7 @@ from .wizard import DraftWizard, format_tariff
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
 from .delivery_inbox import DeliveryInbox
-from .button_icons import decorate, configured_icons
+from .button_icons import decorate, configured_icons, without_button_icons, icon_rejection
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
@@ -521,14 +521,35 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
 
 
 def telegram_call(token, method, payload, timeout=40):
-    req = Request(bot_api_url(token, method),
-                  data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                  headers={"Content-Type": "application/json"}, method="POST")
-    with urlopen(req, timeout=timeout) as stream:
-        result = json.load(stream)
-    if not result.get("ok"):
-        raise RuntimeError("Telegram API отклонил запрос")
-    return result["result"]
+    # Повтор допустим лишь после однозначного отказа отправить меню из-за иконки.
+    # Счета, платежи, таймауты, 429 и 5xx никогда не повторяются этим механизмом.
+    plain_payload = without_button_icons(payload) if method == "sendMessage" else None
+    for attempt in range(2):
+        req = Request(bot_api_url(token, method),
+                      data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                      headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urlopen(req, timeout=timeout) as stream:
+                result = json.load(stream)
+        except HTTPError as exc:
+            if attempt or plain_payload is None or exc.code != 400:
+                raise
+            try:
+                raw = exc.read(65537)
+                result = json.loads(raw) if len(raw) <= 65536 else None
+            except (OSError, ValueError, RecursionError):
+                raise exc from None
+            finally:
+                exc.close()
+            if not icon_rejection(result):
+                raise
+        if not attempt and plain_payload is not None and icon_rejection(result):
+            LOG.warning("Telegram отклонил иконку кнопки; одна отправка меню без иконок")
+            payload = plain_payload
+            continue
+        if not isinstance(result, dict) or not result.get("ok"):
+            raise RuntimeError("Telegram API отклонил запрос")
+        return result["result"]
 
 
 def validate_bot(token):

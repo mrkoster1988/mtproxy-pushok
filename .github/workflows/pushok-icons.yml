@@ -6,6 +6,7 @@ on:
     paths:
       - 'api/web/pushok-icons.svg'
       - 'bot/button_icons.py'
+      - 'bot/pushok_emoji_catalog.py'
       - 'bot/main.py'
       - 'scripts/*pushok_emoji*.py'
       - 'tests/test_*emoji*.py'
@@ -18,9 +19,13 @@ on:
       - 'tests/test_export_pushok_emoji.py'
       - 'scripts/build_pushok_emoji_manifest.py'
       - 'tests/test_pushok_emoji_manifest.py'
+      - 'scripts/fetch_pushok_emoji_catalog.py'
+      - 'tests/test_fetch_pushok_emoji_catalog.py'
+      - 'tests/test_pushok_emoji_delivery.py'
       - 'scripts/prepare_pushok_emoji_ids.py'
       - 'tests/test_prepare_pushok_emoji_ids.py'
       - 'bot/button_icons.py'
+      - 'bot/pushok_emoji_catalog.py'
       - 'bot/main.py'
       - 'tests/test_pushok_button_icons.py'
       - '.github/workflows/pushok-icons.yml'
@@ -50,6 +55,8 @@ jobs:
       - name: Validate ID configuration and unchanged bot actions
         run: |
           python -m unittest discover -s tests -p test_prepare_pushok_emoji_ids.py -v
+          python -m unittest discover -s tests -p test_fetch_pushok_emoji_catalog.py -v
+          python -m unittest discover -s tests -p test_pushok_emoji_delivery.py -v
           python -m unittest discover -s tests -p test_pushok_button_icons.py -v
       - name: Create verifiable Telegram emoji manifest
         run: python scripts/build_pushok_emoji_manifest.py --input .build/pushok-emoji --output .build/pushok-emoji/manifest.json
