@@ -909,6 +909,66 @@ class PostgresIntegration(unittest.TestCase):
                     tariff_name_snapshot,duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot)
                     SELECT %s,%s,id,name,duration_seconds,price_kopecks,currency FROM tariffs WHERE id=%s""", (uid,channel,tariff))
 
+    @patch.object(main, 'SESSION_SIGNING_KEY', 'o' * 64)
+    def test_one_page_order_atomic_retry_and_access(self):
+        from concurrent.futures import ThreadPoolExecutor
+        main.app.dependency_overrides.clear()
+        actors = {}
+        tariff, private = uuid4(), uuid4()
+        with psycopg.connect(self.dsn) as conn:
+            for role in ('advertiser', 'operator', 'admin'):
+                uid, sid = uuid4(), uuid4()
+                conn.execute('INSERT INTO users(id,telegram_user_id,role) VALUES(%s,%s,%s)',
+                             (uid, 10**12 + uuid4().int % 10**12, role))
+                conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')", (sid, uid))
+                actors[role] = (uid, {'Authorization': 'Bearer ' + main._create_session_token(uid, sid)})
+            conn.execute("INSERT INTO tariffs(id,name,duration_seconds,price_kopecks,currency) VALUES(%s,'Заявка в одной форме',86400,30000,'RUB')", (tariff,))
+            conn.execute("INSERT INTO tariffs(id,name,duration_seconds,price_kopecks,currency,admin_only) VALUES(%s,'Админ тест',86400,0,'RUB',true)", (private,))
+            conn.execute((ROOT/'database/024_order_submissions.sql').read_text())
+            conn.execute((ROOT/'database/024_order_submissions.sql').read_text())
+        uid, headers = actors['advertiser']
+        body = {'request_id':str(uuid4()), 'tariff_id':str(tariff),
+                'channel':{'title':'Одна форма','telegram_url':'https://t.me/Pushok_Order_Test'},
+                'expected_price_kopecks':30000, 'expected_duration_seconds':86400,
+                'requested_start_at':(datetime.now(timezone.utc)+timedelta(days=3)).isoformat()}
+        self.request('POST','/orders',401,json=body)
+        self.request('POST','/orders',409,headers=headers,json={**body,'expected_price_kopecks':1})
+        self.request('POST','/orders',422,headers=headers,json={**body,'channel':{'title':'Нет','telegram_url':'https://t.me/+private'}})
+        self.request('POST','/orders',422,headers=headers,json={**body,'requested_start_at':'2020-01-01T12:00:00Z'})
+        self.request('POST','/orders',422,headers=headers,json={**body,'channel_id':str(uuid4())})
+        for role in ('advertiser','operator'):
+            self.request('POST','/orders',404,headers=actors[role][1],json={**body,'tariff_id':str(private),'expected_price_kopecks':0})
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM sponsor_channels WHERE owner_user_id=%s',(uid,)).fetchone()[0],0)
+        def send(_):
+            return self.request('POST','/orders',201,headers=headers,json=body)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results = list(pool.map(send,range(4)))
+        ids = {x['id'] for x in results}
+        self.assertEqual(len(ids),1)
+        created = results[0]
+        self.assertEqual(created['moderation_status'],'pending')
+        self.assertEqual(created['payment_status'],'not_required')
+        self.assertEqual(created['price_kopecks_snapshot'],30000)
+        cid = created['id']
+        self.request('POST','/orders',409,headers=headers,json={**body,'requested_start_at':None})
+        self.request('POST','/orders',404,headers=actors['operator'][1],json={k:v for k,v in {**body,'channel_id':created['channel_id']}.items() if k!='channel'})
+        # Тот же канал повторно не дублируется и не переименовывается под активной модерацией.
+        another = self.request('POST','/orders',201,headers=headers,json={**body,'request_id':str(uuid4()),'channel':{'title':'Не заменять','telegram_url':'https://t.me/pushok_order_test'}})
+        self.assertEqual(another['channel_id'],created['channel_id'])
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT title FROM sponsor_channels WHERE id=%s',(created['channel_id'],)).fetchone()[0],'Одна форма')
+            self.assertEqual(conn.execute("SELECT count(*) FROM audit_events WHERE campaign_id=%s AND event_type='campaign_submitted'",(cid,)).fetchone()[0],1)
+            self.assertEqual(conn.execute('SELECT count(*) FROM payment_attempts WHERE campaign_id=%s',(cid,)).fetchone()[0],0)
+            conn.execute('UPDATE tariffs SET is_active=false WHERE id=%s',(tariff,))
+        self.assertEqual(self.request('POST','/orders',201,headers=headers,json=body)['id'],cid)
+        self.request('POST','/orders',404,headers=headers,json={**body,'request_id':str(uuid4())})
+        admin_body={**body,'request_id':str(uuid4()),'tariff_id':str(private),'expected_price_kopecks':0}
+        admin_order=self.request('POST','/orders',201,headers=actors['admin'][1],json=admin_body)
+        approved=self.request('POST','/operator/campaigns/'+admin_order['id']+'/moderation',headers=actors['admin'][1],json={'decision':'approved'})
+        self.assertEqual(approved['payment_status'],'verified')
+        self.assertEqual(approved['placement_status'],'not_scheduled')
+
     def test_admin_tariff_is_always_free_and_migration_preserves_settings(self):
         tariff = '7f5b60e4-ecf1-4bc3-9e3a-cd5153f4a001'
         admin = uuid4()

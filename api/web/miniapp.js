@@ -19,13 +19,13 @@ window.pushokMiniApp=(()=>{
  }
  function syncNavigation(){
   if(!app?.BackButton)return;
-  const root=!me||!window.cabinetBootReady||!location.hash||location.hash==='#/dashboard';
+  const root=!me||!window.cabinetBootReady||!location.hash||location.hash==='#/create';
   if(root)app.BackButton.hide();else app.BackButton.show();
  }
  function back(){
   if(document.querySelector('.cabinet-sidebar.is-open')){document.querySelector('.menu-toggle')?.click();return;}
   const parts=location.hash.replace(/^#\/?/,'').split('/');
-  const target=parts[0]==='campaign'||parts[0]==='create'?'campaigns':parts[0]==='payments'&&parts[1]?'payments':'dashboard';
+  const target=parts[0]==='create'&&parts[1]?'create':parts[0]==='campaign'?'campaigns':parts[0]==='payments'&&parts[1]?'payments':'create';
   window.cabinet?.go(target);
  }
  function theme(){
@@ -63,7 +63,7 @@ window.pushokMiniApp=(()=>{
    }
    const clean=new URL(location.href);
    for(const key of [...clean.searchParams.keys()])if(key.startsWith('tgWebApp')||key==='sbp_campaign')clean.searchParams.delete(key);
-   if(!clean.hash.startsWith('#/'))clean.hash='/dashboard';
+   if(!clean.hash.startsWith('#/'))clean.hash='/create';
    history.replaceState(null,'',clean);
    const fingerprint=new URLSearchParams(app.initData).get('hash');
    if(!fingerprint){clear();message('Не удалось проверить вход. Закройте Mini App и откройте заново.');return;}

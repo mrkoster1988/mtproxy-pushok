@@ -116,7 +116,7 @@ def main():
                     assert 'image/svg+xml' in response.headers.get('content-type', '')
                     symbols = {node.get('id') for node in ET.fromstring(response.body()).iter()
                                if node.tag.endswith('symbol')}
-                    menu = {'dashboard': ('home', 'Главная'), 'channels': ('channel', 'Мои каналы'),
+                    menu = {'create': ('campaign', 'Разместить рекламу'), 'dashboard': ('home', 'Главная'), 'channels': ('channel', 'Мои каналы'),
                             'campaigns': ('campaign', 'Кампании'), 'payments': ('wallet', 'Оплата'),
                             'calendar': ('calendar', 'Календарь'), 'reports': ('chart', 'Отчёты'),
                             'moderation': ('moderation', 'Модерация'), 'sponsors': ('server', 'Узлы'),
@@ -178,6 +178,8 @@ def main():
                 forbidden = advertiser.request.get(base + '/api/v1/admin/payments/status',
                     headers={"Authorization": "Bearer " + sessions['advertiser']})
                 assert forbidden.status == 403
+                go(advertiser, 'create')
+                advertiser.locator('#order-channel-url').fill('@unsaved_order_channel')
                 go(advertiser, "channels")
                 advertiser.locator('[data-page=channels] .page-heading a').click()
                 expect(advertiser.locator('#channel-form [name=title]')).to_be_focused()
@@ -194,16 +196,19 @@ def main():
                 expect(advertiser.locator('#notice')).to_contain_text('уже добавлен')
 
                 go(advertiser, "create")
+                expect(advertiser.locator('#order-channel-url')).to_have_value('@unsaved_order_channel')
+                advertiser.locator('#order-channel-mode').click()
                 advertiser.locator('#channel-select').select_option(index=1)
                 tomorrow = (datetime.now() + timedelta(days=2)).strftime('%Y-%m-%d')
+                advertiser.locator('#order-date summary').click()
                 advertiser.locator('#calendar-from').fill(tomorrow)
                 advertiser.locator('#calendar-from').dispatch_event('change')
                 expect(advertiser.locator('#availability-days button:enabled').first).to_be_visible()
                 advertiser.locator('#availability-days button:enabled').first.click()
                 advertiser.locator('#campaign-form button[type=submit]').click()
-                expect(advertiser.locator('[data-page=campaign]')).to_be_visible()
+                expect(advertiser.locator('#order-result')).to_be_visible()
                 campaign_id = advertiser.evaluate("location.hash.split('/')[2]")
-                advertiser.get_by_role('button', name='Отправить на модерацию', exact=True).click()
+                go(advertiser, 'campaign/'+campaign_id)
                 expect(advertiser.locator('[data-page=campaign] .meta')).to_contain_text('На модерации')
 
                 operator = new_page('operator')
@@ -305,7 +310,7 @@ def main():
                 expect(advertiser.locator('[data-page=campaign] .meta')).to_contain_text('300')
                 assert '450' not in advertiser.locator('[data-page=campaign] .meta').inner_text()
                 go(advertiser, 'create')
-                expect(advertiser.locator('[data-page=create] .metrics')).to_contain_text('450,55')
+                expect(advertiser.locator('#order-summary')).to_contain_text('450,55')
 
                 outsider = new_page('outsider')
                 go(outsider, 'campaign/' + campaign_id)
@@ -331,11 +336,11 @@ def main():
                 from app import sbp_provider
                 go(advertiser,'create')
                 advertiser.locator('#channel-select').select_option(index=1)
-                advertiser.locator('#calendar-clear').click()
+                advertiser.evaluate('clearRequestedDate()')
                 advertiser.locator('#campaign-form button[type=submit]').click()
-                expect(advertiser.locator('[data-page=campaign]')).to_be_visible()
+                expect(advertiser.locator('#order-result')).to_be_visible()
                 sbp_cid=advertiser.evaluate("location.hash.split('/')[2]")
-                advertiser.get_by_role('button',name='Отправить на модерацию',exact=True).click()
+                go(advertiser, 'campaign/'+sbp_cid)
                 expect(advertiser.locator('[data-page=campaign] .meta')).to_contain_text('На модерации')
                 refresh(operator)
                 operator.get_by_role('button',name='Одобрить канал',exact=True).click()
@@ -462,7 +467,7 @@ def main():
                     mini.evaluate('window.__miniBack()')
                     expect(mini.locator('#cabinet-sidebar')).to_have_attribute('inert','')
                     mini.evaluate('window.__miniBack()')
-                    expect(mini).to_have_url(base+'/miniapp#/dashboard')
+                    expect(mini).to_have_url(base+'/miniapp#/create')
                     mini.reload()
                     expect(mini.locator('body')).to_have_class('miniapp-mode cabinet-mode')
                     assert len([x for x in mini_requests if x[0]=='POST' and x[1].endswith('/auth/telegram/miniapp')])==1
@@ -474,13 +479,34 @@ def main():
                     mini.get_by_role('link',name='Открыть @mtproxy_pushok_bot',exact=True).click()
                     assert mini.evaluate('window.__miniLink')=='https://t.me/mtproxy_pushok_bot'
                     go(mini,'create')
-                    mini.locator('#channel-select').select_option(index=1)
-                    mini.locator('#campaign-form button[type=submit]').click()
-                    expect(mini.locator('[data-page=campaign]')).to_be_visible()
+                    mini.locator('#order-channel-mode').click()
+                    mini.locator('#order-channel-url').fill('@pushok_onepage')
+                    mini.locator('#order-channel-title').fill('Канал из одной формы')
+                    expect(mini.locator('#order-summary')).to_contain_text('Канал из одной формы')
+                    mini.screenshot(path=str(output/'27-onepage-form.png'),full_page=True)
+                    lost=[]
+                    def lose_order_response(route):
+                        response=route.fetch()
+                        assert response.status == 201, response.text()
+                        lost.append(response.json()['id'])
+                        route.abort()
+                    mini.route('**/api/v1/orders',lose_order_response)
+                    mini.locator('#order-submit').click()
+                    expect(mini.locator('#order-submit')).to_have_text('Проверить отправку')
+                    mini.unroute('**/api/v1/orders',lose_order_response)
+                    mini.reload()
+                    expect(mini.locator('#order-submit')).to_have_text('Проверить отправку')
+                    mini.locator('#order-submit').click()
+                    expect(mini.locator('#order-result')).to_contain_text('Заявка на проверке')
+                    assert mini.evaluate("location.hash.split('/')[2]")==lost[0]
+                    with psycopg.connect(PostgresIntegration.dsn) as connection:
+                        assert connection.execute("SELECT count(*) FROM campaigns c JOIN sponsor_channels ch ON ch.id=c.channel_id WHERE ch.telegram_url='https://t.me/pushok_onepage'").fetchone()[0]==1
+                    mini.screenshot(path=str(output/'28-onepage-submitted.png'),full_page=True)
+                    # Используем эту заявку для проверки Stars на той же странице.
                     stars_cid=mini.evaluate("location.hash.split('/')[2]")
                     with psycopg.connect(PostgresIntegration.dsn) as connection:
                         connection.execute("UPDATE campaigns SET moderation_status='approved',payment_status='awaiting_payment' WHERE id=%s",(stars_cid,))
-                    refresh(mini);go(mini,'payments/'+stars_cid)
+                    refresh(mini);go(mini,'create/'+stars_cid)
                     expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата Stars выключена')
                     from app import stars_checkout
                     from app.bot_stars import parse_attempt
