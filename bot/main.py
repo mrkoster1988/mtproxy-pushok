@@ -15,6 +15,7 @@ from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
 from .delivery_inbox import DeliveryInbox
 from .button_icons import decorate, configured_icons, without_button_icons, icon_rejection
+from .button_styles import with_button_styles
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
@@ -522,6 +523,9 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
 
 
 def telegram_call(token, method, payload, timeout=40):
+    # Оформляем только меню; запросы счетов, оплаты и возвратов не изменяем.
+    if method in ("sendMessage", "editMessageText", "editMessageReplyMarkup"):
+        payload = with_button_styles(payload)
     # Повтор допустим лишь после однозначного отказа отправить меню из-за иконки.
     # Счета, платежи, таймауты, 429 и 5xx никогда не повторяются этим механизмом.
     plain_payload = without_button_icons(payload) if method in ("sendMessage", "editMessageText") else None

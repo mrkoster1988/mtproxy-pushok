@@ -31,9 +31,13 @@ class DeliveryTests(unittest.TestCase):
         with patch.object(bot, "urlopen", side_effect=[error(), success()]) as send:
             self.assertEqual(bot.telegram_call("fixture", "sendMessage", self.payload), {"message_id": 42})
         self.assertEqual(send.call_count, 2)
-        self.assertEqual(json.loads(send.call_args_list[0].args[0].data), original)
+        colored = copy.deepcopy(original)
+        for button, style in zip(colored["reply_markup"]["inline_keyboard"][0],
+                                 ("success", "primary", "primary", "success")):
+            button["style"] = style
+        self.assertEqual(json.loads(send.call_args_list[0].args[0].data), colored)
         retried = json.loads(send.call_args_list[1].args[0].data)
-        expected = copy.deepcopy(original)
+        expected = copy.deepcopy(colored)
         for button in expected["reply_markup"]["inline_keyboard"][0]:
             button.pop("icon_custom_emoji_id", None)
         self.assertEqual(retried, expected)
@@ -66,6 +70,7 @@ class DeliveryTests(unittest.TestCase):
                     bot.telegram_call("fixture", method, self.payload)
                 finally:
                     self.assertEqual(send.call_count, 1)
+                    self.assertEqual(json.loads(send.call_args.args[0].data), self.payload)
         with patch.dict(os.environ, {"PUSHOK_BUTTON_ICONS_ENABLED": "0"}):
             plain = {"chat_id": 123, "text": "menu", "reply_markup": bot.keyboard()}
         with patch.object(bot, "urlopen", side_effect=error()) as send, self.assertRaises(HTTPError):

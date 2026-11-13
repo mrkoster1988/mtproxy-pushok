@@ -49,7 +49,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.051",
+    version="0.052",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2341,8 +2341,8 @@ def miniapp_client():
     html = (WEB_DIR / 'index.html').read_text()
     html = html.replace('initial-scale=1', 'initial-scale=1, viewport-fit=cover')
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
-    html = html.replace('<script src="/assets/app.js?v=051"',
-                        '<script src="/assets/miniapp.js?v=051" defer></script>\n  <script src="/assets/app.js?v=051"')
+    html = html.replace('<script src="/assets/app.js?v=052"',
+                        '<script src="/assets/miniapp.js?v=052" defer></script>\n  <script src="/assets/app.js?v=052"')
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
