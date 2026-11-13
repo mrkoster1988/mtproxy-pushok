@@ -26,7 +26,7 @@ window.pushokManagement=(()=>{
  function archive(parent,path,text,route){
   const b=button('Удалить из списка',async()=>{
    if(!confirm(text+' Объект попадёт в «Удалённые»; историю можно будет восстановить.'))return;
-   await api(path,{method:'DELETE'});window.pushokApproval?.resetSelection();await refresh();if(route)window.cabinet.go(route);notice('Объект перемещён в «Удалённые». История сохранена.',true);
+   const from=location.hash;await api(path,{method:'DELETE'});window.pushokApproval?.resetSelection();await refresh();if(route&&location.hash===from)window.cabinet.go(route);notice('Объект перемещён в «Удалённые». История сохранена.',true);
   });parent.append(b);
  }
  function channelActions(c){
