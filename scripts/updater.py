@@ -8,6 +8,7 @@ import os
 import subprocess
 import sys
 import fcntl
+import stat
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -20,16 +21,28 @@ def run(*args, capture=False):
                           stdout=subprocess.PIPE if capture else None,
                           timeout=1800).stdout
 
-def status(state, **fields):
+def write_control(filename, data):
     fd, name = tempfile.mkstemp(dir=CONTROL)
     with os.fdopen(fd, 'w') as stream:
         os.fchown(stream.fileno(), 10001, 10001)
-        json.dump(dict(state=state, at=datetime.now(timezone.utc).isoformat(), **fields), stream)
-    Path(name).replace(CONTROL / 'status.json')
+        json.dump(data, stream)
+    Path(name).replace(CONTROL / filename)
+
+def status(state, **fields):
+    write_control('status.json', dict(state=state, at=datetime.now(timezone.utc).isoformat(), **fields))
+
+@contextmanager
+def lock_file(name):
+    fd = os.open(CONTROL / name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    with os.fdopen(fd, 'r+') as stream:
+        info = os.fstat(stream.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise RuntimeError('Invalid lock file')
+        yield stream
 
 @contextmanager
 def queue_lock():
-    with (CONTROL / 'lock').open('a') as stream:
+    with lock_file('lock') as stream:
         os.fchown(stream.fileno(), 10001, 10001)
         fcntl.flock(stream, fcntl.LOCK_EX)
         yield
@@ -41,24 +54,36 @@ def enable_stars():
     if not re.fullmatch(r'[1-9][0-9]{0,15}:[A-Za-z0-9_-]{10,256}', cfg.get('TELEGRAM_BOT_TOKEN', '')):
         raise RuntimeError('Telegram token is not configured')
     # Сохраняем выбранный владельцем режим Telegram (тестовый/основной).
-    sys.path.insert(0, str(ROOT / 'api'))
-    from app import control
-    os.environ['PUSHOK_CONTROL_DIR'] = str(CONTROL)
-    with control.locked():
-        data = control.read('payments.json', {})
-        data.update(stars=True, changed_at=control.now(), actor='bootstrap')
-        control.write('payments.json', data)
-        os.chown(CONTROL / 'payments.json', 10001, 10001)
+    with queue_lock():
+        data = read_control('payments.json')
+        data.update(stars=True, changed_at=datetime.now(timezone.utc).isoformat(), actor='bootstrap')
+        write_control('payments.json', data)
+
+
+def read_control(name):
+    try:
+        fd = os.open(CONTROL / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'r') as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                return {}
+            raw = stream.read(16385)
+            if len(raw) > 16384:
+                return {}
+            data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
 
 
 def main():
     CONTROL.mkdir(mode=0o700, exist_ok=True)
-    with (CONTROL / 'host-lock').open('a') as lock:
+    with lock_file('host-lock') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if '--finalize' in sys.argv:
             with queue_lock():
                 try:
-                    previous = json.loads((CONTROL / 'status.json').read_text())
+                    previous = read_control('status.json')
                 except (OSError, ValueError):
                     previous = {}
                 if previous.get('state') == 'running':
@@ -70,7 +95,7 @@ def main():
                 if not request.exists():
                     return
                 try:
-                    data = json.loads(request.read_text())
+                    data = read_control('request.json')
                     if not isinstance(data, dict) or data.get('action') != 'update':
                         raise ValueError('unknown action')
                 except (OSError, ValueError):

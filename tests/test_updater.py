@@ -94,3 +94,21 @@ class UpdaterTests(unittest.TestCase):
                 updater.main()
             up = next(c for c in self.commands if 'up' in c)
             self.assertEqual('--profile' in up, expected)
+
+    def test_lock_symlink_cannot_change_another_file(self):
+        outside=self.root/'untouched'
+        outside.write_text('untouched')
+        (self.root/'.control/lock').symlink_to(outside)
+        self.request()
+        with patch.object(updater,'run') as run, self.assertRaises(OSError):
+            updater.main()
+        run.assert_not_called()
+        self.assertEqual(outside.read_text(),'untouched')
+        updater.os.fchown.assert_not_called()
+
+    def test_control_read_does_not_follow_links_or_accept_oversized_json(self):
+        secret=self.root/'private.json';secret.write_text('{"private":"secret"}')
+        path=self.root/'.control/payments.json';path.symlink_to(secret)
+        self.assertEqual(updater.read_control('payments.json'),{})
+        path.unlink();path.write_text(json.dumps({'large':'a'*17000}))
+        self.assertEqual(updater.read_control('payments.json'),{})

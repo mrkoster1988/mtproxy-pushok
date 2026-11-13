@@ -27,9 +27,15 @@ Unit=mtproxy-pushok-updater.service
 WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload
-printf '{"version":1}\n' > .control/installed.json
-chown 10001:10001 .control/installed.json
-chmod 0600 .control/installed.json
+python3 - <<'MARKER'
+import json, os, tempfile
+from pathlib import Path
+fd, path = tempfile.mkstemp(dir='.control')
+with os.fdopen(fd, 'w') as stream:
+    os.fchown(stream.fileno(), 10001, 10001)
+    json.dump({'version':1}, stream)
+os.replace(path, '.control/installed.json')
+MARKER
 systemctl enable --now mtproxy-pushok-updater.path
 if [[ "${1:-}" != --install-only ]]; then
   args=(--bootstrap)
