@@ -273,7 +273,7 @@ function showCampaignReport(c, box){
  }).catch(error=>{panel.remove();throw error;});
 }
 
-function card(c,op){
+function card(c,op,{compact=false}={}){
  const box=el('article',undefined,'card'),head=el('div',undefined,'cardhead');
  head.append(el('h3',(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||'Заявка')+' · '+c.id.slice(0,8)),el('span',labels[c.placement_status]||c.placement_status,'badge badge--'+c.placement_status));box.append(head);
  if(c.channel_url){try{const u=new URL(c.channel_url);if(u.protocol==='https:'&&['t.me','telegram.me'].includes(u.hostname)){const link=el('a','Открыть канал');link.href=u.href;link.target='_blank';link.rel='noopener noreferrer';box.append(link);}}catch{}}
@@ -284,8 +284,9 @@ function card(c,op){
  const actions=el('div',undefined,'actions');box.append(actions);
  const change=async(path,body)=>{await api('/operator/campaigns/'+c.id+'/'+path,{method:'POST',body});notice('Изменения сохранены.',true);await refresh();};
  if(!op){
-  actions.append(button('Отчёт по кампании',()=>showCampaignReport(c,box)));
-  actions.append(button('Выгрузить CSV',()=>downloadCampaignCsv(c)));
+  const reports=compact?el('details',undefined,'order-reports'):actions;if(compact){reports.append(el('summary','История и отчёт'));box.append(reports);}
+  reports.append(button('Отчёт по кампании',()=>showCampaignReport(c,box)));
+  reports.append(button('Выгрузить CSV',()=>downloadCampaignCsv(c)));
   if(['scheduled','active','completed'].includes(c.placement_status)){
    actions.append(button('Статус проверки показа',async()=>{
     const data=await api('/campaigns/'+c.id+'/display-observation');
@@ -590,6 +591,7 @@ async function refresh(){
   $('queue-count').textContent=queue.length+' заявок';
   $('queue').replaceChildren(...queue.map(c=>card(c,true)));if(!queue.length)$('queue').append(el('div','В этой очереди пока нет заявок.','empty'));
  }
+ window.pushokOrder?.sync();
  if(window.cabinet)window.cabinet.sync(own);
 }
 async function enter(){
@@ -606,7 +608,7 @@ async function enter(){
 function localDay(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 const calendarZone=Intl.DateTimeFormat().resolvedOptions().timeZone||'Europe/Moscow';
 let calendarRequest=0;
-function clearRequestedDate(){$('requested-start').value='';$('calendar-selection').textContent='Дата пока не выбрана.';for(const b of $('availability-days').children)b.setAttribute('aria-pressed','false');}
+function clearRequestedDate(){$('requested-start').value='';$('calendar-selection').textContent='Дата пока не выбрана.';for(const b of $('availability-days').children)b.setAttribute('aria-pressed','false');window.pushokOrder?.summary();}
 async function loadAvailability(){
  $('tariff-access-hint').hidden=!tariffs.find(t=>t.id===$('tariff-select').value)?.admin_only;
  const request=++calendarRequest;clearRequestedDate();
@@ -619,7 +621,7 @@ async function loadAvailability(){
   $('availability-days').replaceChildren(...data.days.map(day=>{
    const calendarLabels={available:'Свободно: '+day.available_nodes,unconfigured:'По согласованию',occupied:'Нет мест',past:'Время прошло',invalid_local_time:'Нет такого времени',ambiguous_local_time:'Неоднозначное время'};
    const b=button(new Date(day.start_at).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})+' · '+(calendarLabels[day.status]||'Недоступно'),async()=>{
-    clearRequestedDate();b.setAttribute('aria-pressed','true');$('requested-start').value=day.start_at;$('calendar-selection').textContent='Желаемое начало: '+date(day.start_at)+(day.status==='unconfigured'?' · расписание ещё не настроено, требуется согласование':'');
+    clearRequestedDate();b.setAttribute('aria-pressed','true');$('requested-start').value=day.start_at;$('calendar-selection').textContent='Желаемое начало: '+date(day.start_at)+(day.status==='unconfigured'?' · расписание ещё не настроено, требуется согласование':'');window.pushokOrder?.summary();
    });b.disabled=!['available','unconfigured'].includes(day.status);b.setAttribute('aria-pressed','false');return b;
   }));
  }catch(e){if(request===calendarRequest){$('availability-days').replaceChildren(el('p','Не удалось получить доступные даты.','muted'));throw e;}}
@@ -631,7 +633,7 @@ for(const id of ['calendar-from','calendar-time','tariff-select'])$(id).addEvent
 
 window.onTelegramAuth=data=>run(async()=>{const session=await api('/auth/telegram',{method:'POST',body:data});token=session.access_token;sessionStorage.setItem(sessionKey,token);await enter();notice('Вход выполнен.',true);});
 $('channel-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{await api('/channels',{method:'POST',body:Object.fromEntries(new FormData(e.target))});e.target.reset();await enter();notice('Канал добавлен.',true);},e.submitter);});
-$('campaign-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{const payload=Object.fromEntries(new FormData(e.target));if(!payload.requested_start_at)delete payload.requested_start_at;const created=await api('/campaigns',{method:'POST',body:payload});await refresh();if(window.cabinet)window.cabinet.go('campaign/'+created.id);notice('Черновик создан. Проверьте параметры и отправьте заявку на модерацию.',true);},e.submitter);});
+
 $('logout').addEventListener('click',()=>run(async()=>{await api('/auth/logout',{method:'POST'});sessionStorage.removeItem(sessionKey);if(miniAppMode)window.pushokMiniApp.signedOut();else location.reload();}));
 $('refresh').addEventListener('click',()=>run(async()=>{await refresh();await loadAvailability();}));
 $('queue-filter').addEventListener('change',()=>run(refresh));

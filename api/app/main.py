@@ -20,7 +20,7 @@ from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, Uplo
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from psycopg.errors import CheckViolation, ExclusionViolation, InsufficientPrivilege, UniqueViolation
 from psycopg.rows import dict_row
 from .bot_routes import router as bot_router
@@ -49,7 +49,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.053",
+    version="0.054",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -174,6 +174,26 @@ class CampaignCreate(BaseModel):
             if value <= datetime.now(timezone.utc):
                 raise ValueError("Выберите время в будущем")
         return value
+
+
+class OrderSubmission(BaseModel):
+    """Единая отправка: свой канал либо новый публичный канал, выбранный тариф и итог."""
+    model_config = ConfigDict(extra="forbid")
+    request_id: UUID
+    channel_id: UUID | None = None
+    channel: ChannelCreate | None = None
+    tariff_id: UUID
+    expected_price_kopecks: int = Field(ge=0)
+    expected_duration_seconds: int = Field(gt=0)
+    requested_start_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def check_channel(self):
+        if (self.channel_id is None) == (self.channel is None):
+            raise ValueError("Выберите канал или укажите новый")
+        if self.requested_start_at is not None and self.requested_start_at.utcoffset() is None:
+            raise ValueError("Укажите часовой пояс")
+        return self
 
 
 class CampaignResponse(BaseModel):
@@ -585,6 +605,12 @@ def create_campaign(
     if row is None:
         raise HTTPException(status_code=404, detail="channel_or_active_tariff_not_found")
     return _campaign_response(row)
+
+
+@app.post("/api/v1/orders", response_model=CampaignResponse, status_code=201, tags=["campaigns"])
+def submit_order(payload: OrderSubmission, user=Depends(get_current_user)):
+    from .order_submission import create_order
+    return _campaign_response(create_order(DATABASE_URL, payload, user))
 
 
 @app.get("/api/v1/campaigns", response_model=list[CampaignResponse], tags=["campaigns"])
@@ -2364,8 +2390,8 @@ def miniapp_client():
     html = (WEB_DIR / 'index.html').read_text()
     html = html.replace('initial-scale=1', 'initial-scale=1, viewport-fit=cover')
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
-    html = html.replace('<script src="/assets/app.js?v=053"',
-                        '<script src="/assets/miniapp.js?v=053" defer></script>\n  <script src="/assets/app.js?v=053"')
+    html = html.replace('<script src="/assets/app.js?v=054"',
+                        '<script src="/assets/miniapp.js?v=054" defer></script>\n  <script src="/assets/app.js?v=054"')
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 

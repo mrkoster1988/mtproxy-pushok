@@ -490,3 +490,31 @@ body.miniapp-loading #workspace{visibility:hidden}
 
 #tariff-admin-fields{border:0;margin:0;padding:0;min-width:0}
 #tariff-admin-fields:disabled{opacity:.65}
+
+/* Одна заявка: последовательная форма, без сводок и боковых инструкций. */
+[data-page=create] .page-help,[data-page=create]>.metrics{display:none!important}
+[data-page=create] .page-layout{display:block}
+[data-page=create] .page-content{max-width:720px;margin:0 auto}
+#order-fields{border:0;padding:0;margin:0;min-width:0}
+#campaign-form h2{font-size:18px;margin:22px 0 12px;line-height:1.35}
+#campaign-form h2:first-child{margin-top:0}
+#order-date{margin:22px 0;border:1px solid var(--line);border-radius:12px;padding:12px}
+#order-date summary{cursor:pointer;min-height:30px;font-weight:650}
+#order-date .calendar{border:0;margin:12px 0 0;padding:0;background:transparent}
+#order-review{border-top:1px solid var(--line);margin-top:20px;padding-top:4px}
+#order-summary{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 16px;font-size:14px}
+#order-summary dt{color:var(--text-soft)}
+#order-summary dd{margin:0;text-align:right;overflow-wrap:anywhere}
+#order-submit{width:100%;margin-top:12px}
+#order-channel-mode{margin:8px 0}
+#order-feedback{padding:12px;border:1px solid var(--accent);border-radius:12px}
+#order-result>h2{font-size:22px;margin-top:0}
+#order-result>a{display:inline-block;margin:16px 20px 0 0}
+#order-result .card{box-shadow:none}
+.nav-more summary{padding:12px;cursor:pointer;color:var(--text-soft)}
+.nav-more a{margin-left:8px}
+@media(max-width:760px){
+ [data-page=create] .page-heading{margin:8px 0 16px!important}
+ [data-page=create] .campaign-panel{padding:16px!important}
+ .miniapp-mode .cabinet-topbar{margin-bottom:0;min-height:48px}
+}

@@ -9,7 +9,7 @@
  const routes={
   dashboard:['Главная','Обзор ваших размещений'],
   channels:['Мои каналы','Управление рекламируемыми Telegram-каналами'],
-  create:['Создать кампанию','Новая заявка на спонсорское размещение'],
+  create:['Разместить рекламу','Канал, тариф и дата — в одной заявке'],
   campaigns:['Кампании','Статусы ваших рекламных заявок'],
   campaign:['Карточка кампании','Модерация, оплата и размещение — отдельные этапы'],
   payments:['Оплата рекламы','Подтверждение оплаты и доступные способы'],
@@ -24,7 +24,7 @@
  const hints={
   dashboard:'Здесь показаны данные ваших кампаний из кабинета. Показ спонсора проверяется отдельно.',
   channels:'API принимает публичную ссылку https://t.me/channel. Добавление канала ещё не означает одобрение рекламы.',
-  create:'Цена фиксируется в черновике. После создания проверьте заявку и отправьте её на модерацию.',
+  create:'Заполните форму и отправьте заявку. После одобрения оплатите размещение здесь же.',
   campaigns:'Одобрение канала, подтверждение оплаты и фактическое размещение — разные статусы.',
   campaign:'Если нужны исправления, прочтите комментарий, исправьте канал и отправьте заявку повторно.',
   payments:'Не переводите деньги повторно до выяснения результата. Загрузка чека не подтверждает поступление денег.',
@@ -74,7 +74,7 @@
  const shell=el('div',undefined,'cabinet-shell'),sidebar=el('aside',undefined,'cabinet-sidebar');sidebar.id='cabinet-sidebar';
  const brand=link('✳ puShok · MTProxy','dashboard');brand.className='cabinet-brand';sidebar.append(brand);
  const nav=el('nav');nav.setAttribute('aria-label','Разделы страниц кабинета');
- const menu=[['dashboard','home','Главная'],['channels','channel','Мои каналы'],['campaigns','campaign','Кампании'],['payments','wallet','Оплата'],['calendar','calendar','Календарь'],['reports','chart','Отчёты'],['moderation','moderation','Модерация'],['sponsors','server','Узлы'],['settings','settings','Настройки'],['help','support','Помощь'],['bot','channel','Telegram-бот']];
+ const menu=[['create','campaign','Разместить рекламу'],['dashboard','home','Главная'],['channels','channel','Мои каналы'],['campaigns','campaign','Кампании'],['payments','wallet','Оплата'],['calendar','calendar','Календарь'],['reports','chart','Отчёты'],['moderation','moderation','Модерация'],['sponsors','server','Узлы'],['settings','settings','Настройки'],['help','support','Помощь'],['bot','channel','Telegram-бот']];
  menu.forEach(([name,icon,title])=>{
    const a=link(title,name);a.dataset.route=name;a.classList.add('pushok-nav-link');
    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -82,6 +82,12 @@
    const use=document.createElementNS('http://www.w3.org/2000/svg','use');
    use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);nav.append(a);
  });sidebar.append(nav);
+ if(miniAppMode){
+  const more=el('details',undefined,'nav-more');more.append(el('summary','Ещё'));
+  const management=el('details',undefined,'nav-more');management.append(el('summary','Управление'));
+  nav.querySelectorAll('a').forEach(a=>{if(['moderation','sponsors','settings'].includes(a.dataset.route))management.append(a);else if(!['create','campaigns','help'].includes(a.dataset.route))more.append(a);});
+  nav.append(more,management);management.id='management-menu';
+ }
  sidebar.append(el('p','Подсказки и инструкции доступны в каждом разделе.','sidebar-note'));
  const stage=el('div',undefined,'cabinet-stage'),bar=el('div',undefined,'cabinet-topbar');
  const mobileMenu=window.matchMedia?.('(max-width:760px)');
@@ -115,7 +121,7 @@
  const channelList=section('Ваши каналы'),channelRows=el('div');channelList.append(channelRows);content.channels.prepend(channelList);
  content.create.append($('campaign-form').closest('section'));
  const createNotice=el('p',undefined,'muted');content.create.prepend(createNotice);
- const calendar=$('availability-days').closest('.calendar');const calendarOrigin=calendar.parentNode;
+ const calendar=$('availability-days').closest('.calendar');const calendarOrigin=$('order-calendar-home');
  const calendarPanel=section('Выбор даты'),calendarTariff=el('select');calendarTariff.setAttribute('aria-label','Тариф календаря');calendarPanel.append(calendarTariff);content.calendar.append(calendarPanel);
  calendarTariff.addEventListener('change',()=>run(async()=>{$('tariff-select').value=calendarTariff.value;await loadAvailability();}));
  content.calendar.append(link('Перейти к созданию кампании','create'));
@@ -124,8 +130,8 @@
  const reset=button('Сбросить поиск и фильтр',async()=>{state.search='';state.filter='';search.value='';filter.value='';renderList();});
  filter.addEventListener('change',()=>{state.filter=filter.value;renderList();});listTools.append(filter,reset);content.campaigns.append(listTools,$('campaigns'));
  const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.append(summaryRows);content.dashboard.append(summary);
- const onboarding=section('С чего начать');onboarding.id='onboarding';onboarding.append(el('p','Добавьте публичный канал, создайте черновик и отправьте его на проверку. После одобрения откройте оплату.'));
- onboarding.append(button('Скрыть инструкцию',async()=>{sessionStorage.setItem('pushok-onboarding-hidden','1');onboarding.hidden=true;}),link('Начать с канала','channels'));content.dashboard.prepend(onboarding);
+ const onboarding=section('С чего начать');onboarding.id='onboarding';onboarding.append(el('p','Заполните одну форму: канал, тариф и желаемая дата. После проверки канала оплатите размещение.'));
+ onboarding.append(button('Скрыть инструкцию',async()=>{sessionStorage.setItem('pushok-onboarding-hidden','1');onboarding.hidden=true;}),link('Разместить рекламу','create'));content.dashboard.prepend(onboarding);
  const paymentRows=el('div');content.payments.append(paymentRows);const reportRows=el('div');content.reports.append(reportRows);
  const detail=el('div');content.campaign.append(link('← Все кампании','campaigns'),detail);
  content.moderation.append($('queue-filter'),$('queue-count'),$('queue'));
@@ -146,7 +152,7 @@
  // Настройки сохраняют отдельные вкладки и проверки роли существующего кода.
  [...pages.settings.children].filter(n=>!['page-heading','metrics','page-layout'].some(c=>n.classList.contains(c))).forEach(n=>content.settings.append(n));
  const faqs=[
-  ['Как начать?','Добавьте канал и создайте черновик. Отправка на модерацию — отдельное действие в карточке.'],
+  ['Как начать?','Откройте «Разместить рекламу», укажите канал, тариф и дату. Проверьте итог и отправьте на модерацию одной кнопкой.'],
   ['Как указать канал?','Используйте публичную ссылку https://t.me/channel. Исправления доступны в черновике или по запросу модератора.'],
   ['Цена и Stars','Цена фиксируется в заявке. RUB и XTR настраиваются отдельно, автоматического курса нет.'],
   ['Дата и бронь','Календарь справочный. В одобренной заявке можно получить бронь на 15 минут, если API найдёт свободный узел.'],
@@ -167,14 +173,7 @@
   $('campaign-count').textContent=list.length+' заявок';
   if(!list.length)empty($('campaigns'),state.search||state.filter?'Поиск не дал результатов. Измените запрос или сбросьте фильтр.':'Заявок пока нет. Создайте первую кампанию.');
  }
- function renderQuote(){
-  const t=tariffs.find(t=>t.id===$('tariff-select').value),c=channels.find(c=>c.id===$('channel-select').value);
-  metrics('create',t?[
-   ['Цена заявки',money(t.price_kopecks),'Фиксируется при создании'],
-   ['Длительность',String(t.duration_seconds/3600)+' ч',t.name],
-   ['Канал',c?.title||'Не выбран','Проверяется модератором']
-  ]:[]);
- }
+ function renderQuote(){window.pushokOrder?.summary();}
  $('channel-select').addEventListener('change',renderQuote);$('tariff-select').addEventListener('change',renderQuote);
  function render(){
   if(!state.ready||!state.loaded||!me)return;
@@ -188,10 +187,10 @@
   metrics('campaigns',[['Всего',state.campaigns.length,'Ваши заявки'],['Ожидают оплаты',state.campaigns.filter(c=>c.payment_status==='awaiting_payment').length,'После модерации'],['Завершены',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным системы']]);
   renderQuote();metrics('calendar',[['Часовой пояс',calendarZone,'Время в календаре'],['Период',14,'Дней в запросе доступности']]);
   metrics('reports',[['Кампаний',state.campaigns.length,'В вашем аккаунте'],['В эфире',state.campaigns.filter(c=>c.placement_status==='active').length,'По ручной отметке оператора'],['Завершено',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным API']]);
-  table(channelRows,channels.map(c=>{const action=link('Создать кампанию','create');action.addEventListener('click',()=>{$('channel-select').value=c.id;renderQuote();});return [c.title,safeChannel(c.telegram_url,c.telegram_url),action];}),['Название','Ссылка','Действие']);
+  table(channelRows,channels.map(c=>{const action=link('Создать кампанию','create');action.addEventListener('click',()=>{$('channel-select').value=c.id;window.pushokOrder.selectChannel();renderQuote();});return [c.title,safeChannel(c.telegram_url,c.telegram_url),action];}),['Название','Ссылка','Действие']);
   table(summaryRows,campaignRows(state.campaigns.slice(0,5)),campaignHeaders);renderList();
   onboarding.hidden=sessionStorage.getItem('pushok-onboarding-hidden')==='1';
-  createNotice.textContent=!channels.length?'Сначала добавьте канал в разделе «Мои каналы».':!tariffs.length?'Нет доступных тарифов. Обратитесь к администратору.':'Проверьте канал, тариф и желаемую дату. Отправка на модерацию доступна после создания.';
+  createNotice.hidden=Boolean(tariffs.length);createNotice.textContent='Нет доступных тарифов. Обратитесь к администратору.';
   sponsorPanel.hidden=me.role!=='admin';sponsorNode.replaceChildren();nodes.forEach(n=>option(sponsorNode,n.id,n.name));
   calendarTariff.replaceChildren();tariffs.forEach(t=>option(calendarTariff,t.id,tariffLabel(t)));calendarTariff.value=$('tariff-select').value;
   botPanel.replaceChildren(el('h2','Продолжить в Telegram'),botLink(),el('p','Кампании, статусы и оплата доступны в боте согласно настройкам сервера.'),el('h3','Сценарии в кабинете'));
@@ -275,6 +274,19 @@
  function renderSelected(){
   const [name,id]=routeParts();
   if(name!=='campaign'){detail.replaceChildren();metrics('campaign',[]);}
+  if(name==='create'){
+   const result=$('order-result');$('campaign-form').hidden=Boolean(id);result.hidden=!id;result.replaceChildren();
+   if(id){
+    const c=state.campaigns.find(c=>c.id===id);
+    if(c){
+     result.append(el('h2',c.moderation_status==='pending'?'Заявка на проверке':'Ваша заявка'));
+     if(c.moderation_status==='pending')result.append(el('p','Мы проверим канал. После одобрения здесь появится оплата. Бесплатный тариф не требует оплаты.'));
+     result.append(card(c,false,{compact:true}));
+     if(c.moderation_status==='approved'&&c.price_kopecks_snapshot>0){const checkout=el('section',undefined,'sbp-checkout');result.append(checkout);void renderSbp(c,checkout);}
+    }else result.append(el('p','Заявка не найдена или недоступна. Обновите список.'));
+    result.append(link('Создать ещё одну заявку','create'),link('Мои заявки','campaigns'));
+   }
+  }
   if(name==='campaign'){
    detail.replaceChildren();const c=state.campaigns.find(c=>c.id===id);
    if(c){detail.append(card(c,false));metrics('campaign',[['Модерация',labels[c.moderation_status],'По данным API'],['Оплата',c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status],'По данным API'],['Размещение',labels[c.placement_status],'По данным API'],['Окончание',date(c.scheduled_end_at),'Назначенный период']]);}
@@ -295,7 +307,7 @@
   if($('notice').dataset.route!==location.hash)$('notice').hidden=true;
   state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
-  if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.insertBefore(calendar,calendarOrigin.querySelector('button[type="submit"]'));
+  if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
   nav.querySelectorAll('a').forEach(a=>{const active=a.dataset.route===name||(name==='create'||name==='campaign')&&a.dataset.route==='campaigns';a.classList.toggle('selected',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   menuState(false);
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
@@ -307,9 +319,9 @@
   const url=new URL(location.href),returned=url.searchParams.get('sbp_campaign');
   if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);
-  nav.querySelectorAll('a').forEach(a=>a.hidden=!permitted(a.dataset.route));activate();
- },logout(){$('sbp-review-list').replaceChildren();state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
-  [detail,paymentRows,reportRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list')].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());
+  nav.querySelectorAll('a').forEach(a=>a.hidden=!permitted(a.dataset.route));if($('management-menu'))$('management-menu').hidden=!['admin','operator'].includes(me.role);activate();
+ },logout(){$('sbp-review-list').replaceChildren();state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
+  [$('order-result'),detail,paymentRows,reportRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list')].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['settings-stars-counts','settings-stars-status','settings-sbp-status','launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());
