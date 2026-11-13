@@ -77,7 +77,7 @@ def list_bot_campaigns(
                 JOIN campaigns AS c ON c.advertiser_user_id = u.id
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
                 JOIN tariffs AS t ON t.id = c.tariff_id
-                WHERE u.telegram_user_id = %s
+                WHERE u.telegram_user_id = %s AND c.archived_at IS NULL
                 ORDER BY c.created_at DESC
                 LIMIT 10
                 """,
@@ -127,7 +127,7 @@ def get_bot_tariff_quote(
             row = connection.execute(
                 """SELECT name, duration_seconds, price_kopecks,
                           currency, stars_price_xtr
-                   FROM tariffs WHERE id = %s AND is_active = TRUE AND NOT admin_only
+                   FROM tariffs WHERE id = %s AND is_active = TRUE AND archived_at IS NULL AND NOT admin_only
                      AND price_kopecks > 0 AND btrim(currency) = 'RUB'""",
                 (DAY_TARIFF_ID,),
             ).fetchone()
@@ -186,7 +186,7 @@ def create_bot_campaign_draft(
                 """
                 SELECT id, name, duration_seconds, price_kopecks, currency
                 FROM tariffs
-                WHERE id = %s AND is_active = TRUE AND NOT admin_only
+                WHERE id = %s AND is_active = TRUE AND archived_at IS NULL AND NOT admin_only
                   AND duration_seconds > 0 AND price_kopecks > 0
                   AND btrim(currency) = 'RUB'
                 """,
@@ -217,11 +217,13 @@ def create_bot_campaign_draft(
             )
             channel = connection.execute(
                 """
-                SELECT id FROM sponsor_channels
+                SELECT id,archived_at FROM sponsor_channels
                 WHERE owner_user_id = %s AND telegram_url = %s
                 """,
                 (user["id"], channel_url),
             ).fetchone()
+            if channel and channel.get('archived_at'):
+                raise HTTPException(409, 'management_restore_channel')
 
             created = connection.execute(
                 """
@@ -315,7 +317,7 @@ def submit_bot_campaign_draft(
                 JOIN users AS u ON u.id = c.advertiser_user_id
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
                                             AND sc.owner_user_id = u.id
-                WHERE c.id = %s AND u.telegram_user_id = %s
+                WHERE c.id = %s AND u.telegram_user_id = %s AND c.archived_at IS NULL AND sc.archived_at IS NULL
                 """,
                 (payload.campaign_id, payload.telegram_user_id),
             ).fetchone()
@@ -359,7 +361,7 @@ def submit_bot_campaign_draft(
                 """
                 UPDATE sponsor_channels
                 SET telegram_channel_id = %s
-                WHERE id = %s AND owner_user_id = %s AND telegram_url = %s
+                WHERE id = %s AND owner_user_id = %s AND telegram_url = %s AND archived_at IS NULL
                   AND (telegram_channel_id IS NULL OR telegram_channel_id = %s)
                 RETURNING id
                 """,
@@ -375,7 +377,7 @@ def submit_bot_campaign_draft(
                 """
                 UPDATE campaigns SET moderation_status = 'pending', updated_at = now()
                 WHERE id = %s AND advertiser_user_id = %s
-                  AND channel_id = %s AND moderation_status = 'draft'
+                  AND channel_id = %s AND moderation_status = 'draft' AND archived_at IS NULL
                 RETURNING id
                 """,
                 (

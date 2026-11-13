@@ -11,7 +11,7 @@ function button(text,fn){const b=el('button',text);b.type='button';b.addEventLis
 async function api(path,{method='GET',body}={}){
  const headers={};if(token)headers.Authorization='Bearer '+token;
  if(body&&!(body instanceof FormData))headers['Content-Type']='application/json';
- let r;try{r=await fetch('/api/v1'+path,{method,headers,body:body instanceof FormData?body:body?JSON.stringify(body):undefined});}catch{throw Error('Нет связи с сервером. Проверьте соединение и повторите действие.');}
+ let r;try{r=await fetch('/api/v1'+path,{method,headers,cache:'no-store',body:body instanceof FormData?body:body?JSON.stringify(body):undefined});}catch{throw Error('Нет связи с сервером. Проверьте соединение и повторите действие.');}
  if(!r.ok){let d;try{d=(await r.json()).detail;}catch{d='';}if(r.status===401&&token){token='';sessionStorage.removeItem(sessionKey);$('workspace').hidden=true;$('login').hidden=false;$('logout').hidden=true;if(window.cabinet)window.cabinet.logout();if(miniAppMode)window.pushokMiniApp.expired();}
  const error=Error(errors[d]||(r.status===422?'Проверьте заполненные поля.':typeof d==='string'&&d.endsWith('_not_configured')?'Вход ещё не настроен администратором.':'Не удалось выполнить действие. Попробуйте снова.'));error.status=r.status;throw error;}
  return r.status===204?null:r.json();
@@ -282,6 +282,7 @@ function card(c,op,{compact=false}={}){
  if(c.moderator_comment)box.append(el('p','Модерация: '+c.moderator_comment));
  if(c.payment_review_comment)box.append(el('p','Проверка оплаты: '+c.payment_review_comment));
  const actions=el('div',undefined,'actions');box.append(actions);
+ if(!op&&window.pushokManagement)box.append(window.pushokManagement.campaignActions(c));
  const change=async(path,body)=>{await api('/operator/campaigns/'+c.id+'/'+path,{method:'POST',body});notice('Изменения сохранены.',true);await refresh();};
  if(!op){
   const reports=compact?el('details',undefined,'order-reports'):actions;if(compact){reports.append(el('summary','История и отчёт'));box.append(reports);}
@@ -554,6 +555,7 @@ function renderNodes(){
   box.append(el('h3',n.name),el('p',n.host+':'+n.port+' · '+(n.status==='active'?'Доступен для расписания':'На паузе')));
   box.append(el('p','План движка: '+(engineTitles[n.target_engine]||'Не выбран (старый узел)')+
     ' · '+({auto:'автовыбор',manual:'вручную',legacy:'старый узел'}[n.engine_selection_mode]||'старый узел')+'. Установка и доступность не проверены.','muted'));
+  if(me?.role==='admin'){box.append(window.pushokManagement?.nodeActions(n)||el('span'));
   box.append(button('Изменить план движка',async()=>{
    if(!confirm('Изменить только план движка? Реальный прокси не будет переключён.'))return;
    await api('/admin/proxy-nodes/'+n.id+'/engine-plan',{method:'PATCH',body:engineRequest()});
@@ -562,7 +564,7 @@ function renderNodes(){
   box.append(button(n.status==='active'?'Поставить на паузу':'Возобновить',async()=>{
    await api('/admin/proxy-nodes/'+n.id+'/status',{method:'PATCH',body:{status:n.status==='active'?'paused':'active'}});
    await refresh();notice('Состояние узла сохранено.',true);
-  }));return box;
+  }));}return box;
  }));
 }
 $('node-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
@@ -639,7 +641,7 @@ window.onTelegramAuth=data=>run(async()=>{const session=await api('/auth/telegra
 $('channel-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{await api('/channels',{method:'POST',body:Object.fromEntries(new FormData(e.target))});e.target.reset();await enter();notice('Канал добавлен.',true);},e.submitter);});
 
 $('logout').addEventListener('click',()=>run(async()=>{await api('/auth/logout',{method:'POST'});sessionStorage.removeItem(sessionKey);if(miniAppMode)window.pushokMiniApp.signedOut();else location.reload();}));
-$('refresh').addEventListener('click',()=>run(async()=>{await refresh();await loadAvailability();}));
+$('refresh').addEventListener('click',()=>run(async()=>{await refresh();await loadAvailability();},$('refresh')));
 $('queue-filter').addEventListener('change',()=>run(refresh));
 $('advertiser-tab').addEventListener('click',()=>operatorView(false));
 $('operator-tab').addEventListener('click',()=>operatorView(true));

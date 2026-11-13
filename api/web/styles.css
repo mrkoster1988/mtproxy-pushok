@@ -536,3 +536,36 @@ body.miniapp-loading #workspace{visibility:hidden}
 .approval-card button{min-height:44px;white-space:normal}.approval-feedback:empty{display:none}.approval-feedback{padding:12px;background:var(--surface-2,#102c3b);color:var(--text);border-radius:10px}
 .approval-proofs{display:flex;flex-wrap:wrap;gap:8px}
 @media(max-width:760px){.approval-card,.approval-summary{padding:14px}.approval-progress{gap:5px}.approval-progress li{font-size:.78rem;padding:6px 8px}}
+
+/* Закреплённая панель и одна компактная подсказка текущего раздела. */
+.cabinet-mode .cabinet-topbar{position:sticky;top:var(--mini-safe-top,0px);z-index:40;background:var(--bg);min-height:68px;box-shadow:0 5px 12px #0716250a;margin-bottom:16px}
+.cabinet-mode .cabinet-sidebar{z-index:70}
+.cabinet-mode .page-help{display:none}.cabinet-mode .page-layout{display:block}
+.cabinet-mode .top-help{position:relative;margin:0;flex:0 0 44px}
+.top-help>summary{display:grid;place-items:center;list-style:none;cursor:pointer;width:44px;height:44px;border:1px solid var(--line);border-radius:12px;background:var(--surface);font-weight:750;font-size:20px}
+.top-help>summary::-webkit-details-marker{display:none}
+.help-popup{position:absolute;right:0;top:calc(100% + 8px);width:min(300px,calc(100vw - 32px));padding:14px;background:var(--surface);color:var(--text);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 30px #07162533;line-height:1.5;font-size:14px}
+.help-popup p{margin:0 0 10px}.help-popup a{font-size:14px}
+.cabinet-mode #notice{position:fixed;top:auto;bottom:calc(var(--mini-safe-bottom,0px) + 12px);left:auto;right:16px;width:auto;max-width:min(440px,calc(100vw - 32px));z-index:90;margin:0;border-radius:12px;padding:12px 14px;pointer-events:none}
+.management-actions{margin-top:12px;display:block}.management-actions>button{margin:6px 8px 6px 0}.management-actions>summary{cursor:pointer;min-height:44px;align-content:center;font-size:14px}
+.management-form{display:grid;gap:12px;padding:14px;margin:10px 0;border:1px solid var(--line);border-radius:12px;background:var(--surface-2)}
+.management-form label{display:grid;gap:6px}.management-form textarea{min-height:80px}.management-form button{min-height:44px}
+.cabinet-mode label,.cabinet-mode button,.cabinet-mode select,.cabinet-mode input{scroll-margin-top:calc(var(--mini-safe-top,0px) + 130px)}
+@media(max-width:760px){.cabinet-mode .cabinet-topbar{flex-wrap:wrap;gap:6px;padding:8px 0;min-height:60px}.cabinet-mode .cabinet-account{font-size:12px;max-width:110px}.cabinet-topbar .menu-toggle{padding:8px 10px}.cabinet-mode #notice{right:12px;max-width:calc(100vw - 24px)}.management-actions button{white-space:normal}}
+
+/* На телефоне действия канала видны сразу, без горизонтального поиска. */
+@media(max-width:760px){
+ .cabinet-mode .channel-manager .table-scroll{overflow:visible;border:0;background:transparent}
+ .cabinet-mode .channel-manager table{display:block;min-width:0;width:100%}
+ .cabinet-mode .channel-manager thead{display:none}
+ .cabinet-mode .channel-manager tbody{display:grid;gap:12px}
+ .cabinet-mode .channel-manager tr{display:grid;min-width:0;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+ .cabinet-mode .channel-manager td{display:block;min-width:0;max-width:100%;padding:6px 0;border:0;white-space:normal;overflow-wrap:anywhere}
+ .cabinet-mode .channel-manager td:first-child{min-width:0;font-weight:700}
+ .cabinet-mode .channel-manager a{white-space:normal;overflow-wrap:anywhere}
+ .cabinet-mode .channel-manager td:last-child>div>a{display:inline-block;margin:6px 0}
+ .cabinet-mode .channel-manager .management-actions{display:grid;gap:8px;margin-top:6px}
+ .cabinet-mode .channel-manager .management-actions>button{width:100%;margin:0}
+ .cabinet-mode .channel-manager .management-form{min-width:0;margin:0;padding:10px}
+ .cabinet-mode .channel-manager .management-form input{min-width:0;width:100%}
+}

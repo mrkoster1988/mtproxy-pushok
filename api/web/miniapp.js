@@ -23,6 +23,7 @@ window.pushokMiniApp=(()=>{
   if(root)app.BackButton.hide();else app.BackButton.show();
  }
  function back(){
+  const help=document.querySelector('.top-help[open]');if(help){help.open=false;return;}
   if(document.querySelector('.cabinet-sidebar.is-open')){document.querySelector('.menu-toggle')?.click();return;}
   const parts=location.hash.replace(/^#\/?/,'').split('/');
   const target=parts[0]==='create'&&parts[1]?'create':parts[0]==='campaign'?'campaigns':parts[0]==='payments'&&parts[1]?'payments':'create';

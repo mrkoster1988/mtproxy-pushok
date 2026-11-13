@@ -49,7 +49,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.055",
+    version="0.056",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -506,7 +506,7 @@ def _available_tariffs(*, include_admin: bool = False) -> list[TariffResponse]:
                 """
                 SELECT id, name, duration_seconds, price_kopecks, currency, admin_only
                 FROM tariffs
-                WHERE is_active = TRUE AND (NOT admin_only OR %s)
+                WHERE is_active = TRUE AND archived_at IS NULL AND (NOT admin_only OR %s)
                 ORDER BY admin_only, duration_seconds, price_kopecks, id
                 """, (include_admin,),
             ).fetchall()
@@ -584,9 +584,9 @@ def create_campaign(
                 SELECT %s, c.id, t.id, t.name, t.duration_seconds,
                        t.price_kopecks, t.currency, %s
                 FROM sponsor_channels AS c
-                JOIN tariffs AS t ON t.id = %s AND t.is_active = TRUE
+                JOIN tariffs AS t ON t.id = %s AND t.is_active = TRUE AND t.archived_at IS NULL
                   AND (NOT t.admin_only OR %s)
-                WHERE c.id = %s AND c.owner_user_id = %s
+                WHERE c.id = %s AND c.owner_user_id = %s AND c.archived_at IS NULL
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
                           duration_seconds_snapshot, price_kopecks_snapshot,
                           currency_snapshot, moderation_status, payment_status,
@@ -637,7 +637,7 @@ def list_campaigns(
                     ORDER BY p.submitted_at DESC
                     LIMIT 1
                 ) AS latest_proof ON TRUE
-                WHERE c.advertiser_user_id = %s
+                WHERE c.advertiser_user_id = %s AND c.archived_at IS NULL
                 ORDER BY c.created_at DESC
                 """,
                 (user["id"],),
@@ -662,7 +662,7 @@ def submit_campaign(
                 """
                 SELECT ch.id FROM sponsor_channels AS ch
                 JOIN campaigns AS c ON c.channel_id = ch.id
-                WHERE c.id = %s AND c.advertiser_user_id = %s
+                WHERE c.id = %s AND c.advertiser_user_id = %s AND c.archived_at IS NULL AND ch.archived_at IS NULL
                 FOR UPDATE OF ch
                 """, (campaign_id, user["id"]),
             ).fetchone()
@@ -985,7 +985,7 @@ def create_slot_hold(
                 payload.start_at, campaign["duration_seconds_snapshot"]
             )
             node = connection.execute(
-                "SELECT id FROM proxy_nodes WHERE id = %s AND status = 'active' FOR UPDATE",
+                "SELECT id FROM proxy_nodes WHERE id = %s AND status = 'active' AND archived_at IS NULL FOR UPDATE",
                 (payload.proxy_node_id,),
             ).fetchone()
             if node is None:
@@ -1071,7 +1071,7 @@ def list_campaign_slot_options(
             end_utc = start_utc + timedelta(seconds=campaign["duration_seconds_snapshot"])
             rows = connection.execute(
                 """SELECT n.id FROM proxy_nodes AS n
-                   WHERE n.status = 'active'
+                   WHERE n.status = 'active' AND n.archived_at IS NULL
                      AND NOT EXISTS (
                         SELECT 1 FROM campaigns AS c
                         WHERE c.proxy_node_id = n.id
@@ -1192,7 +1192,7 @@ def schedule_placement(
             ):
                 raise HTTPException(status_code=409, detail="campaign_not_ready_for_placement")
             node = connection.execute(
-                "SELECT id FROM proxy_nodes WHERE id = %s AND status = 'active' FOR UPDATE",
+                "SELECT id FROM proxy_nodes WHERE id = %s AND status = 'active' AND archived_at IS NULL FOR UPDATE",
                 (payload.proxy_node_id,),
             ).fetchone()
             if node is None:
@@ -1668,7 +1668,7 @@ def list_operator_campaigns(
         raise HTTPException(status_code=422, detail="invalid_moderation_status")
     if payment_status is not None and payment_status not in valid_payment:
         raise HTTPException(status_code=422, detail="invalid_payment_status")
-    filters = []
+    filters = ["c.archived_at IS NULL"]
     params: list[str] = []
     if moderation_status is not None:
         filters.append("c.moderation_status = %s")
@@ -1719,7 +1719,7 @@ def list_channels(user: dict[str, Any] = Depends(get_current_user)) -> list[Chan
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             rows = connection.execute(
-                "SELECT id, telegram_url, title FROM sponsor_channels WHERE owner_user_id = %s ORDER BY created_at DESC",
+                "SELECT id, telegram_url, title FROM sponsor_channels WHERE owner_user_id = %s AND archived_at IS NULL ORDER BY created_at DESC",
                 (user["id"],),
             ).fetchall()
     except psycopg.Error as exc:
@@ -1734,7 +1734,7 @@ def list_proxy_nodes(operator: dict[str, Any] = Depends(require_operator)) -> li
             return connection.execute(
                 """SELECT id, name, host, port, status, target_engine,
                           engine_selection_mode, deployment_profile
-                   FROM proxy_nodes ORDER BY name"""
+                   FROM proxy_nodes WHERE archived_at IS NULL ORDER BY name"""
             ).fetchall()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
@@ -1828,7 +1828,7 @@ def list_admin_tariffs(
             rows = connection.execute(
                 """SELECT id, name, duration_seconds, price_kopecks, currency,
                           is_active, stars_price_xtr, admin_only
-                   FROM tariffs ORDER BY admin_only, duration_seconds, id"""
+                   FROM tariffs WHERE archived_at IS NULL ORDER BY admin_only, duration_seconds, id"""
             ).fetchall()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
@@ -1848,7 +1848,7 @@ def update_admin_tariff(
                 """UPDATE tariffs
                    SET name = %s, duration_seconds = %s, price_kopecks = %s,
                        stars_price_xtr = %s, is_active = %s
-                   WHERE id = %s AND btrim(currency) = 'RUB'
+                   WHERE id = %s AND btrim(currency) = 'RUB' AND archived_at IS NULL
                    RETURNING id, name, duration_seconds, price_kopecks,
                              currency, stars_price_xtr, is_active, admin_only""",
                 (payload.name, payload.duration_seconds, payload.price_kopecks,
@@ -1913,7 +1913,7 @@ def read_launch_readiness(
                   (SELECT count(*) FROM proxy_nodes WHERE status = 'active') AS nodes_active,
                   (SELECT count(*) FROM proxy_sponsor_registrations AS r
                    JOIN proxy_nodes AS n ON n.id = r.proxy_node_id
-                   WHERE n.status = 'active') AS nodes_with_registered_tag,
+                   WHERE n.status = 'active' AND n.archived_at IS NULL) AS nodes_with_registered_tag,
                   (SELECT count(*) FROM campaigns) AS campaigns_total,
                   (SELECT count(*) FROM campaigns WHERE moderation_status = 'pending') AS moderation_pending,
                   (SELECT count(*) FROM campaigns WHERE payment_status = 'proof_submitted') AS payments_pending,
@@ -2024,7 +2024,7 @@ def update_proxy_engine_plan(
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             node = connection.execute(
-                "SELECT id FROM proxy_nodes WHERE id = %s FOR UPDATE",
+                "SELECT id FROM proxy_nodes WHERE id = %s AND archived_at IS NULL FOR UPDATE",
                 (node_id,),
             ).fetchone()
             if node is None:
@@ -2075,7 +2075,7 @@ def change_proxy_node_status(
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             node = connection.execute(
-                "SELECT id FROM proxy_nodes WHERE id = %s FOR UPDATE", (node_id,)
+                "SELECT id FROM proxy_nodes WHERE id = %s AND archived_at IS NULL FOR UPDATE", (node_id,)
             ).fetchone()
             if node is None:
                 raise HTTPException(status_code=404, detail="proxy_node_not_found")
@@ -2325,20 +2325,20 @@ def get_availability(
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             tariff = connection.execute(
-                """SELECT duration_seconds FROM tariffs WHERE id = %s AND is_active = TRUE
+                """SELECT duration_seconds FROM tariffs WHERE id = %s AND is_active = TRUE AND archived_at IS NULL
                    AND (NOT admin_only OR %s)""",
                 (tariff_id, user["role"] == "admin"),
             ).fetchone()
             if tariff is None:
                 raise HTTPException(status_code=404, detail="active_tariff_not_found")
-            active_nodes = connection.execute("SELECT count(*) AS total FROM proxy_nodes WHERE status='active'").fetchone()["total"]
+            active_nodes = connection.execute("SELECT count(*) AS total FROM proxy_nodes WHERE status='active' AND archived_at IS NULL").fetchone()["total"]
             duration = timedelta(seconds=tariff["duration_seconds"])
             ends = [dt.astimezone(timezone.utc) + duration for dt in valid]
             rows = connection.execute(
                 """
                 SELECT w.starts_at, count(n.id) AS available_nodes
                 FROM unnest(%s::timestamptz[], %s::timestamptz[]) AS w(starts_at, ends_at)
-                LEFT JOIN proxy_nodes AS n ON n.status = 'active'
+                LEFT JOIN proxy_nodes AS n ON n.status = 'active' AND n.archived_at IS NULL
                   AND NOT EXISTS (
                     SELECT 1 FROM campaigns AS c
                     WHERE c.proxy_node_id = n.id
@@ -2390,8 +2390,8 @@ def miniapp_client():
     html = (WEB_DIR / 'index.html').read_text()
     html = html.replace('initial-scale=1', 'initial-scale=1, viewport-fit=cover')
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
-    html = html.replace('<script src="/assets/app.js?v=055"',
-                        '<script src="/assets/miniapp.js?v=055" defer></script>\n  <script src="/assets/app.js?v=055"')
+    html = html.replace('<script src="/assets/app.js?v=056"',
+                        '<script src="/assets/miniapp.js?v=056" defer></script>\n  <script src="/assets/app.js?v=056"')
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
@@ -2443,7 +2443,7 @@ def save_proxy_sponsor_registration(
             DATABASE_URL, connect_timeout=3, row_factory=dict_row
         ) as connection:
             node = connection.execute(
-                "SELECT id, target_engine FROM proxy_nodes WHERE id = %s FOR UPDATE",
+                "SELECT id, target_engine FROM proxy_nodes WHERE id = %s AND archived_at IS NULL FOR UPDATE",
                 (node_id,),
             ).fetchone()
             if node is None:
@@ -2613,3 +2613,7 @@ def import_icons(admin=Depends(require_admin)):
 def save_icons(payload: dict[str,str], admin=Depends(require_admin)):
     emoji_settings.save(payload)
     return {'saved': True}
+
+
+from .management import router_for as management_router
+app.include_router(management_router(lambda: DATABASE_URL, get_current_user, require_admin, require_operator, normalize_proxy_host))
