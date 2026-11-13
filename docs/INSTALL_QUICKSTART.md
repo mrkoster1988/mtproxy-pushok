@@ -1,6 +1,10 @@
 # Установка MTProxy Pushok одной командой
 
-Инструкция для первой установки на отдельный VPS с Ubuntu 24.04 LTS. Она соответствует мастеру после PR #41. Базовый сценарий ниже: классический MTProxy + кабинет + Telegram-бот + Mini App. Тестовый Telegram описан отдельно в [TELEGRAM_TEST_ENVIRONMENT.md](TELEGRAM_TEST_ENVIRONMENT.md).
+Инструкция для первой установки на отдельный VPS с Ubuntu 24.04 LTS. Она соответствует текущему мастеру `setup.sh` и проверкам ввода. Базовый сценарий ниже: классический MTProxy + кабинет + Telegram-бот + Mini App. Тестовый Telegram описан отдельно в [TELEGRAM_TEST_ENVIRONMENT.md](TELEGRAM_TEST_ENVIRONMENT.md).
+
+<p align="center">
+  <a href="https://github.com/mrkoster1988/mtproxy-pushok"><img src="assets/pushok/install.webp" width="440" alt="Пушок помогает установить MTProxy: карандашная иллюстрация"></a>
+</p>
 
 ## 1. Что подготовить
 
@@ -25,6 +29,20 @@ bash -c 'set -e; test "$(id -u)" -eq 0 || { echo "Сначала войдите 
 Затем мастер, после вашего подтверждения, устанавливает необходимые компоненты: Docker/Compose для кабинета, PostgreSQL, API, бота, Caddy при выборе нового HTTPS; для классического MTProxy — компилятор, OpenSSL/zlib и systemd-службу. Пароли БД и внутренние секреты создаются автоматически. Отдельные драйверы не нужны.
 
 При выборе существующего Docker нужен работающий Compose plugin; мастер не переустанавливает его автоматически при конфликте пакетов. Если загрузка GitHub недоступна, установка остановится — сервисы не будут объявлены запущенными.
+
+### Полные ссылки на файлы установщика
+
+- **Только классический MTProxy — install.sh:** [https://raw.githubusercontent.com/mrkoster1988/mtproxy-pushok/main/install.sh](https://raw.githubusercontent.com/mrkoster1988/mtproxy-pushok/main/install.sh).
+- **Полный мастер — setup.sh:** [https://raw.githubusercontent.com/mrkoster1988/mtproxy-pushok/main/setup.sh](https://raw.githubusercontent.com/mrkoster1988/mtproxy-pushok/main/setup.sh). Для запуска ему нужен **весь репозиторий**, поэтому используйте команду клонирования выше.
+- [Скачать весь проект ZIP](https://github.com/mrkoster1988/mtproxy-pushok/archive/refs/heads/main.zip) · [Посмотреть код install.sh](https://github.com/mrkoster1988/mtproxy-pushok/blob/main/install.sh).
+
+Если требуется только отдельный прокси, полная команда скачивания и запуска:
+
+```bash
+curl --fail --location --show-error https://raw.githubusercontent.com/mrkoster1988/mtproxy-pushok/main/install.sh -o mtproxy-pushok-install.sh && sudo bash mtproxy-pushok-install.sh
+```
+
+Нужен `curl`; при его отсутствии на Ubuntu установите пакет `curl`. Скрипт запускается только после успешной загрузки. Кабинет, бота и Mini App эта команда не устанавливает. Команда `sudo bash install.sh` без скачивания работает только из каталога, где файл уже существует.
 
 ## 3. Готовые ответы: чистый VPS, обычный Telegram
 
