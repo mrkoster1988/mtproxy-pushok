@@ -64,6 +64,10 @@ jobs:
         env:
           PUSHOK_INSTALLER_COMPOSE_TESTS: '1'
         run: python3 -m unittest discover -s tests -p test_installer_compose.py -v
+      - name: Verify complete cabinet backup and isolated restore drill
+        env:
+          PUSHOK_BACKUP_COMPOSE_TESTS: '1'
+        run: python3 -m unittest discover -s tests -p test_cabinet_backup_compose.py -v
       - run: bash scripts/smoke.sh
 
   rust-core:
