@@ -21,10 +21,10 @@
 Вставьте в SSH-терминал под root целиком:
 
 ```bash
-bash -c 'set -e; test "$(id -u)" -eq 0 || { echo "Сначала войдите как root: sudo -i"; exit 1; }; test ! -e /opt/mtproxy-pushok || { echo "Каталог /opt/mtproxy-pushok уже существует. Используйте раздел повторного запуска инструкции."; exit 1; }; apt-get update; apt-get install -y git ca-certificates; git clone --branch main --single-branch https://github.com/mrkoster1988/mtproxy-pushok.git /opt/mtproxy-pushok; cd /opt/mtproxy-pushok; exec bash setup.sh'
+bash -c 'set -e; test "$(id -u)" -eq 0 || { echo "Сначала войдите как root: sudo -i"; exit 1; }; test ! -e /opt/mtproxy-pushok || { echo "Каталог /opt/mtproxy-pushok уже существует. Используйте раздел повторного запуска инструкции."; exit 1; }; apt-get update; apt-get install -y git ca-certificates python3 util-linux; git clone --branch main --single-branch https://github.com/mrkoster1988/mtproxy-pushok.git /opt/mtproxy-pushok; cd /opt/mtproxy-pushok; exec bash setup.sh'
 ```
 
-Команда обновляет список пакетов, устанавливает Git и сертификаты, скачивает проект с GitHub в `/opt/mtproxy-pushok` и открывает мастер `setup.sh`. Она не требует заранее загружать install-файл на VPS. При наличии каталога останавливается, не удаляя его. Полное обновление Ubuntu и перезагрузка этой командой не выполняются.
+Команда обновляет список пакетов, устанавливает Git, сертификаты, Python 3 и util-linux (flock), скачивает проект с GitHub в `/opt/mtproxy-pushok` и открывает мастер `setup.sh`. Она не требует заранее загружать install-файл на VPS. При наличии каталога останавливается, не удаляя его. Полное обновление Ubuntu и перезагрузка этой командой не выполняются.
 
 Затем мастер, после вашего подтверждения, устанавливает необходимые компоненты: Docker/Compose для кабинета, PostgreSQL, API, бота, Caddy при выборе нового HTTPS; для классического MTProxy — компилятор, OpenSSL/zlib и systemd-службу. Пароли БД и внутренние секреты создаются автоматически. Отдельные драйверы не нужны.
 
