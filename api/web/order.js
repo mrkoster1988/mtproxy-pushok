@@ -26,6 +26,7 @@ window.pushokOrder=(()=>{
   if(owner!==me.id){owner=me.id;initialized=false;attempt=null;try{attempt=JSON.parse(sessionStorage.getItem(storageKey())||'null');}catch{}}
   if(!initialized){initialized=true;mode(!channels.length);if(channels.length===1)$('channel-select').value=channels[0].id;}
   if(!attempt&&newChannel&&channels.length&&!$('order-channel-url').value.trim())mode(false);
+  mode(newChannel);
   fields.disabled=Boolean(attempt);submit.textContent=attempt?'Проверить отправку':'Отправить на модерацию';
   submit.disabled=busy||(!attempt&&!tariffs.length);
   if(attempt){mode(Boolean(attempt.channel));$('channel-select').value=attempt.channel_id||'';$('order-channel-url').value=attempt.channel?.telegram_url||'';$('order-channel-title').value=attempt.channel?.title||'';$('tariff-select').value=attempt.tariff_id;$('requested-start').value=attempt.requested_start_at||'';}

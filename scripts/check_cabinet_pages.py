@@ -178,6 +178,8 @@ def main():
                 forbidden = advertiser.request.get(base + '/api/v1/admin/payments/status',
                     headers={"Authorization": "Bearer " + sessions['advertiser']})
                 assert forbidden.status == 403
+                go(advertiser, 'create')
+                advertiser.locator('#order-channel-url').fill('@unsaved_order_channel')
                 go(advertiser, "channels")
                 advertiser.locator('[data-page=channels] .page-heading a').click()
                 expect(advertiser.locator('#channel-form [name=title]')).to_be_focused()
@@ -194,6 +196,8 @@ def main():
                 expect(advertiser.locator('#notice')).to_contain_text('уже добавлен')
 
                 go(advertiser, "create")
+                expect(advertiser.locator('#order-channel-url')).to_have_value('@unsaved_order_channel')
+                advertiser.locator('#order-channel-mode').click()
                 advertiser.locator('#channel-select').select_option(index=1)
                 tomorrow = (datetime.now() + timedelta(days=2)).strftime('%Y-%m-%d')
                 advertiser.locator('#order-date summary').click()
