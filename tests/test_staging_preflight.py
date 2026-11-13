@@ -6,6 +6,7 @@ import copy
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -194,6 +195,15 @@ class StagingPreflightTests(unittest.TestCase):
             self.assertIn('env_not_tracked', self.failed(report))
             self.assertEqual(len(calls), 1)
 
+    def test_git_unavailable_or_timeout_fails_closed(self):
+        for error in (FileNotFoundError('SECRET'), subprocess.TimeoutExpired('git', 10, output=b'SECRET')):
+            with patch.object(preflight.subprocess, 'run', side_effect=error) as run:
+                report = preflight.inspect(self.root)
+            self.assertIn('env_not_tracked', self.failed(report))
+            self.assertEqual(run.call_count, 1)
+            self.assertFalse(report['compose_checked'])
+            self.assertNotIn('SECRET', json.dumps(report))
+
     def test_compose_published_database_host_network_and_public_api_rejected(self):
         base = compose(self.values)
         for service, prop, value in (
@@ -241,6 +251,7 @@ class StagingPreflightTests(unittest.TestCase):
         self.assertEqual(report['scope'], 'configuration_only')
         self.assertEqual(len(calls), 1)
 
+    @unittest.skipUnless(shutil.which('git'), 'CLI integration requires Git; runs on the host CI runner')
     def test_cli_json_exit_status_and_no_file_changes(self):
         subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
         script = ROOT / 'scripts/staging_preflight.sh'
