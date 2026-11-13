@@ -430,3 +430,63 @@ body.cabinet-mode{--bg:#f2f7fb;--surface:#fff;--surface-2:#edf5f9;--surface-3:#e
 .cabinet-sidebar nav a.pushok-nav-link{display:flex;align-items:center;gap:11px}
 .pushok-nav-icon{width:20px;height:20px;flex:0 0 20px;opacity:.95}
 @media (prefers-reduced-motion: reduce){.pushok-nav-icon{transition:none}}
+
+/* v0.051: единая компактная мобильная система, включая native inputs. */
+:root{--text:#edf5fa;--text-soft:#aac0cf;--accent:#32d3bc}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5}
+button,input,select,textarea{font:inherit}
+button,.primary{border-radius:12px;box-shadow:none;min-height:44px;padding:10px 16px}
+input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px;min-height:44px;padding:11px 13px;border-radius:12px}
+input[type=checkbox]{appearance:none!important;display:inline-block!important;width:42px!important;height:24px!important;min-height:24px!important;padding:0!important;margin:0 10px 0 0!important;flex:none;border-radius:20px!important;background:#43586b!important;border:2px solid #587184!important;vertical-align:middle;cursor:pointer;position:relative}
+input[type=checkbox]:before{content:"";display:block;width:16px;height:16px;margin:2px;border-radius:50%;background:white;transition:transform .15s}
+input[type=checkbox]:checked{background:#128576!important;border-color:#32d3bc!important}
+input[type=checkbox]:checked:before{transform:translateX(17px)}
+input[type=checkbox]:focus-visible{outline:2px solid #ffb65f;outline-offset:3px}
+.cabinet-topbar{gap:10px;padding:12px 0;align-items:center}
+.cabinet-topbar form[hidden]{display:none!important}
+.cabinet-topbar .refresh-button{font-size:0;padding:8px 12px}
+.cabinet-topbar .refresh-button span{font-size:22px}
+.page-heading{margin:16px 0!important;padding:0!important}
+.page-heading h1{font-size:clamp(24px,3vw,32px);line-height:1.2;margin:0 0 6px}
+.page-heading p{font-size:14px;margin:0;color:var(--text-soft)}
+.metrics:empty{display:none}
+.core-health{margin:12px 0;padding:18px;border-radius:16px}
+.core-health h3{font-size:21px;margin:6px 0 14px}
+.settings-heading{display:none}
+.cabinet-page[data-page=settings] .page-content>div:first-child>.eyebrow{display:none}
+body[data-miniapp=true]:not(.cabinet-mode) .hero,body[data-miniapp=true]:not(.cabinet-mode) .how-it-works,body[data-miniapp=true]:not(.cabinet-mode) .site-header,body[data-miniapp=true]:not(.cabinet-mode) #login,body[data-miniapp=true]:not(.cabinet-mode) footer{display:none!important}
+body.miniapp-loading #workspace{visibility:hidden}
+#miniapp-login:not([hidden]){position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;margin:0;border:0;border-radius:0;background:#0b1728;color:#edf5fa;text-align:center;padding:28px}
+#miniapp-login h1{font-size:22px!important;margin:0}
+#miniapp-login p{font-size:14px;color:#aac0cf;max-width:340px}
+.pushok-runner{width:190px;height:155px;object-fit:contain;border-radius:50%;animation:pushok-edge-glow 1.4s ease-in-out infinite alternate}
+@keyframes pushok-edge-glow{from{filter:drop-shadow(0 0 4px #32d3bc66)}to{filter:drop-shadow(0 0 20px #32d3bcbb) drop-shadow(0 0 5px #ffa34e)}}
+.load-failed .pushok-runner{animation:none}
+@media(max-width:760px){
+ .cabinet-topbar{display:flex!important;flex-wrap:wrap!important;padding:8px 0!important;gap:8px!important}
+ .cabinet-topbar .cabinet-account{flex:1;font-size:12px;line-height:1.4;min-width:0}
+ .cabinet-topbar form{flex-basis:100%}
+ .cabinet-topbar .menu-toggle{font-size:14px;padding:8px 12px}
+ .cabinet-page{padding-top:0!important}.page-layout{gap:12px!important}
+ .core-health,.panel,.settings-method{padding:16px!important}
+ .core-health p,.panel p{font-size:14px}
+ .settings-nav{gap:6px}.settings-nav button{font-size:13px;padding:8px 12px}
+ .calendar-days button{font-size:13px;min-height:44px;padding:10px 8px}
+ .page-help{margin-top:16px}.cabinet-sidebar #logout{margin:16px 0}
+}
+@media(prefers-reduced-motion:reduce){.pushok-runner{animation:none}}
+
+.emoji-gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(64px,1fr));gap:8px;margin:16px 0}
+.emoji-gallery figure{margin:0;text-align:center;padding:6px;border:1px solid var(--line);border-radius:12px}
+.emoji-gallery img{width:48px;height:48px;object-fit:contain;font-size:10px}
+.emoji-selection{width:32px;height:32px;object-fit:contain;vertical-align:middle;margin-left:8px}
+
+.cabinet-topbar{min-height:64px;margin-bottom:16px}
+.cabinet-mode label:has(input[type=checkbox]){display:flex;align-items:center;gap:8px;min-height:40px}
+.cabinet-mode label input[type=checkbox]{margin:0!important}
+#payment-switches{margin-bottom:18px}
+.settings-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.settings-nav button{padding:10px 8px}
+
+#tariff-admin-fields{border:0;margin:0;padding:0;min-width:0}
+#tariff-admin-fields:disabled{opacity:.65}

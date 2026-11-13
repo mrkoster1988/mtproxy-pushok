@@ -314,7 +314,8 @@ def main():
                     headers={"Authorization": "Bearer " + sessions['outsider']})
                 assert response.status == 404
 
-                # Search, Back/Forward and help remain usable after mutations.
+                # Search is intentionally limited to campaign screens.
+                go(advertiser, 'campaigns')
                 advertiser.get_by_label('Поиск кампаний', exact=True).fill('несуществующий канал')
                 advertiser.get_by_label('Поиск кампаний', exact=True).press('Enter')
                 expect(advertiser.locator('#campaigns')).to_contain_text('Поиск не дал результатов')
@@ -547,6 +548,7 @@ def main():
                     expect(outside.locator('#workspace')).to_be_hidden()
                     other=mini_page(signed_data(user=json.dumps({'id':99116000,'first_name':'Mini App тест'}),query_id='mini-client-logout'))
                     expect(other.locator('body')).to_have_class('miniapp-mode cabinet-mode')
+                    other.locator('.cabinet-topbar .menu-toggle').click()
                     other.locator('#logout').click()
                     expect(other.locator('#miniapp-login')).to_contain_text('Вы вышли')
                     other.reload()
@@ -557,6 +559,43 @@ def main():
                         disabled=mini_page(disabled_raw)
                         expect(disabled.locator('#miniapp-login')).to_contain_text('пока не включён')
                         expect(disabled.locator('#workspace')).to_be_hidden()
+                # v0.051: compact settings, free tariff, and payment control form.
+                go(admin, 'settings')
+                expect(admin.get_by_label('Поиск кампаний', exact=True)).to_be_hidden()
+                admin.locator('#settings-tariffs-tab').click()
+                admin.locator('#tariff-admin-rub').fill('0')
+                admin.locator('#tariff-admin-stars').fill('0')
+                with admin.expect_response(lambda r:'/admin/tariffs/' in r.url and r.request.method=='PUT') as saved:
+                    admin.locator('#tariff-admin-form button').click()
+                assert saved.value.status==200 and saved.value.json()['price_kopecks']==0
+                expect(admin.locator('#notice')).to_contain_text('Настройки тарифа сохранены')
+                expect(admin.locator('#tariff-admin-rub')).to_have_value('0.00')
+                toggle = admin.locator('#tariff-admin-active').bounding_box()
+                assert toggle['width'] <= 48 and toggle['height'] <= 32, toggle
+                admin.set_viewport_size({'width':390,'height':844})
+                admin.screenshot(path=str(output/'23-settings-free-mobile.png'), full_page=True)
+                assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth')
+                admin.locator('#settings-payments-tab').click()
+                with patch.dict(os.environ, {'PUSHOK_CONTROL_DIR':str(Path(PostgresIntegration.storage.name)/'control'),
+                                           'TELEGRAM_BOT_TOKEN':'123456:fixture_token_for_browser'}):
+                    admin.locator('#enable-stars').check()
+                    admin.locator('#payment-switches button').click()
+                    expect(admin.locator('#notice')).to_contain_text('Настройки оплаты сохранены')
+                    expect(admin.locator('#enable-stars')).to_be_checked()
+                    admin.screenshot(path=str(output/'24-payment-controls-mobile.png'), full_page=True)
+                    # Каталог искусственный: проверяем выбор настоящей картинки в форме без Telegram.
+                    icon_bytes=io.BytesIO();Image.new('RGBA',(48,48),'orange').save(icon_bytes,format='PNG')
+                    catalog=[{'id':'123456789','emoji':'🐱','image':'data:image/png;base64,'+base64.b64encode(icon_bytes.getvalue()).decode()}]
+                    api.control.write('emoji-catalog.json',catalog)
+                    admin.locator('#settings-system-tab').click()
+                    with patch.object(api.emoji_settings,'fetch',return_value=catalog):
+                        admin.locator('#icons-import').click()
+                        expect(admin.locator('.emoji-gallery img')).to_have_count(1)
+                        admin.locator('#icons-mapping select[name=help]').select_option('123456789')
+                        admin.locator('#icons-form button[type=submit]').click()
+                        expect(admin.locator('#icons-status')).to_contain_text('Сохранено')
+                        assert api.control.read('emoji-map.json')['help']=='123456789'
+                        admin.screenshot(path=str(output/'25-icon-settings-mobile.png'),full_page=True)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))

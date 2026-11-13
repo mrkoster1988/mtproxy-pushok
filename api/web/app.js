@@ -48,18 +48,18 @@ async function renderPaymentSettings(){
   const report=await api('/admin/payments/status');
   const stars=report.stars,sbp=report.sbp;
   $('settings-stars-status').textContent=stars.invoice_enabled_in_server_config?
-   'Выставление счетов разрешено серверной конфигурацией; реальные испытания НЕ ПОДТВЕРЖДЕНЫ.':
-   'Реальные счета заблокированы серверной конфигурацией.';
+   'Приём Stars включён. Проверьте оплату первым заказом.':
+   'Приём Stars выключен. Включите переключатель выше и сохраните.';
   $('settings-stars-counts').textContent=
    'Тарифов с ценой XTR: '+stars.priced_active_tariffs+
    ' · Оплат зарегистрировано в БД: '+stars.recorded_successes+
    ' · Нужна ручная сверка: '+stars.needs_manual_review;
   $('settings-sbp-status').textContent=sbp.checkout_enabled?
-   'СБП разрешена сервером · '+(sbp.test_mode?'тестовый режим.':'боевой режим; приёмка отдельно.'):
-   'СБП выключена до настройки и приёмки.';
+   'Приём СБП включён · '+(sbp.test_mode?'тестовый режим.':'реальные платежи.'):
+   'Приём СБП выключен. Настройте магазин и включите переключатель.';
   $('settings-sbp-status').textContent+=' Фоновая сверка: '+(sbp.background_enabled?'разрешена сервером':'выключена')+
    ' · Ожидают проверки: '+sbp.pending_checks+' · Нужна ручная сверка: '+sbp.needs_manual_review;
-  target.textContent='Данные БД и конфигурации не подтверждают приёмку Telegram, возвраты и банковский эквайринг. Секреты не отображаются.';
+  target.textContent='Статус заказа меняется после подтверждения платежа провайдером.';
  }catch(e){
   $('settings-stars-status').textContent='Не удалось получить состояние Stars.';
   $('settings-sbp-status').textContent='Нет подтверждения подключения СБП.';
@@ -120,10 +120,17 @@ Object.assign(errors,{sbp_reconciliation_disabled:'Фоновая сверка �
  sbp_attempt_not_found:'Попытка не найдена.',sbp_attempt_not_retryable:'Попытку уже нельзя отправить на повтор. Обновите список.',
  sbp_attempt_changed:'Состояние изменилось. Обновите список перед повтором.'});
 
-async function loadAdminSettings(){
- if(me?.role!=='admin')return;
- await Promise.all([renderPaymentSettings(),renderSBPReview(),renderTariffAdmin(),
-                    renderCoreReadiness(),renderLaunchReadiness()]);
+let adminSettingsLoad=null;
+function loadAdminSettings(){
+ if(me?.role!=='admin')return Promise.resolve();
+ if(adminSettingsLoad)return adminSettingsLoad;
+ $('tariff-admin-fields').disabled=true;
+ adminSettingsLoad=(async()=>{
+  const results=await Promise.allSettled([loadControl(),api('/admin/icons').then(showIcons),
+   renderPaymentSettings(),renderSBPReview(),renderTariffAdmin(),renderCoreReadiness(),renderLaunchReadiness()]);
+  const failed=results.find(x=>x.status==='rejected');if(failed)throw failed.reason;
+ })().finally(()=>{$('tariff-admin-fields').disabled=false;adminSettingsLoad=null;});
+ return adminSettingsLoad;
 }
 
 const holdEligibility=c=>c.moderation_status==='approved' &&
@@ -227,7 +234,7 @@ function showCampaignReport(c, box){
   const pairs=[
    ['Тариф',data.tariff.name+' · '+money(data.tariff.price_kopecks)],
    ['Модерация',labels[data.moderation_status]||data.moderation_status],
-   ['Оплата',labels[data.payment_status]||data.payment_status],
+   ['Оплата',data.price_kopecks_snapshot===0?'Бесплатно':labels[data.payment_status]||data.payment_status],
    ['Размещение',labels[data.placement_status]||data.placement_status],
    ['Начало',date(data.scheduled_start_at)],
    ['Окончание',date(data.scheduled_end_at)]
@@ -271,7 +278,7 @@ function card(c,op){
  head.append(el('h3',(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||'Заявка')+' · '+c.id.slice(0,8)),el('span',labels[c.placement_status]||c.placement_status,'badge badge--'+c.placement_status));box.append(head);
  if(c.channel_url){try{const u=new URL(c.channel_url);if(u.protocol==='https:'&&['t.me','telegram.me'].includes(u.hostname)){const link=el('a','Открыть канал');link.href=u.href;link.target='_blank';link.rel='noopener noreferrer';box.append(link);}}catch{}}
  const meta=el('div',undefined,'meta');
- [labels[c.moderation_status],labels[c.payment_status],c.tariff_name_snapshot+' · '+money(c.price_kopecks_snapshot),'Желаемое начало: '+date(c.requested_start_at),'Назначено: '+date(c.scheduled_start_at)].forEach(t=>meta.append(el('span',t)));box.append(meta);
+ [labels[c.moderation_status],(c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status]),c.tariff_name_snapshot+' · '+money(c.price_kopecks_snapshot),'Желаемое начало: '+date(c.requested_start_at),'Назначено: '+date(c.scheduled_start_at)].forEach(t=>meta.append(el('span',t)));box.append(meta);
  if(c.moderator_comment)box.append(el('p','Модерация: '+c.moderator_comment));
  if(c.payment_review_comment)box.append(el('p','Проверка оплаты: '+c.payment_review_comment));
  const actions=el('div',undefined,'actions');box.append(actions);
@@ -292,7 +299,7 @@ function card(c,op){
    }));
   }
   addHoldAction(c,box,actions);
-  if(!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected','proof_submitted','verified'].includes(c.payment_status)){
+  if(c.price_kopecks_snapshot>0&&!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected','proof_submitted','verified'].includes(c.payment_status)){
    actions.append(button('Реквизиты и сумма',async()=>{
     if(box.querySelector('.payment-instructions'))return;
     const data=await api('/campaigns/'+c.id+'/payment-instructions');
@@ -319,7 +326,7 @@ function card(c,op){
    }));
   }
   if(['draft','changes_requested'].includes(c.moderation_status))actions.append(button(c.moderation_status==='changes_requested'?'Отправить повторно':'Отправить на модерацию',async()=>{await api('/campaigns/'+c.id+'/submit',{method:'POST'});await refresh();notice('Заявка отправлена на проверку.',true);}));
-  if(!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected'].includes(c.payment_status)){
+  if(c.price_kopecks_snapshot>0&&!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected'].includes(c.payment_status)){
    const input=el('input');input.type='file';input.accept='image/jpeg,image/png,application/pdf';input.setAttribute('aria-label','Подтверждение оплаты');
    actions.append(input,button('Загрузить чек',async()=>{if(!input.files[0])throw Error('Выберите чек.');if(input.files[0].size>5*1024*1024)throw Error('Файл должен быть меньше 5 МБ.');const data=new FormData();data.append('file',input.files[0]);await api('/campaigns/'+c.id+'/payment-proofs',{method:'POST',body:data});await refresh();notice('Чек отправлен на проверку.',true);}));
   }
@@ -515,9 +522,11 @@ $('tariff-admin-form').addEventListener('submit',e=>{e.preventDefault();run(asyn
  const starValue=$('tariff-admin-stars').value.trim();
  const stars=starValue===''?null:Number(starValue);
  if(!Number.isInteger(duration)||duration<3600||duration>31536000||
-    !Number.isInteger(kopecks)||kopecks<100||kopecks>100000000||
-    (stars!==null&&(!Number.isInteger(stars)||stars<1||stars>1000000)))
+    !Number.isInteger(kopecks)||kopecks<0||kopecks>100000000||
+    (stars!==null&&(!Number.isInteger(stars)||stars<0||stars>1000000)))
   throw Error('Укажите допустимую цену, длительность и количество Stars.');
+ if(kopecks>0&&kopecks<100)throw Error('Для СБП укажите от 1 ₽; для бесплатного тарифа — 0 ₽.');
+ if(kopecks===0&&stars>0)throw Error('Для бесплатного тарифа укажите 0 Stars или оставьте поле пустым.');
  const body={name:$('tariff-admin-name').value.trim(),duration_seconds:duration,
              price_kopecks:kopecks,stars_price_xtr:stars,
              is_active:$('tariff-admin-active').checked};
@@ -601,10 +610,10 @@ async function loadAvailability(){
   const data=await api('/availability?'+params);
   if(request!==calendarRequest)return;
   $('availability-days').replaceChildren(...data.days.map(day=>{
-   const calendarLabels={available:'Свободно: '+day.available_nodes,occupied:'Нет мест',past:'Время прошло',invalid_local_time:'Нет такого времени',ambiguous_local_time:'Неоднозначное время'};
+   const calendarLabels={available:'Свободно: '+day.available_nodes,unconfigured:'По согласованию',occupied:'Нет мест',past:'Время прошло',invalid_local_time:'Нет такого времени',ambiguous_local_time:'Неоднозначное время'};
    const b=button(new Date(day.start_at).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})+' · '+(calendarLabels[day.status]||'Недоступно'),async()=>{
-    clearRequestedDate();b.setAttribute('aria-pressed','true');$('requested-start').value=day.start_at;$('calendar-selection').textContent='Желаемое начало: '+date(day.start_at);
-   });b.disabled=day.status!=='available'||day.available_nodes<1;b.setAttribute('aria-pressed','false');return b;
+    clearRequestedDate();b.setAttribute('aria-pressed','true');$('requested-start').value=day.start_at;$('calendar-selection').textContent='Желаемое начало: '+date(day.start_at)+(day.status==='unconfigured'?' · расписание ещё не настроено, требуется согласование':'');
+   });b.disabled=!['available','unconfigured'].includes(day.status);b.setAttribute('aria-pressed','false');return b;
   }));
  }catch(e){if(request===calendarRequest){$('availability-days').replaceChildren(el('p','Не удалось получить доступные даты.','muted'));throw e;}}
 }
@@ -642,3 +651,54 @@ run(async()=>{
 }else $('login-note').textContent='Администратору нужно настроить Telegram-бота для входа.';
  if(token)await enter();
 });
+
+let displayedVersion=null;
+async function loadControl(){
+ if(me?.role!=='admin')return;
+ const c=await api('/admin/control');
+ if(displayedVersion&&displayedVersion!==c.version&&c.update.state==='succeeded'){location.reload();return;}
+ displayedVersion=c.version;
+ $('enable-stars').checked=c.stars;$('enable-sbp').checked=c.sbp;
+ $('enable-sbp').disabled=!c.sbp_configured;
+ $('payment-config-note').textContent=c.sbp_configured?(c.sbp_test_mode?'СБП: тестовый магазин. Реальные списания не включены.':'СБП: рабочий магазин настроен.'):'Для СБП задайте YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и PUSHOK_PUBLIC_PAYMENT_HOST на сервере. Stars настраиваются отдельно.';
+ const states={idle:'Можно установить опубликованную версию',running:'Установка выполняется',succeeded:'Обновление установлено',failed:'Обновление не завершено. Проверьте журнал службы mtproxy-pushok-updater на VPS'};
+ $('software-update-status').textContent='Версия '+c.version+'. '+(!c.updater_installed?'Нужна первоначальная установка службы обновления на VPS.':c.requested?'Запрос принят. Ожидаем запуск.':states[c.update.state]||'Проверка состояния…');
+ $('software-update').disabled=!c.updater_installed||c.requested||c.update.state==='running';
+}
+$('payment-switches').addEventListener('submit',event=>{event.preventDefault();run(async()=>{
+ await api('/admin/control/payments',{method:'PUT',body:{stars:$('enable-stars').checked,sbp:$('enable-sbp').checked}});
+ await loadAdminSettings();notice('Настройки оплаты сохранены.');
+});});
+$('software-update').addEventListener('click',()=>run(async()=>{
+ $('software-update').disabled=true;
+ await api('/admin/control/update',{method:'POST'});await loadControl();
+}));
+setInterval(()=>{if(me?.role==='admin'&&!$('settings-system').hidden)loadControl().catch(()=>{
+ $('software-update-status').textContent='Кабинет временно недоступен. Повторная проверка через 10 секунд…';
+});},10000);
+
+function showIcons(data){
+ const names={miniapp:'Mini App',advertise:'Разместить рекламу',campaigns:'Мои кампании',tariffs:'Тарифы',channels:'Наш канал',help:'Помощь'};
+ const target=$('icons-mapping');target.replaceChildren();
+ const gallery=el('div',undefined,'emoji-gallery');
+ data.items.forEach((item,i)=>{
+  const tile=el('figure'),image=el('img');image.alt='PushokIcons '+(i+1);
+  if(item.image?.startsWith('data:image/png;base64,'))image.src=item.image;
+  else image.alt='Миниатюра недоступна';
+  tile.append(image,el('figcaption',String(i+1)));gallery.append(tile);
+ });target.append(gallery);
+ for(const [key,name] of Object.entries(names)){
+  const label=el('label',name),select=el('select');select.name=key;option(select,'','Обычная иконка');
+  data.items.forEach((item,i)=>option(select,item.id,(item.emoji||'Иконка')+' · '+(i+1)+' · '+item.id));
+  const thumb=el('img');thumb.className='emoji-selection';thumb.alt='Выбранная иконка';
+  const update=()=>{const item=data.items.find(x=>x.id===select.value);thumb.hidden=!item?.image;if(item?.image?.startsWith('data:image/png;base64,'))thumb.src=item.image;};
+  select.value=data.mapping[key]||'';select.addEventListener('change',update);update();
+  label.append(thumb,select);target.append(label);
+ }
+ $('icons-status').textContent=data.items.length?'Получено иконок: '+data.items.length:'Набор ещё не загружен.';
+}
+$('icons-import').addEventListener('click',()=>run(async()=>{showIcons(await api('/admin/icons/import',{method:'POST'}));},$('icons-import')));
+$('icons-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
+ const mapping=Object.fromEntries([...new FormData(e.target)].filter(([,v])=>v));
+ await api('/admin/icons',{method:'PUT',body:mapping});$('icons-status').textContent='Сохранено. Откройте меню бота для проверки.';
+});});

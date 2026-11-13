@@ -32,6 +32,7 @@ services:
       - "127.0.0.1:${API_BIND_PORT:-8000}:8000"
     volumes:
       - mtproxy-pushok-proofs:/var/lib/mtproxy-pushok/payment-proofs
+      - ./.control:/var/lib/mtproxy-pushok/control
     networks:
       - internal
       - bot-api
@@ -39,6 +40,8 @@ services:
 
   # По умолчанию бездействует: отдельный серверный флаг сверки равен 0.
   sbp-worker:
+    volumes:
+      - ./.control:/var/lib/mtproxy-pushok/control:ro
     build:
       context: ./api
     command: ["python", "-m", "app.sbp_worker", "--apply"]
@@ -59,6 +62,8 @@ services:
 
   # Запускается только с --profile bot. Не имеет доступа к внутренней сети API/БД.
   bot:
+    volumes:
+      - ./.control:/var/lib/mtproxy-pushok/control:ro
     profiles: ["bot"]
     build:
       context: .

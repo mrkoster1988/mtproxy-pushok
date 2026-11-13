@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'sha256-__SCRIPT_HASH__'; base-uri 'none'; form-action 'none'">
+<title>Pushok Icons — выбор значков меню</title>
+<style>
+:root{color-scheme:dark;--bg:#0c1728;--panel:#142239;--line:#30425b;--text:#eff7fc;--muted:#b3c5d7;--teal:#57e3cb;--orange:#ffb675}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.55 system-ui,sans-serif}
+main{max-width:1120px;margin:auto;padding:36px 24px 64px}header{margin-bottom:28px}.brand{color:var(--teal);font-weight:750;letter-spacing:.04em}
+.tag{display:inline-block;margin-left:12px;color:var(--muted);font-size:13px}h1{font-size:clamp(27px,4vw,42px);line-height:1.15;margin:18px 0 14px;letter-spacing:-.035em}
+h2{font-size:20px;margin:0 0 14px}p{margin:10px 0}.intro{max-width:720px;color:var(--muted)}.note{border-left:3px solid var(--orange);padding:8px 14px;color:var(--muted);font-size:14px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:24px;align-items:start}.panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:22px;min-width:0}
+label{display:block;font-weight:650;margin-bottom:6px}select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);font:inherit;min-height:48px}
+.hint{font-size:14px;color:var(--muted);margin:10px 0 18px}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.card{border:1px solid var(--line);background:var(--bg);border-radius:13px;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+.card[data-selected="true"]{border-color:var(--teal);box-shadow:0 0 0 1px var(--teal)}.picture{height:112px;display:flex;align-items:center;justify-content:center;padding:12px;background:#1c2c44}
+.picture img{width:82px;height:82px;object-fit:contain}.missing{font-size:13px;text-align:center;color:var(--muted)}.meta{padding:9px 10px;color:var(--muted);font-size:12px;overflow-wrap:anywhere}
+.id{display:block;font:11px/1.5 ui-monospace,monospace;overflow-wrap:anywhere}.card button{margin:auto 8px 8px;min-height:42px;padding:8px 4px;font-size:12px}
+button{border:1px solid var(--line);border-radius:9px;padding:10px 14px;background:#22354f;color:var(--text);font:600 14px/1.4 system-ui,sans-serif;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--teal)}button:disabled{cursor:not-allowed;opacity:.5}:focus-visible{outline:3px solid var(--orange);outline-offset:3px}
+.primary{background:var(--teal);color:#10252c;border-color:var(--teal);width:100%;min-height:48px;margin-top:12px}.secondary{width:100%;margin-top:10px}
+.chosen{list-style:none;padding:0;margin:0}.chosen li{padding:13px 0;border-bottom:1px solid var(--line)}.chosen-title{font-size:14px;font-weight:650}.chosen-detail{display:flex;align-items:center;gap:10px;margin-top:7px;min-width:0}
+.chosen-detail img{width:34px;height:34px;object-fit:contain}.chosen-detail small{color:var(--muted);overflow-wrap:anywhere;flex:1}.clear{font-size:12px;padding:7px;min-height:36px}
+#status{min-height:48px;font-size:14px;color:var(--teal)}#count{color:var(--muted);font-size:14px}.empty-warning{color:var(--orange)}footer{margin-top:24px;font-size:13px;color:var(--muted)}
+@media(max-width:850px){.layout{grid-template-columns:1fr}.cards{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:550px){main{padding:22px 16px 36px}.panel{padding:16px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.tag{display:block;margin:4px 0 0}.layout{gap:18px}}
+</style>
+</head>
+<body>
+<main>
+<header><div class="brand">puShok <span class="tag">Настройка значков Telegram</span></div>
+<h1>Выберите значки для меню</h1>
+<p class="intro">Выберите кнопку бота, затем подходящее изображение. Можно настроить только часть кнопок — остальные сохранят привычный вид.</p>
+<p class="note">Страница работает локально. Сохранение файла не включает иконки в боте. Показ в Telegram нужно проверить отдельно.</p></header>
+<div class="layout">
+<section class="panel" aria-labelledby="pick-title"><h2 id="pick-title">1. Подберите изображение</h2>
+<label for="action">Кнопка бота</label><select id="action"></select>
+<p class="hint">Изображения загружены из каталога PushokIcons. Обычный emoji под картинкой — лишь подсказка, он может повторяться.</p>
+<p id="unavailable" class="empty-warning" hidden>Изображения не загрузились. Повторите получение каталога с просмотром; пока сохранить карту нельзя.</p>
+<div id="cards" class="cards"></div></section>
+<section class="panel" aria-labelledby="result-title"><h2 id="result-title">2. Проверьте выбор</h2>
+<p id="count">Выбрано 0 из 6</p><ul id="chosen" class="chosen"></ul>
+<button id="download" class="primary" disabled>Сохранить ids.json</button>
+<button id="reset" class="secondary" disabled>Сбросить выбор</button>
+<p id="status" role="status" aria-live="polite">Выберите первую иконку.</p>
+<p class="hint">Сохраните ids.json рядом с catalog.json, затем выполните проверку из инструкции. Не заменяйте этим файлом настройки бота.</p></section>
+</div>
+<footer>Изображение не загрузилось? Такой значок нельзя выбрать здесь. Непривязанные кнопки остаются без Custom Emoji.</footer>
+</main>
+<script id="catalog" type="application/json">__CATALOG_DATA__</script>
+<script id="picker-script">
+'use strict';
+const data = JSON.parse(document.getElementById('catalog').textContent);
+const action = document.getElementById('action');
+const cards = document.getElementById('cards');
+const chosen = document.getElementById('chosen');
+const status = document.getElementById('status');
+const download = document.getElementById('download');
+const reset = document.getElementById('reset');
+const mapping = Object.create(null);
+const items = new Map(data.stickers.map(item => [item.id, item]));
+const buttons = new Map();
+for (const [key, label] of Object.entries(data.actions)) {
+  const option = document.createElement('option');
+  option.value = key; option.textContent = label; action.append(option);
+}
+function refresh() {
+  chosen.replaceChildren();
+  for (const [key, label] of Object.entries(data.actions)) {
+    const row = document.createElement('li'); row.dataset.action = key;
+    const title = document.createElement('div'); title.className = 'chosen-title'; title.textContent = label;
+    const detail = document.createElement('div'); detail.className = 'chosen-detail';
+    const item = items.get(mapping[key]);
+    if (item) {
+      const image = document.createElement('img'); image.src = item.image; image.alt = 'Выбранный значок: ' + label;
+      detail.append(image);
+    }
+    const caption = document.createElement('small'); caption.textContent = item ? item.id : 'Без иконки'; detail.append(caption);
+    if (item) {
+      const clear = document.createElement('button'); clear.className = 'clear'; clear.textContent = 'Убрать';
+      clear.setAttribute('aria-label', 'Убрать иконку: ' + label);
+      clear.onclick = () => { delete mapping[key]; refresh(); status.textContent = label + ': иконка убрана.'; action.focus(); };
+      detail.append(clear);
+    }
+    row.append(title, detail); chosen.append(row);
+  }
+  for (const [id, button] of buttons) {
+    const selected = mapping[action.value] === id;
+    button.setAttribute('aria-pressed', String(selected)); button.parentElement.dataset.selected = String(selected);
+  }
+  const count = Object.keys(mapping).length;
+  document.getElementById('count').textContent = 'Выбрано ' + count + ' из 6';
+  download.disabled = count === 0; reset.disabled = count === 0;
+  document.getElementById('unavailable').hidden = [...items.values()].some(item => item.image);
+}
+for (const item of data.stickers) {
+  const card = document.createElement('article'); card.className = 'card'; card.dataset.id = item.id;
+  const picture = document.createElement('div'); picture.className = 'picture';
+  const button = document.createElement('button'); button.textContent = item.image ? 'Выбрать' : 'Недоступно';
+  button.disabled = !item.image; button.setAttribute('aria-label', 'Выбрать значок ' + item.id);
+  buttons.set(item.id, button);
+  const missing = () => {
+    picture.replaceChildren(); const text = document.createElement('span'); text.className = 'missing';
+    text.textContent = 'Нет изображения'; picture.append(text); item.image = null; button.disabled = true; button.textContent = 'Недоступно';
+    for (const key of Object.keys(mapping)) { if (mapping[key] === item.id) delete mapping[key]; }
+    if (card.isConnected) refresh();
+  };
+  if (item.image) {
+    const image = document.createElement('img'); image.alt = 'Значок ' + item.id; image.onerror = missing; image.src = item.image; picture.append(image);
+  } else { missing(); }
+  const meta = document.createElement('div'); meta.className = 'meta';
+  const emoji = document.createElement('span'); emoji.textContent = item.emoji || 'Без emoji';
+  const id = document.createElement('span'); id.className = 'id'; id.textContent = item.id; meta.append(emoji, id);
+  button.onclick = () => {
+    if (!item.image || !Object.hasOwn(data.actions, action.value)) return;
+    mapping[action.value] = item.id; refresh(); status.textContent = data.actions[action.value] + ': значок выбран.';
+  };
+  card.append(picture, meta, button); cards.append(card);
+}
+action.onchange = refresh;
+reset.onclick = () => { for (const key of Object.keys(mapping)) delete mapping[key]; refresh(); status.textContent = 'Выбор сброшен.'; action.focus(); };
+download.onclick = () => {
+  const result = Object.fromEntries(Object.keys(mapping).sort().map(key => [key, mapping[key]]));
+  if (!Object.keys(result).length) return;
+  const url = URL.createObjectURL(new Blob([JSON.stringify(result, null, 2) + '\n'], {type: 'application/json'}));
+  const link = document.createElement('a'); link.href = url; link.download = 'ids.json'; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  status.textContent = 'Файл подготовлен. Проверьте его с catalog.json по инструкции; бот пока не изменён.';
+};
+refresh();
+</script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" role="img" aria-labelledby="title">
+<title id="title">Бегущий Пушок</title>
+<style>
+@keyframes stride{to{transform:rotate(24deg)}}@keyframes bounce{to{transform:translateY(-5px)}}
+.body{animation:bounce .25s ease-in-out infinite alternate}.leg{transform-origin:120px 122px;animation:stride .25s ease-in-out infinite alternate}.rear{animation-direction:alternate-reverse}
+@media(prefers-reduced-motion:reduce){.body,.leg{animation:none}}
+</style>
+<ellipse cx="117" cy="162" rx="65" ry="7" fill="#0f746f" opacity=".25"/>
+<g class="body" stroke="#183d4c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+<path d="M75 116Q21 109 36 65Q42 55 48 67Q40 100 85 94" fill="#f5a14b"/>
+<g class="leg rear"><path d="M111 118L90 145L66 148" fill="none" stroke="#ef963f" stroke-width="17"/></g>
+<path d="M73 97Q105 80 148 100L158 129Q115 144 73 125Z" fill="#27c9b5"/>
+<g class="leg"><path d="M126 123L145 149L167 150" fill="none" stroke="#ffb65f" stroke-width="17"/></g>
+<path d="M136 53L131 18L158 35Q178 27 190 42L214 30L209 67Q218 105 177 111Q135 109 131 85Z" fill="#ffb65f"/>
+<path d="M137 29L143 51L154 40M197 48L209 39L205 61" fill="#ef907a"/>
+<ellipse cx="176" cy="88" rx="27" ry="16" fill="#fff0ce" stroke="none"/>
+<ellipse cx="158" cy="69" rx="9" ry="12" fill="#40d7bc"/><ellipse cx="193" cy="66" rx="9" ry="12" fill="#40d7bc"/>
+<ellipse cx="161" cy="69" rx="3" ry="8" fill="#183d4c" stroke="none"/><ellipse cx="196" cy="66" rx="3" ry="8" fill="#183d4c" stroke="none"/>
+<path d="M173 82L182 81L179 87Z" fill="#bd695c"/><path d="M179 87Q176 96 168 91M179 87Q185 94 190 88" fill="none"/>
+<path d="M114 103L129 107L125 123L115 127L106 116L106 106Z" fill="#c8fff0"/><path d="M111 114L115 118L123 110" fill="none"/>
+</g></svg>

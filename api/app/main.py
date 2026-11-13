@@ -49,7 +49,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.050",
+    version="0.051",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -115,9 +115,28 @@ class TariffSettingsUpdate(BaseModel):
     """Редактируем тариф, не меняя уже зафиксированные цены заказов."""
     name: str = Field(min_length=1, max_length=100)
     duration_seconds: int = Field(ge=3600, le=31536000)
-    price_kopecks: int = Field(ge=100, le=100000000)
-    stars_price_xtr: int | None = Field(ge=1, le=1000000)
+    price_kopecks: int = Field(ge=0, le=100000000)
+    stars_price_xtr: int | None = Field(ge=0, le=1000000)
     is_active: bool
+
+    @field_validator("price_kopecks")
+    @classmethod
+    def positive_sbp_minimum(cls, value):
+        if 0 < value < 100:
+            raise ValueError("price_must_be_zero_or_at_least_one_ruble")
+        return value
+
+    @field_validator("stars_price_xtr")
+    @classmethod
+    def zero_stars(cls, value):
+        return None if value == 0 else value
+
+    @field_validator("is_active")
+    @classmethod
+    def consistent_free_price(cls, value, info):
+        if info.data.get("price_kopecks") == 0 and info.data.get("stars_price_xtr"):
+            raise ValueError("free_tariff_requires_zero_or_empty_stars")
+        return value
 
     @field_validator("name")
     @classmethod
@@ -1850,7 +1869,7 @@ def read_launch_readiness(
                   (SELECT count(*) FROM campaigns) AS campaigns_total,
                   (SELECT count(*) FROM campaigns WHERE moderation_status = 'pending') AS moderation_pending,
                   (SELECT count(*) FROM campaigns WHERE payment_status = 'proof_submitted') AS payments_pending,
-                  (SELECT count(*) FROM campaigns WHERE payment_status = 'verified') AS payments_verified,
+                  (SELECT count(*) FROM campaigns WHERE payment_status = 'verified' AND price_kopecks_snapshot > 0) AS payments_verified,
                   (SELECT count(*) FROM campaigns WHERE placement_status = 'scheduled') AS placements_scheduled,
                   (SELECT count(*) FROM campaigns WHERE placement_status = 'active') AS placements_active,
                   (SELECT count(*) FROM campaigns WHERE placement_status = 'completed') AS placements_completed,
@@ -2263,6 +2282,7 @@ def get_availability(
             ).fetchone()
             if tariff is None:
                 raise HTTPException(status_code=404, detail="active_tariff_not_found")
+            active_nodes = connection.execute("SELECT count(*) AS total FROM proxy_nodes WHERE status='active'").fetchone()["total"]
             duration = timedelta(seconds=tariff["duration_seconds"])
             ends = [dt.astimezone(timezone.utc) + duration for dt in valid]
             rows = connection.execute(
@@ -2299,7 +2319,7 @@ def get_availability(
             {"date": dt.date().isoformat(), "start_at": dt.isoformat(),
              "end_at": (dt.astimezone(timezone.utc) + duration).isoformat(),
              "available_nodes": counts.get(dt, 0) if dt in valid else 0,
-             "status": slot_status(dt, now, int(counts.get(dt, 0)) if dt in valid else 0)}
+             "status": ("unconfigured" if not active_nodes and dt in valid else slot_status(dt, now, int(counts.get(dt, 0)) if dt in valid else 0))}
             for dt in starts
         ],
     }
@@ -2320,9 +2340,9 @@ def miniapp_config(response: Response):
 def miniapp_client():
     html = (WEB_DIR / 'index.html').read_text()
     html = html.replace('initial-scale=1', 'initial-scale=1, viewport-fit=cover')
-    html = html.replace('<body>', '<body data-miniapp="true">')
-    html = html.replace('<script src="/assets/app.js"',
-                        '<script src="/assets/miniapp.js" defer></script>\n  <script src="/assets/app.js"')
+    html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
+    html = html.replace('<script src="/assets/app.js?v=051"',
+                        '<script src="/assets/miniapp.js?v=051" defer></script>\n  <script src="/assets/app.js?v=051"')
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
@@ -2489,3 +2509,58 @@ def sponsor_placement_readiness(
     if row is None:
         raise HTTPException(status_code=404, detail="campaign_not_found")
     return build_readiness(row)
+
+# Управление настройками доступно только владельцу с действующей сессией.
+from . import control
+
+class PaymentSwitches(BaseModel):
+    stars: bool
+    sbp: bool
+
+@app.get('/api/v1/admin/control', tags=['admin'])
+def control_status(response: Response, admin=Depends(require_admin)):
+    response.headers['Cache-Control'] = 'no-store'
+    cfg = sbp_checkout.settings()
+    return {'version': app.version, 'stars': stars_invoices_enabled(),
+            'sbp': cfg['enabled'], 'sbp_configured': cfg['configured'],
+            'sbp_test_mode': cfg['test_mode'],
+            'updater_installed': control.read('installed.json') is not None,
+            'update': control.read('status.json', {'state': 'idle'}),
+            'requested': control.read('request.json') is not None}
+
+@app.put('/api/v1/admin/control/payments', tags=['admin'])
+def control_payments(payload: PaymentSwitches, admin=Depends(require_admin)):
+    if payload.stars:
+        stars_checkout.credentials()
+    if payload.sbp and not sbp_checkout.settings()['configured']:
+        raise HTTPException(409, 'sbp_credentials_required')
+    with control.locked():
+        control.write('payments.json', {'stars': payload.stars, 'sbp': payload.sbp,
+                      'actor': str(admin['id']), 'changed_at': control.now()})
+    return {'saved': True}
+
+@app.post('/api/v1/admin/control/update', status_code=202, tags=['admin'])
+def control_update(admin=Depends(require_admin)):
+    if control.read('installed.json') is None:
+        raise HTTPException(409, 'updater_bootstrap_required')
+    with control.locked():
+        status = control.read('status.json', {})
+        if control.read('request.json') is not None or status.get('state') == 'running':
+            raise HTTPException(409, 'update_already_running')
+        control.write('request.json', {'action': 'update', 'actor': str(admin['id']), 'at': control.now()})
+    return {'queued': True}
+
+from . import emoji_settings
+
+@app.get('/api/v1/admin/icons', tags=['admin'])
+def icons_settings(admin=Depends(require_admin)):
+    return {'items': control.read('emoji-catalog.json', []), 'mapping': control.read('emoji-map.json', {})}
+
+@app.post('/api/v1/admin/icons/import', tags=['admin'])
+def import_icons(admin=Depends(require_admin)):
+    return {'items': emoji_settings.fetch(), 'mapping': control.read('emoji-map.json', {})}
+
+@app.put('/api/v1/admin/icons', tags=['admin'])
+def save_icons(payload: dict[str,str], admin=Depends(require_admin)):
+    emoji_settings.save(payload)
+    return {'saved': True}

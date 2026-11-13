@@ -10,10 +10,11 @@ from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
 from .telegram_environment import bot_api_url, environment_name
 from .wizard import DraftWizard, format_tariff
+from .navigation import Navigation
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
 from .delivery_inbox import DeliveryInbox
-from .button_icons import decorate, configured_icons
+from .button_icons import decorate, configured_icons, without_button_icons, icon_rejection
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
@@ -291,7 +292,7 @@ def format_campaigns(campaigns):
     lines = ["📋 Ваши последние рекламные заявки:"]
     for index, campaign in enumerate(campaigns[:10], 1):
         title = " ".join(str(campaign.get("channel_title") or "Без названия").split())[:64]
-        price = campaign.get("price_kopecks_snapshot", 0)
+        price = campaign.get("price_kopecks_snapshot")
         currency = (campaign.get("currency_snapshot") or "RUB").strip()
         price_text = (f"{price / 100:g} ₽" if currency == "RUB" and type(price) is int
                       else "Цена в кабинете")
@@ -299,7 +300,7 @@ def format_campaigns(campaigns):
             f"\n{index}. {title}\n"
             f"Тариф: {campaign.get('tariff_name_snapshot', '—')} · {price_text}\n"
             f"Модерация: {moderation.get(campaign.get('moderation_status'), '—')}\n"
-            f"Оплата: {payment.get(campaign.get('payment_status'), '—')}\n"
+            f"Оплата: {'Не требуется — бесплатно' if price == 0 else payment.get(campaign.get('payment_status'), '—')}\n"
             f"Размещение: {placement.get(campaign.get('placement_status'), '—')}"
         )
     lines.append("\nПоказаны до 10 последних заявок. Подробности доступны в кабинете.")
@@ -521,14 +522,35 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
 
 
 def telegram_call(token, method, payload, timeout=40):
-    req = Request(bot_api_url(token, method),
-                  data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-                  headers={"Content-Type": "application/json"}, method="POST")
-    with urlopen(req, timeout=timeout) as stream:
-        result = json.load(stream)
-    if not result.get("ok"):
-        raise RuntimeError("Telegram API отклонил запрос")
-    return result["result"]
+    # Повтор допустим лишь после однозначного отказа отправить меню из-за иконки.
+    # Счета, платежи, таймауты, 429 и 5xx никогда не повторяются этим механизмом.
+    plain_payload = without_button_icons(payload) if method in ("sendMessage", "editMessageText") else None
+    for attempt in range(2):
+        req = Request(bot_api_url(token, method),
+                      data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                      headers={"Content-Type": "application/json"}, method="POST")
+        try:
+            with urlopen(req, timeout=timeout) as stream:
+                result = json.load(stream)
+        except HTTPError as exc:
+            if attempt or plain_payload is None or exc.code != 400:
+                raise
+            try:
+                raw = exc.read(65537)
+                result = json.loads(raw) if len(raw) <= 65536 else None
+            except (OSError, ValueError, RecursionError):
+                raise exc from None
+            finally:
+                exc.close()
+            if not icon_rejection(result):
+                raise
+        if not attempt and plain_payload is not None and icon_rejection(result):
+            LOG.warning("Telegram отклонил иконку кнопки; одна отправка меню без иконок")
+            payload = plain_payload
+            continue
+        if not isinstance(result, dict) or not result.get("ok"):
+            raise RuntimeError("Telegram API отклонил запрос")
+        return result["result"]
 
 
 def validate_bot(token):
@@ -556,6 +578,7 @@ def run():
     wizard = DraftWizard(create_campaign_draft, enabled=ready, tariff_loader=fetch_current_tariff)
     operator_inbox = OperatorInbox(operator_queue, operator_decide, operator_unsubscribe)
     delivery_inbox = DeliveryInbox(admin_delivery_report, admin_retry_advertiser_notice)
+    navigation = Navigation(telegram_call)
     next_notification_poll = time.monotonic()
     offset = None
     while True:
@@ -578,7 +601,7 @@ def run():
                     if callback_id:
                         telegram_call(token, "answerCallbackQuery",
                                       {"callback_query_id": callback_id})
-                    telegram_call(token, "sendMessage", payload)
+                    navigation.deliver(token, update, payload)
                 # Не подтверждать update до завершения обработки.
                 offset = next_offset
             if ready and time.monotonic() >= next_notification_poll:

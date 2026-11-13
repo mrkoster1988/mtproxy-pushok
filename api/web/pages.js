@@ -64,7 +64,7 @@
  function badge(value){return el('span',labels[value]||value,'badge badge--'+value);}
  function campaignRows(list){return list.map(c=>[
   link(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||c.id.slice(0,8),'campaign/'+c.id),
-  (()=>{const group=el('div',undefined,'status-stack');group.append(badge(c.moderation_status),badge(c.payment_status),badge(c.placement_status));return group;})(),money(c.price_kopecks_snapshot),
+  (()=>{const group=el('div',undefined,'status-stack');group.append(badge(c.moderation_status),(c.price_kopecks_snapshot===0?el('span','Бесплатно','badge'):badge(c.payment_status)),badge(c.placement_status));return group;})(),money(c.price_kopecks_snapshot),
   date(c.scheduled_start_at),link('Открыть','campaign/'+c.id)
  ]);}
  const campaignHeaders=['Канал','Статусы','Цена заявки','Начало','Действие'];
@@ -95,7 +95,7 @@
  const searchForm=el('form'),search=el('input');search.type='search';search.placeholder='Поиск кампаний по каналу или номеру';search.setAttribute('aria-label','Поиск кампаний');
  searchForm.append(search);searchForm.addEventListener('submit',e=>{e.preventDefault();state.search=search.value.trim();go('campaigns');renderList();});
  const account=el('span',undefined,'cabinet-account');account.id='cabinet-account';
- const refreshButton=$('refresh');bar.append(toggle,searchForm,account,refreshButton,$('logout'));stage.append(bar);shell.append(sidebar,stage);workspace.prepend(shell);
+ const refreshButton=$('refresh');bar.append(toggle,account,refreshButton);sidebar.append($('logout'));bar.append(searchForm);stage.append(bar);shell.append(sidebar,stage);workspace.prepend(shell);
  Object.entries(routes).forEach(([name,[title,subtitle]])=>{
   const page=name==='settings'?$('settings'):el('section');page.dataset.page=name;page.hidden=true;page.classList.add('cabinet-page');
   const heading=el('header',undefined,'page-heading'),titles=el('div');const h=el('h1',title);h.tabIndex=-1;titles.append(h,el('p',subtitle));heading.append(titles);
@@ -181,7 +181,7 @@
   metrics('dashboard',[
    ['Активные кампании',state.campaigns.filter(c=>c.placement_status==='active').length,'По статусу размещения'],
    ['На модерации',state.campaigns.filter(c=>c.moderation_status==='pending').length,'Ожидают решения'],
-   ['Оплата подтверждена',state.campaigns.filter(c=>c.payment_status==='verified').length,'Количество заявок'],
+   ['Оплата подтверждена',state.campaigns.filter(c=>c.payment_status==='verified'&&c.price_kopecks_snapshot>0).length,'Количество заявок'],
    ['Ближайший запуск',date(state.campaigns.filter(c=>c.placement_status==='scheduled'&&c.scheduled_start_at&&new Date(c.scheduled_start_at)>new Date()).map(c=>c.scheduled_start_at).sort()[0]),'По назначенному расписанию']
   ]);
   metrics('channels',[['Каналов',channels.length,'Добавлены в кабинет']]);
@@ -199,7 +199,7 @@
   const own=state.campaigns;
   table(reportRows,own.map(c=>[link(c.channel_title||c.id.slice(0,8),'campaign/'+c.id),badge(c.placement_status),button('Открыть отчёт',async()=>{reportRows.querySelectorAll('.campaign-report').forEach(x=>x.remove());await showCampaignReport(c,reportRows);}),button('Скачать CSV',()=>downloadCampaignCsv(c))]),['Кампания','Размещение','История','Экспорт']);
   const approved=own.filter(c=>c.moderation_status==='approved');
-  table(paymentRows,approved.map(c=>[link(c.channel_title||c.id.slice(0,8),'payments/'+c.id),money(c.price_kopecks_snapshot),badge(c.payment_status),link('Открыть оплату','payments/'+c.id)]),['Кампания','Цена заявки','Статус','Действие']);
+  table(paymentRows,approved.map(c=>[link(c.channel_title||c.id.slice(0,8),'payments/'+c.id),money(c.price_kopecks_snapshot),(c.price_kopecks_snapshot===0?'Бесплатно':badge(c.payment_status)),link(c.price_kopecks_snapshot===0?'Открыть размещение':'Открыть оплату','payments/'+c.id)]),['Кампания','Цена заявки','Статус','Действие']);
   paymentRows.prepend(el('p',miniAppMode?'Для оплаты сначала требуется одобрение канала. Stars доступны в карточке оплаты при включении на сервере.':'Для оплаты сначала требуется одобрение канала. СБП — во внешнем кабинете после настройки владельцем. Stars — через бота при включении на сервере.','muted'));
   operatorNodes.replaceChildren();if(me.role==='operator')table(operatorNodes,nodes.map(n=>[n.name,n.host+':'+n.port,n.status==='active'?'В реестре: активен':'На паузе']),['Узел','Адрес','Статус реестра']);
   metrics('sponsors',[['Узлов в реестре',nodes.length,'Доступность отдельно не проверялась']]);
@@ -236,6 +236,8 @@
   }catch(e){if(current()){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку Stars',()=>renderStars(c,panel)));}}
  }
  async function renderSbp(c,panel){
+  if(c.price_kopecks_snapshot===0){panel.replaceChildren(el('h3','Бесплатное размещение'),el('p',c.moderation_status==='approved'?'Канал одобрен. Оплата не требуется; время размещения назначит оператор.':'После одобрения канала оплата не потребуется.'));return;}
+
   if(miniAppMode){await renderStars(c,panel);return;}
   const base='/campaigns/'+c.id+'/sbp';
   async function paint(data){
@@ -275,7 +277,7 @@
   if(name!=='campaign'){detail.replaceChildren();metrics('campaign',[]);}
   if(name==='campaign'){
    detail.replaceChildren();const c=state.campaigns.find(c=>c.id===id);
-   if(c){detail.append(card(c,false));metrics('campaign',[['Модерация',labels[c.moderation_status],'По данным API'],['Оплата',labels[c.payment_status],'По данным API'],['Размещение',labels[c.placement_status],'По данным API'],['Окончание',date(c.scheduled_end_at),'Назначенный период']]);}
+   if(c){detail.append(card(c,false));metrics('campaign',[['Модерация',labels[c.moderation_status],'По данным API'],['Оплата',c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status],'По данным API'],['Размещение',labels[c.placement_status],'По данным API'],['Окончание',date(c.scheduled_end_at),'Назначенный период']]);}
    else{empty(detail,'Кампания не найдена или недоступна вашему аккаунту.');metrics('campaign',[]);}
   }
   if(name==='payments'&&id){
@@ -297,6 +299,7 @@
   nav.querySelectorAll('a').forEach(a=>{const active=a.dataset.route===name||(name==='create'||name==='campaign')&&a.dataset.route==='campaigns';a.classList.toggle('selected',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   menuState(false);
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
+  searchForm.hidden=!['campaigns','moderation'].includes(name);
   if(name==='settings')run(loadAdminSettings);
   if(miniAppMode)window.pushokMiniApp.syncNavigation();
  }

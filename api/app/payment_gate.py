@@ -4,7 +4,8 @@
 Отключение не блокирует обработку уже состоявшихся successful_payment.
 """
 import os
+from .control import flag
 
 
 def stars_invoices_enabled() -> bool:
-    return os.getenv("PUSHOK_STARS_PAYMENTS_ENABLED", "0") == "1"
+    return flag("stars", os.getenv("PUSHOK_STARS_PAYMENTS_ENABLED", "0") == "1")

@@ -28,9 +28,10 @@ from installer_runtime import sync_directory
 
 WRITERS = {'api', 'bot', 'sbp-worker'}
 CONFIG = {'.env': 'config.env', 'compose.yaml': 'compose.yaml',
-          'compose.override.yaml': 'compose.override.yaml', 'Caddyfile': 'Caddyfile'}
+          'compose.override.yaml': 'compose.override.yaml', 'Caddyfile': 'Caddyfile',
+          '.control/payments.json':'payments.json', '.control/emoji-map.json':'emoji-map.json'}
 REQUIRED = {'database.dump', 'proofs.tar', 'config.env', 'compose.yaml'}
-ALLOWED = REQUIRED | {'compose.override.yaml', 'Caddyfile'}
+ALLOWED = REQUIRED | set(CONFIG.values())
 LIMIT = 20 * 1024**3
 COUNTS_SQL = "SELECT json_build_object('users',(SELECT count(*) FROM users),'campaigns',(SELECT count(*) FROM campaigns),'payment_attempts',(SELECT count(*) FROM payment_attempts));"
 PROOFS = '/var/lib/mtproxy-pushok/payment-proofs'
