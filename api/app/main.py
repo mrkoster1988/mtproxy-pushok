@@ -49,7 +49,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.058",
+    version="0.059",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2400,8 +2400,8 @@ def miniapp_client():
     html = (WEB_DIR / 'index.html').read_text()
     html = html.replace('initial-scale=1', 'initial-scale=1, viewport-fit=cover')
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
-    html = html.replace('<script src="/assets/app.js?v=058"',
-                        '<script src="/assets/miniapp.js?v=058" defer></script>\n  <script src="/assets/app.js?v=058"')
+    html = html.replace('<script src="/assets/app.js?v=059"',
+                        '<script src="/assets/miniapp.js?v=059" defer></script>\n  <script src="/assets/app.js?v=059"')
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
@@ -2627,3 +2627,77 @@ def save_icons(payload: dict[str,str], admin=Depends(require_admin)):
 
 from .management import router_for as management_router
 app.include_router(management_router(lambda: DATABASE_URL, get_current_user, require_admin, require_operator, normalize_proxy_host))
+
+# Подготовленные в Telegram связи. Доступ только администратору.
+class PromotionBindingRequest(BaseModel):
+    node_id: UUID
+    channel_id: UUID
+    ad_tag: str = Field(min_length=32, max_length=32)
+    telegram_binding_confirmed: bool
+
+    @field_validator('ad_tag')
+    @classmethod
+    def tag_valid(cls, value):
+        return normalize_ad_tag(value)
+
+
+@app.get('/api/v1/admin/promotion-bindings', tags=['admin'])
+def promotion_bindings(admin: dict = Depends(require_admin)):
+    with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as conn:
+        return {
+            'channels': conn.execute('SELECT id,title,telegram_url FROM sponsor_channels WHERE archived_at IS NULL ORDER BY title,id').fetchall(),
+            'bindings': conn.execute('''SELECT b.proxy_node_id,b.channel_id,n.name,ch.title,
+                right(b.ad_tag,4) AS tag_ending,b.confirmed_at
+                FROM channel_promotion_bindings b JOIN proxy_nodes n ON n.id=b.proxy_node_id
+                JOIN sponsor_channels ch ON ch.id=b.channel_id
+                WHERE n.archived_at IS NULL AND ch.archived_at IS NULL''').fetchall(),
+            'runtime': conn.execute('''SELECT r.proxy_node_id,n.name,r.campaign_id,r.state,r.checked_at
+                FROM promotion_runtime r JOIN proxy_nodes n ON n.id=r.proxy_node_id''').fetchall(),
+        }
+
+
+@app.put('/api/v1/admin/promotion-bindings', tags=['admin'])
+def save_promotion_binding(payload: PromotionBindingRequest, admin: dict = Depends(require_admin)):
+    if not payload.telegram_binding_confirmed:
+        raise HTTPException(422, 'telegram_binding_confirmation_required')
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as conn:
+            node=conn.execute('SELECT id,target_engine,host,port FROM proxy_nodes WHERE id=%s AND archived_at IS NULL FOR UPDATE',(payload.node_id,)).fetchone()
+            if not node or node['target_engine'] not in (None,'official_mtproxy'):
+                raise HTTPException(409, 'classic_node_required')
+            channel=conn.execute('SELECT id,telegram_url FROM sponsor_channels WHERE id=%s AND archived_at IS NULL',(payload.channel_id,)).fetchone()
+            if not channel: raise HTTPException(404,'channel_not_found')
+            conn.execute('''INSERT INTO channel_promotion_bindings(proxy_node_id,channel_id,ad_tag,confirmed_by,channel_url,node_host,node_port)
+                VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(proxy_node_id,channel_id) DO UPDATE
+                SET ad_tag=EXCLUDED.ad_tag,confirmed_by=EXCLUDED.confirmed_by,confirmed_at=now(),channel_url=EXCLUDED.channel_url,node_host=EXCLUDED.node_host,node_port=EXCLUDED.node_port''',
+                (payload.node_id,payload.channel_id,payload.ad_tag,admin['id'],channel['telegram_url'],node['host'],node['port']))
+            conn.execute('''INSERT INTO audit_events(actor_user_id,event_type,details_json)
+                VALUES(%s,'promotion_binding_confirmed',jsonb_build_object('node_id',%s::text,'channel_id',%s::text))''',
+                (admin['id'],str(payload.node_id),str(payload.channel_id)))
+    except UniqueViolation as exc:
+        raise HTTPException(409,'Этот тег уже привязан к другому каналу или узлу.') from exc
+    return {'saved':True,'tag_ending':payload.ad_tag[-4:]}
+
+
+@app.delete('/api/v1/admin/promotion-bindings/{node_id}/{channel_id}', tags=['admin'])
+def delete_promotion_binding(node_id: UUID, channel_id: UUID, admin: dict = Depends(require_admin)):
+    with psycopg.connect(DATABASE_URL,connect_timeout=3) as conn:
+        conn.execute('DELETE FROM channel_promotion_bindings WHERE proxy_node_id=%s AND channel_id=%s',(node_id,channel_id))
+        conn.execute('''INSERT INTO audit_events(actor_user_id,event_type,details_json)
+            VALUES(%s,'promotion_binding_removed',jsonb_build_object('node_id',%s::text,'channel_id',%s::text))''',
+            (admin['id'],str(node_id),str(channel_id)))
+    return {'removed':True,'message':'Агент вернёт исходный тег при следующей проверке.'}
+
+@app.get('/api/v1/campaigns/{campaign_id}/promotion-status', tags=['campaigns'])
+def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_current_user)):
+    with psycopg.connect(DATABASE_URL,connect_timeout=3,row_factory=dict_row) as conn:
+        row=conn.execute('''SELECT c.advertiser_user_id,c.scheduled_end_at,
+            EXISTS(SELECT 1 FROM channel_promotion_bindings b WHERE b.proxy_node_id=c.proxy_node_id AND b.channel_id=c.channel_id) AS prepared,
+            r.campaign_id AS applied_campaign_id,r.state,r.checked_at
+            FROM campaigns c LEFT JOIN promotion_runtime r ON r.proxy_node_id=c.proxy_node_id
+            WHERE c.id=%s''',(campaign_id,)).fetchone()
+        if not row or (user['role'] not in ('admin','operator') and row['advertiser_user_id']!=user['id']):
+            raise HTTPException(404,'campaign_not_found')
+        fresh=bool(row['checked_at'] and (datetime.now(timezone.utc)-row['checked_at']).total_seconds()<120)
+        applied=bool(fresh and row['state']=='applied' and row['applied_campaign_id']==campaign_id and row['scheduled_end_at'] and row['scheduled_end_at']>datetime.now(timezone.utc))
+        return {'prepared':row['prepared'],'config_applied':applied,'agent_recent':fresh,'checked_at':row['checked_at'],'display_verified':False}
