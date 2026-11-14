@@ -68,6 +68,10 @@ jobs:
         env:
           PUSHOK_BACKUP_COMPOSE_TESTS: '1'
         run: python3 -m unittest discover -s tests -p test_cabinet_backup_compose.py -v
+      - name: Build private checkout sources and run imports as UID 10001
+        env:
+          PUSHOK_IMAGE_PERMISSION_TESTS: '1'
+        run: python3 -m unittest discover -s tests -p test_image_permissions.py -v
       - run: bash scripts/smoke.sh
 
   rust-core:
