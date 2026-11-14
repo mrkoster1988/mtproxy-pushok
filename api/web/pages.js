@@ -128,9 +128,22 @@
  [['','Все статусы'],['draft','Черновики'],['pending','На модерации'],['changes_requested','Нужны исправления'],['awaiting_payment','Ожидают оплаты'],['active','Активные'],['completed','Завершённые']].forEach(([v,t])=>option(filter,v,t));
  const reset=button('Сбросить поиск и фильтр',async()=>{state.search='';state.filter='';search.value='';filter.value='';renderList();});
  filter.addEventListener('change',()=>{state.filter=filter.value;renderList();});listTools.append(filter,reset);content.campaigns.append(listTools,$('campaigns'));
+ const dashboardHero=el('section',undefined,'dashboard-hero');
+ const heroCopy=el('div',undefined,'dashboard-hero-copy');
+ heroCopy.append(el('p','РЕКЛАМА В TELEGRAM','eyebrow'),el('h2','Ваш канал — ближе к аудитории'),el('p','Размещайте канал в спонсорском блоке MTProxy.'));
+ const heroActions=el('div',undefined,'dashboard-hero-actions');heroActions.append(link('+ Создать кампанию','create'),link('Как это работает','help'));heroCopy.append(heroActions);
+ const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-mascot.svg';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
+ dashboardHero.append(heroCopy,dashboardMascot);pages.dashboard.insertBefore(dashboardHero,stats.dashboard);
+ const bottomNav=el('nav',undefined,'mobile-bottom-nav');bottomNav.setAttribute('aria-label','Основные разделы');
+ [['dashboard','home','Главная'],['campaigns','campaign','Кампании'],['payments','wallet','Оплата']].forEach(([route,icon,title])=>{
+  const a=link(title,route);a.dataset.route=route;
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
+  const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);bottomNav.append(a);
+ });
+ const bottomMenu=button('☰ Меню',async()=>menuState(!sidebar.classList.contains('is-open')));bottomMenu.setAttribute('aria-controls','cabinet-sidebar');bottomNav.append(bottomMenu);shell.append(bottomNav);
  const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.append(summaryRows);content.dashboard.append(summary);
  const onboarding=section('С чего начать');onboarding.id='onboarding';onboarding.append(el('p','Заполните одну форму: канал, тариф и желаемая дата. После проверки канала оплатите размещение.'));
- onboarding.append(button('Скрыть инструкцию',async()=>{sessionStorage.setItem('pushok-onboarding-hidden','1');onboarding.hidden=true;}),link('Разместить рекламу','create'));content.dashboard.prepend(onboarding);
+ onboarding.append(button('Скрыть инструкцию',async()=>{sessionStorage.setItem('pushok-onboarding-hidden','1');onboarding.hidden=true;}),link('Разместить рекламу','create'));content.dashboard.append(onboarding);
  const paymentRows=el('div');content.payments.append(paymentRows);const reportRows=el('div');content.reports.append(reportRows);
  const archiveRows=el('div');content.archive.append(archiveRows);
  const detail=el('div');content.campaign.append(link('← Все кампании','campaigns'),detail);
@@ -338,6 +351,7 @@
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
   nav.querySelectorAll('a').forEach(a=>{const active=a.dataset.route===name||name==='campaign'&&a.dataset.route==='campaigns';a.classList.toggle('selected',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  bottomNav.querySelectorAll('a').forEach(a=>{const active=a.dataset.route===name||(name==='campaign'||name==='create')&&a.dataset.route==='campaigns';if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   menuState(false);
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
   searchForm.hidden=name!=='campaigns';
