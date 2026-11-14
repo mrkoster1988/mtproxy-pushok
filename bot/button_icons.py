@@ -50,6 +50,7 @@ def decorate(button, action, icons=None):
     result = dict(button)
     if action in ALLOWED and is_valid_icon_id(icon_id):
         result["icon_custom_emoji_id"] = icon_id
+        result["text"] = re.sub(r"^[^\w]+", "", result.get("text", ""))
     return result
 
 

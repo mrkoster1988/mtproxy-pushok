@@ -24,13 +24,13 @@ window.pushokManagement=(()=>{
   parent.append(form);form.scrollIntoView({block:'nearest'});return form;
  }
  function archive(parent,path,text,route){
-  const b=button('Удалить из списка',async()=>{
+  const b=button('🗑️ Удалить',async()=>{
    if(!confirm(text+' Объект попадёт в «Удалённые»; историю можно будет восстановить.'))return;
    const from=location.hash;await api(path,{method:'DELETE'});window.pushokApproval?.resetSelection();await refresh();if(route&&location.hash===from)window.cabinet.go(route);notice('Объект перемещён в «Удалённые». История сохранена.',true);
   });parent.append(b);
  }
  function channelActions(c){
-  const box=el('div',undefined,'management-actions');box.append(button('Изменить канал',()=>editor(box,'Изменить канал',[
+  const box=el('div',undefined,'management-actions');box.append(button('✏️ Изменить',()=>editor(box,'Изменить канал',[
    {name:'title',label:'Название канала',value:c.title},{name:'url',label:'Ссылка на канал',value:c.telegram_url,type:'url'}
   ],v=>api('/channels/'+c.id,{method:'PATCH',body:{title:v.title.value.trim(),telegram_url:v.url.value.trim()}}))));
   archive(box,'/channels/'+c.id,'Удалить канал из рабочего списка?','channels');return box;
@@ -53,7 +53,7 @@ window.pushokManagement=(()=>{
     await api('/operator/campaigns/'+c.id+'/slot',{method:'DELETE'});await refresh();notice('Слот снят. Оплата сохранена, можно выбрать новое время.',true);
    }));
   }
-  archive(box,'/campaigns/'+c.id,'Удалить заявку из рабочего списка?',operator?'moderation':'campaigns');return box;
+  archive(box,'/campaigns/'+c.id,'Убрать заявку из списка? Будущий слот отменится. Активный показ и платежи сохранятся у оператора.',operator?'moderation':'campaigns');return box;
  }
  function nodeActions(n){
   const box=el('details',undefined,'management-actions');box.append(el('summary','Изменить или удалить узел'));

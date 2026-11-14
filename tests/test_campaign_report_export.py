@@ -126,8 +126,8 @@ class ExportTests(unittest.TestCase):
 
     def test_ui_download_action_wired(self):
         script=(ROOT/"api/web/app.js").read_text(encoding="utf-8")
-        self.assertIn("Выгрузить CSV",script)
-        self.assertIn("Скачать CSV",script)
+        self.assertNotIn("Выгрузить CSV",script)
+        self.assertNotIn("Скачать CSV",script)
         self.assertIn("Authorization:'Bearer '+token",script)
         self.assertIn("report.csv",script)
 

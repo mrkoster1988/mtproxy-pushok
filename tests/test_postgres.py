@@ -1593,7 +1593,6 @@ class PostgresIntegration(unittest.TestCase):
         self.assertIn(str(f['node']),{n['id'] for n in response.json()['nodes']})
         self.request('POST',path+'/schedule',json={'proxy_node_id':str(f['node']),'start_at':start.isoformat()})
         self.request('DELETE','/admin/proxy-nodes/'+str(f['node']),409)
-        self.request('DELETE','/campaigns/'+str(f['campaign']),409)
         self.request('PATCH',path+'/slot',json={'proxy_node_id':str(f['node']),'start_at':(start+timedelta(days=1)).isoformat()})
         self.request('DELETE',path+'/slot')
         with psycopg.connect(self.dsn) as conn:
@@ -1609,17 +1608,30 @@ class PostgresIntegration(unittest.TestCase):
         self.request('DELETE','/admin/proxy-nodes/'+str(f['node']),403)
         self.request('POST','/management/archive/nodes/'+str(f['node'])+'/restore',404)
 
-    def test_management_paid_campaign_archive_is_blocked_and_pending_invoice_preserved(self):
+    def test_management_paid_campaign_archive_preserves_pending_invoice(self):
         f=self._management_fixture()
         actor={'id':f['owner'],'role':'advertiser'}
         main.app.dependency_overrides[main.get_current_user]=lambda:actor
         with psycopg.connect(self.dsn) as conn:
             conn.execute("UPDATE campaigns SET moderation_status='approved',payment_status='verified',price_kopecks_snapshot=30000 WHERE id=%s",(f['campaign'],))
-        self.request('DELETE','/campaigns/'+str(f['campaign']),409)
+        self.request('DELETE','/campaigns/'+str(f['campaign']))
         with psycopg.connect(self.dsn) as conn:
-            self.assertIsNone(conn.execute('SELECT archived_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()[0])
+            self.assertIsNotNone(conn.execute('SELECT archived_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()[0])
             conn.execute("UPDATE campaigns SET payment_status='awaiting_payment' WHERE id=%s",(f['campaign'],))
             conn.execute("INSERT INTO payment_attempts(campaign_id,provider,payment_channel,amount,currency) VALUES(%s,'telegram_stars','telegram_bot',37,'XTR')",(f['campaign'],))
-        self.request('DELETE','/campaigns/'+str(f['campaign']),409)
+        self.request('DELETE','/campaigns/'+str(f['campaign']))
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT status FROM payment_attempts WHERE campaign_id=%s',(f['campaign'],)).fetchone()[0],'created')
+
+    def test_auto_schedule_is_idempotent_and_respects_full_period(self):
+        from app.auto_schedule import service_once
+        f=self._management_fixture(ready=True)
+        service_once(self.dsn)
+        with psycopg.connect(self.dsn) as conn:
+            first=conn.execute('SELECT placement_status,scheduled_start_at,scheduled_end_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
+            self.assertEqual(first[0],'scheduled')
+            self.assertGreater(first[2],first[1])
+        service_once(self.dsn)
+        with psycopg.connect(self.dsn) as conn:
+            second=conn.execute('SELECT placement_status,scheduled_start_at,scheduled_end_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
+            self.assertEqual(first,second)

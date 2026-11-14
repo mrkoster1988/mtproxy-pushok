@@ -59,7 +59,7 @@
   if(!rows.length){empty(target,'Пока нет данных.');return;}
   const wrap=el('div',undefined,'table-scroll'),t=el('table'),head=el('thead'),tr=el('tr');wrap.tabIndex=0;wrap.setAttribute('role','region');wrap.setAttribute('aria-label','Таблица данных. При необходимости прокрутите по горизонтали.');
   headers.forEach(text=>{const th=el('th',text);th.scope='col';tr.append(th);});head.append(tr);t.append(head);
-  const body=el('tbody');rows.forEach(row=>{const r=el('tr');row.forEach(value=>{const cell=el('td');cell.append(typeof value==='string'?document.createTextNode(value):value);r.append(cell);});body.append(r);});
+  const body=el('tbody');rows.forEach(row=>{const r=el('tr');row.forEach((value,index)=>{const cell=el('td');cell.dataset.label=headers[index];cell.append(typeof value==='string'?document.createTextNode(value):value);r.append(cell);});body.append(r);});
   t.append(body);wrap.append(t);target.append(wrap);
  }
  function badge(value){return el('span',labels[value]||value,'badge badge--'+value);}
@@ -83,19 +83,15 @@
    const use=document.createElementNS('http://www.w3.org/2000/svg','use');
    use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);nav.append(a);
  });sidebar.append(nav);
- if(miniAppMode){
-  const more=el('details',undefined,'nav-more');more.append(el('summary','Ещё'));
-  const management=el('details',undefined,'nav-more');management.append(el('summary','Управление'));
-  nav.querySelectorAll('a').forEach(a=>{if(['moderation','sponsors','settings'].includes(a.dataset.route))management.append(a);else if(!['create','campaigns','help'].includes(a.dataset.route))more.append(a);});
-  nav.append(more,management);management.id='management-menu';
- }
- sidebar.append(el('p','Подсказки и инструкции доступны в каждом разделе.','sidebar-note'));
+ const management=el('div',undefined,'nav-admin');management.append(el('p','Администрирование','nav-heading'));
+ nav.querySelectorAll('a').forEach(a=>{if(['moderation','sponsors','settings'].includes(a.dataset.route))management.append(a);});
+ management.id='management-menu';nav.append(management);
  const stage=el('div',undefined,'cabinet-stage'),bar=el('div',undefined,'cabinet-topbar');
  const mobileMenu=window.matchMedia?.('(max-width:760px)');
  function menuState(open){sidebar.classList.toggle('is-open',open);sidebar.inert=Boolean(mobileMenu?.matches&&!open);toggle.setAttribute('aria-expanded',String(open));}
  const toggle=button('☰ Меню',async()=>menuState(!sidebar.classList.contains('is-open')));
  toggle.className='menu-toggle';toggle.setAttribute('aria-controls','cabinet-sidebar');toggle.setAttribute('aria-expanded','false');
- const closeMenu=button('Закрыть меню',async()=>{menuState(false);toggle.focus();});closeMenu.className='menu-toggle';sidebar.prepend(closeMenu);
+ const closeMenu=button('×',async()=>{menuState(false);toggle.focus();});closeMenu.className='menu-toggle menu-close';closeMenu.setAttribute('aria-label','Закрыть меню');sidebar.prepend(closeMenu);
  mobileMenu?.addEventListener('change',()=>menuState(false));
  window.addEventListener('keydown',event=>{if(event.key==='Escape'&&sidebar.classList.contains('is-open')){menuState(false);toggle.focus();}});
  menuState(false);
@@ -201,7 +197,7 @@
   botPanel.replaceChildren(el('h2','Продолжить в Telegram'),botLink(),el('p','Кампании, статусы и оплата доступны в боте согласно настройкам сервера.'),el('h3','Сценарии в кабинете'));
   const shortcuts=el('nav',undefined,'bot-shortcuts');shortcuts.setAttribute('aria-label','Сценарии кабинета');[['create','Разместить рекламу'],['campaigns','Мои кампании'],['payments','Оплата'],['help','Помощь']].forEach(([route,text])=>shortcuts.append(link(text,route)));botPanel.append(shortcuts);
   const own=state.campaigns;
-  table(reportRows,own.map(c=>[link(c.channel_title||c.id.slice(0,8),'campaign/'+c.id),badge(c.placement_status),button('Открыть отчёт',async()=>{reportRows.querySelectorAll('.campaign-report').forEach(x=>x.remove());await showCampaignReport(c,reportRows);}),button('Скачать CSV',()=>downloadCampaignCsv(c))]),['Кампания','Размещение','История','Экспорт']);
+  table(reportRows,own.map(c=>[link(c.channel_title||c.id.slice(0,8),'campaign/'+c.id),badge(c.placement_status),button('Открыть отчёт',async()=>{reportRows.querySelectorAll('.campaign-report').forEach(x=>x.remove());await showCampaignReport(c,reportRows);})]),['Кампания','Размещение','История']);
   const approved=own.filter(c=>c.moderation_status==='approved');
   table(paymentRows,approved.map(c=>[link(c.channel_title||c.id.slice(0,8),'payments/'+c.id),money(c.price_kopecks_snapshot),(c.price_kopecks_snapshot===0?'Бесплатно':badge(c.payment_status)),link(c.price_kopecks_snapshot===0?'Открыть размещение':'Открыть оплату','payments/'+c.id)]),['Кампания','Цена заявки','Статус','Действие']);
   paymentRows.prepend(el('p',miniAppMode?'Для оплаты сначала требуется одобрение канала. Stars доступны в карточке оплаты при включении на сервере.':'Для оплаты сначала требуется одобрение канала. СБП — во внешнем кабинете после настройки владельцем. Stars — через бота при включении на сервере.','muted'));

@@ -88,7 +88,6 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
             ch = conn.execute('SELECT * FROM sponsor_channels WHERE id=%s AND owner_user_id=%s FOR UPDATE', (channel_id, user['id'])).fetchone()
             if not ch:
                 raise HTTPException(404, 'channel_not_found')
-            channel_unused(conn, channel_id, editing=False)
             conn.execute('UPDATE sponsor_channels SET archived_at=COALESCE(archived_at,now()) WHERE id=%s', (channel_id,))
             event(conn, user, 'channel_archived', {'channel_id': channel_id})
         return {'archived': True}
@@ -135,14 +134,12 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
             c = owned_campaign(conn, campaign_id, user, user['role'] in ('admin','operator'))
             if c['archived_at']:
                 return {'archived': True}
-            if c['placement_status'] in ('scheduled','active'):
-                raise HTTPException(409, 'management_placement_in_use')
-            if (c['payment_status']=='proof_submitted' or (c['payment_status']=='verified' and c['price_kopecks_snapshot']>0)) and c['placement_status'] not in ('completed','cancelled'):
-                raise HTTPException(409, 'management_payment_in_use')
-            if conn.execute("SELECT 1 FROM payment_attempts WHERE campaign_id=%s AND status IN ('created','pending') LIMIT 1", (campaign_id,)).fetchone():
-                raise HTTPException(409, 'management_payment_in_use')
             conn.execute('DELETE FROM slot_holds WHERE campaign_id=%s', (campaign_id,))
-            conn.execute("UPDATE campaigns SET archived_at=now(),archived_state=jsonb_build_object('placement_status',placement_status),placement_status=CASE WHEN placement_status='completed' THEN 'completed' ELSE 'cancelled' END,updated_at=now() WHERE id=%s", (campaign_id,))
+            # Платёжные попытки и активный показ продолжают учитываться оператором.
+            conn.execute("""UPDATE campaigns SET archived_at=now(),auto_schedule_paused=true,
+                archived_state=jsonb_build_object('placement_status',CASE WHEN placement_status='scheduled' THEN 'not_scheduled' ELSE placement_status END),
+                placement_status=CASE WHEN placement_status='scheduled' THEN 'cancelled' ELSE placement_status END,
+                updated_at=now() WHERE id=%s""", (campaign_id,))
             event(conn, user, 'campaign_archived', {}, campaign_id)
         return {'archived': True}
 
@@ -196,6 +193,16 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
             event(conn, user, 'placement_rescheduled', {'node_id':payload.proxy_node_id,'start_at':payload.start_at}, campaign_id)
         return {'updated': True}
 
+    @router.post('/operator/campaigns/{campaign_id}/auto-schedule')
+    def resume_auto_schedule(campaign_id: UUID, user=Depends(operator_dependency)):
+        with transaction() as conn:
+            c=owned_campaign(conn,campaign_id,user,True)
+            if c['archived_at'] or c['placement_status']!='not_scheduled' or c['moderation_status']!='approved' or c['payment_status']!='verified':
+                raise HTTPException(409,'campaign_not_ready_for_placement')
+            conn.execute('UPDATE campaigns SET auto_schedule_paused=false WHERE id=%s',(campaign_id,))
+            event(conn,user,'auto_schedule_resumed',{},campaign_id)
+        return {'queued':True}
+
     @router.get('/operator/campaigns/{campaign_id}/available-nodes')
     def available_nodes(campaign_id: UUID, start_at: datetime, user=Depends(operator_dependency)):
         if start_at.tzinfo is None or start_at <= datetime.now(timezone.utc):
@@ -228,7 +235,7 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
         with transaction() as conn:
             c = owned_campaign(conn, campaign_id, user, True)
             future_slot(conn, c, datetime.now(timezone.utc))
-            conn.execute("UPDATE campaigns SET placement_status='not_scheduled',proxy_node_id=NULL,scheduled_start_at=NULL,scheduled_end_at=NULL,updated_at=now() WHERE id=%s", (campaign_id,))
+            conn.execute("UPDATE campaigns SET auto_schedule_paused=true,placement_status='not_scheduled',proxy_node_id=NULL,scheduled_start_at=NULL,scheduled_end_at=NULL,updated_at=now() WHERE id=%s", (campaign_id,))
             conn.execute('DELETE FROM slot_holds WHERE campaign_id=%s', (campaign_id,))
             event(conn, user, 'placement_slot_removed', {}, campaign_id)
         return {'removed': True, 'payment_unchanged': True}

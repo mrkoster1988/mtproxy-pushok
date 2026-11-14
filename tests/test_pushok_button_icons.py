@@ -38,9 +38,9 @@ class TestButtonIcons(unittest.TestCase):
         }):
             rows = keyboard()["inline_keyboard"]
         self.assertEqual(rows[0][0]["callback_data"], "advertise")
-        self.assertEqual(rows[0][0]["icon_custom_emoji_id"], "123456789012")
+        self.assertNotIn("icon_custom_emoji_id", rows[0][0])
         channel = next(b for row in rows for b in row if b.get("url") == CHANNEL_URL)
-        self.assertEqual(channel["icon_custom_emoji_id"], "123456789013")
+        self.assertNotIn("icon_custom_emoji_id", channel)
         self.assertNotIn("icon_custom_emoji_id", rows[1][0])
 
     def test_all_six_actions_preserve_complete_keyboard_and_payment_buttons(self):
@@ -63,6 +63,10 @@ class TestButtonIcons(unittest.TestCase):
             for row in decorated["inline_keyboard"]:
                 for button in row:
                     button.pop("icon_custom_emoji_id")
+            import re
+            for row in baseline["inline_keyboard"]:
+                for button in row:
+                    button["text"] = re.sub(r"^[^\w]+", "", button["text"])
             self.assertEqual(decorated, baseline)
             payments = campaign_payment_keyboard([campaign])
             for row in payments["inline_keyboard"]:
@@ -70,6 +74,10 @@ class TestButtonIcons(unittest.TestCase):
                     if str(button.get("callback_data", "")).startswith("stars:"):
                         self.assertNotIn("icon_custom_emoji_id", button)
                     button.pop("icon_custom_emoji_id", None)
+            for row in payment_baseline["inline_keyboard"]:
+                for button in row:
+                    if button.get("text") and not str(button.get("callback_data", "")).startswith("stars:"):
+                        button["text"] = re.sub(r"^[^\w]+", "", button["text"])
             self.assertEqual(payments, payment_baseline)
 
 

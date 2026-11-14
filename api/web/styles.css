@@ -569,3 +569,39 @@ body.miniapp-loading #workspace{visibility:hidden}
  .cabinet-mode .channel-manager .management-form{min-width:0;margin:0;padding:10px}
  .cabinet-mode .channel-manager .management-form input{min-width:0;width:100%}
 }
+
+/* Компактный кабинет: одинаковые размеры действий и мобильные карточки таблиц. */
+.cabinet-mode button,.cabinet-mode .button{min-height:40px;padding:9px 13px;border-radius:12px;font-size:14px;line-height:1.25;box-shadow:none;max-width:100%;white-space:normal}
+.cabinet-mode input:not([type=checkbox]):not([type=radio]),.cabinet-mode select{min-height:42px;padding:10px 12px;font-size:15px}
+.cabinet-mode .cabinet-topbar{gap:8px;padding:10px 0;flex-wrap:wrap}
+.cabinet-mode .cabinet-topbar button{min-width:40px}
+.cabinet-mode .cabinet-sidebar{padding:16px;overflow-y:auto}
+.cabinet-mode .cabinet-sidebar nav a{padding:10px 12px;font-size:15px;gap:10px}
+.cabinet-mode .cabinet-brand{font-size:20px;margin:10px 36px 18px 0}
+.cabinet-mode .menu-close{position:absolute;right:12px;top:12px;width:40px;height:40px;padding:0;font-size:26px;background:transparent;color:inherit;border:0}
+.nav-heading{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:16px 12px 6px}
+.cabinet-mode .panel,.cabinet-mode .card{padding:16px;border-radius:16px;margin-bottom:14px}
+.cabinet-mode h1{font-size:26px}.cabinet-mode h2{font-size:22px}.cabinet-mode h3{font-size:18px}
+.cabinet-mode .meta{gap:6px;margin:12px 0;display:flex;flex-wrap:wrap}
+.cabinet-mode .meta span{padding:3px 6px;border:0;font-size:13px;background:transparent;border-radius:6px}
+.cabinet-mode .badge{padding:4px 8px;font-size:12px;white-space:normal;line-height:1.3;max-width:100%;overflow-wrap:anywhere}
+.cabinet-mode .actions,.cabinet-mode .management-actions{gap:8px}
+.cabinet-mode div.management-actions{display:flex;flex-wrap:wrap}
+.cabinet-mode .management-actions button{width:auto;margin:4px 0}
+.cabinet-mode .management-form{flex-basis:100%}
+#notice:not([hidden]){display:flex;align-items:start;gap:12px;font-size:14px;padding:12px 14px}
+#notice>span{flex:1}#notice>button{flex:none;background:transparent;border:0;color:inherit;font-size:23px;min-height:32px;padding:0 6px}
+.cabinet-mode .table-scroll td,.cabinet-mode .table-scroll th{min-width:0;padding:10px 8px;white-space:normal;overflow-wrap:anywhere}
+.cabinet-mode .table-scroll table{table-layout:fixed;min-width:0}
+@media(max-width:600px){
+ .cabinet-mode .table-scroll{overflow:visible;border:0;background:transparent}
+ .cabinet-mode .table-scroll table,.cabinet-mode .table-scroll tbody{display:block;width:100%}
+ .cabinet-mode .table-scroll thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ .cabinet-mode .table-scroll tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;padding:12px;margin-bottom:10px;border:1px solid var(--line);border-radius:12px}
+ .cabinet-mode .table-scroll td{display:block;border:0;padding:0;min-width:0;width:auto;font-size:14px}
+ .cabinet-mode .table-scroll td:before{content:attr(data-label);display:block;color:var(--muted);font-size:11px;margin-bottom:4px}
+ .cabinet-mode .table-scroll td:first-child{grid-column:1/-1;min-width:0}
+ .cabinet-mode .table-scroll td button{width:auto}
+ .cabinet-mode .page-heading{margin:16px 0}.cabinet-mode .page-heading p{font-size:14px}
+ .cabinet-mode .status-stack{display:flex;flex-wrap:wrap;gap:4px}
+}

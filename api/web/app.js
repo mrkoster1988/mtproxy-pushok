@@ -3,9 +3,15 @@ const $=id=>document.getElementById(id);
 const miniAppMode=document.body.dataset.miniapp==='true';
 const sessionKey=miniAppMode?'pushok-miniapp-session':'pushok-session';
 let token=miniAppMode?'':sessionStorage.getItem(sessionKey)||'',me=null,channels=[],tariffs=[],nodes=[],ownCampaigns=[],operatorCampaigns=[];
-const labels={draft:'Черновик',pending:'На модерации',approved:'Канал одобрен',rejected:'Отклонено',changes_requested:'Нужны исправления',not_required:'Оплата после одобрения',awaiting_payment:'Ожидается оплата',proof_submitted:'Чек на проверке',verified:'Оплата подтверждена',refunded:'Возврат',not_scheduled:'Слот не назначен',scheduled:'Запланировано',active:'Размещение активно',completed:'Завершено',cancelled:'Отменено'};
+const labels={draft:'Черновик',pending:'На модерации',approved:'Одобрено',rejected:'Отклонено',changes_requested:'Нужны исправления',not_required:'Оплата после одобрения',awaiting_payment:'Ожидает оплаты',proof_submitted:'Чек на проверке',verified:'Оплачено',refunded:'Возврат',not_scheduled:'Слот не назначен',scheduled:'Запланировано',active:'Размещение активно',completed:'Завершено',cancelled:'Отменено'};
 const errors={evidence_integrity_failed:'Скриншот повреждён или изменён после загрузки.',evidence_invalid_metadata:'Данные файла некорректны.',evidence_file_missing:'Файл не найден в хранилище.',invalid_integrity_limit:'Проверка ограничена 1–100 файлами.',evidence_empty:'Выберите изображение.',evidence_too_large:'Скриншот должен быть меньше 5 МБ.',evidence_corrupt_image:'Не удалось прочитать изображение.',unsupported_evidence_format:'Поддерживаются только PNG и JPEG.',evidence_format_mismatch:'Тип файла не соответствует изображению.',evidence_dimensions_invalid:'Изображение слишком велико.',evidence_already_attached:'У этого отчёта уже есть скриншот.',evidence_observation_unavailable:'Добавить файл можно только к собственному отчёту за последние сутки.',evidence_storage_unavailable:'Хранилище скриншотов временно недоступно.',placement_not_ready_for_observation:'Проверять показ можно только в запланированный период после подтверждённой оплаты.',observation_timezone_required:'Для проверки нужен часовой пояс.',observation_outside_placement_window:'Время наблюдения должно быть внутри рекламного периода.',observation_not_recent:'Наблюдение должно быть выполнено не более 10 минут назад.',observation_note_too_short:'Укажите подробности проверки (от 12 символов).',active_slot_hold_not_found:'Активной брони нет.',slot_start_requires_timezone:'Укажите время с часовым поясом.',slot_start_out_of_range:'Выберите время в пределах ближайших 90 дней.',campaign_not_holdable:'Бронирование доступно только после модерации и до подтверждения оплаты.',slot_held_by_another_campaign:'Место занято другой бронью.',slot_hold_conflict:'Бронь уже существует. Обновите состояние.',invalid_calendar_range:'Выберите период в пределах ближайших 90 дней, не больше 31 дня.',invalid_calendar_timezone:'Часовой пояс не поддерживается.',active_tariff_not_found:'Тариф больше недоступен. Обновите страницу.',payment_instructions_not_configured:'Реквизиты ещё не настроены. Дождитесь инструкции администратора перед оплатой.',campaign_not_editable:'Заявку сейчас нельзя редактировать или отправить повторно.',channel_in_review_or_approved:'Этот канал связан с заявкой на проверке или одобренным размещением. Его изменение заблокировано.',admin_tariff_required:'Тариф доступен только администратору.',admin_tariff_must_be_free:'Админский тариф всегда бесплатный: 0 ₽, без Stars.',admin_role_required:'Действие доступно владельцу.',invalid_proxy_host:'Укажите домен или IP без протокола и порта.',proxy_node_already_exists:'Этот адрес и порт уже добавлены.',proxy_node_has_placements:'На узле есть запланированное или активное размещение. Сначала завершите его.',authentication_required:'Войдите через Telegram.',session_revoked_or_expired:'Сессия завершена. Войдите снова.',telegram_login_expired:'Данные входа устарели. Повторите вход.',telegram_login_replayed:'Повторите вход через Telegram.',telegram_login_invalid_signature:'Telegram не подтвердил вход.',database_unavailable:'База данных временно недоступна.',invalid_telegram_channel_url:'Укажите ссылку вида https://t.me/channel.',channel_title_required:'Введите название канала.',channel_already_added:'Этот канал уже добавлен.',payment_proof_too_large:'Файл должен быть меньше 5 МБ.',unsupported_payment_proof_format:'Загрузите JPEG, PNG или PDF.',payment_proof_content_type_mismatch:'Тип файла не соответствует содержимому.',payment_proof_storage_unavailable:'Хранилище чеков временно недоступно.',proxy_node_slot_unavailable:'Этот слот уже занят. Выберите другое время или узел.',placement_not_in_active_window:'Активация доступна только в назначенное время.',campaign_not_ready_for_placement:'Для размещения нужны одобрение канала и подтверждённая оплата.',operator_role_required:'Нужны права оператора.',payment_proof_not_expected:'Заявка сейчас не ожидает чек.',campaign_not_draft:'Эта заявка уже отправлена.',campaign_not_pending:'Заявка уже обработана.',payment_proof_not_pending_review:'Оплата уже обработана.',channel_or_active_tariff_not_found:'Выберите свой канал и действующий тариф.',schedule_start_must_be_future:'Выберите время в будущем.'};
-function notice(message,ok=false){$('notice').textContent=message;$('notice').className=ok?'ok':'';$('notice').hidden=false;$('notice').dataset.route=location.hash;}
+let noticeTimer;
+function notice(message,ok=false){
+ clearTimeout(noticeTimer);const box=$('notice');
+ const close=button('×',()=>{box.hidden=true;clearTimeout(noticeTimer);});close.setAttribute('aria-label','Закрыть уведомление');
+ box.replaceChildren(el('span',message),close);box.className=ok?'ok':'';box.hidden=false;box.dataset.route=location.hash;
+ noticeTimer=setTimeout(()=>{box.hidden=true;},5000);
+}
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x;}
 function button(text,fn){const b=el('button',text);b.type='button';b.addEventListener('click',()=>run(fn,b));return b;}
 async function api(path,{method='GET',body}={}){
@@ -19,7 +25,7 @@ async function api(path,{method='GET',body}={}){
 async function run(fn,b){if(b)b.disabled=true;try{await fn();}catch(e){notice(e.message);}finally{if(b)b.disabled=false;}}
 function option(select,value,text){const o=el('option',text);o.value=value;select.append(o);}
 function money(n){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',minimumFractionDigits:0,maximumFractionDigits:2}).format(n/100);}
-function date(v){return v?new Date(v).toLocaleString('ru-RU'):'Не назначено';}
+function date(v){return v?new Date(v).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'Не назначено';}
 function showWorkspace(view){
  if(window.cabinet){window.cabinet.go(view==='settings'?'settings':view==='operator'?'moderation':'campaigns');return;}
  const admin=me?.role==='admin';
@@ -268,7 +274,6 @@ function showCampaignReport(c, box){
    panel.append(history);
   }else panel.append(el('p','История пока пуста.','muted'));
   panel.append(el('p','Проверки выполнены вручную. Количество показов Telegram API не подтверждено.','muted'));
-  panel.append(button('Скачать CSV',()=>downloadCampaignCsv(c)));
   panel.append(button('Закрыть отчёт',()=>panel.remove()));
  }).catch(error=>{panel.remove();throw error;});
 }
@@ -287,7 +292,6 @@ function card(c,op,{compact=false}={}){
  if(!op){
   const reports=compact?el('details',undefined,'order-reports'):actions;if(compact){reports.append(el('summary','История и отчёт'));box.append(reports);}
   reports.append(button('Отчёт по кампании',()=>showCampaignReport(c,box)));
-  reports.append(button('Выгрузить CSV',()=>downloadCampaignCsv(c)));
   if(['scheduled','active','completed'].includes(c.placement_status)){
    actions.append(button('Статус проверки показа',async()=>{
     const data=await api('/campaigns/'+c.id+'/display-observation');
@@ -451,6 +455,7 @@ async function renderLaunchReadiness(){
    list.append(el('li',state+step.title+(step.status==='data_present'?' ('+step.count+')':''),
      step.status==='not_verified'?'core-check-pending':'core-check-ci'));
   }
+  const ciLink=el('a','Открыть результаты CI в GitHub');ciLink.href='https://github.com/mrkoster1988/mtproxy-pushok/actions';ciLink.target='_blank';ciLink.rel='noopener noreferrer';target.append(ciLink);
   target.append(list,el('p','Готовность к публичному запуску: НЕ ПОДТВЕРЖДЕНА. Наличие узла или тега в БД не означает, что прокси работает.','muted'));
  }catch(e){
   target.replaceChildren(el('p','Не удалось собрать сводку готовности: '+e.message,'muted'));
@@ -703,14 +708,14 @@ function showIcons(data){
   tile.append(image,el('figcaption',String(i+1)));gallery.append(tile);
  });target.append(gallery);
  for(const [key,name] of Object.entries(names)){
-  const label=el('label',name),select=el('select');select.name=key;option(select,'','Обычная иконка');
+  const label=el('label',name),select=el('select');select.name=key;option(select,'','Не выбрана');
   data.items.forEach((item,i)=>option(select,item.id,(item.emoji||'Иконка')+' · '+(i+1)+' · '+item.id));
   const thumb=el('img');thumb.className='emoji-selection';thumb.alt='Выбранная иконка';
   const update=()=>{const item=data.items.find(x=>x.id===select.value);thumb.hidden=!item?.image;if(item?.image?.startsWith('data:image/png;base64,'))thumb.src=item.image;};
   select.value=data.mapping[key]||'';select.addEventListener('change',update);update();
   label.append(thumb,select);target.append(label);
  }
- $('icons-status').textContent=data.items.length?'Получено иконок: '+data.items.length:'Набор ещё не загружен.';
+ $('icons-status').textContent=data.items.length?'Получено иконок: '+data.items.length+'. Фирменное меню включается только при выборе всех пяти основных иконок. Иначе используются обычные эмодзи.':'Набор ещё не загружен.';
 }
 $('icons-import').addEventListener('click',()=>run(async()=>{showIcons(await api('/admin/icons/import',{method:'POST'}));},$('icons-import')));
 $('icons-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
