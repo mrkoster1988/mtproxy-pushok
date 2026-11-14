@@ -761,6 +761,23 @@ def main():
                 advertiser.set_viewport_size({'width':390,'height':844})
                 advertiser.screenshot(path=str(output/'32-management-actions-mobile.png'),full_page=True)
                 advertiser.set_viewport_size({'width':1440,'height':1000})
+                for width in (320,390):
+                    advertiser.set_viewport_size({'width':width,'height':844})
+                    go(advertiser,'payments')
+                    assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                    for cell in advertiser.locator('[data-page=payments] td').all():
+                        rect=cell.bounding_box()
+                        assert rect['x']>=0 and rect['x']+rect['width']<=width+1,rect
+                advertiser.screenshot(path=str(output/'33-compact-payments-mobile.png'),full_page=True)
+                advertiser.locator('.cabinet-topbar .menu-toggle').click()
+                expect(advertiser.locator('.cabinet-sidebar .nav-more')).to_have_count(0)
+                advertiser.screenshot(path=str(output/'34-flat-menu-mobile.png'),full_page=True)
+                advertiser.get_by_role('button',name='Закрыть меню',exact=True).click()
+                advertiser.evaluate("notice('Проверка закрытия')")
+                advertiser.locator('#notice').get_by_role('button',name='Закрыть уведомление').click()
+                expect(advertiser.locator('#notice')).to_be_hidden()
+                advertiser.evaluate("notice('Проверка таймера')")
+                expect(advertiser.locator('#notice')).to_be_hidden(timeout=7000)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))

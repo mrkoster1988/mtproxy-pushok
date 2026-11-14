@@ -605,3 +605,9 @@ body.miniapp-loading #workspace{visibility:hidden}
  .cabinet-mode .page-heading{margin:16px 0}.cabinet-mode .page-heading p{font-size:14px}
  .cabinet-mode .status-stack{display:flex;flex-wrap:wrap;gap:4px}
 }
+.cabinet-mode #notice{pointer-events:auto}
+.cabinet-mode .cabinet-topbar .refresh-button{font-size:0;width:40px;padding:8px}
+.cabinet-mode .channel-manager .management-actions{display:flex;flex-wrap:wrap;gap:8px}
+.cabinet-mode .channel-manager .management-actions>button{width:auto;flex:0 1 auto}
+.cabinet-mode .channel-manager td:last-child{grid-column:1/-1}
+.cabinet-mode .channel-manager .management-form{flex:1 0 100%}
