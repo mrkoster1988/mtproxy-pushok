@@ -1592,7 +1592,6 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(response.status_code,200,response.text)
         self.assertIn(str(f['node']),{n['id'] for n in response.json()['nodes']})
         self.request('POST',path+'/schedule',json={'proxy_node_id':str(f['node']),'start_at':start.isoformat()})
-        self.request('DELETE','/admin/proxy-nodes/'+str(f['node']),409)
         self.request('PATCH',path+'/slot',json={'proxy_node_id':str(f['node']),'start_at':(start+timedelta(days=1)).isoformat()})
         self.request('DELETE',path+'/slot')
         with psycopg.connect(self.dsn) as conn:
@@ -1635,3 +1634,13 @@ class PostgresIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             second=conn.execute('SELECT placement_status,scheduled_start_at,scheduled_end_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
             self.assertEqual(first,second)
+
+    def test_archive_node_requeues_future_slot_without_losing_payment(self):
+        f=self._management_fixture(ready=True)
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['admin'],'role':'admin'}
+        start=datetime.now(timezone.utc)+timedelta(days=8)
+        self.request('POST','/operator/campaigns/'+str(f['campaign'])+'/schedule',json={'proxy_node_id':str(f['node']),'start_at':start.isoformat()})
+        self.request('DELETE','/admin/proxy-nodes/'+str(f['node']))
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT payment_status,placement_status,proxy_node_id FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone(),('verified','not_scheduled',None))
+            self.assertIsNotNone(conn.execute('SELECT archived_at FROM proxy_nodes WHERE id=%s',(f['node'],)).fetchone()[0])

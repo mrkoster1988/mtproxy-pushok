@@ -64,9 +64,15 @@ def without_button_icons(payload):
         return None
     if not any("icon_custom_emoji_id" in button for row in rows for button in row):
         return None
+    ordinary = {'Разместить рекламу':'📢','Мои кампании':'📋','Тарифы':'💎','Наш канал':'📣','Помощь':'❓'}
+    def restore(button):
+        result={key:value for key,value in button.items() if key!='icon_custom_emoji_id'}
+        label=result.get('text','')
+        if label in ordinary:
+            result['text']=ordinary[label]+' '+label
+        return result
     return {**payload, "reply_markup": {**markup, "inline_keyboard": [
-        [{key: value for key, value in button.items() if key != "icon_custom_emoji_id"}
-         for button in row] for row in rows]}}
+        [restore(button) for button in row] for row in rows]}}
 
 
 def icon_rejection(result):

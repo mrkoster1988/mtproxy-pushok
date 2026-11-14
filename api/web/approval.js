@@ -110,7 +110,7 @@ window.pushokApproval=(()=>{
   }
   if(window.pushokManagement)box.append(window.pushokManagement.campaignActions(c,true));
   const history=details('История и документы',box);
-  history.append(el('p','Номер заявки: '+c.id),el('p','Желаемое начало: '+date(c.requested_start_at)),button('Отчёт по кампании',()=>showCampaignReport(c,history)),button('Выгрузить CSV',()=>downloadCampaignCsv(c)));
+  history.append(el('p','Номер заявки: '+c.id),el('p','Желаемое начало: '+date(c.requested_start_at)),button('Отчёт по кампании',()=>showCampaignReport(c,history)));
   if(['scheduled','active','completed'].includes(c.placement_status))history.append(button('Журнал проверок',async()=>{
    const rows=await api('/operator/campaigns/'+c.id+'/display-observations');if(!history.isConnected||session!==token)return;
    history.querySelector('.observation-panel')?.remove();const panel=el('section',undefined,'observation-panel');history.append(panel);

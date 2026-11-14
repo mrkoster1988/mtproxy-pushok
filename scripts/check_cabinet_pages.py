@@ -232,7 +232,7 @@ def main():
                 assert operator.evaluate('document.documentElement.scrollWidth <= innerWidth + 2')
                 operator.set_viewport_size({'width': 1440, 'height': 1000})
                 operator.get_by_role('button', name='Одобрить канал', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Ожидается оплата')
+                expect(operator.locator('#queue')).to_contain_text('Ожидает оплаты')
                 refresh(advertiser)
                 go(advertiser, 'payments/' + campaign_id)
                 advertiser.get_by_role('button', name='Реквизиты и сумма', exact=True).click()
@@ -270,7 +270,7 @@ def main():
                 refresh(operator)
                 operator.get_by_label('Проверил поступление денег, сумму и назначение платежа', exact=True).check()
                 operator.get_by_role('button', name='Подтвердить оплату', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Оплата подтверждена')
+                expect(operator.locator('#queue')).to_contain_text('Оплачено')
                 # Пустой выбор объясняется рядом с формой, а не выглядит как молчание.
                 operator.get_by_label('Прокси-узел', exact=True).select_option('')
                 operator.get_by_role('button', name='Назначить слот', exact=True).click()
@@ -291,7 +291,7 @@ def main():
                 operator.once('dialog', lambda dialog: dialog.accept())
                 operator.get_by_role('button', name='Снять будущий слот', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Слот не назначен')
-                expect(operator.locator('#queue')).to_contain_text('Оплата подтверждена')
+                expect(operator.locator('#queue')).to_contain_text('Оплачено')
                 operator.get_by_label('Начало размещения', exact=True).fill(tomorrow + 'T12:00')
                 operator.get_by_role('button', name='Назначить слот', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Запланировано')
@@ -377,7 +377,7 @@ def main():
                 refresh(operator)
                 go(operator, 'moderation/'+sbp_cid)
                 operator.get_by_role('button',name='Одобрить канал',exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Ожидается оплата')
+                expect(operator.locator('#queue')).to_contain_text('Ожидает оплаты')
                 refresh(advertiser)
                 go(advertiser,'payments/'+sbp_cid)
                 expect(advertiser.locator('.sbp-checkout')).to_contain_text('Новые счета СБП выключены')
@@ -401,7 +401,7 @@ def main():
                     with advertiser.expect_response(lambda r:r.url.endswith('/sbp/reconcile')):
                         advertiser.goto(base+'/?sbp_campaign='+sbp_cid)
                     expect(advertiser.locator('.sbp-checkout')).to_contain_text('Ожидается результат платежа')
-                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Ожидается оплата')
+                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Ожидает оплаты')
                     with psycopg.connect(PostgresIntegration.dsn) as connection:
                         aid=connection.execute("UPDATE payment_attempts SET sbp_requires_review=true WHERE campaign_id=%s AND provider='sbp' RETURNING id",(sbp_cid,)).fetchone()[0]
                     go(admin,'settings')
@@ -426,7 +426,7 @@ def main():
                     bank_state.update(status='succeeded',paid=True)
                     advertiser.get_by_role('button',name='Проверить платёж СБП',exact=True).click()
                     expect(advertiser.locator('.sbp-checkout')).to_contain_text('Платёж подтверждён серверной сверкой')
-                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Оплата подтверждена')
+                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Оплачено')
                     advertiser.screenshot(path=str(output/'15-sbp-verified.png'),full_page=True)
 
                 refresh(admin)

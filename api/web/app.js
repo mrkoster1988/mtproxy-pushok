@@ -451,7 +451,7 @@ async function renderLaunchReadiness(){
   const list=el('ul',undefined,'core-checklist');
   for(const step of data.checks){
    const state=step.status==='data_present'?'Данные в реестре: ':step.status==='missing'?
-    'Нет данных в реестре: ':'Пока не проверено: ';
+    'Нет данных в реестре: ':'Нет результата проверки в кабинете: ';
    list.append(el('li',state+step.title+(step.status==='data_present'?' ('+step.count+')':''),
      step.status==='not_verified'?'core-check-pending':'core-check-ci'));
   }

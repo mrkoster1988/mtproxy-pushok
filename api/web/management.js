@@ -63,7 +63,7 @@ window.pushokManagement=(()=>{
    ],v=>api('/admin/proxy-nodes/'+n.id,{method:'PATCH',body:{name:v.name.value.trim(),host:v.host.value.trim(),port:Number(v.port.value)}}));
    f.append(el('p','Изменяется запись в кабинете. Настройка работающего прокси на VPS выполняется отдельно.','muted'));
   }));
-  archive(box,'/admin/proxy-nodes/'+n.id,'Удалить узел из реестра? Работающий прокси на VPS эта кнопка не останавливает.','sponsors');return box;
+  archive(box,'/admin/proxy-nodes/'+n.id,'Удалить узел из реестра? Будущие размещения вернутся на подбор. Активные показы сохранятся у оператора; прокси на VPS продолжит работать.','sponsors');return box;
  }
  function local(value){if(!value)return '';const d=new Date(value);return localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
  async function renderArchive(target){

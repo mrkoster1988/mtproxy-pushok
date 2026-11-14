@@ -12,9 +12,17 @@ BEGIN
   PERFORM 1 FROM tariffs WHERE id=NEW.tariff_id AND archived_at IS NULL FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'tariff_unavailable' USING ERRCODE='23514'; END IF;
  END IF;
- IF NEW.placement_status IN ('scheduled','active') THEN
+ IF NEW.placement_status IN ('scheduled','active') AND (TG_OP='INSERT' OR NEW.proxy_node_id IS DISTINCT FROM OLD.proxy_node_id OR NEW.placement_status IS DISTINCT FROM OLD.placement_status) THEN
   PERFORM 1 FROM proxy_nodes WHERE id=NEW.proxy_node_id AND archived_at IS NULL AND status='active' FOR SHARE;
   IF NOT FOUND THEN RAISE EXCEPTION 'node_unavailable' USING ERRCODE='23514'; END IF;
  END IF;
  RETURN NEW;
 END; $$ LANGUAGE plpgsql;
+-- У фонового действия нет пользователя-инициатора: не приписываем его рекламодателю.
+ALTER TABLE audit_events ALTER COLUMN actor_user_id DROP NOT NULL;
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conname='audit_events_system_actor_check') THEN
+  ALTER TABLE audit_events ADD CONSTRAINT audit_events_system_actor_check
+   CHECK(actor_user_id IS NOT NULL OR event_type='placement_auto_scheduled');
+ END IF;
+END $$;

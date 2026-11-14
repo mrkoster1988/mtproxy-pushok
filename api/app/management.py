@@ -168,8 +168,13 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
             n = conn.execute('SELECT id FROM proxy_nodes WHERE id=%s FOR UPDATE', (node_id,)).fetchone()
             if not n:
                 raise HTTPException(404, 'proxy_node_not_found')
-            node_free(conn, node_id)
-            conn.execute("UPDATE proxy_nodes SET status='paused',archived_at=COALESCE(archived_at,now()),updated_at=now() WHERE id=%s", (node_id,))
+            conn.execute('DELETE FROM slot_holds WHERE proxy_node_id=%s',(node_id,))
+            conn.execute("""UPDATE campaigns SET placement_status='not_scheduled',proxy_node_id=NULL,
+                scheduled_start_at=NULL,scheduled_end_at=NULL,updated_at=now()
+                WHERE proxy_node_id=%s AND placement_status='scheduled'""",(node_id,))
+            conn.execute("""UPDATE proxy_nodes SET archived_at=COALESCE(archived_at,now()),
+                status=CASE WHEN EXISTS(SELECT 1 FROM campaigns WHERE proxy_node_id=%s AND placement_status='active')
+                THEN status ELSE 'paused' END,updated_at=now() WHERE id=%s""",(node_id,node_id))
             event(conn, user, 'proxy_node_archived', {'node_id': node_id})
         return {'archived': True, 'changes_applied': False}
 
