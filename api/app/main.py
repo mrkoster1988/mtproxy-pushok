@@ -2692,7 +2692,9 @@ def delete_promotion_binding(node_id: UUID, channel_id: UUID, admin: dict = Depe
 def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_current_user)):
     with psycopg.connect(DATABASE_URL,connect_timeout=3,row_factory=dict_row) as conn:
         row=conn.execute('''SELECT c.advertiser_user_id,c.scheduled_end_at,
-            EXISTS(SELECT 1 FROM channel_promotion_bindings b WHERE b.proxy_node_id=c.proxy_node_id AND b.channel_id=c.channel_id) AS prepared,
+            EXISTS(SELECT 1 FROM channel_promotion_bindings b WHERE b.proxy_node_id=c.proxy_node_id AND b.channel_id=c.channel_id
+            AND b.channel_url=(SELECT telegram_url FROM sponsor_channels WHERE id=c.channel_id)
+            AND (b.node_host,b.node_port)=(SELECT host,port FROM proxy_nodes WHERE id=c.proxy_node_id)) AS prepared,
             r.campaign_id AS applied_campaign_id,r.state,r.checked_at
             FROM campaigns c LEFT JOIN promotion_runtime r ON r.proxy_node_id=c.proxy_node_id
             WHERE c.id=%s''',(campaign_id,)).fetchone()

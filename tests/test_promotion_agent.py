@@ -67,3 +67,8 @@ class AgentTests(unittest.TestCase):
     def test_same_config_and_process_are_idempotent(self):
         with patch.object(agent,'running_tag',return_value='a'*32),patch.object(agent,'command') as cmd:
             agent.apply('a'*32);cmd.assert_not_called()
+
+    def test_stopped_process_with_same_tag_is_restarted(self):
+        with patch.object(agent,'running_tag',side_effect=[FileNotFoundError(), 'a'*32]),patch.object(agent,'command') as cmd,patch.object(agent.socket,'create_connection'):
+            agent.apply('a'*32)
+            self.assertEqual(cmd.call_args_list[0].args,('systemctl','restart',agent.SERVICE))

@@ -58,7 +58,11 @@ def running_tag():
 def apply(tag):
     text=ENV.read_text()
     cfg=parse_env(text)
-    if cfg.get('MT_PROXY_TAG','')==tag and running_tag()==tag:
+    try:
+        matches = running_tag()==tag
+    except (OSError, ValueError, subprocess.SubprocessError):
+        matches = False
+    if cfg.get('MT_PROXY_TAG','')==tag and matches:
         return
     updated=tag_text(text,tag)
     atomic(ENV,updated)

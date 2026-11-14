@@ -55,7 +55,8 @@ def main():
         # Реестр не является подтверждением передачи сообщений. Новый узел на паузе.
         sql = "INSERT INTO proxy_nodes(name,host,port,status) VALUES ('Основной MTProxy','%s',%d,'paused') ON CONFLICT(host,port) DO NOTHING;" % (public, port)
         run(root, ['exec','-T','db','sh','-c','exec psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'], input=sql.encode(), stdout=subprocess.DEVNULL)
-    subprocess.run(['bash', str(root / 'scripts/install_promotion_agent.sh')], check=True)
+    if root == Path('/opt/mtproxy-pushok') and (root / '.env').exists():
+        subprocess.run(['bash', str(root / 'scripts/install_promotion_agent.sh')], check=True)
     print('MTProxy route configured; Telegram message delivery still requires a client check.')
 
 if __name__ == '__main__':
