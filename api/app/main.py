@@ -49,7 +49,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.059",
+    version="0.060",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1178,7 +1178,7 @@ def schedule_placement(
             campaign = connection.execute(
                 """
                 SELECT id, duration_seconds_snapshot, moderation_status,
-                       payment_status, placement_status
+                       payment_status, placement_status, requested_start_at
                 FROM campaigns WHERE id = %s FOR UPDATE
                 """,
                 (campaign_id,),
@@ -1191,6 +1191,8 @@ def schedule_placement(
                 or campaign["placement_status"] != "not_scheduled"
             ):
                 raise HTTPException(status_code=409, detail="campaign_not_ready_for_placement")
+            if campaign.get('requested_start_at') and start_at < campaign['requested_start_at']:
+                raise HTTPException(status_code=422, detail='schedule_before_requested_start')
             node = connection.execute(
                 "SELECT id FROM proxy_nodes WHERE id = %s AND status = 'active' AND archived_at IS NULL FOR UPDATE",
                 (payload.proxy_node_id,),
@@ -2400,8 +2402,8 @@ def miniapp_client():
     html = (WEB_DIR / 'index.html').read_text()
     html = html.replace('initial-scale=1', 'initial-scale=1, viewport-fit=cover')
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
-    html = html.replace('<script src="/assets/app.js?v=059"',
-                        '<script src="/assets/miniapp.js?v=059" defer></script>\n  <script src="/assets/app.js?v=059"')
+    html = html.replace('<script src="/assets/app.js?v=060"',
+                        '<script src="/assets/miniapp.js?v=060" defer></script>\n  <script src="/assets/app.js?v=060"')
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 

@@ -66,6 +66,7 @@ class UpdaterTests(unittest.TestCase):
             updater.main()
         self.assertFalse(any('merge' in c or 'migrate' in c for c in self.commands))
         self.assertEqual(json.loads((self.root / '.control/status.json').read_text())['state'], 'failed')
+        self.assertEqual(json.loads((self.root / '.control/status.json').read_text())['stage'], 'backup')
 
     def test_malformed_queue_is_consumed_without_running_commands(self):
         self.request('[]')

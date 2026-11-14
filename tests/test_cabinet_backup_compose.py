@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 from uuid import uuid4
 
 from test_cabinet_backup import ROOT, backup
@@ -73,6 +74,20 @@ class CabinetBackupComposeTests(unittest.TestCase):
         # Повреждённый комплект не допускается к повторному restore.
         (bundle / 'database.dump').write_bytes(b'PGDMPcorrupt')
         with self.assertRaises(backup.BackupError): backup.drill(bundle)
+
+    def test_deleted_api_image_falls_back_and_restores_real_proofs(self):
+        original = backup.docker
+        api_image = backup.proof_source(self.root)[1]
+        def docker(*args, **kwargs):
+            if args == ('image', 'inspect', api_image):
+                raise subprocess.CalledProcessError(1, ['docker', 'image', 'inspect'])
+            return original(*args, **kwargs)
+        initial = backup.running(self.root)
+        with patch.object(backup, 'docker', side_effect=docker):
+            bundle = backup.create(self.root, allow_downtime=True)
+        self.assertEqual(backup.running(self.root), initial)
+        self.assertEqual(backup.verify(bundle)['proofs']['files'], 2)
+        self.assertTrue(backup.drill(bundle)['database_restored'])
 
     def test_unsafe_proof_aborts_copy_and_restarts_original_writers(self):
         initial = backup.running(self.root)
