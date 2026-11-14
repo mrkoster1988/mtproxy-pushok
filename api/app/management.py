@@ -186,6 +186,8 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
         with transaction() as conn:
             c = owned_campaign(conn, campaign_id, user, True)
             future_slot(conn, c, now)
+            if c.get('requested_start_at') and payload.start_at < c['requested_start_at']:
+                raise HTTPException(422, 'schedule_before_requested_start')
             node = conn.execute("SELECT id FROM proxy_nodes WHERE id=%s AND status='active' AND archived_at IS NULL FOR UPDATE", (payload.proxy_node_id,)).fetchone()
             if not node:
                 raise HTTPException(404, 'active_proxy_node_not_found')

@@ -682,6 +682,8 @@ async function loadControl(){
  $('enable-sbp').disabled=!c.sbp_configured;
  $('payment-config-note').textContent=c.sbp_configured?(c.sbp_test_mode?'СБП: тестовый магазин. Реальные списания не включены.':'СБП: рабочий магазин настроен.'):'Для СБП задайте YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и PUSHOK_PUBLIC_PAYMENT_HOST на сервере. Stars настраиваются отдельно.';
  const states={idle:'Можно установить опубликованную версию',running:'Установка выполняется',succeeded:'Обновление установлено',failed:'Обновление не завершено. Проверьте журнал службы mtproxy-pushok-updater на VPS'};
+ const stages={preflight:'проверка окружения',backup:'резервная копия',source:'получение кода',build:'сборка',migration:'обновление базы',restart:'перезапуск',health:'проверка API',proxy:'настройка прокси'};
+ if(c.update.state==='failed'&&stages[c.update.stage])states.failed='Ошибка на этапе «'+stages[c.update.stage]+'». После исправления можно повторить установку.';
  $('software-update-status').textContent='Версия '+c.version+'. '+(!c.updater_installed?'Нужна первоначальная установка службы обновления на VPS.':c.requested?'Запрос принят. Ожидаем запуск.':states[c.update.state]||'Проверка состояния…');
  $('software-update').disabled=!c.updater_installed||c.requested||c.update.state==='running';
 }
@@ -729,3 +731,5 @@ async function renderPromotionStatus(c,parent){
  text.textContent=state.config_applied?'Тег применён агентом. Фактический показ проверяется отдельно.':!state.prepared?'Автозапуск не настроен: администратору нужно связать канал с тегом в разделе «Узлы».':!state.agent_recent?'Связь подготовлена. Нет свежего подтверждения агента VPS.':'Агент работает. Тег этой заявки сейчас не применён; проверьте назначенный период.';
  }catch(e){if(text.isConnected&&session===token)text.textContent='Не удалось проверить применение тега: '+e.message;}
 }
+
+Object.assign(errors,{schedule_before_requested_start:'Выберите время не раньше желаемого начала заявки.'});

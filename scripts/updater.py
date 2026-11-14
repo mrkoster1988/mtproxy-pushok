@@ -105,6 +105,7 @@ def main():
                 request.unlink()
             status('running')
         old = None
+        stage = "preflight"
         try:
             old = run('git', 'rev-parse', 'HEAD', capture=True).strip()
             if run('git', 'status', '--porcelain', '--untracked-files=no', capture=True).strip():
@@ -118,14 +119,21 @@ def main():
             running = run('python3', 'scripts/installer_runtime.py', 'compose', '--profile', 'bot', 'ps', '--services', '--status', 'running', capture=True).splitlines()
             profile = ['--profile', 'bot'] if 'bot' in running else []
             # Full private archive includes DB, uploads, .env and deployment configuration.
+            stage = "backup"
             run('python3', 'scripts/cabinet_backup.py', 'create', '--allow-downtime')
+            stage = "source"
             if target != old:
                 run('git', 'merge', '--ff-only', target)
+            stage = "build"
             run('python3', 'scripts/installer_runtime.py', 'compose', *profile, 'build')
+            stage = "migration"
             migrations = sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'database').glob('*.sql') if not p.name.startswith('001_'))
             run('python3', 'scripts/installer_runtime.py', 'migrate', *migrations)
+            stage = "restart"
             run('python3', 'scripts/installer_runtime.py', 'compose', *profile, 'up', '-d')
+            stage = "health"
             run('python3', 'scripts/installer_runtime.py', 'wait-api')
+            stage = "proxy"
             run('python3', 'scripts/repair_proxy.py')
             if '--enable-stars' in sys.argv and '--bootstrap' in sys.argv:
                 enable_stars()
@@ -133,7 +141,7 @@ def main():
         except Exception as exc:
             # Never restore DB blindly: this would erase concurrent orders/payments.
             # Additive migrations stay; explicit recovery uses the private backup.
-            status('failed', previous_commit=old, code=type(exc).__name__)
+            status('failed', previous_commit=old, code=type(exc).__name__, stage=stage)
             raise
 
 if __name__ == '__main__':

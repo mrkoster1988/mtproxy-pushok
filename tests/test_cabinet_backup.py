@@ -63,6 +63,27 @@ class CabinetBackupTests(unittest.TestCase):
     def manifest_write(self):
         (self.bundle / 'manifest.json').write_text(json.dumps(self.manifest))
 
+    def test_deleted_api_image_uses_pinned_local_postgres(self):
+        ident = 'sha256:' + 'b'*64
+        with patch.object(backup, 'docker', side_effect=[
+            subprocess.CalledProcessError(1, ['docker']),
+            Mock(stdout=json.dumps([{'Id': ident}]).encode())
+        ]) as docker:
+            self.assertEqual(backup.backup_image('sha256:' + 'a'*64), ident)
+        self.assertEqual(docker.call_args.args, ('image', 'inspect', 'postgres:16-alpine'))
+
+    def test_missing_helper_images_refuse_without_exposing_stderr(self):
+        with patch.object(backup, 'docker', side_effect=subprocess.CalledProcessError(1, ['docker'], stderr=b'PRIVATE_SECRET')):
+            with self.assertRaises(backup.BackupError) as error:
+                backup.backup_image('sha256:' + 'a'*64)
+        self.assertNotIn('PRIVATE_SECRET', str(error.exception))
+
+    def test_available_api_helper_keeps_exact_image(self):
+        ident = 'sha256:' + 'a'*64
+        with patch.object(backup, 'docker', return_value=Mock(stdout=json.dumps([{'Id':ident}]).encode())) as docker:
+            self.assertEqual(backup.backup_image(ident), ident)
+        docker.assert_called_once_with('image', 'inspect', ident, timeout=30)
+
     def test_valid_bundle_verifies_and_files_restore_without_config_execution(self):
         report = backup.verify(self.bundle)
         self.assertFalse(report['release_accepted'])

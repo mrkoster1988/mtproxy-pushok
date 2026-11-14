@@ -170,7 +170,21 @@ def proof_source(root):
     volume = mounts[0].get('Name', '')
     if not re.fullmatch(r'[a-zA-Z0-9][a-zA-Z0-9_.-]*', volume) or not re.fullmatch(r'sha256:[0-9a-f]{64}', image):
         raise BackupError('Некорректные метаданные тома или образа API.')
-    return volume, image
+    return volume, backup_image(image)
+
+
+def backup_image(api_image):
+    """Resolve a local helper before stopping writers; never pull or rebuild here."""
+    for candidate in (api_image, 'postgres:16-alpine'):
+        try:
+            result = docker('image', 'inspect', candidate, timeout=30)
+        except subprocess.CalledProcessError:
+            continue
+        image = json.loads(result.stdout)[0]['Id']
+        if not re.fullmatch(r'sha256:[0-9a-f]{64}', image):
+            raise BackupError('Некорректный идентификатор локального образа резервного копирования.')
+        return image
+    raise BackupError('Нет локального образа для копирования чеков. Восстановите образ API или postgres:16-alpine; сервисы не остановлены.')
 
 
 def counts(root):

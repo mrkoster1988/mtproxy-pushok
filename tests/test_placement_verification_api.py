@@ -51,6 +51,22 @@ class PlacementVerificationTests(unittest.TestCase):
                    "scheduled_start_at": self.now - timedelta(minutes=2),
                    "scheduled_end_at": self.now + timedelta(hours=1)}, **changes}
 
+    def test_schedule_refuses_time_before_requested_start(self):
+        self.operator()
+        start = self.now + timedelta(hours=1)
+        connection = MagicMock()
+        connection.execute.return_value.fetchone.return_value = {
+            **self.campaign(), 'placement_status': 'not_scheduled',
+            'duration_seconds_snapshot': 86400,
+            'requested_start_at': start + timedelta(hours=1)}
+        with patch.object(main.psycopg, 'connect') as connect:
+            connect.return_value.__enter__.return_value = connection
+            response = self.client.post(f'/api/v1/operator/campaigns/{CAMPAIGN}/schedule',
+                json={'proxy_node_id':str(OWNER),'start_at':start.isoformat()})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()['detail'], 'schedule_before_requested_start')
+        self.assertEqual(connection.execute.call_count, 1)
+
     def test_window_validation_and_stale_attestation(self):
         self.assertIsNone(validate_observation_window(
             self.now - timedelta(minutes=2), self.now + timedelta(hours=1), self.now, self.now))
