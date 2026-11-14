@@ -1644,3 +1644,16 @@ class PostgresIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT payment_status,placement_status,proxy_node_id FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone(),('verified','not_scheduled',None))
             self.assertIsNotNone(conn.execute('SELECT archived_at FROM proxy_nodes WHERE id=%s',(f['node'],)).fetchone()[0])
+
+    def test_restore_archive_does_not_reactivate_completed_placement(self):
+        f=self._management_fixture(ready=True)
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['admin'],'role':'admin'}
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='active',scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s",(f['node'],f['campaign']))
+        self.request('DELETE','/campaigns/'+str(f['campaign']))
+        self.assertTrue(any(c['id']==str(f['campaign']) for c in self.request('GET','/operator/campaigns')))
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET placement_status='completed' WHERE id=%s",(f['campaign'],))
+        self.request('POST','/management/archive/campaigns/'+str(f['campaign'])+'/restore')
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()[0],'completed')

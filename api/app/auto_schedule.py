@@ -23,6 +23,7 @@ def service_once(dsn, limit=20):
         campaigns = conn.execute("""SELECT * FROM campaigns WHERE archived_at IS NULL
             AND moderation_status='approved' AND payment_status='verified'
             AND placement_status='not_scheduled' AND NOT auto_schedule_paused
+            AND (requested_start_at IS NULL OR requested_start_at<=now()+interval '90 days')
             ORDER BY created_at,id LIMIT %s FOR UPDATE SKIP LOCKED""", (limit,)).fetchall()
         nodes = conn.execute("SELECT id FROM proxy_nodes WHERE status='active' AND archived_at IS NULL ORDER BY id FOR UPDATE").fetchall()
         now = datetime.now(timezone.utc) + timedelta(minutes=2)

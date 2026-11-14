@@ -284,7 +284,7 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
                 dependencies=conn.execute('SELECT c.archived_at AS channel_archive,t.archived_at AS tariff_archive FROM sponsor_channels c,tariffs t WHERE c.id=%s AND t.id=%s FOR SHARE',(row['channel_id'],row['tariff_id'])).fetchone()
                 if dependencies['channel_archive'] or dependencies['tariff_archive']:
                     raise HTTPException(409,'management_restore_dependencies')
-                conn.execute("UPDATE campaigns SET archived_at=NULL,placement_status=COALESCE(archived_state->>'placement_status','not_scheduled'),archived_state=NULL,updated_at=now() WHERE id=%s",(object_id,))
+                conn.execute("UPDATE campaigns SET archived_at=NULL,placement_status=CASE WHEN placement_status='cancelled' AND archived_state->>'placement_status'='not_scheduled' THEN 'not_scheduled' ELSE placement_status END,archived_state=NULL,updated_at=now() WHERE id=%s",(object_id,))
             else:
                 conn.execute(f'UPDATE {table} SET archived_at=NULL WHERE id=%s',(object_id,))
             event(conn,user,'management_object_restored',{'kind':kind,'id':object_id},object_id if kind=='campaigns' else None)
