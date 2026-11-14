@@ -450,9 +450,9 @@ async function renderLaunchReadiness(){
    ' · Ручных проверок: '+s.manual_observations+'.','muted'));
   const list=el('ul',undefined,'core-checklist');
   for(const step of data.checks){
-   const state=step.status==='data_present'?'Данные в реестре: ':step.status==='missing'?
+   const state=step.status==='verified'?'Проверено: ':step.status==='data_present'?'Данные в реестре: ':step.status==='missing'?
     'Нет данных в реестре: ':'Нет результата проверки в кабинете: ';
-   list.append(el('li',state+step.title+(step.status==='data_present'?' ('+step.count+')':''),
+   list.append(el('li',state+step.title+(step.status==='data_present'?' ('+step.count+')':step.status==='verified'?' · '+step.commit.slice(0,8)+' · '+date(step.checked_at):''),
      step.status==='not_verified'?'core-check-pending':'core-check-ci'));
   }
   const ciLink=el('a','Открыть результаты CI в GitHub');ciLink.href='https://github.com/mrkoster1988/mtproxy-pushok/actions';ciLink.target='_blank';ciLink.rel='noopener noreferrer';target.append(ciLink);

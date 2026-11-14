@@ -1926,7 +1926,17 @@ def read_launch_readiness(
             ).fetchone()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
-    return build_launch_readiness(counts or {})
+    report=build_launch_readiness(counts or {})
+    from .release_ci import lookup
+    installed=control.read('status.json', {})
+    evidence=lookup(installed.get('commit')) if isinstance(installed,dict) and installed.get('state')=='succeeded' else None
+    report['release_ci']=evidence
+    if evidence and evidence['verified']:
+        report['ci_verified']=True
+        for check in report['checks']:
+            if check['id']=='ci_acceptance':
+                check.update(status='verified',proof='github_actions_installed_commit',commit=evidence['commit'],checked_at=evidence['checked_at'])
+    return report
 
 
 @app.get("/api/v1/admin/pushok-core/readiness", tags=["admin"])
