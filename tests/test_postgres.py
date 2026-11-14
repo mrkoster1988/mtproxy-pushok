@@ -1636,14 +1636,22 @@ class PostgresIntegration(unittest.TestCase):
             self.assertEqual(first,second)
 
     def test_archive_node_requeues_future_slot_without_losing_payment(self):
+        from app.auto_schedule import service_once
         f=self._management_fixture(ready=True)
+        self._management_fixture()  # Другой доступный узел для переноса.
         main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['admin'],'role':'admin'}
+        self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
         start=datetime.now(timezone.utc)+timedelta(days=8)
         self.request('POST','/operator/campaigns/'+str(f['campaign'])+'/schedule',json={'proxy_node_id':str(f['node']),'start_at':start.isoformat()})
         self.request('DELETE','/admin/proxy-nodes/'+str(f['node']))
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT payment_status,placement_status,proxy_node_id FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone(),('verified','not_scheduled',None))
             self.assertIsNotNone(conn.execute('SELECT archived_at FROM proxy_nodes WHERE id=%s',(f['node'],)).fetchone()[0])
+        service_once(self.dsn)
+        with psycopg.connect(self.dsn) as conn:
+            row=conn.execute('SELECT placement_status,proxy_node_id FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
+            self.assertEqual(row[0],'scheduled')
+            self.assertNotEqual(row[1],f['node'])
 
     def test_restore_archive_does_not_reactivate_completed_placement(self):
         f=self._management_fixture(ready=True)
@@ -1657,3 +1665,36 @@ class PostgresIntegration(unittest.TestCase):
         self.request('POST','/management/archive/campaigns/'+str(f['campaign'])+'/restore')
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()[0],'completed')
+
+    def test_promotion_preparation_apply_ack_cancel_and_ownership(self):
+        from app.promotion_runtime import handle
+        from psycopg.rows import dict_row
+        f=self._management_fixture(ready=True)
+        actor={'id':f['admin'],'role':'admin'}
+        main.app.dependency_overrides[main.get_current_user]=lambda:actor
+        payload=dict(node_id=str(f['node']),channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True)
+        self.request('PUT','/admin/promotion-bindings',json=dict(payload,telegram_binding_confirmed=False),expected=422)
+        self.request('PUT','/admin/promotion-bindings',json=payload)
+        self.assertNotIn(payload['ad_tag'],str(self.request('GET','/admin/promotion-bindings')))
+        request=dict(host='management-'+f['node'].hex+'.example.org',port=8443)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            self.assertEqual(handle(conn,request)['state'],'idle')
+            conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s",(f['node'],f['campaign']))
+            plan=handle(conn,request)
+            self.assertEqual(plan['state'],'apply')
+            self.assertEqual(plan['tag'],payload['ad_tag'])
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+        path='/campaigns/'+str(f['campaign'])+'/promotion-status'
+        self.assertTrue(self.request('GET',path)['config_applied'])
+        actor.update(id=f['stranger'],role='advertiser')
+        self.request('GET',path,expected=404)
+        self.request('PUT','/admin/promotion-bindings',json=payload,expected=403)
+        actor.update(id=f['admin'],role='admin')
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            # Подтверждение реального показа не должно отключать управляемый тег.
+            conn.execute("UPDATE campaigns SET placement_status='active' WHERE id=%s",(f['campaign'],))
+            self.assertEqual(handle(conn,request)['state'],'apply')
+            conn.execute("UPDATE campaigns SET placement_status='cancelled' WHERE id=%s",(f['campaign'],))
+            self.assertFalse(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+            self.assertEqual(handle(conn,request)['state'],'idle')
+        self.request('DELETE','/admin/promotion-bindings/'+str(f['node'])+'/'+str(f['channel']))

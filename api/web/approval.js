@@ -90,6 +90,7 @@ window.pushokApproval=(()=>{
    block.f.append(button('Через 2 минуты',()=>{const d=new Date(Date.now()+120000);start.value=localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}),button('Проверить свободные узлы',async()=>{if(!start.value)throw Error('Укажите дату начала.');const data=await api('/operator/campaigns/'+c.id+'/available-nodes?'+new URLSearchParams({start_at:new Date(start.value).toISOString()}));if(!box.isConnected||token!==session)return;const old=select.value;select.replaceChildren();option(select,'','Выберите узел');data.nodes.forEach(n=>option(select,n.id,n.name));if(data.nodes.some(n=>n.id===old))select.value=old;else if(data.nodes.length===1)select.value=data.nodes[0].id;availability.textContent=data.nodes.length?'Свободных узлов: '+data.nodes.length+'. Окончание: '+date(data.ends_at):'На весь период тарифа свободных узлов нет. Измените время или снимите прежний будущий слот.';}),availability);
    block.finish();
   }else if(c.placement_status==='scheduled'){
+   void renderPromotionStatus(c,content);
    content.append(el('p','Назначено: '+date(c.scheduled_start_at)+' — '+date(c.scheduled_end_at)));
    let savedReport=null;
    const block=form('4. Подтвердите фактический показ','Подтвердить показ и активировать',async guard=>{
@@ -98,7 +99,7 @@ window.pushokApproval=(()=>{
     if(screenshot.files[0]){const body=new FormData();body.append('file',screenshot.files[0]);try{await api('/operator/campaigns/'+c.id+'/display-observations/'+savedReport.id+'/evidence',{method:'POST',body});screenshot.value='';}catch(e){throw Error('Наблюдение сохранено. Скриншот не прикреплён: '+e.message);}}
     guard();try{await post('activate');}catch(e){throw Error('Наблюдение сохранено, активация не подтверждена: '+e.message);}
    });
-   block.f.append(el('p','Включите спонсорский тег вручную. Проверьте показ в отдельном Telegram-аккаунте, не подписанном на канал. Эта кнопка сама тег не переключает.'));
+   block.f.append(el('p','Проверьте применение тега агентом (или включите вручную). Проверьте показ в отдельном Telegram-аккаунте, не подписанном на канал. Эта кнопка сама тег не переключает.'));
    const observation=note(block.f,'Что увидели при проверке'),screenshot=el('input');screenshot.type='file';screenshot.accept='image/png,image/jpeg';field(block.f,'Скриншот проверки (необязательно)',screenshot);
    check(block.f,'Тег включён, спонсорский канал действительно виден в отдельном аккаунте');block.finish();
    const extra=details('Показ не обнаружен',content),f=el('form'),comment=note(f,'Что проверили'),submit=el('button','Записать: показ не обнаружен');submit.type='submit';f.append(submit);extra.append(f);

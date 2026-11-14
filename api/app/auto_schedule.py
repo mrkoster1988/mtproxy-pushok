@@ -30,8 +30,18 @@ def service_once(dsn, limit=20):
         for c in campaigns:
             start = max(c['requested_start_at'] or now, now)
             duration = timedelta(seconds=c['duration_seconds_snapshot'])
+            prepared = conn.execute("""SELECT b.proxy_node_id FROM channel_promotion_bindings b
+                JOIN proxy_nodes n ON n.id=b.proxy_node_id
+                JOIN sponsor_channels ch ON ch.id=b.channel_id
+                WHERE b.channel_id=%s AND n.status='active' AND n.archived_at IS NULL
+                AND ch.archived_at IS NULL AND b.channel_url=ch.telegram_url
+                AND b.node_host=n.host AND b.node_port=n.port
+                AND (n.target_engine IS NULL OR n.target_engine='official_mtproxy')""",(c['channel_id'],)).fetchall()
+            prepared_ids = {str(p['proxy_node_id']) for p in prepared}
             candidates = []
             for node in nodes:
+                if prepared_ids and str(node["id"]) not in prepared_ids:
+                    continue
                 rows = conn.execute("""SELECT scheduled_start_at AS left_at,scheduled_end_at AS right_at
                     FROM campaigns WHERE proxy_node_id=%s AND placement_status IN ('scheduled','active')
                     UNION ALL SELECT starts_at,ends_at FROM slot_holds

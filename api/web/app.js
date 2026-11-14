@@ -722,3 +722,10 @@ $('icons-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
  const mapping=Object.fromEntries([...new FormData(e.target)].filter(([,v])=>v));
  await api('/admin/icons',{method:'PUT',body:mapping});$('icons-status').textContent='Сохранено. Откройте меню бота для проверки.';
 });});
+
+async function renderPromotionStatus(c,parent){
+ const text=el('p','Проверяем применение тега…','muted');parent.append(text);const session=token;
+ try{const state=await api('/campaigns/'+c.id+'/promotion-status');if(!text.isConnected||session!==token)return;
+ text.textContent=state.config_applied?'Тег применён агентом. Фактический показ проверяется отдельно.':!state.prepared?'Автозапуск не настроен: администратору нужно связать канал с тегом в разделе «Узлы».':!state.agent_recent?'Связь подготовлена. Нет свежего подтверждения агента VPS.':'Агент работает. Тег этой заявки сейчас не применён; проверьте назначенный период.';
+ }catch(e){if(text.isConnected&&session===token)text.textContent='Не удалось проверить применение тега: '+e.message;}
+}
