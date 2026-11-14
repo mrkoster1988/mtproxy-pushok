@@ -98,6 +98,12 @@ def main():
             result = service_once(os.environ['DATABASE_URL'], apply=args.apply, limit=args.limit)
         except psycopg.Error:
             result = {'status': 'database_unavailable'}
+        if args.apply:
+            try:
+                from .auto_schedule import service_once as schedule_once
+                result['slots'] = schedule_once(os.environ['DATABASE_URL'])
+            except psycopg.Error:
+                result['slots'] = {'status': 'retry'}
         print(json.dumps(result), flush=True)
         if args.once:
             return

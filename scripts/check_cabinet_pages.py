@@ -232,7 +232,7 @@ def main():
                 assert operator.evaluate('document.documentElement.scrollWidth <= innerWidth + 2')
                 operator.set_viewport_size({'width': 1440, 'height': 1000})
                 operator.get_by_role('button', name='Одобрить канал', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Ожидается оплата')
+                expect(operator.locator('#queue')).to_contain_text('Ожидает оплаты')
                 refresh(advertiser)
                 go(advertiser, 'payments/' + campaign_id)
                 advertiser.get_by_role('button', name='Реквизиты и сумма', exact=True).click()
@@ -270,7 +270,7 @@ def main():
                 refresh(operator)
                 operator.get_by_label('Проверил поступление денег, сумму и назначение платежа', exact=True).check()
                 operator.get_by_role('button', name='Подтвердить оплату', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Оплата подтверждена')
+                expect(operator.locator('#queue')).to_contain_text('Оплачено')
                 # Пустой выбор объясняется рядом с формой, а не выглядит как молчание.
                 operator.get_by_label('Прокси-узел', exact=True).select_option('')
                 operator.get_by_role('button', name='Назначить слот', exact=True).click()
@@ -291,7 +291,7 @@ def main():
                 operator.once('dialog', lambda dialog: dialog.accept())
                 operator.get_by_role('button', name='Снять будущий слот', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Слот не назначен')
-                expect(operator.locator('#queue')).to_contain_text('Оплата подтверждена')
+                expect(operator.locator('#queue')).to_contain_text('Оплачено')
                 operator.get_by_label('Начало размещения', exact=True).fill(tomorrow + 'T12:00')
                 operator.get_by_role('button', name='Назначить слот', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Запланировано')
@@ -328,9 +328,7 @@ def main():
                 go(advertiser, 'reports')
                 advertiser.get_by_role('button', name='Открыть отчёт', exact=True).click()
                 expect(advertiser.locator('.campaign-report')).to_contain_text('История действий')
-                with advertiser.expect_download() as csv:
-                    advertiser.locator('.campaign-report').get_by_role('button', name='Скачать CSV', exact=True).click()
-                assert campaign_id in Path(csv.value.path()).read_text(encoding='utf-8-sig')
+                expect(advertiser.get_by_role('button',name='Скачать CSV',exact=True)).to_have_count(0)
 
                 go(admin, 'settings')
                 admin.locator('#settings-tariffs-tab').click()
@@ -379,7 +377,7 @@ def main():
                 refresh(operator)
                 go(operator, 'moderation/'+sbp_cid)
                 operator.get_by_role('button',name='Одобрить канал',exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Ожидается оплата')
+                expect(operator.locator('#queue')).to_contain_text('Ожидает оплаты')
                 refresh(advertiser)
                 go(advertiser,'payments/'+sbp_cid)
                 expect(advertiser.locator('.sbp-checkout')).to_contain_text('Новые счета СБП выключены')
@@ -403,7 +401,7 @@ def main():
                     with advertiser.expect_response(lambda r:r.url.endswith('/sbp/reconcile')):
                         advertiser.goto(base+'/?sbp_campaign='+sbp_cid)
                     expect(advertiser.locator('.sbp-checkout')).to_contain_text('Ожидается результат платежа')
-                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Ожидается оплата')
+                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Ожидает оплаты')
                     with psycopg.connect(PostgresIntegration.dsn) as connection:
                         aid=connection.execute("UPDATE payment_attempts SET sbp_requires_review=true WHERE campaign_id=%s AND provider='sbp' RETURNING id",(sbp_cid,)).fetchone()[0]
                     go(admin,'settings')
@@ -428,7 +426,7 @@ def main():
                     bank_state.update(status='succeeded',paid=True)
                     advertiser.get_by_role('button',name='Проверить платёж СБП',exact=True).click()
                     expect(advertiser.locator('.sbp-checkout')).to_contain_text('Платёж подтверждён серверной сверкой')
-                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Оплата подтверждена')
+                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Оплачено')
                     advertiser.screenshot(path=str(output/'15-sbp-verified.png'),full_page=True)
 
                 refresh(admin)
@@ -691,13 +689,13 @@ def main():
                 refresh(advertiser)
                 go(advertiser,'channels')
                 row=advertiser.locator('[data-page=channels] tr').filter(has_text='Канал управления')
-                row.get_by_role('button',name='Изменить канал',exact=True).click()
+                row.get_by_role('button',name='✏️ Изменить',exact=True).click()
                 row.get_by_label('Название канала',exact=True).fill('Изменённый канал управления')
                 row.get_by_role('button',name='Сохранить изменения',exact=True).click()
                 expect(advertiser.locator('[data-page=channels]')).to_contain_text('Изменённый канал управления')
                 row=advertiser.locator('[data-page=channels] tr').filter(has_text='Изменённый канал управления')
                 advertiser.once('dialog',lambda dialog:dialog.accept())
-                row.get_by_role('button',name='Удалить из списка',exact=True).click()
+                row.get_by_role('button',name='🗑️ Удалить',exact=True).click()
                 expect(advertiser.locator('[data-page=channels]')).not_to_contain_text('Изменённый канал управления')
                 go(advertiser,'archive')
                 advertiser.get_by_role('button',name='Восстановить',exact=True).click()
@@ -713,7 +711,7 @@ def main():
                 expect(advertiser.locator('#notice')).to_contain_text('Изменения сохранены')
                 advertiser.locator('summary').filter(has_text='Изменить или удалить заявку').click()
                 advertiser.once('dialog',lambda dialog:dialog.accept())
-                advertiser.get_by_role('button',name='Удалить из списка',exact=True).click()
+                advertiser.get_by_role('button',name='🗑️ Удалить',exact=True).click()
                 expect(advertiser.locator('#notice')).to_contain_text('Объект перемещён')
                 go(advertiser,'archive')
                 advertiser.get_by_role('button',name='Восстановить',exact=True).click()
@@ -734,7 +732,7 @@ def main():
                 expect(node).to_be_visible()
                 node.locator('summary').filter(has_text='Изменить или удалить узел').click()
                 admin.once('dialog',lambda dialog:dialog.accept())
-                node.get_by_role('button',name='Удалить из списка',exact=True).click()
+                node.get_by_role('button',name='🗑️ Удалить',exact=True).click()
                 expect(admin.locator('#notice')).to_contain_text('Объект перемещён')
                 go(admin,'archive')
                 admin.get_by_role('button',name='Восстановить',exact=True).click()
@@ -753,7 +751,7 @@ def main():
                 expect(admin.locator('.help-popup')).to_be_hidden()
                 admin.evaluate('window.scrollTo(0,0)')
                 go(advertiser,'channels')
-                expect(advertiser.locator('.channel-manager').get_by_role('button',name='Изменить канал',exact=True)).to_have_count(3)
+                expect(advertiser.locator('.channel-manager').get_by_role('button',name='✏️ Изменить',exact=True)).to_have_count(3)
                 for width in (390,320):
                     advertiser.set_viewport_size({'width':width,'height':844})
                     for action in advertiser.locator('.channel-manager .management-actions>button').all():
@@ -763,6 +761,23 @@ def main():
                 advertiser.set_viewport_size({'width':390,'height':844})
                 advertiser.screenshot(path=str(output/'32-management-actions-mobile.png'),full_page=True)
                 advertiser.set_viewport_size({'width':1440,'height':1000})
+                for width in (320,390):
+                    advertiser.set_viewport_size({'width':width,'height':844})
+                    go(advertiser,'payments')
+                    assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                    for cell in advertiser.locator('[data-page=payments] td').all():
+                        rect=cell.bounding_box()
+                        assert rect['x']>=0 and rect['x']+rect['width']<=width+1,rect
+                advertiser.screenshot(path=str(output/'33-compact-payments-mobile.png'),full_page=True)
+                advertiser.locator('.cabinet-topbar .menu-toggle').click()
+                expect(advertiser.locator('.cabinet-sidebar .nav-more')).to_have_count(0)
+                advertiser.screenshot(path=str(output/'34-flat-menu-mobile.png'),full_page=True)
+                advertiser.get_by_role('button',name='Закрыть меню',exact=True).click()
+                advertiser.evaluate("notice('Проверка закрытия')")
+                advertiser.locator('#notice').get_by_role('button',name='Закрыть уведомление').click()
+                expect(advertiser.locator('#notice')).to_be_hidden()
+                advertiser.evaluate("notice('Проверка таймера')")
+                expect(advertiser.locator('#notice')).to_be_hidden(timeout=7000)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))

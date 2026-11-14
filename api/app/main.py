@@ -49,7 +49,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.057",
+    version="0.058",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1668,7 +1668,7 @@ def list_operator_campaigns(
         raise HTTPException(status_code=422, detail="invalid_moderation_status")
     if payment_status is not None and payment_status not in valid_payment:
         raise HTTPException(status_code=422, detail="invalid_payment_status")
-    filters = ["c.archived_at IS NULL"]
+    filters = ["(c.archived_at IS NULL OR c.placement_status='active' OR c.payment_status='proof_submitted' OR EXISTS(SELECT 1 FROM payment_attempts pa WHERE pa.campaign_id=c.id AND pa.status IN ('created','pending')))"]
     params: list[str] = []
     if moderation_status is not None:
         filters.append("c.moderation_status = %s")
@@ -1926,7 +1926,17 @@ def read_launch_readiness(
             ).fetchone()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
-    return build_launch_readiness(counts or {})
+    report=build_launch_readiness(counts or {})
+    from .release_ci import lookup
+    installed=control.read('status.json', {})
+    evidence=lookup(installed.get('commit')) if isinstance(installed,dict) and installed.get('state')=='succeeded' else None
+    report['release_ci']=evidence
+    if evidence and evidence['verified']:
+        report['ci_verified']=True
+        for check in report['checks']:
+            if check['id']=='ci_acceptance':
+                check.update(status='verified',proof='github_actions_installed_commit',commit=evidence['commit'],checked_at=evidence['checked_at'])
+    return report
 
 
 @app.get("/api/v1/admin/pushok-core/readiness", tags=["admin"])
@@ -2390,8 +2400,8 @@ def miniapp_client():
     html = (WEB_DIR / 'index.html').read_text()
     html = html.replace('initial-scale=1', 'initial-scale=1, viewport-fit=cover')
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
-    html = html.replace('<script src="/assets/app.js?v=057"',
-                        '<script src="/assets/miniapp.js?v=057" defer></script>\n  <script src="/assets/app.js?v=057"')
+    html = html.replace('<script src="/assets/app.js?v=058"',
+                        '<script src="/assets/miniapp.js?v=058" defer></script>\n  <script src="/assets/app.js?v=058"')
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 

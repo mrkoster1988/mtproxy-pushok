@@ -64,6 +64,9 @@ def keyboard():
         result['inline_keyboard'][0] = [{'text': '📢 Разместить рекламу', 'web_app': {'url': url + '#/create'}}]
     # Необязательные фирменные иконки; без реальных IDs структура кнопок не меняется.
     icons = configured_icons()
+    # Один стиль на всё меню: неполный набор не смешиваем с обычными эмодзи.
+    if not {"advertise", "campaigns", "tariffs", "channels", "help"}.issubset(icons):
+        icons = {}
     for row in result['inline_keyboard']:
         for position, button in enumerate(row):
             action = button.get('callback_data')
