@@ -30,7 +30,13 @@ def service_once(dsn, limit=20):
         for c in campaigns:
             start = max(c['requested_start_at'] or now, now)
             duration = timedelta(seconds=c['duration_seconds_snapshot'])
-            prepared = conn.execute('SELECT proxy_node_id FROM channel_promotion_bindings WHERE channel_id=%s',(c['channel_id'],)).fetchall()
+            prepared = conn.execute("""SELECT b.proxy_node_id FROM channel_promotion_bindings b
+                JOIN proxy_nodes n ON n.id=b.proxy_node_id
+                JOIN sponsor_channels ch ON ch.id=b.channel_id
+                WHERE b.channel_id=%s AND n.status='active' AND n.archived_at IS NULL
+                AND ch.archived_at IS NULL AND b.channel_url=ch.telegram_url
+                AND b.node_host=n.host AND b.node_port=n.port
+                AND (n.target_engine IS NULL OR n.target_engine='official_mtproxy')""",(c['channel_id'],)).fetchall()
             prepared_ids = {str(p['proxy_node_id']) for p in prepared}
             candidates = []
             for node in nodes:

@@ -65,10 +65,33 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(self.env.read_text(),original)
 
     def test_same_config_and_process_are_idempotent(self):
-        with patch.object(agent,'running_tag',return_value='a'*32),patch.object(agent,'command') as cmd:
+        with patch.object(agent,'running_tag',return_value='A'*32),patch.object(agent,'command') as cmd:
             agent.apply('a'*32);cmd.assert_not_called()
 
     def test_stopped_process_with_same_tag_is_restarted(self):
         with patch.object(agent,'running_tag',side_effect=[FileNotFoundError(), 'a'*32]),patch.object(agent,'command') as cmd,patch.object(agent.socket,'create_connection'):
             agent.apply('a'*32)
             self.assertEqual(cmd.call_args_list[0].args,('systemctl','restart',agent.SERVICE))
+
+    def test_uppercase_baseline_restores_in_installer_compatible_format(self):
+        self.state.write_text(json.dumps(dict(baseline='AB'*16,expires_at=time.time()-1)))
+        with patch.object(agent,'running_tag',return_value='a'*32),patch.object(agent,'command'),patch.object(agent,'wait_ready'):
+            agent.restore()
+        self.assertFalse(self.state.exists())
+        tag_line=next(s for s in self.env.read_text().splitlines() if s.startswith('MT_PROXY_TAG='))
+        self.assertEqual(tag_line,'MT_PROXY_TAG='+'AB'*16)
+        self.assertIn('MT_PROXY_SECRET=keep-this',self.env.read_text())
+
+    def test_waits_for_runner_and_tcp_listener(self):
+        with patch.object(agent,'command'),patch.object(agent,'running_tag',side_effect=[RuntimeError('runner'), 'b'*32,'b'*32]),patch.object(agent.socket,'create_connection',side_effect=[ConnectionRefusedError(),unittest.mock.MagicMock()]) as connect,patch.object(agent.time,'sleep') as sleep,patch.object(agent.time,'monotonic',side_effect=[0,0,1]):
+            agent.wait_ready('B'*32,agent.parse_env(self.env.read_text()))
+        self.assertEqual(sleep.call_count,2)
+        self.assertEqual(connect.call_count,2)
+
+    def test_readiness_timeout_restores_original_config(self):
+        original=self.env.read_text()
+        with patch.object(agent,'command') as cmd,patch.object(agent,'running_tag',side_effect=['a'*32,'b'*32]),patch.object(agent.socket,'create_connection',side_effect=ConnectionRefusedError()),patch.object(agent.time,'monotonic',side_effect=[0,16]):
+            with self.assertRaisesRegex(RuntimeError,'proxy_start_timeout'):
+                agent.apply('b'*32)
+        self.assertEqual(self.env.read_text(),original)
+        self.assertEqual(sum(c.args==('systemctl','restart',agent.SERVICE) for c in cmd.call_args_list),2)

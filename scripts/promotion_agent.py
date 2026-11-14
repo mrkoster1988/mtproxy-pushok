@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ENV = Path('/etc/mtproxy-pushok/mtproxy.env')
 STATE = Path('/etc/mtproxy-pushok/promotion-state.json')
 SERVICE = 'mtproxy-pushok.service'
-TAG = re.compile(r'[0-9a-f]{32}')
+TAG = re.compile(r'[0-9a-fA-F]{32}')
 
 
 def atomic(path, text):
@@ -33,7 +33,8 @@ def atomic(path, text):
 def tag_text(text, tag):
     if tag and not TAG.fullmatch(tag):
         raise ValueError('invalid_tag')
-    line='MT_PROXY_TAG="'+tag+'"'
+    # Только проверенный hex: формат совместим с old_value() установщика.
+    line='MT_PROXY_TAG='+tag
     rows=text.splitlines()
     matches=[i for i,s in enumerate(rows) if re.match(r'^\s*(?:export\s+)?MT_PROXY_TAG=',s)]
     if len(matches)>1:
@@ -50,29 +51,43 @@ def command(*args):
 def running_tag():
     pid=int(command('systemctl','show',SERVICE,'-p','MainPID','--value'))
     args=Path('/proc',str(pid),'cmdline').read_bytes().split(b'\0')
+    if not args or Path(os.fsdecode(args[0])).name != 'mtproto-proxy':
+        raise RuntimeError('proxy_not_started')
     if b'-P' in args:
         return args[args.index(b'-P')+1].decode()
     return ''
+
+
+def wait_ready(tag, cfg, timeout=15):
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            command('systemctl','is-active','--quiet',SERVICE)
+            if running_tag().lower() != tag.lower():
+                raise RuntimeError('runner_did_not_apply_tag')
+            host = '127.0.0.1' if cfg['MT_PROXY_HOST']=='localhost' else cfg['MT_PROXY_HOST']
+            with socket.create_connection((host,int(cfg['MT_PROXY_PORT'])),timeout=1):
+                return
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
+            if time.monotonic() >= deadline:
+                raise RuntimeError('proxy_start_timeout') from exc
+            time.sleep(0.25)
 
 
 def apply(tag):
     text=ENV.read_text()
     cfg=parse_env(text)
     try:
-        matches = running_tag()==tag
-    except (OSError, ValueError, subprocess.SubprocessError):
+        matches = running_tag().lower()==tag.lower()
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
         matches = False
-    if cfg.get('MT_PROXY_TAG','')==tag and matches:
+    if cfg.get('MT_PROXY_TAG','').lower()==tag.lower() and matches:
         return
     updated=tag_text(text,tag)
     atomic(ENV,updated)
     try:
         command('systemctl','restart',SERVICE)
-        command('systemctl','is-active','--quiet',SERVICE)
-        if running_tag()!=tag:
-            raise RuntimeError('runner_did_not_apply_tag')
-        with socket.create_connection(('127.0.0.1' if cfg['MT_PROXY_HOST']=='localhost' else cfg['MT_PROXY_HOST'],int(cfg['MT_PROXY_PORT'])),timeout=3):
-            pass
+        wait_ready(tag, cfg)
     except Exception:
         atomic(ENV,text)
         command('systemctl','restart',SERVICE)

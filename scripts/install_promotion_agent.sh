@@ -21,6 +21,7 @@ Description=Check Pushok placement schedule
 [Timer]
 OnBootSec=30s
 OnUnitInactiveSec=20s
+AccuracySec=1s
 Unit=mtproxy-pushok-promotion.service
 [Install]
 WantedBy=timers.target
