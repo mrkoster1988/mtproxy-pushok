@@ -128,7 +128,7 @@ class BotOperatorInboxTests(unittest.TestCase):
                 return {"acknowledged": True}
             self.fail("unexpected route " + route)
         with patch("bot.main._internal_api", side_effect=api), \
-             patch("bot.main.telegram_call") as send, \
+             patch("bot.main.raw_telegram_call") as send, \
              patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": "123:test"}):
             submit_campaign_draft(77, CID)
         self.assertEqual(send.call_count, 2)
@@ -146,7 +146,7 @@ class BotOperatorInboxTests(unittest.TestCase):
                          "campaign_id": str(CID), "telegram_user_id": 55}]
             self.fail("ACK not allowed after send error")
         with patch("bot.main._internal_api", side_effect=api), \
-             patch("bot.main.telegram_call", side_effect=RuntimeError("telegram down")):
+             patch("bot.main.raw_telegram_call", side_effect=RuntimeError("telegram down")):
             from bot.main import deliver_operator_outbox
             deliver_operator_outbox("test-token")
         self.assertEqual(calls, ["operators/outbox/claim"])
@@ -154,7 +154,7 @@ class BotOperatorInboxTests(unittest.TestCase):
     def test_idempotent_submission_does_not_resend_notifications(self):
         with patch("bot.main._internal_api", return_value={
             "moderation_status": "pending", "verified_now": False,
-        }) as api, patch("bot.main.telegram_call") as send:
+        }) as api, patch("bot.main.raw_telegram_call") as send:
             submit_campaign_draft(77, CID)
         self.assertEqual(api.call_count, 1)
         send.assert_not_called()
