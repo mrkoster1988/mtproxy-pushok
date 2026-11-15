@@ -15,6 +15,18 @@ window.pushokApproval=(()=>{
  function details(title,parent){const d=el('details');d.append(el('summary',title));parent.append(d);return d;}
  function route(id){selected=id;if(window.cabinet)window.cabinet.go('moderation/'+id);else render();}
  function filtered(){const [key,value]=$('queue-filter').value.split('=');return campaigns.filter(c=>!key||String(c[key])===value);}
+ function advertiser(c){
+  const section=el('section',undefined,'approval-advertiser');
+  section.append(el('h3','Рекламодатель'));
+  const name=[c.advertiser_first_name,c.advertiser_last_name].filter(Boolean).join(' ');
+  section.append(el('p',name||'Имя не указано'));
+  const username=c.advertiser_username;
+  if(typeof username==='string'&&/^[A-Za-z0-9_]{1,32}$/.test(username)){
+   const a=el('a','@'+username);a.href='https://t.me/'+username;a.target='_blank';a.rel='noopener noreferrer';section.append(a);
+  }else section.append(el('p','Без @username','muted'));
+  if(c.advertiser_telegram_user_id)section.append(el('p','Telegram ID: '+c.advertiser_telegram_user_id,'muted'));
+  return section;
+ }
  function render(){
   if(!me||!['admin','operator'].includes(me.role))return;
   const parts=location.hash.replace(/^#\/?/,'').split('/');
@@ -34,7 +46,7 @@ window.pushokApproval=(()=>{
   const choose=el('select');choose.setAttribute('aria-label','Выбрать рекламную заявку');
   option(choose,'','Все заявки');for(const item of campaigns)option(choose,item.id,(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;choose.hidden=campaigns.length===1;
   choose.addEventListener('change',()=>{selected=choose.value;window.cabinet.go(selected?'moderation/'+selected:'moderation');});box.append(choose);
-  box.append(el('h2',c.channel_title||'Рекламная заявка'));
+  box.append(el('h2',c.channel_title||'Рекламная заявка'),advertiser(c));
   if(c.channel_url){try{const url=new URL(c.channel_url);if(url.protocol==='https:'&&['t.me','telegram.me'].includes(url.hostname)){const a=el('a','Открыть канал в Telegram');a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';box.append(a);}}catch{}}
   box.append(el('p',c.tariff_name_snapshot+' · '+(c.price_kopecks_snapshot===0?'Бесплатно':money(c.price_kopecks_snapshot)),'approval-price'));
   const index=stage(c),progress=el('ol',undefined,'approval-progress');progress.setAttribute('aria-label','Этапы рекламной заявки');
