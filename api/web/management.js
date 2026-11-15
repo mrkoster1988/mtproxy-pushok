@@ -76,6 +76,7 @@ window.pushokManagement=(()=>{
  }
  if($('tariff-admin-actions')){
   const removeTariff=button('Удалить',async()=>{const id=$('tariff-admin-select').value;if(!id)throw Error('Выберите тариф.');if(!confirm('Убрать тариф из списка новых заявок? История заказов сохранится.'))return;await api('/admin/tariffs/'+id,{method:'DELETE'});await renderTariffAdmin();await refresh();notice('Тариф перемещён в «Удалённые».',true);});
+  removeTariff.id='tariff-admin-delete';removeTariff.hidden=true;
   removeTariff.setAttribute('aria-label','Удалить тариф из списка');
   $('tariff-admin-actions').append(removeTariff);
  }

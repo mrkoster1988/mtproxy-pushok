@@ -8,13 +8,13 @@
   <meta name="description" content="MTProxy Pushok — кабинет спонсорской рекламы в Telegram. Создание заявки, модерация, оплата и управление размещениями.">
   <title>puShok · MTProxy — кабинет спонсора</title>
   <link rel="stylesheet" href="/assets/styles.css?v=060">
-  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=101-updates">
-  <script src="/assets/app.js?v=101-updates" defer></script>
+  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=103-tariffs">
+  <script src="/assets/app.js?v=103-tariffs" defer></script>
   <script src="/assets/order.js?v=060" defer></script>
-  <script src="/assets/management.js?v=064-tariff-actions" defer></script>
+  <script src="/assets/management.js?v=103-tariffs" defer></script>
   <script src="/assets/approval.js?v=066-observation" defer></script>
   <script src="/assets/mobile-views.js?v=102-profile-updates" defer></script>
-  <script src="/assets/pages.js?v=102-profile-updates" defer></script>
+  <script src="/assets/pages.js?v=103-tariffs" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -208,22 +208,23 @@
           <div id="sbp-review-list" aria-live="polite"></div>
         </section>
         <div id="settings-tariffs" class="settings-panel" hidden>
-          <section class="core-health" aria-label="Настройки тарифов MTProxy Pushok">
-            <div><span class="eyebrow">ЦЕНЫ И ТАРИФЫ</span><h3>Настройки стоимости рекламы</h3></div>
-            <p class="muted">Базовая цена — 300 ₽ за день. Изменения действуют для новых заказов; ранее созданные сохраняют свою цену. Стоимость в Stars указывается отдельно, без выдуманного курса.</p>
+          <section class="core-health tariff-builder" aria-label="Конструктор тарифов MTProxy Pushok">
+            <div><span class="eyebrow">ЦЕНЫ И ТАРИФЫ</span><h3>Конструктор тарифов</h3></div>
+            <p class="muted">Создавайте платные и бесплатные тарифы. Бесплатное размещение проходит модерацию без счёта. Условия уже созданных заявок сохраняются.</p>
             <form id="tariff-admin-form"><fieldset id="tariff-admin-fields" disabled>
-              <label>Выберите тариф<select id="tariff-admin-select" required></select></label>
+              <div class="tariff-builder-toolbar"><label>Тариф<select id="tariff-admin-select"></select></label><button id="tariff-admin-new" type="button">+ Новый тариф</button></div>
+              <h4 id="tariff-admin-mode">Редактирование тарифа</h4>
+              <label>Название<input id="tariff-admin-name" maxlength="100" required placeholder="Например, Неделя рекламы"></label>
+              <div class="tariff-builder-duration"><label>Длительность<input id="tariff-admin-hours" type="number" min="1" max="8760" step="0.25" required></label><label>Единица<select id="tariff-admin-unit"><option value="3600">Часы</option><option value="86400">Дни</option></select></label></div>
+              <label>Кому доступен<select id="tariff-admin-audience"><option value="public">Всем рекламодателям</option><option value="admin">Только администратору · бесплатно</option></select></label>
               <p id="tariff-admin-access" class="muted" hidden>Только для администраторов. Цена всегда 0 ₽, счёт Stars или СБП не создаётся. Можно изменить длительность и отключить тариф для новых заявок.</p>
-              <label>Название<input id="tariff-admin-name" maxlength="100" required></label>
-              <label>Длительность, часы<input id="tariff-admin-hours" type="number" min="1" max="8760" step="0.25" required></label>
-              <label>Цена для СБП, ₽<input id="tariff-admin-rub" type="number" min="0" max="1000000" step="0.01" required></label>
-              <label>Цена в Telegram Stars, XTR<input id="tariff-admin-stars" type="number" min="0" max="1000000" step="1" placeholder="Не настроено"></label>
-              <label><input id="tariff-admin-active" type="checkbox"> Тариф активен для новых заказов</label>
-              <div id="tariff-admin-actions">
-                <button class="primary" type="submit" aria-label="Сохранить настройки тарифа">Сохранить</button>
-              </div>
+              <label><input id="tariff-admin-free" type="checkbox"> Бесплатный тариф</label>
+              <div class="tariff-builder-prices"><label>Цена для СБП, ₽<input id="tariff-admin-rub" type="number" min="0" max="1000000" step="0.01" required></label><label>Цена в Stars, XTR<input id="tariff-admin-stars" type="number" min="0" max="1000000" step="1" placeholder="Не настроено"></label></div>
+              <label><input id="tariff-admin-active" type="checkbox"> Доступен для новых заявок</label>
+              <div id="tariff-admin-preview" class="tariff-builder-preview" aria-live="polite"></div>
+              <div id="tariff-admin-actions"><button id="tariff-admin-save" class="primary" type="submit" aria-label="Сохранить настройки тарифа">Сохранить</button><button id="tariff-admin-cancel" type="button" hidden>Отмена</button></div>
             </fieldset></form>
-            <p id="tariff-admin-status" class="muted" role="status">Настройки читаются из базы. Способы оплаты настраиваются во вкладке «Платежи».</p>
+            <p id="tariff-admin-status" class="muted" role="status">Способы оплаты включаются отдельно во вкладке «Платежи».</p>
           </section>
         </div>
         <div id="settings-system" class="settings-panel" hidden>
@@ -256,7 +257,7 @@
       </div>
     </section>
 
-    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.02</span></footer>
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.03</span></footer>
   </main>
 </body>
 </html>

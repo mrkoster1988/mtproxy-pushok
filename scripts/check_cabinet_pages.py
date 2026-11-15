@@ -877,12 +877,12 @@ def main():
                                  'sbp_test_mode':False,'updater_installed':True,'requested':False,
                                  'update':{'state':'succeeded','at':'2026-11-15T14:00:00+00:00'}}
                 admin.route('**/api/v1/admin/control',lambda route:route.fulfill(json=control_fixture))
-                release_fixture.return_value={**release_fixture.return_value,'state':'available','available_version':'1.03'}
+                release_fixture.return_value={**release_fixture.return_value,'state':'available','available_version':'1.04'}
                 admin.locator('#software-check').click()
                 expect(admin.locator('#software-update')).to_be_enabled()
-                expect(admin.locator('#software-update')).to_have_text('Установить v1.03')
+                expect(admin.locator('#software-update')).to_have_text('Установить v1.04')
                 expect(admin.locator('#software-update-status')).to_contain_text('Последняя установка завершена')
-                expect(admin.locator('#software-available')).to_have_text('v1.03')
+                expect(admin.locator('#software-available')).to_have_text('v1.04')
                 for width in (390,320):
                     admin.set_viewport_size({'width':width,'height':844})
                     assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
@@ -901,7 +901,7 @@ def main():
                 expect(admin.locator('#software-release-status')).to_contain_text('Не удалось проверить')
                 expect(admin.locator('#software-update')).to_be_disabled()
                 expect(admin.locator('#software-update-notice')).to_be_hidden()
-                expect(admin.locator('#software-available')).to_have_text('v1.03 (ранее)')
+                expect(admin.locator('#software-available')).to_have_text('v1.04 (ранее)')
                 admin.unroute('**/api/v1/admin/control/release')
                 admin.locator('#software-check').click()
                 expect(admin.locator('#software-update')).to_be_enabled()
@@ -926,6 +926,58 @@ def main():
                 expect(admin.locator('#software-update-notice')).to_be_hidden()
                 admin.unroute('**/api/v1/admin/control')
                 admin.unroute('**/api/v1/admin/control/update')
+
+                # Constructor creates real free/public and paid/inactive tariffs through the API.
+                go(admin,'settings')
+                admin.locator('#settings-tariffs-tab').click()
+                admin.locator('#tariff-admin-new').click()
+                expect(admin.locator('#tariff-admin-delete')).to_be_hidden()
+                admin.locator('#tariff-admin-name').fill('Бесплатные два дня')
+                admin.locator('#tariff-admin-hours').fill('2')
+                admin.locator('#tariff-admin-unit').select_option('86400')
+                admin.locator('#tariff-admin-free').check()
+                expect(admin.locator('#tariff-admin-rub')).to_have_value('0.00')
+                expect(admin.locator('#tariff-admin-preview')).to_contain_text('Бесплатно')
+                admin.locator('#settings-payments-tab').click()
+                admin.locator('#settings-tariffs-tab').click()
+                expect(admin.locator('#tariff-admin-name')).to_have_value('Бесплатные два дня')
+                for width in (390,320):
+                    admin.set_viewport_size({'width':width,'height':844})
+                    assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                    admin.screenshot(path=str(output/f'tariff-builder-{width}.png'),full_page=True)
+                with admin.expect_response(lambda r:r.url.endswith('/admin/tariffs') and r.request.method=='POST') as created_tariff:
+                    admin.locator('#tariff-admin-save').click()
+                assert created_tariff.value.status==201
+                free_tariff=created_tariff.value.json()
+                assert free_tariff['price_kopecks']==0 and free_tariff['stars_price_xtr'] is None
+                assert free_tariff['duration_seconds']==172800 and not free_tariff['admin_only']
+                expect(admin.locator('#tariff-admin-select')).to_have_value(free_tariff['id'])
+                expect(admin.locator('#notice')).to_contain_text('Тариф создан')
+                refresh(advertiser)
+                go(advertiser,'create')
+                advertiser.locator('#tariff-select').select_option(free_tariff['id'])
+                expect(advertiser.locator('#order-summary')).to_contain_text('Бесплатно')
+                admin.locator('#tariff-admin-new').click()
+                admin.locator('#tariff-admin-name').fill('Неделя рекламы')
+                admin.locator('#tariff-admin-hours').fill('7')
+                admin.locator('#tariff-admin-rub').fill('900')
+                admin.locator('#tariff-admin-stars').fill('500')
+                admin.locator('#tariff-admin-active').uncheck()
+                with admin.expect_response(lambda r:r.url.endswith('/admin/tariffs') and r.request.method=='POST') as created_paid:
+                    admin.locator('#tariff-admin-save').click()
+                assert created_paid.value.status==201
+                paid_tariff=created_paid.value.json()
+                assert paid_tariff['price_kopecks']==90000 and paid_tariff['stars_price_xtr']==500
+                assert paid_tariff['duration_seconds']==604800 and not paid_tariff['is_active']
+                expect(admin.locator('#notice')).to_contain_text('Тариф создан')
+                assert paid_tariff['id'] not in [t['id'] for t in authenticated('advertiser','GET','/me/tariffs')]
+                admin.locator('#tariff-admin-new').click()
+                admin.locator('#tariff-admin-audience').select_option('admin')
+                expect(admin.locator('#tariff-admin-rub')).to_have_value('0.00')
+                expect(admin.locator('#tariff-admin-free')).to_be_checked()
+                expect(admin.locator('#tariff-admin-free')).to_be_disabled()
+                admin.locator('#tariff-admin-cancel').click()
+                expect(admin.locator('#tariff-admin-select')).to_have_value(paid_tariff['id'])
 
                 admin.keyboard.press('Escape')
                 expect(admin.locator('.help-popup')).to_be_hidden()

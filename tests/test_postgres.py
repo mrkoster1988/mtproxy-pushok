@@ -1034,6 +1034,50 @@ class PostgresIntegration(unittest.TestCase):
         finally:
             main.app.dependency_overrides.clear()
 
+    def test_tariff_constructor_public_free_lifecycle_and_idempotent_retry(self):
+        from concurrent.futures import ThreadPoolExecutor
+        admin,owner=uuid4(),uuid4()
+        with psycopg.connect(self.dsn) as conn:
+            for uid,role in ((admin,'admin'),(owner,'advertiser')):
+                conn.execute('INSERT INTO users(id,telegram_user_id,role) VALUES(%s,%s,%s)',
+                             (uid,10**12+uuid4().int%10**12,role))
+        actor={'id':admin,'role':'admin'}
+        main.app.dependency_overrides[main.get_current_user]=lambda:actor
+        tid=str(uuid4())
+        body={'request_id':tid,'name':'Бесплатный пробный день','duration_seconds':86400,
+              'price_kopecks':0,'stars_price_xtr':0,'is_active':True,'admin_only':False}
+        try:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                responses=list(executor.map(lambda _:self.client.post('/api/v1/admin/tariffs',json=body),range(2)))
+            self.assertEqual(sorted(r.status_code for r in responses),[200,201])
+            self.assertEqual({r.json()['id'] for r in responses},{tid})
+            self.assertIn(tid,[t['id'] for t in self.request('GET','/tariffs')])
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute("SELECT count(*) FROM audit_events WHERE event_type='tariff_created' AND details_json->>'tariff_id'=%s",(tid,)).fetchone()[0],1)
+            actor={'id':owner,'role':'advertiser'}
+            channel=self.request('POST','/channels',201,json={'title':'Тест конструктора','telegram_url':'https://t.me/tariff_builder_test'})
+            campaign=self.request('POST','/campaigns',201,json={'channel_id':channel['id'],'tariff_id':tid})
+            cid=campaign['id']
+            self.request('POST','/campaigns/'+cid+'/submit')
+            actor={'id':admin,'role':'admin'}
+            approved=self.request('POST','/operator/campaigns/'+cid+'/moderation',json={'decision':'approved'})
+            self.assertEqual(approved['payment_status'],'verified')
+            self.assertEqual(approved['placement_status'],'not_scheduled')
+            edited={k:v for k,v in body.items() if k not in ('request_id','admin_only')}
+            self.request('PUT','/admin/tariffs/'+tid,json={**edited,'price_kopecks':30000,'stars_price_xtr':200,'is_active':False})
+            self.request('POST','/admin/tariffs',409,json=body)
+            self.assertNotIn(tid,[t['id'] for t in self.request('GET','/tariffs')])
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT price_kopecks_snapshot,duration_seconds_snapshot FROM campaigns WHERE id=%s',(cid,)).fetchone(),(0,86400))
+                self.assertEqual(conn.execute('SELECT count(*) FROM payment_attempts WHERE campaign_id=%s',(cid,)).fetchone()[0],0)
+            private=self.request('POST','/admin/tariffs',201,json={**body,'request_id':str(uuid4()),'admin_only':True})
+            self.assertNotIn(private['id'],[t['id'] for t in self.request('GET','/tariffs')])
+            actor={'id':owner,'role':'advertiser'}
+            self.request('POST','/campaigns',404,json={'channel_id':channel['id'],'tariff_id':private['id']})
+            self.request('POST','/campaigns',404,json={'channel_id':channel['id'],'tariff_id':tid})
+        finally:
+            main.app.dependency_overrides.clear()
+
     def test_campaign_lifecycle_and_slot_collision(self):
         owner, operator = uuid4(), uuid4()
         with psycopg.connect(self.dsn) as conn:
