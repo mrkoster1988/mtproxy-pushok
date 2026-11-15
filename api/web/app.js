@@ -132,7 +132,7 @@ function loadAdminSettings(){
  if(adminSettingsLoad)return adminSettingsLoad;
  $('tariff-admin-fields').disabled=true;
  adminSettingsLoad=(async()=>{
-  const results=await Promise.allSettled([loadControl(),api('/admin/icons').then(showIcons),
+  const results=await Promise.allSettled([loadControl({payments:true}),api('/admin/icons').then(showIcons),
    renderPaymentSettings(),renderSBPReview(),renderTariffAdmin(),renderCoreReadiness(),renderLaunchReadiness()]);
   const failed=results.find(x=>x.status==='rejected');if(failed)throw failed.reason;
  })().finally(()=>{$('tariff-admin-fields').disabled=false;adminSettingsLoad=null;});
@@ -679,32 +679,90 @@ run(async()=>{
  if(token)await enter();
 });
 
-let displayedVersion=null;
-async function loadControl(){
+let displayedVersion=null,softwareControl=null,softwareRelease=null,softwareSession=null;
+let controlFlight=null,releaseFlight=null,lastReleaseRequest=0;
+function clearSoftware(){
+ displayedVersion=null;softwareControl=null;softwareRelease=null;softwareSession=null;controlFlight=null;releaseFlight=null;lastReleaseRequest=0;
+ $('software-updates').hidden=true;$('software-update-notice').hidden=true;
+ $('software-installed').textContent='Получаем версию…';$('software-available').textContent='Проверяем…';
+ $('software-update-status').textContent='';$('software-release-status').textContent='Проверяем наличие новой версии…';$('software-checked').textContent='Проверка ещё не выполнена.';$('software-changelog').hidden=true;$('software-update').disabled=true;
+}
+function renderSoftware(){
  if(me?.role!=='admin')return;
- const c=await api('/admin/control');
- if(displayedVersion&&displayedVersion!==c.version&&c.update.state==='succeeded'){location.reload();return;}
- displayedVersion=c.version;
- $('enable-stars').checked=c.stars;$('enable-sbp').checked=c.sbp;
- $('enable-sbp').disabled=!c.sbp_configured;
- $('payment-config-note').textContent=c.sbp_configured?(c.sbp_test_mode?'СБП: тестовый магазин. Реальные списания не включены.':'СБП: рабочий магазин настроен.'):'Для СБП задайте YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и PUSHOK_PUBLIC_PAYMENT_HOST на сервере. Stars настраиваются отдельно.';
- const states={idle:'Можно установить опубликованную версию',running:'Установка выполняется',succeeded:'Обновление установлено',failed:'Обновление не завершено. Проверьте журнал службы mtproxy-pushok-updater на VPS'};
+ const c=softwareControl,r=softwareRelease,busy=Boolean(c&&(c.requested||c.update.state==='running'));
+ if(c)$('software-installed').textContent='v'+c.version;
+ const known=r?.available_version;
+ $('software-available').textContent=known?'v'+known+(r.state==='unavailable'?' (ранее)':''):r?'Не удалось узнать':'Проверяем…';
+ const texts={available:'Доступна новая версия.',current:'Установлена актуальная версия.',ahead:'Установленная версия новее опубликованной.',unavailable:'Не удалось проверить новую версию. Повторите проверку позже.'};
+ $('software-release-status').textContent=r?(texts[r.state]||texts.unavailable):'Проверяем наличие новой версии…';
+ $('software-release-badge').textContent=({available:'Есть обновление',current:'Актуально',ahead:'Новее релиза',unavailable:'Нет данных'})[r?.state]||'Проверяем';
+ $('software-checked').textContent=r?.checked_at?'Последняя успешная проверка: '+date(r.checked_at):'Успешной проверки пока нет.';
+ if(r?.state==='unavailable'&&r.attempted_at)$('software-checked').textContent+=' Последняя попытка: '+date(r.attempted_at);
+ const changes=$('software-changelog');changes.hidden=!r?.commit;
+ if(r?.commit)changes.href='https://github.com/mrkoster1988/mtproxy-pushok/blob/'+encodeURIComponent(r.commit)+'/CHANGELOG.md';
+ const states={idle:'Установка ещё не запускалась.',running:'Обновление устанавливается…',succeeded:'Последняя установка завершена.',failed:'Последняя установка не завершена. Проверьте журнал службы обновления на VPS.'};
  const stages={preflight:'проверка окружения',backup:'резервная копия',source:'получение кода',build:'сборка',migration:'обновление базы',restart:'перезапуск',health:'проверка API',proxy:'настройка прокси'};
- if(c.update.state==='failed'&&stages[c.update.stage])states.failed='Ошибка на этапе «'+stages[c.update.stage]+'». После исправления можно повторить установку.';
- $('software-update-status').textContent='Версия '+c.version+'. '+(!c.updater_installed?'Нужна первоначальная установка службы обновления на VPS.':c.requested?'Запрос принят. Ожидаем запуск.':states[c.update.state]||'Проверка состояния…');
- $('software-update').disabled=!c.updater_installed||c.requested||c.update.state==='running';
+ if(c){
+ let status=!c.updater_installed?'Служба обновления ещё не установлена на VPS.':c.requested?'Запрос принят. Ожидаем запуск.':states[c.update.state]||'Состояние установки неизвестно.';
+ if(c.update.state==='failed'&&stages[c.update.stage])status+=' Этап: '+stages[c.update.stage]+'.';
+ if(c.update.at)status+=' '+date(c.update.at);
+ $('software-update-status').textContent=status;
+ }
+ $('software-update').disabled=!c?.updater_installed||busy||r?.state!=='available';
+ $('software-update').textContent=busy?'Обновление выполняется…':r?.state==='available'?'Установить v'+r.available_version:'Установить обновление';
+ const banner=$('software-update-notice');
+ if(banner){banner.hidden=r?.state!=='available';$('software-update-notice-text').textContent=r?.state==='available'?'Доступно обновление v'+r.available_version+' · установлено v'+r.installed_version:'';}
+}
+async function loadControl({payments=false}={}){
+ if(me?.role!=='admin')return;
+ const session=token;
+ // Requests are shared only within this authenticated session.
+ if(softwareSession!==session){softwareControl=null;softwareRelease=null;displayedVersion=null;controlFlight=null;releaseFlight=null;lastReleaseRequest=0;softwareSession=session;}
+ if(!controlFlight){const pending=api('/admin/control');controlFlight=pending;pending.finally(()=>{if(controlFlight===pending)controlFlight=null;}).catch(()=>{});}
+ const c=await controlFlight;
+ if(session!==token||me?.role!=='admin')return;
+ if(displayedVersion&&displayedVersion!==c.version&&c.update.state==='succeeded'){location.reload();return;}
+ displayedVersion=c.version;softwareControl=c;
+ if(payments){
+ $('enable-stars').checked=c.stars;$('enable-sbp').checked=c.sbp;$('enable-sbp').disabled=!c.sbp_configured;
+ $('payment-config-note').textContent=c.sbp_configured?(c.sbp_test_mode?'СБП: тестовый магазин. Реальные списания не включены.':'СБП: рабочий магазин настроен.'):'Для СБП задайте YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и PUSHOK_PUBLIC_PAYMENT_HOST на сервере. Stars настраиваются отдельно.';
+ }
+ renderSoftware();
+}
+async function checkSoftware(force=false){
+ if(me?.role!=='admin')return;
+ if(!force&&softwareRelease&&Date.now()-lastReleaseRequest<300000)return;
+ if(releaseFlight)return releaseFlight;
+ const session=token;lastReleaseRequest=Date.now();$('software-check').disabled=true;
+ const pending=(async()=>{
+ try{const data=await api('/admin/control/release');if(session!==token||me?.role!=='admin')return;softwareRelease=data;}
+ catch(e){if(session!==token||me?.role!=='admin')return;softwareRelease={...softwareRelease,state:'unavailable',attempted_at:new Date().toISOString()};}
+ finally{if(session===token&&me?.role==='admin'){$('software-check').disabled=false;renderSoftware();}}
+ })();releaseFlight=pending;
+ try{await pending;}finally{if(releaseFlight===pending)releaseFlight=null;}
+}
+async function refreshSoftware(force=false){
+ if(me?.role!=='admin')return;
+ const session=token;
+ try{await loadControl();}catch(e){if(session!==token||me?.role!=='admin')return;softwareControl=null;$('software-update-status').textContent='Кабинет временно недоступен. Повторная проверка через 10 секунд…';$('software-update').disabled=true;}
+ if(session===token&&me?.role==='admin')await checkSoftware(force);
 }
 $('payment-switches').addEventListener('submit',event=>{event.preventDefault();run(async()=>{
  await api('/admin/control/payments',{method:'PUT',body:{stars:$('enable-stars').checked,sbp:$('enable-sbp').checked}});
  await loadAdminSettings();notice('Настройки оплаты сохранены.');
 });});
+$('software-check').addEventListener('click',()=>refreshSoftware(true));
 $('software-update').addEventListener('click',()=>run(async()=>{
  $('software-update').disabled=true;
- await api('/admin/control/update',{method:'POST'});await loadControl();
+ try{await api('/admin/control/update',{method:'POST'});await loadControl();}
+ catch(e){await refreshSoftware();throw e;}
 }));
-setInterval(()=>{if(me?.role==='admin'&&!$('settings-system').hidden)loadControl().catch(()=>{
- $('software-update-status').textContent='Кабинет временно недоступен. Повторная проверка через 10 секунд…';
-});},10000);
+setInterval(()=>{
+ if(me?.role!=='admin'||document.hidden)return;
+ const busy=softwareControl?.requested||softwareControl?.update?.state==='running';
+ if(busy||!softwareControl||location.hash.startsWith('#/profile')||Date.now()-lastReleaseRequest>=300000)refreshSoftware();
+},10000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&me?.role==='admin')refreshSoftware();});
 
 function showIcons(data){
  const names={miniapp:'Mini App',advertise:'Разместить рекламу',campaigns:'Мои кампании',tariffs:'Тарифы',channels:'Наш канал',help:'Помощь'};

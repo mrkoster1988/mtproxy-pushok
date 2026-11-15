@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.066",
+    version="1.01",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2602,6 +2602,13 @@ def control_payments(payload: PaymentSwitches, admin=Depends(require_admin)):
         control.write('payments.json', {'stars': payload.stars, 'sbp': payload.sbp,
                       'actor': str(admin['id']), 'changed_at': control.now()})
     return {'saved': True}
+
+
+@app.get('/api/v1/admin/control/release', tags=['admin'])
+def control_release(response: Response, admin=Depends(require_admin)):
+    from .releases import check
+    response.headers['Cache-Control'] = 'no-store'
+    return check(app.version)
 
 @app.post('/api/v1/admin/control/update', status_code=202, tags=['admin'])
 def control_update(admin=Depends(require_admin)):

@@ -40,6 +40,12 @@ def main():
     from playwright.sync_api import sync_playwright, expect
     from app import main as api
 
+    # Public GitHub is isolated too; HTTP parsing/cache/auth have dedicated API tests.
+    release_patcher = patch('app.releases.check', return_value={
+        'state':'current', 'installed_version':api.app.version, 'available_version':api.app.version,
+        'commit':'a'*40, 'checked_at':'2026-11-15T15:00:00+00:00',
+        'attempted_at':'2026-11-15T15:00:00+00:00'})
+    release_fixture = release_patcher.start()
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=True)
     # These values belong only to the local disposable test server.
@@ -862,6 +868,65 @@ def main():
                 expect(admin.locator('.profile-menu a[href="#/help"]')).to_be_visible()
                 assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth + 2')
                 admin.screenshot(path=str(output/'31-sticky-menu-help-mobile.png'),full_page=True)
+                # Update discovery and installation are independent, with no host worker in this test.
+                expect(admin.locator('#software-installed')).to_have_text('v'+api.app.version)
+                expect(admin.locator('#software-release-status')).to_contain_text('актуальная')
+                expect(admin.locator('#software-update')).to_be_disabled()
+                expect(advertiser.locator('#software-updates')).to_be_hidden()
+                control_fixture={'version':api.app.version,'stars':False,'sbp':False,'sbp_configured':False,
+                                 'sbp_test_mode':False,'updater_installed':True,'requested':False,
+                                 'update':{'state':'succeeded','at':'2026-11-15T14:00:00+00:00'}}
+                admin.route('**/api/v1/admin/control',lambda route:route.fulfill(json=control_fixture))
+                release_fixture.return_value={**release_fixture.return_value,'state':'available','available_version':'1.02'}
+                admin.locator('#software-check').click()
+                expect(admin.locator('#software-update')).to_be_enabled()
+                expect(admin.locator('#software-update')).to_have_text('Установить v1.02')
+                expect(admin.locator('#software-update-status')).to_contain_text('Последняя установка завершена')
+                expect(admin.locator('#software-available')).to_have_text('v1.02')
+                for width in (390,320):
+                    admin.set_viewport_size({'width':width,'height':844})
+                    assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                    for action in admin.locator('.update-actions button').all():
+                        rect=action.bounding_box()
+                        assert rect['x']>=0 and rect['x']+rect['width']<=width+1,rect
+                    admin.locator('#software-updates').screenshot(path=str(output/f'updates-profile-{width}.png'))
+                go(admin,'dashboard')
+                expect(admin.locator('#software-update-notice')).to_be_visible()
+                admin.screenshot(path=str(output/'updates-notification-mobile.png'),full_page=True)
+                admin.locator('#software-update-notice a').click()
+                expect(admin.locator('[data-page=profile]')).to_be_visible()
+                expect(admin.locator('#software-updates')).to_be_visible()
+                admin.route('**/api/v1/admin/control/release',lambda route:route.fulfill(status=503,json={'detail':'unavailable'}))
+                admin.locator('#software-check').click()
+                expect(admin.locator('#software-release-status')).to_contain_text('Не удалось проверить')
+                expect(admin.locator('#software-update')).to_be_disabled()
+                expect(admin.locator('#software-update-notice')).to_be_hidden()
+                expect(admin.locator('#software-available')).to_have_text('v1.02 (ранее)')
+                admin.unroute('**/api/v1/admin/control/release')
+                admin.locator('#software-check').click()
+                expect(admin.locator('#software-update')).to_be_enabled()
+                requests=[]
+                def request_update(route):
+                    requests.append(route.request.method)
+                    control_fixture['requested']=True
+                    route.fulfill(status=202,json={'queued':True})
+                admin.route('**/api/v1/admin/control/update',request_update)
+                admin.locator('#software-update').click()
+                expect(admin.locator('#software-update')).to_be_disabled()
+                expect(admin.locator('#software-update-status')).to_contain_text('Запрос принят')
+                assert requests==['POST']
+                control_fixture['requested']=False
+                control_fixture['update']={'state':'failed','stage':'build'}
+                admin.locator('#software-check').click()
+                expect(admin.locator('#software-update-status')).to_contain_text('сборка')
+                expect(admin.locator('#software-update')).to_be_enabled()
+                release_fixture.return_value={**release_fixture.return_value,'state':'current','available_version':api.app.version}
+                admin.locator('#software-check').click()
+                expect(admin.locator('#software-update')).to_be_disabled()
+                expect(admin.locator('#software-update-notice')).to_be_hidden()
+                admin.unroute('**/api/v1/admin/control')
+                admin.unroute('**/api/v1/admin/control/update')
+
                 admin.keyboard.press('Escape')
                 expect(admin.locator('.help-popup')).to_be_hidden()
                 admin.evaluate('window.scrollTo(0,0)')
@@ -921,6 +986,7 @@ def main():
             thread.join(timeout=10)
         if sock:
             sock.close()
+        release_patcher.stop()
         PostgresIntegration.tearDownClass()
 
 

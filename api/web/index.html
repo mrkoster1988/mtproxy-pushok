@@ -8,13 +8,13 @@
   <meta name="description" content="MTProxy Pushok — кабинет спонсорской рекламы в Telegram. Создание заявки, модерация, оплата и управление размещениями.">
   <title>puShok · MTProxy — кабинет спонсора</title>
   <link rel="stylesheet" href="/assets/styles.css?v=060">
-  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=064-tariff-actions">
-  <script src="/assets/app.js?v=066-observation" defer></script>
+  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=101-updates">
+  <script src="/assets/app.js?v=101-updates" defer></script>
   <script src="/assets/order.js?v=060" defer></script>
   <script src="/assets/management.js?v=064-tariff-actions" defer></script>
   <script src="/assets/approval.js?v=066-observation" defer></script>
   <script src="/assets/mobile-views.js?v=061-routes" defer></script>
-  <script src="/assets/pages.js?v=065-diagnostics" defer></script>
+  <script src="/assets/pages.js?v=101-updates" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -227,13 +227,21 @@
           </section>
         </div>
         <div id="settings-system" class="settings-panel" hidden>
+<a href="#/profile" class="updates-shortcut">Версия и обновления →</a>
+<section id="software-updates" class="panel software-updates" aria-labelledby="software-updates-title" hidden>
+<div class="update-heading"><h2 id="software-updates-title">Версия и обновления</h2><span id="software-release-badge" class="badge">Проверяем</span></div>
+<dl class="update-versions"><div><dt>Установлено</dt><dd id="software-installed">Получаем версию…</dd></div><div><dt>Опубликовано</dt><dd id="software-available">Проверяем…</dd></div></dl>
+<p id="software-release-status" role="status" aria-live="polite">Проверяем наличие новой версии…</p>
+<p id="software-checked" class="muted">Проверка ещё не выполнена.</p>
+<div class="update-actions"><button type="button" id="software-check">Проверить</button><button type="button" id="software-update" class="primary" disabled>Установить обновление</button></div>
+<a id="software-changelog" target="_blank" rel="noopener noreferrer" hidden>Что изменилось ↗</a>
+<p id="software-update-status" role="status" aria-live="polite"></p>
+<p class="muted update-note">Проверяем при входе и каждые 5 минут, пока кабинет открыт. Установка — по кнопке, с резервной копией; при перезапуске кабинет временно недоступен.</p>
+</section>
 <section class="core-health"><h3>Фирменные эмодзи PushokIcons</h3>
 <p>Загрузите опубликованный набор и выберите иконки для кнопок бота. Изменения применяются без перезапуска.</p>
 <a href="https://t.me/addemoji/PushokIcons" target="_blank" rel="noopener noreferrer">Посмотреть набор в Telegram</a>
 <button type="button" id="icons-import">Загрузить PushokIcons</button><form id="icons-form"><div id="icons-mapping"></div><button type="submit">Сохранить иконки</button></form><p id="icons-status" role="status"></p></section>
-<section class="core-health"><h3>Обновления приложения</h3><p id="software-update-status" role="status">Проверка…</p>
-<button type="button" id="software-update" class="primary">Установить обновление</button>
-<p>Перед установкой создаётся резервная копия. Во время перезапуска кабинет может быть временно недоступен.</p></section>
           <div class="core-health" aria-label="Готовность к запуску MTProxy Pushok">
             <div><span class="eyebrow">ГОТОВНОСТЬ ПЛАТФОРМЫ</span><h3>Что осталось до запуска</h3></div>
             <p class="muted">Инвентаризация базы, не проверка доступности MTProxy и показов Telegram.</p>
@@ -248,7 +256,7 @@
       </div>
     </section>
 
-    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v0.066</span></footer>
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.01</span></footer>
   </main>
 </body>
 </html>
