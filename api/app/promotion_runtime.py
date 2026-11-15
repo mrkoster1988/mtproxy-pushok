@@ -9,6 +9,8 @@ import psycopg
 from psycopg.rows import dict_row
 from .promotion_report import read_report
 
+_UNREAD_REPORT = object()
+
 
 def desired(conn, host, port, resolved_host=None):
     hosts = [host]
@@ -92,12 +94,14 @@ def revision(plan):
     return hashlib.sha256(json.dumps(plan,sort_keys=True).encode()).hexdigest()
 
 
-def confirmation(conn, node, runtime, *, now=None):
+def confirmation(conn, node, runtime, *, now=None, plan=None, report=_UNREAD_REPORT):
     """Свежий ответ относится только к тому же текущему плану, без публикации тега."""
     now = now or datetime.now(timezone.utc)
     checked_at = runtime.get('checked_at')
     fresh = bool(checked_at and 0 <= (now - checked_at).total_seconds() < 120)
-    report = read_report(now)
+    # Диагностика передаёт один снимок плана и отчёта для всех карточек.
+    if report is _UNREAD_REPORT:
+        report = read_report(now)
     recent = bool(node and fresh and report and report['recent']
                   and report.get('node_id') == str(node['id'])
                   and report['checked_at'] >= checked_at)
@@ -105,7 +109,8 @@ def confirmation(conn, node, runtime, *, now=None):
     if (recent and report['code'] == 'tag_applied'
             and report.get('plan_revision') == runtime.get('plan_revision')
             and runtime.get('state') == 'applied' and runtime.get('plan_revision')):
-        plan = node_plan(conn, node)
+        if plan is None:
+            plan = node_plan(conn, node)
         applied = (plan['state'] == 'apply'
                    and plan.get('campaign_id') == str(runtime.get('campaign_id'))
                    and revision(plan) == runtime['plan_revision'])

@@ -13,6 +13,7 @@ import socket
 import sys
 import threading
 import time
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -173,8 +174,13 @@ def main():
                 admin.locator('#sponsor-form button[type=submit]').click()
                 expect(admin.locator('[data-page=sponsors]')).to_contain_text('окончанием aaaa')
                 assert admin.get_by_label('ad_tag из MTProxyBot', exact=True).input_value() == ''
+                # Обновление статусов не стирает введённый, ещё не сохранённый тег.
+                draft_tag = admin.get_by_label('Тег этого канала из @MTProxyBot', exact=True)
+                draft_tag.fill('b' * 32)
                 admin.get_by_role('button', name='Обновить диагностику', exact=True).click()
                 expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=binding_missing]')).to_be_visible()
+                expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Подтверждения от агента пока нет')
+                expect(draft_tag).to_have_value('b' * 32)
 
                 advertiser = new_page("advertiser")
                 expect(advertiser.locator('[data-page=dashboard] .empty-state')).to_contain_text('Здесь появятся кампании')
@@ -327,6 +333,48 @@ def main():
                 # Move the isolated fixture into its active window; no VPS is used.
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '1 minute', scheduled_end_at=now()+interval '1 hour' WHERE id=%s", (campaign_id,))
+                # Настоящий API сверяет имитированный отчёт с планом в тестовой БД.
+                # Проверяем обе карточки и обновление без потери черновика формы.
+                from psycopg.rows import dict_row
+                from app.promotion_runtime import handle
+                with psycopg.connect(PostgresIntegration.dsn, row_factory=dict_row) as connection:
+                    fixture = connection.execute('''SELECT c.channel_id,n.id,n.host,n.port
+                        FROM campaigns c JOIN proxy_nodes n ON n.id=c.proxy_node_id
+                        WHERE c.id=%s''', (campaign_id,)).fetchone()
+                binding = admin.request.put(base + '/api/v1/admin/promotion-bindings',
+                    headers={'Authorization': 'Bearer ' + sessions['admin']},
+                    data=dict(node_id=str(fixture['id']), channel_id=str(fixture['channel_id']),
+                              ad_tag='c'*32, telegram_binding_confirmed=True))
+                assert binding.status == 200, binding.text()
+                with psycopg.connect(PostgresIntegration.dsn, row_factory=dict_row) as connection:
+                    request = dict(host=fixture['host'], port=fixture['port'])
+                    plan = handle(connection, request)
+                    assert plan['state'] == 'apply'
+                    assert handle(connection, dict(request, action='ack', revision=plan['revision']))['accepted']
+                with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'PUSHOK_CONTROL_DIR': directory}):
+                    report = dict(code='tag_applied', checked_at=datetime.now(timezone.utc).isoformat(),
+                                  node_id=plan['node_id'], plan_revision=plan['revision'])
+                    report_path = Path(directory) / 'promotion-agent.json'
+                    report_path.write_text(json.dumps(report))
+                    go(admin, 'sponsors')
+                    node_card = admin.locator('#promotion-diagnostics [data-diagnostic-code=tag_applied]')
+                    expect(node_card).to_contain_text('Тег применён; показ не проверен')
+                    expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Тег применён; показ не проверен')
+                    expect(node_card).not_to_contain_text('Дождитесь')
+                    draft_tag = admin.get_by_label('Тег этого канала из @MTProxyBot', exact=True)
+                    draft_tag.fill('d' * 32)
+                    admin.set_viewport_size({'width': 390, 'height': 844})
+                    admin.screenshot(path=str(output / '31-promotion-confirmed-mobile.png'), full_page=True)
+                    report_path.write_text(json.dumps(dict(report, code='apply_failed')))
+                    admin.get_by_role('button', name='Обновить диагностику', exact=True).click()
+                    expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=ready]')).to_contain_text('Подтверждения применения текущего плана пока нет')
+                    expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Применение текущего плана не подтверждено')
+                    expect(draft_tag).to_have_value('d' * 32)
+                    admin.set_viewport_size({'width': 1440, 'height': 1000})
+                # Вернуть только этот тестовый узел к ручному сценарию ниже.
+                with psycopg.connect(PostgresIntegration.dsn) as connection:
+                    connection.execute('DELETE FROM channel_promotion_bindings WHERE proxy_node_id=%s', (fixture['id'],))
+                    connection.execute('DELETE FROM promotion_runtime WHERE proxy_node_id=%s', (fixture['id'],))
                 refresh(operator)
                 operator.locator('summary').filter(has_text='Показ не обнаружен').click()
                 operator.get_by_label('Что проверили', exact=True).fill('Тест: спонсор не найден в отдельном клиенте')

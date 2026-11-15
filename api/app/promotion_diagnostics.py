@@ -1,11 +1,12 @@
 """Пояснения к плану и ограниченный отчёт агента. Не подтверждают показ рекламы."""
+from datetime import datetime, timezone
 from .promotion_report import read_report
-from .promotion_runtime import node_plan
+from .promotion_runtime import confirmation, node_plan
 
 
 # Только фиксированные тексты: исключения, команды и рекламные теги не публикуются.
 MESSAGES = {
-    'ready': ('Готово к применению', 'Условия кампании выполнены. Дождитесь подтверждения от агента.'),
+    'ready': ('Готово к применению', 'Условия кампании выполнены. Подтверждения применения текущего плана пока нет.'),
     'tag_applied': ('Агент подтвердил применение тега', 'Проверьте фактический показ канала в Telegram.'),
     'idle': ('Автоматического размещения сейчас нет', 'Проверьте подготовку канала и расписание кампании.'),
     'node_not_found': ('Агент не нашёл узел', 'Сверьте адрес и порт узла с адресом в отчёте агента.'),
@@ -48,10 +49,13 @@ def describe(code):
 
 
 def agent_report(now=None):
+    return describe_report(read_report(now))
+
+
+def describe_report(data):
     empty = {'status': 'unknown', 'recent': False, 'checked_at': None,
              'title': 'Нет отчёта агента',
              'next_action': 'Обновите диагностику. Установка и работа агента пока не подтверждены.'}
-    data = read_report(now)
     if not data or data['code'] not in MESSAGES:
         return empty
     recent = data['recent']
@@ -69,13 +73,21 @@ def agent_report(now=None):
 
 
 def diagnostics(conn):
-    nodes = conn.execute('SELECT id,name,host,port,status,archived_at,target_engine FROM proxy_nodes WHERE archived_at IS NULL ORDER BY name,id').fetchall()
+    now = datetime.now(timezone.utc)
+    report = read_report(now)
+    nodes = conn.execute('''SELECT n.id,n.name,n.host,n.port,n.status,n.archived_at,n.target_engine,
+        r.campaign_id,r.state,r.checked_at,r.plan_revision
+        FROM proxy_nodes n LEFT JOIN promotion_runtime r ON r.proxy_node_id=n.id
+        WHERE n.archived_at IS NULL ORDER BY n.name,n.id''').fetchall()
     items = []
     for node in nodes:
         plan = node_plan(conn, node)
+        confirmed = confirmation(conn, node, node, now=now, plan=plan, report=report)
+        code = 'tag_applied' if confirmed['config_applied'] else plan['reason']
         item = {'node_id': str(node['id']), 'name': node['name'], 'host': node['host'],
-                'port': node['port'], **describe(plan['reason'])}
+                'port': node['port'], 'plan_title': describe(plan['reason'])['title'],
+                **describe(code), **confirmed}
         if plan.get('next_start_at'):
             item['next_start_at'] = plan['next_start_at']
         items.append(item)
-    return {'agent': agent_report(), 'nodes': items, 'display_verified': False}
+    return {'agent': describe_report(report), 'nodes': items, 'display_verified': False}
