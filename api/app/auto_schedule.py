@@ -40,7 +40,7 @@ def service_once(dsn, limit=20):
             prepared_ids = {str(p['proxy_node_id']) for p in prepared}
             candidates = []
             for node in nodes:
-                if prepared_ids and str(node["id"]) not in prepared_ids:
+                if str(node["id"]) not in prepared_ids:
                     continue
                 rows = conn.execute("""SELECT scheduled_start_at AS left_at,scheduled_end_at AS right_at
                     FROM campaigns WHERE proxy_node_id=%s AND placement_status IN ('scheduled','active')

@@ -198,3 +198,13 @@ body.cabinet-mode{min-width:0}
 #launch-check-fields{border:0;padding:0;margin:0;min-width:0;display:grid;gap:12px}
 #launch-check-fields input[type=datetime-local],#launch-check-fields textarea,#launch-check-fields select{min-width:0;width:100%;box-sizing:border-box}
 @media(max-width:480px){.readiness-summary{grid-template-columns:1fr}.readiness-summary-item,.readiness-check{padding:14px}}
+
+/* Навигация без бокового меню на всех экранах. */
+.cabinet-mode .cabinet-shell{display:block;padding-bottom:90px}
+.cabinet-mode .cabinet-stage{margin-left:0;width:100%;max-width:1180px;margin-right:auto;margin-left:auto}
+.cabinet-mode .mobile-brand{display:flex}
+.cabinet-mode .mobile-bottom-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));position:fixed;bottom:0;left:0;right:0;z-index:60;background:var(--bg);border-top:1px solid var(--line);padding:6px 12px calc(8px + max(env(safe-area-inset-bottom,0px),var(--mini-safe-bottom,0px)))}
+.cabinet-mode .mobile-bottom-nav a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);text-decoration:none;min-height:56px;font-size:13px}
+.cabinet-mode .mobile-bottom-nav svg{width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7}
+.cabinet-mode .mobile-bottom-nav a[aria-current=page]{color:var(--mint)}
+.cabinet-mode .team-member{padding:14px 0;border-bottom:1px solid var(--line)}

@@ -15,6 +15,9 @@ PUBLIC_EVENTS = frozenset({
     "sbp_payment_verified",
     "sbp_payment_canceled",
     "placement_scheduled",
+    "placement_auto_scheduled",
+    "placement_activated_by_agent",
+    "placement_completed_by_agent",
     "placement_activated_manually",
     "placement_completed_manually",
 })

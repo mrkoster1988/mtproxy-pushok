@@ -1790,6 +1790,11 @@ class PostgresIntegration(unittest.TestCase):
         f=self._management_fixture(ready=True)
         service_once(self.dsn)
         with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()[0],'not_scheduled')
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['admin'],'role':'admin'}
+        self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
+        service_once(self.dsn)
+        with psycopg.connect(self.dsn) as conn:
             first=conn.execute('SELECT placement_status,scheduled_start_at,scheduled_end_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
             self.assertEqual(first[0],'scheduled')
             self.assertGreater(first[2],first[1])
@@ -1801,7 +1806,7 @@ class PostgresIntegration(unittest.TestCase):
     def test_archive_node_requeues_future_slot_without_losing_payment(self):
         from app.auto_schedule import service_once
         f=self._management_fixture(ready=True)
-        self._management_fixture()  # Другой доступный узел для переноса.
+        replacement=self._management_fixture()  # Подготовленный узел для переноса.
         main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['admin'],'role':'admin'}
         self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
         start=datetime.now(timezone.utc)+timedelta(days=8)
@@ -1810,6 +1815,7 @@ class PostgresIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT payment_status,placement_status,proxy_node_id FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone(),('verified','not_scheduled',None))
             self.assertIsNotNone(conn.execute('SELECT archived_at FROM proxy_nodes WHERE id=%s',(f['node'],)).fetchone()[0])
+        self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(replacement['node']),channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
         service_once(self.dsn)
         with psycopg.connect(self.dsn) as conn:
             row=conn.execute('SELECT placement_status,proxy_node_id FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
@@ -1830,6 +1836,48 @@ class PostgresIntegration(unittest.TestCase):
         self.request('POST','/management/archive/campaigns/'+str(f['campaign'])+'/restore')
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()[0],'completed')
+
+    def test_team_management_and_protection(self):
+        f=self._management_fixture(ready=True)
+        main.app.dependency_overrides[main.get_current_user]=lambda: {'id':f['admin'],'role':'admin'}
+        with psycopg.connect(self.dsn) as conn:
+            tid=conn.execute('SELECT telegram_user_id FROM users WHERE id=%s',(f['stranger'],)).fetchone()[0]
+            own=conn.execute('SELECT telegram_user_id FROM users WHERE id=%s',(f['admin'],)).fetchone()[0]
+        self.request('PUT','/admin/team',json=dict(telegram_user_id=tid,role='admin'))
+        self.assertTrue(any(u['telegram_user_id']==tid for u in self.request('GET','/admin/team')))
+        self.request('PUT','/admin/team',json=dict(telegram_user_id=own,role='advertiser'),expected=409)
+        self.request('PUT','/admin/team',json=dict(telegram_user_id=tid,role='operator'))
+        self.request('PUT','/admin/team',json=dict(telegram_user_id=tid,role='advertiser'))
+        self.request('PUT','/admin/team',json=dict(telegram_user_id=999999999999999,role='admin'),expected=404)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertFalse(conn.execute('SELECT 1 FROM bot_operator_subscriptions WHERE operator_user_id=%s',(f['stranger'],)).fetchone())
+        main.app.dependency_overrides[main.get_current_user]=lambda: {'id':f['stranger'],'role':'advertiser'}
+        self.request('GET','/admin/team',expected=403)
+        self.request('PUT','/admin/team',json=dict(telegram_user_id=tid,role='admin'),expected=403)
+        # Даже устаревшая dependency не разрешает отозванному администратору менять роли.
+        main.app.dependency_overrides[main.get_current_user]=lambda: {'id':f['stranger'],'role':'admin'}
+        self.request('PUT','/admin/team',json=dict(telegram_user_id=tid,role='admin'),expected=403)
+
+    def test_agent_completes_expired_placement_only_after_successful_ack(self):
+        from app.promotion_runtime import handle
+        from psycopg.rows import dict_row
+        f=self._management_fixture(ready=True)
+        main.app.dependency_overrides[main.get_current_user]=lambda: {'id':f['admin'],'role':'admin'}
+        self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
+        request=dict(host='management-'+f['node'].hex+'.example.org',port=8443)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()-interval '1 hour',scheduled_end_at=now()+interval '1 minute' WHERE id=%s",(f['node'],f['campaign']))
+            plan=handle(conn,request)
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+            conn.execute("UPDATE campaigns SET scheduled_end_at=now()-interval '1 second' WHERE id=%s",(f['campaign'],))
+            self.assertFalse(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+            self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()['placement_status'],'active')
+            idle=handle(conn,request);self.assertEqual(idle['state'],'idle')
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=idle['revision']))['accepted'])
+            self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()['placement_status'],'completed')
+            again=handle(conn,request)
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=again['revision']))['accepted'])
+            self.assertEqual(conn.execute("SELECT count(*) AS n FROM audit_events WHERE campaign_id=%s AND event_type='placement_completed_by_agent'",(f['campaign'],)).fetchone()['n'],1)
 
     def test_promotion_preparation_apply_ack_cancel_and_ownership(self):
         from app.promotion_runtime import handle

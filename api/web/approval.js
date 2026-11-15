@@ -70,7 +70,7 @@ window.pushokApproval=(()=>{
   stages.forEach((title,i)=>{const li=el('li',(i<index?'✓ ':String(i+1)+'. ')+title);if(i===index)li.setAttribute('aria-current','step');if(i<index)li.className='done';progress.append(li);});box.append(progress);
   const status=el('p',(labels[c.moderation_status]||c.moderation_status)+' · '+(c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status])+' · '+(labels[c.placement_status]||c.placement_status),'approval-status');box.append(status);
   for(const comment of [c.moderator_comment,c.payment_review_comment])if(comment)box.append(el('p',comment));
-  const content=el('section',undefined,'approval-current'),feedback=el('p',undefined,'approval-feedback');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');box.append(content,feedback);
+  let content=el('section',undefined,'approval-current');const feedback=el('p',undefined,'approval-feedback');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');box.append(content,feedback);
   const session=token,user=me.id;let busy=false;
   function validSession(){if(session!==token||me?.id!==user)throw Error('Сессия изменилась. Обновите страницу.');}
   async function perform(fn,message){
@@ -111,7 +111,8 @@ window.pushokApproval=(()=>{
   }else if(c.payment_status!=='verified'){
    content.append(el('h3','2. Ожидаем оплату'),el('p',c.payment_status==='refunded'?'Оплата возвращена. Размещение недоступно.':'Рекламодатель оплачивает свою заявку. Stars и СБП подтверждаются сервером; загруженный чек появится здесь для проверки.'),button('Проверить статус оплаты',refresh));
   }else if(c.placement_status==='not_scheduled'){
-   content.append(el('p','Свободный слот назначается автоматически в течение минуты после одобрения и оплаты. Если узлов нет — заявка ждёт их появления.'),button('🗓️ Подобрать автоматически',()=>perform(()=>post('auto-schedule'),'Автоподбор включён. Обновите карточку через минуту.')));
+   content.append(el('p','После одобрения и оплаты система подберёт свободный период на узле с подготовленным тегом этого канала. Если привязки нет, заявка ожидает подготовки в разделе «Узлы и спонсоры».'),button('🗓️ Подобрать автоматически',()=>perform(()=>post('auto-schedule'),'Автоподбор включён. Обновите карточку через минуту.')));
+   content=details('Ручное назначение периода',content);
    const block=form('3. Назначьте размещение','Назначить слот',async guard=>{if(new Date(start.value).getTime()<=Date.now())throw Error('Начало уже прошло. Выберите будущее время или нажмите «Через 2 минуты».');const free=await api('/operator/campaigns/'+c.id+'/available-nodes?'+new URLSearchParams({start_at:new Date(start.value).toISOString()}));guard();if(!free.nodes.some(n=>n.id===select.value))throw Error('Узел занят на выбранный период или недоступен. Проверьте свободные узлы и выберите другое время.');await post('schedule',{proxy_node_id:select.value,start_at:new Date(start.value).toISOString()});});
    const select=el('select');select.required=true;option(select,'','Выберите узел');const active=nodes.filter(n=>n.status==='active');active.forEach(n=>option(select,n.id,n.name));if(active.length===1)select.value=active[0].id;field(block.f,'Прокси-узел',select);
    const start=el('input');start.type='datetime-local';start.required=true;const requested=new Date(c.requested_start_at),d=requested.getTime()>Date.now()?requested:new Date(Date.now()+5*60000);start.value=localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');field(block.f,'Начало размещения',start);
@@ -122,6 +123,8 @@ window.pushokApproval=(()=>{
    block.finish();
   }else if(c.placement_status==='scheduled'){
    void renderPromotionStatus(c,content);
+   content.append(el('h3','Автоматический запуск'),el('p','В назначенное время агент применит подготовленный тег и переведёт кампанию в активную. Ошибки и повторы обрабатываются автоматически.'));
+   content=details('Дополнительная ручная проверка',content);
    content.append(el('p','Назначено: '+date(c.scheduled_start_at)+' — '+date(c.scheduled_end_at)));
    let savedReport=null;
    const block=form('4. Подтвердите фактический показ','Подтвердить показ и активировать',async guard=>{
@@ -137,6 +140,8 @@ window.pushokApproval=(()=>{
    f.addEventListener('submit',e=>{e.preventDefault();if(f.reportValidity())void perform(()=>post('display-observations',{result:'not_visible',method:'separate_unsubscribed_client',observed_at:new Date().toISOString(),note:comment.value.trim()}),'Отрицательное наблюдение сохранено. Размещение не активировано.');});
   }else if(c.placement_status==='active'){
    void renderPromotionStatus(c,content);
+   content.append(el('h3','Размещение активно'),el('p','После окончания периода агент снимет или сменит тег и автоматически завершит кампанию.'));
+   content=details('Ручное завершение и диагностика',content);
    const block=form('5. Завершите размещение','Подтвердить завершение',()=>post('complete',{tag_removed_confirmed:true,verification_method:'separate_unsubscribed_client'}));
    block.f.append(el('p','Период: '+date(c.scheduled_start_at)+' — '+date(c.scheduled_end_at)));
    block.f.append(el('p','При настроенном автоприменении агент вернёт исходный тег после окончания периода. При ручном размещении снимите тег самостоятельно. Затем проверьте в подключённом Telegram без подписки, что канал этой кампании больше не отмечен как спонсор. Второй аккаунт не нужен.'));

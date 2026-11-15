@@ -33,7 +33,7 @@
   payments:'Не переводите деньги повторно до выяснения результата. Загрузка чека не подтверждает поступление денег.',
   calendar:'Выбор даты не бронирует слот. Временная бронь на 15 минут доступна в одобренной заявке до проверки оплаты.',
   reports:'История отражает события системы и ручные наблюдения. Счётчик показов Telegram недоступен.',
-  moderation:'Проверяйте канал и оплату раздельно. Активация требует положительного наблюдения оператора.',
+  moderation:'Проверяйте канал и оплату раздельно. Агент активирует кампанию после применения тега; завершение после снятия/смены тега — автоматическое.',
   sponsors:'Запись узла и план движка не устанавливают MTProxy. Управление тегом и проверка показа выполняются отдельно.',
   settings:'Изменения цены действуют для новых заказов. RUB и XTR задаются отдельно.',
   help:'Инструкции можно открыть снова в любое время. Не отправляйте токены и полные платёжные реквизиты.',
@@ -74,30 +74,8 @@
  function filtered(){return state.campaigns.filter(c=>
   (!state.filter||[c.moderation_status,c.payment_status,c.placement_status].includes(state.filter))&&
   [c.channel_title,c.channel_url,c.id,channels.find(x=>x.id===c.channel_id)?.title].some(v=>String(v||'').toLocaleLowerCase('ru').includes(state.search.toLocaleLowerCase('ru'))));}
- const shell=el('div',undefined,'cabinet-shell'),sidebar=el('aside',undefined,'cabinet-sidebar');sidebar.id='cabinet-sidebar';
- const brand=link('✳ puShok · MTProxy','dashboard');brand.className='cabinet-brand';sidebar.append(brand);
- window.pushokViews.brand(brand);
- const nav=el('nav');nav.setAttribute('aria-label','Разделы страниц кабинета');
- const menu=[['create','campaign','Разместить рекламу'],['dashboard','home','Главная'],['channels','channel','Мои каналы'],['campaigns','campaign','Кампании'],['payments','wallet','Оплата'],['calendar','calendar','Календарь'],['reports','chart','Отчёты'],['moderation','moderation','Модерация'],['sponsors','server','Узлы'],['settings','settings','Настройки'],['help','support','Подсказки и инструкции'],['archive','campaign','Удалённые'],['bot','channel','Telegram-бот'],['profile','user','Профиль']];
- menu.forEach(([name,icon,title])=>{
-   const a=link(title,name);a.dataset.route=name;a.classList.add('pushok-nav-link');
-   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
-   svg.classList.add('pushok-nav-icon');svg.setAttribute('aria-hidden','true');svg.setAttribute('focusable','false');svg.setAttribute('viewBox','0 0 24 24');
-   const use=document.createElementNS('http://www.w3.org/2000/svg','use');
-   use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);nav.append(a);
- });sidebar.append(nav);
- const management=el('div',undefined,'nav-admin');management.append(el('p','Администрирование','nav-heading'));
- nav.querySelectorAll('a').forEach(a=>{if(['moderation','sponsors','settings'].includes(a.dataset.route))management.append(a);});
- management.id='management-menu';nav.append(management);
+ const shell=el('div',undefined,'cabinet-shell');
  const stage=el('div',undefined,'cabinet-stage'),bar=el('div',undefined,'cabinet-topbar');
- const mobileMenu=window.matchMedia?.('(max-width:760px)');
- function menuState(open){sidebar.classList.toggle('is-open',open);sidebar.inert=Boolean(mobileMenu?.matches&&!open);toggle.setAttribute('aria-expanded',String(open));}
- const toggle=button('☰ Меню',async()=>menuState(!sidebar.classList.contains('is-open')));
- toggle.className='menu-toggle';toggle.setAttribute('aria-controls','cabinet-sidebar');toggle.setAttribute('aria-expanded','false');
- const closeMenu=button('×',async()=>{menuState(false);toggle.focus();});closeMenu.className='menu-toggle menu-close';closeMenu.setAttribute('aria-label','Закрыть меню');sidebar.prepend(closeMenu);
- mobileMenu?.addEventListener('change',()=>menuState(false));
- window.addEventListener('keydown',event=>{if(event.key==='Escape'&&sidebar.classList.contains('is-open')){menuState(false);toggle.focus();}});
- menuState(false);
  const searchForm=el('form'),search=el('input');search.type='search';search.placeholder='Поиск кампаний по каналу или номеру';search.setAttribute('aria-label','Поиск кампаний');
  searchForm.append(search);searchForm.addEventListener('submit',e=>{e.preventDefault();state.search=search.value.trim();go('campaigns');renderList();});
  const account=el('span',undefined,'cabinet-account');account.id='cabinet-account';
@@ -106,7 +84,7 @@
  const backButton=button('Назад',async()=>back());backButton.className='screen-back';backButton.setAttribute('aria-label','Назад');backButton.replaceChildren(window.pushokViews.icon('back'));
  const mobileBrand=link('puShok','dashboard');mobileBrand.className='mobile-brand';
  window.pushokViews.brand(mobileBrand);
- const refreshButton=$('refresh');refreshButton.setAttribute('aria-label','Обновить');refreshButton.textContent='↻';bar.append(backButton,mobileBrand,toggle,account,refreshButton,topHelp);sidebar.append($('logout'));bar.append(searchForm);stage.append(bar);shell.append(sidebar,stage);workspace.prepend(shell);
+ const refreshButton=$('refresh');refreshButton.setAttribute('aria-label','Обновить');refreshButton.textContent='↻';bar.append(backButton,mobileBrand,account,refreshButton,topHelp);const legacyLogout=el('div');legacyLogout.hidden=true;legacyLogout.append($('logout'));bar.append(searchForm,legacyLogout);stage.append(bar);shell.append(stage);workspace.prepend(shell);
  Object.entries(routes).forEach(([name,[title,subtitle]])=>{
   const page=name==='settings'?$('settings'):el('section');page.dataset.page=name;page.hidden=true;page.classList.add('cabinet-page');
   const heading=el('header',undefined,'page-heading'),titles=el('div');const h=el('h1',title);h.tabIndex=-1;titles.append(h,el('p',subtitle));heading.append(titles);
@@ -205,7 +183,7 @@
  const sponsorSave=el('button','Сохранить регистрацию');sponsorSave.type='submit';
  const sponsorResult=el('p',undefined,'muted');sponsorResult.setAttribute('role','status');
  sponsorForm.append(field('Узел',sponsorNode),field('Движок',sponsorEngine),field('ad_tag из @MTProxyBot · 32 шестнадцатеричных символа',sponsorTag),sponsorSave);
- sponsorPanel.append(el('p','Регистрация сохраняется в базе. Тег не применяется к прокси; Set promotion и проверка показа выполняются вручную.','muted'),sponsorForm,sponsorResult);content.sponsors.append(sponsorPanel);
+ sponsorPanel.append(el('p','Первичная регистрация связывает прокси с Telegram. Для автоматического размещения сохраните привязку канала и его тега ниже; затем агент управляет запуском и завершением по расписанию.','muted'),sponsorForm,sponsorResult);content.sponsors.append(sponsorPanel);
  sponsorForm.addEventListener('submit',e=>{e.preventDefault();run(async()=>{
   const data=await api('/admin/proxy-nodes/'+sponsorNode.value+'/sponsor-registration',{method:'PUT',body:{engine:sponsorEngine.value,ad_tag:sponsorTag.value}});
   sponsorTag.value='';sponsorResult.textContent='Сохранён тег с окончанием '+data.tag_ending+'. Изменения на прокси не применялись.';
@@ -242,7 +220,7 @@
   ['Дата и бронь','Календарь справочный. В одобренной заявке можно получить бронь на 15 минут, если API найдёт свободный узел.'],
   ['Как оплатить?',miniAppMode?'Откройте карточку оплаты заявки и выберите Stars. Успешность проверяется сервером.':'Откройте заявку. Реквизиты доступны после настройки владельцем. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
   [miniAppMode?'Telegram Stars':'Stars и СБП',miniAppMode?'Счёт Stars можно открыть в карточке оплаты, если приём включён владельцем.':'Stars оформляются в Telegram-боте. СБП доступна только во внешнем кабинете после настройки владельцем. Возврат из банка не подтверждает оплату: результат сверяется сервером.'],
-  ['Что значит «Активно»?','Оператор отметил запуск после ручного включения тега и отдельной проверки показа. Это не автоматический счётчик показов.'],
+  ['Что значит «Активно»?','Агент подтвердил применение тега и работу прокси. После окончания агент снимает или сменяет тег и завершает кампанию. Это не счётчик показов Telegram.'],
   ['Не удаётся выполнить действие','Обновите данные, проверьте комментарий и текущий статус. При завершении сессии войдите снова. Не повторяйте оплату вслепую.']
  ];
  faqs.forEach(([q,a])=>{const d=hint(a);d.querySelector('summary').textContent=q;content.help.append(d);});
@@ -266,7 +244,7 @@
   metrics('channels',[]);
   metrics('campaigns',[['Всего',state.campaigns.length,'Ваши заявки'],['Ожидают оплаты',state.campaigns.filter(c=>c.payment_status==='awaiting_payment').length,'После модерации'],['Завершены',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным системы']]);
   renderQuote();metrics('calendar',[['Часовой пояс',calendarZone,'Время в календаре'],['Период',14,'Дней в запросе доступности']]);
-  metrics('reports',[['Кампаний',state.campaigns.length,'В вашем аккаунте'],['В эфире',state.campaigns.filter(c=>c.placement_status==='active').length,'По ручной отметке оператора'],['Завершено',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным API']]);
+  metrics('reports',[['Кампаний',state.campaigns.length,'В вашем аккаунте'],['В эфире',state.campaigns.filter(c=>c.placement_status==='active').length,'По данным запуска'],['Завершено',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным API']]);
   channelRows.classList.add('channel-manager');
   window.pushokViews.channelCards(channelRows,channels);
   window.pushokViews.campaigns(summaryRows,state.campaigns.slice(0,3));renderList();
@@ -403,9 +381,8 @@
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
-  nav.querySelectorAll('a').forEach(a=>{const active=a.dataset.route===name||name==='campaign'&&a.dataset.route==='campaigns';a.classList.toggle('selected',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   bottomNav.querySelectorAll('a').forEach(a=>{const section=['campaign','create'].includes(name)?'campaigns':['dashboard','campaigns','payments'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
-  menuState(false);backButton.hidden=name==='dashboard';
+  backButton.hidden=name==='dashboard';
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
   searchForm.hidden=name!=='campaigns';
   updatePanel.hidden=me.role!=='admin';
@@ -420,8 +397,7 @@
  window.cabinet={go,back,sync(own){state.campaigns=own;state.loaded=true;document.body.dataset.cabinetLoaded='true';render();},enter(){
   const url=new URL(location.href),returned=url.searchParams.get('sbp_campaign');
   if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
-  state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);
-  nav.querySelectorAll('a').forEach(a=>a.hidden=!permitted(a.dataset.route));if($('management-menu'))$('management-menu').hidden=!['admin','operator'].includes(me.role);activate();
+  state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);activate();
  },logout(){launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   [$('order-result'),detail,dashboardPayments,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';

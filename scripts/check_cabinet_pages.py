@@ -123,31 +123,14 @@ def main():
                     assert 'image/svg+xml' in response.headers.get('content-type', '')
                     symbols = {node.get('id') for node in ET.fromstring(response.body()).iter()
                                if node.tag.endswith('symbol')}
-                    menu = {'create': ('campaign', 'Разместить рекламу'), 'dashboard': ('home', 'Главная'), 'channels': ('channel', 'Мои каналы'),
-                            'campaigns': ('campaign', 'Кампании'), 'payments': ('wallet', 'Оплата'),
-                            'calendar': ('calendar', 'Календарь'), 'reports': ('chart', 'Отчёты'),
-                            'moderation': ('moderation', 'Модерация'), 'sponsors': ('server', 'Узлы'),
-                            'settings': ('settings', 'Настройки'), 'help': ('support', 'Подсказки и инструкции'), 'archive': ('campaign','Удалённые'),
-                            'bot': ('channel', 'Telegram-бот'), 'profile': ('user', 'Профиль')}
-                    expect(page.locator('#cabinet-sidebar nav a')).to_have_count(len(menu))
-                    for route, (icon, title) in menu.items():
-                        assert 'pi-' + icon in symbols
-                        link = page.locator('#cabinet-sidebar nav a[data-route="' + route + '"]')
-                        expect(link).to_have_attribute('href', '#/' + route)
-                        expect(link).to_have_text(title)
-                        expect(link.locator('svg')).to_have_attribute('aria-hidden', 'true')
-                        expect(link.locator('svg')).to_have_attribute('focusable', 'false')
-                        expect(link.locator('use')).to_have_attribute('href', '/assets/pushok-icons.svg#pi-' + icon)
-                        if link.is_visible():
-                            expect(link).to_have_accessible_name(title)
-                    page.wait_for_function("""() => {
-                        const icons = [...document.querySelectorAll('#cabinet-sidebar nav svg')]
-                          .filter(svg => svg.getBoundingClientRect().width > 0);
-                        return icons.length > 0 && icons.every(svg => {
-                          const box = svg.getBBox();
-                          return box.width > 0 && box.height > 0;
-                        });
-                    }""")
+                    expect(page.locator('#cabinet-sidebar')).to_have_count(0)
+                    expect(page.locator('.menu-toggle')).to_have_count(0)
+                    for route, icon in [('dashboard','home'),('campaigns','campaign'),('payments','wallet'),('profile','user')]:
+                        link = page.locator('.mobile-bottom-nav a[data-route="'+route+'"]')
+                        expect(link).to_be_visible()
+                        expect(link).to_have_attribute('href','#/'+route)
+                        assert 'pi-'+icon in symbols
+                        expect(link.locator('use')).to_have_attribute('href','/assets/pushok-icons.svg#pi-'+icon)
 
                 def refresh(page):
                     with page.expect_response(lambda r: r.url.endswith('/campaigns') and r.request.method == 'GET'):
@@ -309,6 +292,7 @@ def main():
                     title_link.click()
                     expect(reviewer.locator('[data-page=moderation]')).to_be_visible()
                     expect(reviewer.locator('#queue .approval-card')).to_have_attribute('data-campaign-id', campaign_id)
+                    reviewer.locator('summary').filter(has_text='Ручное назначение периода').click()
                     expect(reviewer.get_by_role('button', name='Назначить слот', exact=True)).to_be_visible()
                     reviewer.set_viewport_size({'width': 1440, 'height': 1000})
                 # Пустой выбор объясняется рядом с формой, а не выглядит как молчание.
@@ -332,6 +316,7 @@ def main():
                 operator.get_by_role('button', name='Снять будущий слот', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Слот не назначен')
                 expect(operator.locator('#queue')).to_contain_text('Оплачено')
+                operator.locator('summary').filter(has_text='Ручное назначение периода').click()
                 operator.get_by_label('Начало размещения', exact=True).fill(tomorrow + 'T12:00')
                 operator.get_by_role('button', name='Назначить слот', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Запланировано')
@@ -386,10 +371,12 @@ def main():
                     connection.execute('DELETE FROM promotion_runtime WHERE proxy_node_id=%s', (fixture['id'],))
                     connection.execute("UPDATE campaigns SET placement_status='scheduled' WHERE id=%s", (campaign_id,))
                 refresh(operator)
+                operator.locator('summary').filter(has_text='Дополнительная ручная проверка').click()
                 operator.locator('summary').filter(has_text='Показ не обнаружен').click()
                 operator.get_by_label('Что проверили', exact=True).fill('Тест: в подключённом Telegram без подписки спонсор не найден')
                 operator.get_by_role('button', name='Записать: показ не обнаружен', exact=True).click()
                 expect(operator.locator('#notice')).to_contain_text('Отрицательное наблюдение')
+                operator.locator('summary').filter(has_text='Дополнительная ручная проверка').click()
                 operator.get_by_label('Что увидели при проверке', exact=True).fill('Тест: в своём подключённом Telegram без подписки видна отметка спонсора')
                 # Без явного подтверждения показа форма не отправляется.
                 operator.get_by_role('button', name='Подтвердить показ и активировать', exact=True).click()
@@ -404,6 +391,7 @@ def main():
                 operator.get_by_role('button', name='Журнал проверок', exact=True).click()
                 expect(operator.locator('.observation-panel')).to_contain_text('Показ виден')
                 operator.screenshot(path=str(output / '29-approval-onepage-active.png'), full_page=True)
+                operator.locator('summary').filter(has_text='Ручное завершение и диагностика').click()
                 confirmation = operator.get_by_label('Тег кампании снят; в подключённом Telegram без подписки канал больше не показан как спонсор', exact=True)
                 bounds = confirmation.bounding_box()
                 assert 18 <= bounds['width'] <= 24 and 18 <= bounds['height'] <= 24, bounds
@@ -419,6 +407,20 @@ def main():
                 assert downloaded.value.suggested_filename.endswith('.csv')
 
                 go(admin, 'settings')
+                admin.locator('#settings-system-tab').click()
+                expect(admin.locator('#team-fields')).to_be_enabled()
+                with psycopg.connect(PostgresIntegration.dsn) as connection:
+                    connection.execute("INSERT INTO users(telegram_user_id,first_name) VALUES(991199001,'Тест команды')")
+                admin.locator('#team-id').fill('991199001')
+                admin.locator('#team-role').select_option('admin')
+                admin.once('dialog',lambda dialog:dialog.accept())
+                admin.locator('#team-form button[type=submit]').click()
+                expect(admin.locator('#team-status')).to_contain_text('Роль сохранена')
+                expect(admin.locator('#team-list')).to_contain_text('Тест команды')
+                admin.locator('#team-role').select_option('advertiser')
+                admin.once('dialog',lambda dialog:dialog.accept())
+                admin.locator('#team-form button[type=submit]').click()
+                expect(admin.locator('#team-list')).not_to_contain_text('Тест команды')
                 admin.locator('#settings-tariffs-tab').click()
                 expect(admin.locator('#tariff-admin-name')).to_have_value('1 день')
                 admin.locator('#tariff-admin-rub').fill('450.55')
@@ -542,19 +544,10 @@ def main():
                         go(admin, route)
                         assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), (width, route)
                     if width in (320, 390):
-                        go(admin, 'dashboard')
-                        expect(admin.locator('#cabinet-sidebar')).to_have_attribute('inert', '')
-                        admin.locator('.cabinet-topbar .menu-toggle').click()
-                        expect(admin.locator('#cabinet-sidebar')).to_have_class('cabinet-sidebar is-open')
+                        go(admin, 'profile')
                         check_navigation_icons(admin)
-                        assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth + 2')
-                        admin.screenshot(path=str(output / f'20-mobile-menu-{width}.png'), full_page=True)
-                        admin.locator('#cabinet-sidebar nav a[data-route="channels"]').click()
+                        admin.locator('.profile-menu a[href="#/channels"]').click()
                         expect(admin.locator('[data-page="channels"]')).to_be_visible()
-                        expect(admin.locator('#cabinet-sidebar')).to_have_attribute('inert', '')
-                        admin.locator('.cabinet-topbar .menu-toggle').click()
-                        admin.keyboard.press('Escape')
-                        expect(admin.locator('#cabinet-sidebar')).to_have_attribute('inert', '')
                         admin.screenshot(path=str(output / '14-mobile.png'), full_page=True)
                 # Настоящая серверная авторизация; подменяется только оболочка SDK Telegram.
                 from test_miniapp_auth import signed_data
@@ -592,9 +585,6 @@ def main():
                     expect(mini.locator('[data-page=dashboard]')).to_be_visible()
                     go(mini,'channels')
                     assert mini.evaluate('window.__miniBackVisible')
-                    mini.locator('.cabinet-topbar .menu-toggle').click()
-                    mini.evaluate('window.__miniBack()')
-                    expect(mini.locator('#cabinet-sidebar')).to_have_attribute('inert','')
                     mini.evaluate('window.__miniBack()')
                     expect(mini).to_have_url(base+'/miniapp#/profile')
                     mini.reload()
@@ -698,7 +688,6 @@ def main():
                             if width==390:
                                 mini.screenshot(path=str(output/('miniapp-'+screen+'.png')),full_page=True)
                     go(mini,'dashboard');mini.screenshot(path=str(output/'17-miniapp-light.png'),full_page=True)
-                    mini.locator('.cabinet-topbar .menu-toggle').click()
                     check_navigation_icons(mini)
                     mini.screenshot(path=str(output/'21-miniapp-menu-light.png'),full_page=True)
                     mini.keyboard.press('Escape')
@@ -706,7 +695,6 @@ def main():
                     expect(mini.locator('body')).to_have_attribute('data-miniapp-theme','dark')
                     assert mini.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--mini-safe-top").trim()')=='30px'
                     mini.screenshot(path=str(output/'18-miniapp-dark.png'),full_page=True)
-                    mini.locator('.cabinet-topbar .menu-toggle').click()
                     check_navigation_icons(mini)
                     mini.screenshot(path=str(output/'22-miniapp-menu-dark.png'),full_page=True)
                     mini.keyboard.press('Escape')
@@ -727,17 +715,12 @@ def main():
                             expect(mini.locator('.cabinet-topbar')).to_be_visible()
                             rect=mini.locator('.cabinet-topbar').bounding_box()
                             assert abs(rect['y']-80)<=1,('Fullscreen header overlaps Telegram',width,scroll,rect)
-                            assert mini.evaluate("""() => ['.cabinet-topbar .menu-toggle','#refresh','.screen-back'].every(selector=>{
+                            assert mini.evaluate("""() => ['#refresh','.screen-back'].every(selector=>{
                                 const button=document.querySelector(selector),r=button.getBoundingClientRect();
                                 return r.top>=80&&button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));
                             })""")
                         mini.evaluate('window.scrollTo(0,0)')
                         mini.screenshot(path=str(output/('41-miniapp-safe-header-'+str(width)+'.png')))
-                        mini.locator('.cabinet-topbar .menu-toggle').click()
-                        expect(mini.locator('.cabinet-sidebar')).to_have_class('cabinet-sidebar is-open')
-                        assert mini.locator('.menu-close').bounding_box()['y']>=80
-                        mini.locator('.menu-close').click()
-                        expect(mini.locator('.cabinet-sidebar')).not_to_have_class('cabinet-sidebar is-open')
                     mini.evaluate("window.Telegram.WebApp.contentSafeAreaInset.top=64;window.__miniEvents.contentSafeAreaChanged()")
                     assert abs(mini.locator('.cabinet-topbar').bounding_box()['y']-88)<=1
                     mini.evaluate("window.Telegram.WebApp.safeAreaInset.top=32;window.__miniEvents.safeAreaChanged()")
@@ -766,8 +749,8 @@ def main():
                     expect(outside.locator('#workspace')).to_be_hidden()
                     other=mini_page(signed_data(user=json.dumps({'id':99116000,'first_name':'Mini App тест'}),query_id='mini-client-logout'))
                     expect(other.locator('body')).to_have_class('miniapp-mode cabinet-mode')
-                    other.locator('.cabinet-topbar .menu-toggle').click()
-                    other.locator('#logout').click()
+                    go(other,'profile')
+                    other.get_by_role('button',name='Выйти из аккаунта',exact=True).click()
                     expect(other.locator('#miniapp-login')).to_contain_text('Вы вышли')
                     other.reload()
                     expect(other.locator('#miniapp-login')).to_contain_text('Вы вышли')
@@ -1156,10 +1139,8 @@ def main():
                         rect=cell.bounding_box()
                         assert rect['x']>=0 and rect['x']+rect['width']<=width+1,rect
                 advertiser.screenshot(path=str(output/'33-compact-payments-mobile.png'),full_page=True)
-                advertiser.locator('.cabinet-topbar .menu-toggle').click()
-                expect(advertiser.locator('.cabinet-sidebar .nav-more')).to_have_count(0)
+                expect(advertiser.locator('.cabinet-sidebar')).to_have_count(0)
                 advertiser.screenshot(path=str(output/'34-flat-menu-mobile.png'),full_page=True)
-                advertiser.get_by_role('button',name='Закрыть меню',exact=True).click()
                 advertiser.evaluate("notice('Проверка закрытия')")
                 advertiser.locator('#notice').get_by_role('button',name='Закрыть уведомление').click()
                 expect(advertiser.locator('#notice')).to_be_hidden()

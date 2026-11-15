@@ -29,7 +29,6 @@ window.pushokMiniApp=(()=>{
  }
  function back(){
   const help=document.querySelector('.top-help[open]');if(help){help.open=false;return;}
-  if(document.querySelector('.cabinet-sidebar.is-open')){document.querySelector('.menu-toggle')?.click();return;}
   window.cabinet?.back();
  }
  function inset(value){const n=Number(value);return Number.isFinite(n)?Math.max(0,Math.min(160,n)):0;}

@@ -148,6 +148,19 @@ def handle(conn, request):
                     VALUES(%s,'placement_activated_by_agent',
                            '{"source":"promotion_agent","display_verified":false}'::jsonb)""",
                     (activated['id'],))
+        # Успешный idle ACK означает восстановление исходного тега; apply ACK —
+        # переход к следующей кампании. Ошибка apply/restore не отправляет ACK.
+        if plan.get('node_id'):
+            completed = conn.execute("""UPDATE campaigns c SET placement_status='completed',updated_at=now()
+                WHERE c.proxy_node_id=%s AND c.placement_status='active'
+                  AND c.scheduled_end_at<=now()
+                  AND EXISTS(SELECT 1 FROM audit_events a WHERE a.campaign_id=c.id
+                             AND a.event_type='placement_activated_by_agent')
+                RETURNING c.id""", (plan['node_id'],)).fetchall()
+            for campaign in completed:
+                conn.execute("""INSERT INTO audit_events(campaign_id,event_type,details_json)
+                    VALUES(%s,'placement_completed_by_agent',
+                    '{"source":"promotion_agent","display_verified":false}'::jsonb)""", (campaign['id'],))
         return {'accepted':True}
     return dict(plan,revision=revision(plan))
 

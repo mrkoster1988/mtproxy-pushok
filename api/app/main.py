@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.08",
+    version="1.09",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2622,7 +2622,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=106-loading-cat" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=109-navigation" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
@@ -2949,3 +2949,6 @@ def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_curren
         result=promotion_confirmation(conn, node, row)
         result['config_applied'] = bool(result['config_applied'] and row['campaign_id']==campaign_id)
         return {'prepared':row['prepared'], **result}
+
+from .team import router_for as team_router
+app.include_router(team_router(lambda: DATABASE_URL, require_admin))

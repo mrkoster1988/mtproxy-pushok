@@ -8,13 +8,14 @@
   <meta name="description" content="MTProxy Pushok — кабинет спонсорской рекламы в Telegram. Создание заявки, модерация, оплата и управление размещениями.">
   <title>puShok · MTProxy — кабинет спонсора</title>
   <link rel="stylesheet" href="/assets/styles.css?v=106-loading-cat">
-  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=106-safe-header">
-  <script src="/assets/app.js?v=105-archive" defer></script>
+  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=109-navigation">
+  <script src="/assets/app.js?v=109-automation" defer></script>
   <script src="/assets/order.js?v=060" defer></script>
   <script src="/assets/management.js?v=105-archive" defer></script>
-  <script src="/assets/approval.js?v=105-archive" defer></script>
-  <script src="/assets/mobile-views.js?v=105-archive" defer></script>
-  <script src="/assets/pages.js?v=104-readiness" defer></script>
+  <script src="/assets/approval.js?v=109-automation" defer></script>
+  <script src="/assets/mobile-views.js?v=109-automation" defer></script>
+  <script src="/assets/team.js?v=109" defer></script>
+  <script src="/assets/pages.js?v=109-automation" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -228,6 +229,10 @@
           </section>
         </div>
         <div id="settings-system" class="settings-panel" hidden>
+<section class="core-health" aria-labelledby="team-heading"><h3 id="team-heading">Администраторы и операторы</h3>
+<p>Укажите точный Telegram ID пользователя. Перед назначением он должен один раз войти в кабинет. Администратор имеет полный доступ к настройкам, оператор — к модерации и размещениям.</p>
+<form id="team-form"><fieldset id="team-fields" disabled><label>Telegram ID<input id="team-id" inputmode="numeric" pattern="[1-9][0-9]{0,15}" required></label><label>Роль<select id="team-role"><option value="admin">Администратор</option><option value="operator">Оператор</option><option value="advertiser">Рекламодатель · снять права</option></select></label><button type="submit">Сохранить роль</button></fieldset></form>
+<p id="team-status" role="status"></p><div id="team-list"></div></section>
 <section class="core-health" aria-labelledby="loading-title-heading">
 <h3 id="loading-title-heading">Экран загрузки Mini App</h3>
 <form id="loading-title-form"><fieldset id="loading-title-fields" disabled>
@@ -282,7 +287,7 @@
       </div>
     </section>
 
-    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.08</span></footer>
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.09</span></footer>
   </main>
 </body>
 </html>
