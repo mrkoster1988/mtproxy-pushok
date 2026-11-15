@@ -55,7 +55,7 @@ def create_invoice_link(token, prepared):
 
 def _owner(conn, cid, uid, *, lock=False):
     row = conn.execute("""SELECT c.id,c.payment_status,c.moderation_status,c.placement_status,
-                          u.telegram_user_id,t.stars_price_xtr,t.is_active
+                          u.telegram_user_id,CASE WHEN c.pricing_version=1 THEN c.stars_price_snapshot ELSE t.stars_price_xtr END AS stars_price_xtr,t.is_active
                           FROM campaigns c JOIN users u ON u.id=c.advertiser_user_id
                           JOIN tariffs t ON t.id=c.tariff_id
                           WHERE c.id=%s AND c.advertiser_user_id=%s""" + (' FOR UPDATE OF c' if lock else ''), (cid, uid)).fetchone()

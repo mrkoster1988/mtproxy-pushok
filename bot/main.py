@@ -491,7 +491,7 @@ def process_stars_update(update, token, internal_api=None, send=None):
 
 
 def response_for(update, campaign_loader=None, wizard=None, submitter=None,
-                 operator_inbox=None, delivery_inbox=None, tariff_loader=None):
+                 operator_inbox=None, delivery_inbox=None, tariff_loader=None, referral_handler=None):
     """Вернуть (sendMessage_payload, callback_query_id) либо None."""
     # Старые кнопки и /advertise тоже открывают ту же единую форму.
     launch = miniapp_url()
@@ -501,6 +501,16 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
     actor = (callback or message).get('from') or {}
     command = str(message.get('text') or '').split(maxsplit=1)
     command = command[0].lower() if command else ''
+    invite = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+ref_([A-Za-z0-9_-]{3,48})', str(message.get('text') or ''), re.IGNORECASE)
+    if invite and referral_handler and chat.get('type') == 'private' and type(actor.get('id')) is int and actor['id'] == chat.get('id'):
+        try:
+            referral_handler(actor['id'], invite[1])
+            text = 'Приглашение сохранено. Откройте кабинет и создайте размещение. Условия бонусов — в профиле → «Бонусы и приглашения».'
+        except HTTPError as exc:
+            if exc.code not in (400,403,404,409,422):
+                raise
+            text = 'Приглашение не применено: программа может быть выключена, приглашение уже выбрано или первая заявка уже создана. Кабинет доступен по кнопке ниже.'
+        return ({'chat_id':chat['id'], 'text':text, 'reply_markup':keyboard()}, None)
     advertise = callback.get('data') == 'advertise' or command in ('/advertise', '/advertise@' + configured_bot_username().lower())
     if launch and advertise and chat.get('type') == 'private' and type(actor.get('id')) is int and actor.get('id') == chat.get('id'):
         if wizard is not None:
@@ -634,7 +644,8 @@ def run():
                                         tariff_loader=fetch_current_tariff,
                                         submitter=submit_campaign_draft,
                                         operator_inbox=operator_inbox,
-                                        delivery_inbox=delivery_inbox)
+                                        delivery_inbox=delivery_inbox,
+                                        referral_handler=lambda uid,code: _internal_api('referral', {'telegram_user_id':uid,'code':code}))
                 if response is not None:
                     payload, callback_id = response
                     if callback_id:

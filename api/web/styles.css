@@ -623,3 +623,6 @@ body.miniapp-loading #workspace{visibility:hidden}
 @keyframes pushok-cat-tail{0%,100%{transform:rotate(0)}50%{transform:rotate(-6deg)}}
 #miniapp-login.load-failed .pushok-loading-cat,#miniapp-login.load-failed .pushok-cat-tail{animation:none}
 @media(prefers-reduced-motion:reduce){#miniapp-login .pushok-loading-cat,#miniapp-login .pushok-cat-tail{animation:none}}
+
+/* Коды можно выделить и скопировать на узком экране. */
+.growth-code {overflow-wrap:anywhere;font-family:monospace;user-select:all;}

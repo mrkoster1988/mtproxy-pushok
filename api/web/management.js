@@ -39,8 +39,8 @@ window.pushokManagement=(()=>{
   const box=el('details',undefined,'management-actions');box.append(el('summary','Изменить или удалить заявку'));
   if(!operator&&c.moderation_status==='pending')box.append(button('Отозвать для изменения',async()=>{await api('/campaigns/'+c.id+'/recall',{method:'POST'});await refresh();notice('Заявка отозвана. Измените её и отправьте на проверку повторно.',true);}));
   if(!operator&&['draft','changes_requested'].includes(c.moderation_status))box.append(button('Изменить тариф и дату',()=>{
-   const f=editor(box,'Тариф и желаемая дата',[{name:'start',label:'Желаемое начало',value:local(c.requested_start_at),type:'datetime-local',required:false}],v=>api('/campaigns/'+c.id,{method:'PATCH',body:{tariff_id:select.value,requested_start_at:v.start.value?new Date(v.start.value).toISOString():null}}));
-   const select=el('select');select.required=true;tariffs.forEach(t=>option(select,t.id,tariffLabel(t)));select.value=c.tariff_id;label(f,'Новый тариф заявки',select);f.prepend(select.closest('label'));
+   const f=editor(box,'Тариф и желаемая дата',[{name:'start',label:'Желаемое начало',value:local(c.requested_start_at),type:'datetime-local',required:false}],v=>api('/campaigns/'+c.id,{method:'PATCH',body:{...(c.growth_offer_name?{}:{tariff_id:select.value}),requested_start_at:v.start.value?new Date(v.start.value).toISOString():null}}));
+   const select=el('select');select.required=true;tariffs.forEach(t=>option(select,t.id,tariffLabel(t)));select.value=c.tariff_id;if(c.growth_offer_name){select.disabled=true;if(!select.value){option(select,c.tariff_id,c.tariff_name_snapshot);select.value=c.tariff_id;}f.append(el('p','Тариф и скидка этой заявки зафиксированы. Можно исправить желаемую дату.','muted'));}label(f,'Новый тариф заявки',select);f.prepend(select.closest('label'));
   }));
   if(operator&&c.placement_status==='scheduled'){
    box.append(button('Изменить слот',()=>{

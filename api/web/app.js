@@ -311,6 +311,7 @@ function card(c,op,{compact=false}={}){
  const meta=el('div',undefined,'meta');
  [labels[c.moderation_status],(c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status]),c.tariff_name_snapshot+' · '+money(c.price_kopecks_snapshot),'Желаемое начало: '+date(c.requested_start_at),'Назначено: '+date(c.scheduled_start_at)].forEach(t=>meta.append(el('span',t)));box.append(meta);
  }
+ if(c.growth_offer_name)box.append(el('p','Бонус: '+c.growth_offer_name+' · '+c.discount_percent_snapshot+'%. Цена до скидки: '+money(c.base_price_kopecks_snapshot)+'.','muted'));
  if(c.moderator_comment)box.append(el('p','Модерация: '+c.moderator_comment));
  if(c.payment_review_comment)box.append(el('p','Проверка оплаты: '+c.payment_review_comment));
  const actions=el('div',undefined,'actions');box.append(actions);
