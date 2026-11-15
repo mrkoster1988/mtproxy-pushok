@@ -14,11 +14,21 @@ window.pushokApproval=(()=>{
  function note(form,title){const input=el('textarea');input.required=true;input.minLength=12;input.maxLength=2000;input.rows=3;return field(form,title,input);}
  function details(title,parent){const d=el('details');d.append(el('summary',title));parent.append(d);return d;}
  function route(id){selected=id;if(window.cabinet)window.cabinet.go('moderation/'+id);else render();}
- function filtered(){const [key,value]=$('queue-filter').value.split('=');return campaigns.filter(c=>!key||String(c[key])===value);}
+ function filtered(){const [key,value]=$('queue-filter').value.split('=');return campaigns.filter(c=>!c.archived_at&&(!key||String(c[key])===value));}
+ const archiveReasons={placement:'Активный показ ещё не завершён.',proof:'Загруженный чек ожидает проверки.',payment:'Счёт ещё не закрыт платёжной системой.'};
+ function archivedQueue(){
+  const rows=campaigns.filter(c=>c.archived_at);if(!rows.length)return;
+  const panel=details('Удалённые: требуют завершения ('+rows.length+')',root);panel.className='archived-review';
+  panel.append(el('p','Эти заявки уже удалены из рабочего списка. Здесь остаются только незавершённые платежи и показы.'));
+  for(const c of rows){const row=el('article',undefined,'approval-summary');row.append(el('h3',c.channel_title||'Канал'));
+   for(const reason of c.archive_pending_actions||[])if(archiveReasons[reason])row.append(el('p',archiveReasons[reason]));
+   row.append(button('Открыть для завершения',()=>route(c.id)));panel.append(row);
+  }
+ }
  function render(){
   if(!me||!['admin','operator'].includes(me.role))return;
   const parts=location.hash.replace(/^#\/?/,'').split('/');
-  if(parts[0]==='moderation')selected=parts[1]||selected;
+  if(parts[0]==='moderation')selected=parts[1]||'';
   const list=filtered();
   if(!selected&&list.length===1)selected=list[0].id;
   const c=campaigns.find(item=>item.id===selected);
@@ -28,13 +38,20 @@ window.pushokApproval=(()=>{
    if(selected)root.append(el('p','Заявка не найдена или недоступна. Обновите список.','empty'));
    if(!list.length)root.append(el('p','Заявок в этой очереди нет.','empty'));
    for(const item of list){const row=el('article',undefined,'approval-summary');row.append(el('h3',item.channel_title||'Канал'),el('p',(labels[item.moderation_status]||item.moderation_status)+' · '+(item.price_kopecks_snapshot===0?'Бесплатно':labels[item.payment_status])+' · '+(labels[item.placement_status]||item.placement_status)),button('Разобрать заявку',()=>route(item.id)));root.append(row);}
-   return;
+   archivedQueue();return;
   }
   const box=el('article',undefined,'approval-card');box.dataset.campaignId=c.id;root.append(box);
   const choose=el('select');choose.setAttribute('aria-label','Выбрать рекламную заявку');
-  option(choose,'','Все заявки');for(const item of campaigns)option(choose,item.id,(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;choose.hidden=campaigns.length===1;
+  const choices=campaigns.filter(item=>!item.archived_at||item.id===c.id);
+  option(choose,'','Все заявки');for(const item of choices)option(choose,item.id,(item.archived_at?'Удалена · ':'')+(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;choose.hidden=choices.length===1;
   choose.addEventListener('change',()=>{selected=choose.value;window.cabinet.go(selected?'moderation/'+selected:'moderation');});box.append(choose);
   box.append(el('h2',c.channel_title||'Рекламная заявка'));
+  if(c.archived_at){
+   const banner=el('section',undefined,'card approval-archive-notice');banner.setAttribute('role','status');
+   banner.append(el('h3','Заявка уже удалена'),el('p','Удалено: '+date(c.archived_at)+'. В рабочей очереди её нет.'));
+   for(const reason of c.archive_pending_actions||[])if(archiveReasons[reason])banner.append(el('p',archiveReasons[reason]));
+   banner.append(button('К рабочим заявкам',()=>route('')),button('Открыть «Удалённые»',()=>window.cabinet.go('archive')));box.append(banner);
+  }
   if(c.channel_url){try{const url=new URL(c.channel_url);if(url.protocol==='https:'&&['t.me','telegram.me'].includes(url.hostname)){const a=el('a','Открыть канал в Telegram');a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';box.append(a);}}catch{}}
   box.append(el('p',c.tariff_name_snapshot+' · '+(c.price_kopecks_snapshot===0?'Бесплатно':money(c.price_kopecks_snapshot)),'approval-price'));
   const index=stage(c),progress=el('ol',undefined,'approval-progress');progress.setAttribute('aria-label','Этапы рекламной заявки');
@@ -59,7 +76,9 @@ window.pushokApproval=(()=>{
    content.append(f);return {f,submit,finish(){f.append(submit);}};
   }
   if(['cancelled','completed'].includes(c.placement_status))content.append(el('h3',c.placement_status==='completed'?'Размещение завершено':'Размещение отменено'));
-  else if(c.moderation_status==='pending'){
+  else if(c.archived_at&&c.placement_status!=='active'&&c.payment_status!=='proof_submitted'){
+   content.append(el('h3','Проверка платежа удалённой заявки'),el('p','История оплаты сохранена. Архивирование не отменяет выставленный счёт у платёжной системы. Когда счёт будет закрыт, заявка исчезнет из этого раздела и останется в «Удалённых».'),button('Проверить статус оплаты',refresh));
+  }else if(c.moderation_status==='pending'){
    content.append(el('h3','1. Проверьте канал'),el('p','Откройте канал выше, проверьте содержание и выберите решение.'));
    content.append(button('Одобрить канал',()=>perform(()=>post('moderation',{decision:'approved'}),'Канал одобрен. Статус оплаты — в этой карточке.')));
    const extra=details('Исправления или отказ',content),f=el('form'),decision=el('select');
@@ -112,7 +131,7 @@ window.pushokApproval=(()=>{
    block.f.append(el('p','Если исходный тег ведёт на тот же канал, канал может остаться спонсором. Возврат настроек сам по себе не подтверждает прекращение показа. Кнопка закрывает кампанию после вашей проверки.','muted'));
    check(block.f,'Тег кампании снят; в подключённом Telegram без подписки канал больше не показан как спонсор');block.finish();
   }
-  if(window.pushokManagement)box.append(window.pushokManagement.campaignActions(c,true));
+  if(!c.archived_at&&window.pushokManagement)box.append(window.pushokManagement.campaignActions(c,true));
   const history=details('История и документы',box);
   history.append(el('p','Номер заявки: '+c.id),el('p','Желаемое начало: '+date(c.requested_start_at)),button('Отчёт по кампании',()=>showCampaignReport(c,history)));
   if(['scheduled','active','completed'].includes(c.placement_status))history.append(button('Журнал проверок',async()=>{
@@ -124,6 +143,7 @@ window.pushokApproval=(()=>{
     else if(report.observer_user_id===me.id){const input=el('input');input.type='file';input.accept='image/png,image/jpeg';field(panel,'Добавить скриншот к отчёту '+report.id,input);panel.append(button('Прикрепить скриншот №'+report.id,async()=>{if(!input.files[0])throw Error('Выберите PNG или JPEG.');const body=new FormData();body.append('file',input.files[0]);await api('/operator/campaigns/'+c.id+'/display-observations/'+report.id+'/evidence',{method:'POST',body});notice('Скриншот сохранён.',true);}));}
    }
   }));
+  if(!c.archived_at)archivedQueue();
  }
  async function download(path,name){const session=token;const response=await fetch('/api/v1'+path,{headers:{Authorization:'Bearer '+token}});if(!response.ok)throw Error('Не удалось скачать файл. Обновите состояние.');const blob=await response.blob();if(session!==token||!me)return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
  return {resetSelection(){selected='';},sync(items){if(currentUser!==me?.id){selected='';currentUser=me?.id;}campaigns=items;render();},render,clear(){campaigns=[];selected='';currentUser='';root.replaceChildren();$('queue-filter').hidden=false;$('queue-count').hidden=false;}};

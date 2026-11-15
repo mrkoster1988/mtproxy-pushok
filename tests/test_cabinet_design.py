@@ -97,7 +97,7 @@ class CabinetDesignTests(unittest.TestCase):
 
     def test_js_queue_and_statuses_use_safe_dom(self):
         self.assertIn("'badge badge--'+c.placement_status", self.js)
-        self.assertIn("$('queue-count').textContent=queue.length+' заявок'", self.js)
+        self.assertIn("$('queue-count').textContent=working.length+' заявок'", self.js)
         self.assertIn("textContent", self.js)
         self.assertNotIn("innerHTML", self.js)
         self.assertIn("fetch('/api/v1'+path", self.js)

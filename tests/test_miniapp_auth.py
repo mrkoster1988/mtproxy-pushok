@@ -35,9 +35,9 @@ class MiniAppAuthTests(unittest.TestCase):
             self.assertLess(page.text.index('/assets/miniapp.js'), page.text.index('/assets/app.js'))
             self.assertNotIn('/assets/miniapp.js', client.get('/').text)
             with patch.dict(os.environ, {'PUSHOK_MINIAPP_ENABLED': '0'}):
-                self.assertEqual(client.get('/api/v1/miniapp/config').json(), {'enabled': False})
+                self.assertEqual(client.get('/api/v1/miniapp/config').json(), {'enabled': False, 'loading_title': main.DEFAULT_LOADING_TITLE})
             with patch.dict(os.environ, {'PUSHOK_MINIAPP_ENABLED': '1'}):
-                self.assertEqual(client.get('/api/v1/miniapp/config').json(), {'enabled': True})
+                self.assertEqual(client.get('/api/v1/miniapp/config').json(), {'enabled': True, 'loading_title': main.DEFAULT_LOADING_TITLE})
 
     def test_correct_signature_and_reordered_replay_identity(self):
         raw = signed_data()
@@ -62,3 +62,4 @@ class MiniAppAuthTests(unittest.TestCase):
             with patch.dict(os.environ, {'PUSHOK_MINIAPP_ENABLED': '1'}), patch.object(main, 'TELEGRAM_BOT_TOKEN', 'other-token'):
                 self.assertEqual(client.post('/api/v1/auth/telegram/miniapp', json={'init_data': signed_data()}).status_code, 401)
             db.assert_not_called()
+

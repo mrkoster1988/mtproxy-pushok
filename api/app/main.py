@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.04",
+    version="1.05",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -228,6 +228,8 @@ class CampaignResponse(BaseModel):
     payment_review_comment: str | None = None
     channel_title: str | None = None
     channel_url: str | None = None
+    archived_at: datetime | None = None
+    archive_pending_actions: list[str] = Field(default_factory=list)
 
 
 class PaymentReviewRequest(BaseModel):
@@ -402,6 +404,12 @@ def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str,
 def _campaign_response(row: dict[str, Any]) -> CampaignResponse:
     if row.get("currency_snapshot") is not None:
         row["currency_snapshot"] = row["currency_snapshot"].strip()
+    if row.get("archived_at"):
+        row["archive_pending_actions"] = [reason for reason, pending in (
+            ("placement", row.get("placement_status") == "active"),
+            ("proof", row.get("payment_status") == "proof_submitted"),
+            ("payment", row.get("has_pending_payment", False)),
+        ) if pending]
     return CampaignResponse(**row)
 
 
@@ -1193,7 +1201,7 @@ def schedule_placement(
                 """
                 SELECT id, duration_seconds_snapshot, moderation_status,
                        payment_status, placement_status, requested_start_at
-                FROM campaigns WHERE id = %s FOR UPDATE
+                FROM campaigns WHERE id = %s AND archived_at IS NULL FOR UPDATE
                 """,
                 (campaign_id,),
             ).fetchone()
@@ -1674,6 +1682,7 @@ def complete_placement(
 
 @app.get("/api/v1/operator/campaigns", response_model=list[CampaignResponse], tags=["operator"])
 def list_operator_campaigns(
+    archived: bool = False,
     moderation_status: str | None = None,
     payment_status: str | None = None,
     operator: dict[str, Any] = Depends(require_operator),
@@ -1684,7 +1693,11 @@ def list_operator_campaigns(
         raise HTTPException(status_code=422, detail="invalid_moderation_status")
     if payment_status is not None and payment_status not in valid_payment:
         raise HTTPException(status_code=422, detail="invalid_payment_status")
-    filters = ["(c.archived_at IS NULL OR c.placement_status='active' OR c.payment_status='proof_submitted' OR EXISTS(SELECT 1 FROM payment_attempts pa WHERE pa.campaign_id=c.id AND pa.status IN ('created','pending')))"]
+    # Удалённые заявки не возвращаются в рабочую очередь из-за старого счёта.
+    # Незавершённые платежи и показы доступны оператору отдельным запросом.
+    filters = ["c.archived_at IS NOT NULL" if archived else "c.archived_at IS NULL"]
+    if archived:
+        filters.append("(c.placement_status='active' OR c.payment_status='proof_submitted' OR EXISTS(SELECT 1 FROM payment_attempts pa WHERE pa.campaign_id=c.id AND pa.status IN ('created','pending')))")
     params: list[str] = []
     if moderation_status is not None:
         filters.append("c.moderation_status = %s")
@@ -1698,6 +1711,9 @@ def list_operator_campaigns(
             rows = connection.execute(
                 f"""
                 SELECT sc.title AS channel_title, sc.telegram_url AS channel_url,
+                       c.archived_at,
+                       EXISTS(SELECT 1 FROM payment_attempts pa WHERE pa.campaign_id=c.id
+                              AND pa.status IN ('created','pending')) AS has_pending_payment,
                        c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
                        c.duration_seconds_snapshot, c.price_kopecks_snapshot,
                        c.currency_snapshot, c.moderation_status, c.payment_status,

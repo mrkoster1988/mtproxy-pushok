@@ -1748,6 +1748,39 @@ class PostgresIntegration(unittest.TestCase):
         self.request('DELETE','/campaigns/'+str(f['campaign']))
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT status FROM payment_attempts WHERE campaign_id=%s',(f['campaign'],)).fetchone()[0],'created')
+        actor={'id':f['admin'],'role':'admin'}
+        for status in ('created','pending'):
+            with self.subTest(status=status):
+                with psycopg.connect(self.dsn) as conn:
+                    conn.execute('UPDATE payment_attempts SET status=%s WHERE campaign_id=%s',(status,f['campaign']))
+                self.assertFalse(any(c['id']==str(f['campaign']) for c in self.request('GET','/operator/campaigns')))
+                archived=next(c for c in self.request('GET','/operator/campaigns?archived=true') if c['id']==str(f['campaign']))
+                self.assertIsNotNone(archived['archived_at'])
+                self.assertEqual(archived['archive_pending_actions'],['payment'])
+                self.assertEqual(archived['placement_status'],'not_scheduled')
+                self.assertEqual(archived['payment_status'],'awaiting_payment')
+        self.assertTrue(any(c['id']==str(f['campaign']) for c in self.request('GET','/management/archive')['items']))
+        self.request('DELETE','/campaigns/'+str(f['campaign']))
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM audit_events WHERE campaign_id=%s AND event_type='campaign_archived'",(f['campaign'],)).fetchone()[0],1)
+            conn.execute("UPDATE payment_attempts SET status='failed' WHERE campaign_id=%s",(f['campaign'],))
+        self.assertFalse(any(c['id']==str(f['campaign']) for c in self.request('GET','/operator/campaigns?archived=true')))
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET payment_status='verified' WHERE id=%s",(f['campaign'],))
+        self.request('POST','/operator/campaigns/'+str(f['campaign'])+'/schedule',404,json={'proxy_node_id':str(f['node']),'start_at':(datetime.now(timezone.utc)+timedelta(days=4)).isoformat()})
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET payment_status='proof_submitted' WHERE id=%s",(f['campaign'],))
+        archived=next(c for c in self.request('GET','/operator/campaigns?archived=true') if c['id']==str(f['campaign']))
+        self.assertEqual(archived['archive_pending_actions'],['proof'])
+        actor={'id':f['stranger'],'role':'advertiser'}
+        self.request('GET','/operator/campaigns?archived=true',403)
+        self.assertFalse(any(c['id']==str(f['campaign']) for c in self.request('GET','/management/archive')['items']))
+        actor={'id':f['admin'],'role':'admin'}
+        self.request('POST','/management/archive/campaigns/'+str(f['campaign'])+'/restore')
+        restored=next(c for c in self.request('GET','/operator/campaigns') if c['id']==str(f['campaign']))
+        self.assertIsNone(restored['archived_at'])
+        self.assertEqual(restored['archive_pending_actions'],[])
+        self.assertFalse(any(c['id']==str(f['campaign']) for c in self.request('GET','/operator/campaigns?archived=true')))
 
     def test_auto_schedule_is_idempotent_and_respects_full_period(self):
         from app.auto_schedule import service_once
@@ -1786,7 +1819,9 @@ class PostgresIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='active',scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s",(f['node'],f['campaign']))
         self.request('DELETE','/campaigns/'+str(f['campaign']))
-        self.assertTrue(any(c['id']==str(f['campaign']) for c in self.request('GET','/operator/campaigns')))
+        self.assertFalse(any(c['id']==str(f['campaign']) for c in self.request('GET','/operator/campaigns')))
+        archived=next(c for c in self.request('GET','/operator/campaigns?archived=true') if c['id']==str(f['campaign']))
+        self.assertEqual(archived['archive_pending_actions'],['placement'])
         with psycopg.connect(self.dsn) as conn:
             conn.execute("UPDATE campaigns SET placement_status='completed' WHERE id=%s",(f['campaign'],))
         self.request('POST','/management/archive/campaigns/'+str(f['campaign'])+'/restore')
