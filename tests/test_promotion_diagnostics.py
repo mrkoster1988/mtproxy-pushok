@@ -16,6 +16,7 @@ os.environ.setdefault('DATABASE_URL', 'postgresql://unused')
 os.environ.setdefault('SESSION_SIGNING_KEY', 'a'*64)
 from fastapi.testclient import TestClient
 from app import main, promotion_diagnostics as diag
+from app.promotion_runtime import revision
 import promotion_agent as agent
 
 
@@ -77,6 +78,60 @@ class PromotionDiagnosticsTests(unittest.TestCase):
         self.assertEqual(result['agent']['status'], 'unknown')
         self.assertFalse(result['display_verified'])
         self.assertNotIn('SECRET', json.dumps(result))
+
+    def test_node_confirmation_uses_current_plan_and_one_report_snapshot(self):
+        node_id, campaign_id = uuid4(), uuid4()
+        plan = dict(reason='ready', state='apply', node_id=str(node_id),
+                    campaign_id=str(campaign_id), tag='a'*32, expires_at=self.now.timestamp()+3600)
+        node = dict(id=node_id, name='Node', host='proxy.example.org', port=8443,
+                    state='applied', campaign_id=campaign_id, checked_at=self.now,
+                    plan_revision=revision(plan))
+        conn = MagicMock()
+        conn.execute.return_value.fetchall.return_value = [node]
+        self.report(node_id=str(node_id), plan_revision=revision(plan))
+        with patch.object(diag, 'node_plan', return_value=plan) as read_plan, \
+                patch.object(diag, 'read_report', wraps=diag.read_report) as read_report:
+            result = diag.diagnostics(conn)
+        read_report.assert_called_once()
+        read_plan.assert_called_once_with(conn, node)
+        item = result['nodes'][0]
+        self.assertEqual(item['code'], 'tag_applied')
+        self.assertTrue(item['config_applied'])
+        self.assertFalse(item['display_verified'])
+        self.assertEqual(item['plan_title'], 'Готово к применению')
+        self.assertNotIn('Дождитесь', item['next_action'])
+        for secret in (plan['tag'], revision(plan)):
+            self.assertNotIn(secret, json.dumps(result, default=str))
+
+        for changes in [dict(code='apply_failed'), dict(node_id=str(uuid4())),
+                        dict(plan_revision='f'*64),
+                        dict(checked_at=(self.now-timedelta(seconds=121)).isoformat())]:
+            with self.subTest(changes=changes):
+                self.path.write_text(json.dumps(dict(code='tag_applied',
+                    checked_at=self.now.isoformat(), node_id=str(node_id),
+                    plan_revision=revision(plan)) | changes))
+                with patch.object(diag, 'node_plan', return_value=plan):
+                    item = diag.diagnostics(conn)['nodes'][0]
+                self.assertEqual(item['code'], 'ready')
+                self.assertFalse(item['config_applied'])
+
+        # Тот же успешный отчёт не подтверждает изменённый план.
+        self.report(node_id=str(node_id), plan_revision=revision(plan))
+        with patch.object(diag, 'node_plan', return_value=dict(plan, tag='b'*32)):
+            self.assertFalse(diag.diagnostics(conn)['nodes'][0]['config_applied'])
+
+    def test_missing_snapshot_is_not_reread_as_a_new_success(self):
+        node = dict(id=uuid4(), name='Node', host='proxy.example.org', port=8443,
+                    checked_at=self.now)
+        conn = MagicMock()
+        conn.execute.return_value.fetchall.return_value = [node]
+        with patch.object(diag, 'read_report', return_value=None), \
+                patch('app.promotion_runtime.read_report') as reread, \
+                patch.object(diag, 'node_plan', return_value=dict(reason='ready', state='apply')):
+            result = diag.diagnostics(conn)
+        reread.assert_not_called()
+        self.assertFalse(result['nodes'][0]['config_applied'])
+        self.assertEqual(result['agent']['status'], 'unknown')
 
     def test_endpoint_rejects_non_admin_before_database_or_report_read(self):
         with TestClient(main.app) as client, patch.object(main, 'promotion_diagnostics') as read, patch.object(main.psycopg, 'connect') as db:

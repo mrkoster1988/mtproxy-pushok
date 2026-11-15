@@ -168,6 +168,7 @@
  async function renderDiagnostics(){
   diagnosticsPanel.hidden=me?.role!=='admin';if(me?.role!=='admin')return;
   const rev=++diagnosticsRevision,session=token;diagnosticsBody.replaceChildren(el('p','Проверяем состояние…'));
+  automationRuntime.replaceChildren(el('p','Проверяем применение тега…','muted'));
   try{
    const data=await api('/admin/promotion-diagnostics');
    if(rev!==diagnosticsRevision||token!==session||me?.role!=='admin')return;
@@ -180,13 +181,18 @@
    const plans=el('div',undefined,'cards');
    for(const item of data.nodes){
     const card=el('div',undefined,'card');card.dataset.diagnosticCode=item.code;
-    card.append(el('h3',item.name),el('p',item.host+':'+item.port,'muted'),el('p','По данным кабинета: '+item.title),el('p',item.next_action));
+    card.append(el('h3',item.name),el('p',item.host+':'+item.port,'muted'),el('p','Состояние: '+item.title),el('p',item.next_action));
+    if(item.config_applied){card.append(el('p','По расписанию: '+item.plan_title,'muted'),el('p','Тег применён; показ не проверен.','muted'));}
+    if(item.checked_at)card.append(el('p','Ответ по узлу: '+date(item.checked_at),'muted'));
     if(item.next_start_at)card.append(el('p','Начало: '+date(item.next_start_at),'muted'));
     plans.append(card);
    }
    diagnosticsBody.append(plans);
+   automationRuntime.replaceChildren();
+   for(const item of data.nodes.filter(n=>n.checked_at)){automationRuntime.append(el('p',item.name+': '+(!item.agent_recent?'Нет свежего подтверждения агента':item.config_applied?'Тег применён; показ не проверен':'Применение текущего плана не подтверждено')+' · '+date(item.checked_at)));}
+   if(!automationRuntime.childElementCount)automationRuntime.append(el('p','Подтверждения от агента пока нет. Служба устанавливается обновлением на VPS с классическим MTProxy.','muted'));
    if(!data.nodes.length)diagnosticsBody.append(el('p','В реестре нет узлов. Добавьте узел или восстановите его из архива.'));
-  }catch(e){if(rev===diagnosticsRevision&&token===session&&me?.role==='admin')diagnosticsBody.replaceChildren(el('p','Диагностика недоступна: '+e.message));}
+  }catch(e){if(rev===diagnosticsRevision&&token===session&&me?.role==='admin'){diagnosticsBody.replaceChildren(el('p','Диагностика недоступна: '+e.message));automationRuntime.replaceChildren(el('p','Состояние применения недоступно. Обновите диагностику.','muted'));}}
  }
  const sponsorForm=el('form'),sponsorPanel=section('Регистрация спонсорского тега');sponsorForm.id='sponsor-form';
  const sponsorNode=el('select');sponsorNode.required=true;sponsorNode.setAttribute('aria-label','Узел спонсорского тега');
@@ -201,8 +207,9 @@
   const data=await api('/admin/proxy-nodes/'+sponsorNode.value+'/sponsor-registration',{method:'PUT',body:{engine:sponsorEngine.value,ad_tag:sponsorTag.value}});
   sponsorTag.value='';sponsorResult.textContent='Сохранён тег с окончанием '+data.tag_ending+'. Изменения на прокси не применялись.';
  },sponsorSave);});
- const automationPanel=section('Автоприменение по расписанию'),automationBody=el('div');
- automationPanel.append(el('p','Один раз подготовьте тег для канала через @MTProxyBot → Set promotion. Агент на VPS применит его в назначенное время и вернёт исходный после окончания. Применение тега не подтверждает фактический показ.','muted'),automationBody);
+ const automationPanel=section('Автоприменение по расписанию'),automationBody=el('div'),automationRuntime=el('div');
+ automationPanel.id='promotion-automation';automationRuntime.id='promotion-automation-runtime';automationRuntime.setAttribute('aria-live','polite');
+ automationPanel.append(el('p','Один раз подготовьте тег для канала через @MTProxyBot → Set promotion. Агент на VPS применит его в назначенное время и вернёт исходный после окончания. Применение тега не подтверждает фактический показ.','muted'),automationBody,automationRuntime);
  content.sponsors.append(automationPanel);
  let automationRevision=0;
  async function renderAutomation(){
@@ -220,8 +227,6 @@
    automationBody.replaceChildren(form);
    if(!nodes.length)automationBody.prepend(el('p','Нет узлов. Добавьте узел выше или восстановите его в разделе «Удалённые».'));
    for(const b of data.bindings){const row=el('div',undefined,'card');row.append(el('p',b.name+' → '+b.title+' · тег …'+b.tag_ending),button('Отключить',async()=>{await api('/admin/promotion-bindings/'+b.proxy_node_id+'/'+b.channel_id,{method:'DELETE'});await renderAutomation();notice('Связь отключена. При следующей проверке агент вернёт исходный тег.',true);}));automationBody.append(row);}
-   for(const item of data.runtime){automationBody.append(el('p',item.name+': '+(!item.agent_recent?'Нет свежего подтверждения агента':item.config_applied?'Тег применён; показ не проверен':'Применение текущего плана не подтверждено')+' · '+date(item.checked_at)));}
-   if(!data.runtime.length)automationBody.append(el('p','Подтверждения от агента пока нет. Служба устанавливается обновлением на VPS с классическим MTProxy.','muted'));
   }catch(e){if(rev===automationRevision&&token===session)automationBody.replaceChildren(el('p',e.message));}
  }
 

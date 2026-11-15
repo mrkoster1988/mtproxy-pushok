@@ -1785,7 +1785,7 @@ class PostgresIntegration(unittest.TestCase):
         self.write_promotion_report(plan)
         self.assertTrue(self.request('GET',path)['config_applied'])
 
-    def test_latest_agent_report_overrides_old_success_in_both_endpoints(self):
+    def test_latest_agent_report_overrides_old_success_in_all_status_endpoints(self):
         from app.promotion_runtime import handle
         from psycopg.rows import dict_row
         f = self._management_fixture(ready=True)
@@ -1806,6 +1806,10 @@ class PostgresIntegration(unittest.TestCase):
             row = next(r for r in bindings['runtime'] if r['proxy_node_id'] == str(f['node']))
             self.assertEqual(row['config_applied'], expected)
             diagnostics = self.request('GET', '/admin/promotion-diagnostics')
+            diagnostic = next(n for n in diagnostics['nodes'] if n['node_id'] == str(f['node']))
+            self.assertEqual(diagnostic['config_applied'], expected)
+            self.assertEqual(diagnostic['code'], 'tag_applied' if expected else 'ready')
+            self.assertFalse(diagnostic['display_verified'])
             for result in (response, bindings, diagnostics):
                 self.assertNotIn(tag, json.dumps(result))
                 self.assertNotIn(plan['revision'], json.dumps(result))
@@ -1822,6 +1826,11 @@ class PostgresIntegration(unittest.TestCase):
         check(False)
         self.write_promotion_report(plan)
         check(True)
+
+        # Старый успешный ответ не подтверждает новый тег той же кампании.
+        self.request('PUT', '/admin/promotion-bindings', json=dict(node_id=str(f['node']),
+                     channel_id=str(f['channel']), ad_tag=uuid4().hex, telegram_binding_confirmed=True))
+        check(False)
 
     def test_promotion_legacy_ip_lookup_and_ambiguous_identity(self):
         from app.promotion_runtime import handle
