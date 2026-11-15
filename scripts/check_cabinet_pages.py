@@ -121,7 +121,7 @@ def main():
                             'calendar': ('calendar', 'Календарь'), 'reports': ('chart', 'Отчёты'),
                             'moderation': ('moderation', 'Модерация'), 'sponsors': ('server', 'Узлы'),
                             'settings': ('settings', 'Настройки'), 'help': ('support', 'Подсказки и инструкции'), 'archive': ('campaign','Удалённые'),
-                            'bot': ('channel', 'Telegram-бот')}
+                            'bot': ('channel', 'Telegram-бот'), 'profile': ('user', 'Профиль')}
                     expect(page.locator('#cabinet-sidebar nav a')).to_have_count(len(menu))
                     for route, (icon, title) in menu.items():
                         assert 'pi-' + icon in symbols
@@ -189,7 +189,7 @@ def main():
                 expect(advertiser.locator('#notice')).to_contain_text('https://t.me/channel')
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://t.me/pushok_browser_test')
                 advertiser.locator('#channel-form button').click()
-                expect(advertiser.locator('[data-page=channels] table')).to_contain_text('Тестовый канал')
+                expect(advertiser.locator('[data-page=channels] .channel-manager')).to_contain_text('Тестовый канал')
                 advertiser.locator('#channel-form [name=title]').fill('Дубликат')
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://t.me/pushok_browser_test')
                 advertiser.locator('#channel-form button').click()
@@ -209,7 +209,7 @@ def main():
                 expect(advertiser.locator('#order-result')).to_be_visible()
                 campaign_id = advertiser.evaluate("location.hash.split('/')[2]")
                 go(advertiser, 'campaign/'+campaign_id)
-                expect(advertiser.locator('[data-page=campaign] .meta')).to_contain_text('На модерации')
+                expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На модерации')
 
                 operator = new_page('operator')
                 go(operator, 'moderation')
@@ -224,7 +224,7 @@ def main():
                 advertiser.get_by_role('button', name='Сохранить исправления', exact=True).click()
                 expect(advertiser.locator('.correction-form')).to_have_count(0)
                 advertiser.get_by_role('button', name='Отправить повторно', exact=True).click()
-                expect(advertiser.locator('.meta')).to_contain_text('На модерации')
+                expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На модерации')
                 refresh(operator)
                 expect(operator.get_by_role('button', name='Одобрить канал', exact=True)).to_be_visible()
                 operator.set_viewport_size({'width': 390, 'height': 844})
@@ -326,9 +326,11 @@ def main():
                 expect(operator.locator('#queue')).to_contain_text('Завершено')
                 refresh(advertiser)
                 go(advertiser, 'reports')
-                advertiser.get_by_role('button', name='Открыть отчёт', exact=True).click()
+                advertiser.get_by_role('button', name='История кампании', exact=True).click()
                 expect(advertiser.locator('.campaign-report')).to_contain_text('История действий')
-                expect(advertiser.get_by_role('button',name='Скачать CSV',exact=True)).to_have_count(0)
+                with advertiser.expect_download() as downloaded:
+                    advertiser.get_by_role('button',name='Скачать CSV',exact=True).click()
+                assert downloaded.value.suggested_filename.endswith('.csv')
 
                 go(admin, 'settings')
                 admin.locator('#settings-tariffs-tab').click()
@@ -339,8 +341,8 @@ def main():
                 expect(admin.locator('#notice')).to_contain_text('Настройки тарифа сохранены')
                 refresh(advertiser)
                 go(advertiser, 'campaign/' + campaign_id)
-                expect(advertiser.locator('[data-page=campaign] .meta')).to_contain_text('300')
-                assert '450' not in advertiser.locator('[data-page=campaign] .meta').inner_text()
+                expect(advertiser.locator('[data-page=campaign] .campaign-facts')).to_contain_text('300')
+                assert '450' not in advertiser.locator('[data-page=campaign] .campaign-facts').inner_text()
                 go(advertiser, 'create')
                 expect(advertiser.locator('#order-summary')).to_contain_text('450,55')
 
@@ -373,7 +375,7 @@ def main():
                 expect(advertiser.locator('#order-result')).to_be_visible()
                 sbp_cid=advertiser.evaluate("location.hash.split('/')[2]")
                 go(advertiser, 'campaign/'+sbp_cid)
-                expect(advertiser.locator('[data-page=campaign] .meta')).to_contain_text('На модерации')
+                expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На модерации')
                 refresh(operator)
                 go(operator, 'moderation/'+sbp_cid)
                 operator.get_by_role('button',name='Одобрить канал',exact=True).click()
@@ -401,7 +403,7 @@ def main():
                     with advertiser.expect_response(lambda r:r.url.endswith('/sbp/reconcile')):
                         advertiser.goto(base+'/?sbp_campaign='+sbp_cid)
                     expect(advertiser.locator('.sbp-checkout')).to_contain_text('Ожидается результат платежа')
-                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Ожидает оплаты')
+                    expect(advertiser.locator('[data-page=payments] .campaign-steps')).to_contain_text('Ожидает оплаты')
                     with psycopg.connect(PostgresIntegration.dsn) as connection:
                         aid=connection.execute("UPDATE payment_attempts SET sbp_requires_review=true WHERE campaign_id=%s AND provider='sbp' RETURNING id",(sbp_cid,)).fetchone()[0]
                     go(admin,'settings')
@@ -426,7 +428,7 @@ def main():
                     bank_state.update(status='succeeded',paid=True)
                     advertiser.get_by_role('button',name='Проверить платёж СБП',exact=True).click()
                     expect(advertiser.locator('.sbp-checkout')).to_contain_text('Платёж подтверждён серверной сверкой')
-                    expect(advertiser.locator('[data-page=payments] .meta')).to_contain_text('Оплачено')
+                    expect(advertiser.locator('[data-page=payments] .campaign-steps')).to_contain_text('Оплачено')
                     advertiser.screenshot(path=str(output/'15-sbp-verified.png'),full_page=True)
 
                 refresh(admin)
@@ -437,7 +439,7 @@ def main():
                     ('05-detail', 'campaign/' + campaign_id), ('06-payment', 'payments/' + campaign_id),
                     ('07-calendar', 'calendar'), ('08-reports', 'reports'),
                     ('09-moderation', 'moderation'), ('10-sponsors', 'sponsors'),
-                    ('11-settings', 'settings'), ('12-help', 'help'), ('13-bot', 'bot')]
+                    ('11-settings', 'settings'), ('12-help', 'help'), ('13-bot', 'bot'), ('35-profile', 'profile')]
                 # The admin owns no advertiser campaigns: capture own detail/payment as advertiser.
                 for name, route in screens:
                     page = admin if route.split('/')[0] in ('moderation', 'sponsors', 'settings') else advertiser
@@ -494,13 +496,21 @@ def main():
                     expect(mini.locator('.cabinet-account')).to_contain_text('Mini App тест')
                     assert mini.evaluate('window.__miniReady&&window.__miniExpanded')
                     assert not mini.evaluate('window.__miniBackVisible')
+                    expect(mini.locator('[data-page=dashboard]')).to_be_visible()
+                    expect(mini.locator('.mobile-bottom-nav a')).to_have_count(4)
+                    mini.locator('.mobile-bottom-nav a[data-route=profile]').click()
+                    expect(mini.locator('[data-page=profile]')).to_be_visible()
+                    expect(mini.locator('.profile-menu a[href="#/settings"]')).to_have_count(0)
+                    expect(mini.locator('.profile-menu a[href="#/moderation"]')).to_have_count(0)
+                    mini.get_by_role('button',name='Назад',exact=True).click()
+                    expect(mini.locator('[data-page=dashboard]')).to_be_visible()
                     go(mini,'channels')
                     assert mini.evaluate('window.__miniBackVisible')
                     mini.locator('.cabinet-topbar .menu-toggle').click()
                     mini.evaluate('window.__miniBack()')
                     expect(mini.locator('#cabinet-sidebar')).to_have_attribute('inert','')
                     mini.evaluate('window.__miniBack()')
-                    expect(mini).to_have_url(base+'/miniapp#/create')
+                    expect(mini).to_have_url(base+'/miniapp#/profile')
                     mini.reload()
                     expect(mini.locator('body')).to_have_class('miniapp-mode cabinet-mode')
                     assert len([x for x in mini_requests if x[0]=='POST' and x[1].endswith('/auth/telegram/miniapp')])==1
@@ -551,15 +561,15 @@ def main():
                             patch.object(stars_checkout,'create_invoice_link',side_effect=invoice_link):
                         refresh(mini)
                         expect(mini.locator('.sbp-checkout')).to_contain_text('200 XTR')
-                        mini.get_by_role('button',name='Оплатить Stars',exact=True).click()
+                        mini.get_by_role('button',name='Оплатить 200 XTR',exact=True).click()
                         mini.wait_for_function('typeof window.__miniInvoiceCallback==="function"')
                         assert mini.evaluate('window.__miniInvoiceUrl')=='https://t.me/$stars-fixture'
                         mini.evaluate("window.__miniInvoiceCallback('cancelled');window.__miniInvoiceCallback=null")
-                        expect(mini.get_by_role('button',name='Оплатить Stars',exact=True)).to_be_enabled()
-                        mini.get_by_role('button',name='Оплатить Stars',exact=True).click()
+                        expect(mini.get_by_role('button',name='Оплатить 200 XTR',exact=True)).to_be_enabled()
+                        mini.get_by_role('button',name='Оплатить 200 XTR',exact=True).click()
                         mini.wait_for_function('typeof window.__miniInvoiceCallback==="function"')
                         mini.evaluate("window.__miniInvoiceCallback('paid');window.__miniInvoiceCallback=null")
-                        expect(mini.get_by_role('button',name='Оплатить Stars',exact=True)).to_be_enabled()
+                        expect(mini.get_by_role('button',name='Оплатить 200 XTR',exact=True)).to_be_enabled()
                         expect(mini.locator('.sbp-checkout')).not_to_contain_text('Оплата подтверждена сервером')
                         assert len(prepared)==1 and prepared[0].stars_amount==200
                         with psycopg.connect(PostgresIntegration.dsn) as connection:
@@ -688,13 +698,15 @@ def main():
                 advertiser.set_viewport_size({'width':390,'height':844})
                 refresh(advertiser)
                 go(advertiser,'channels')
-                row=advertiser.locator('[data-page=channels] tr').filter(has_text='Канал управления')
+                row=advertiser.locator('[data-page=channels] .channel-tile').filter(has_text='Канал управления')
+                row.locator('.channel-tools summary').click()
                 row.get_by_role('button',name='✏️ Изменить',exact=True).click()
                 row.get_by_label('Название канала',exact=True).fill('Изменённый канал управления')
                 row.get_by_role('button',name='Сохранить изменения',exact=True).click()
                 expect(advertiser.locator('[data-page=channels]')).to_contain_text('Изменённый канал управления')
-                row=advertiser.locator('[data-page=channels] tr').filter(has_text='Изменённый канал управления')
+                row=advertiser.locator('[data-page=channels] .channel-tile').filter(has_text='Изменённый канал управления')
                 advertiser.once('dialog',lambda dialog:dialog.accept())
+                row.locator('.channel-tools summary').click()
                 row.get_by_role('button',name='🗑️ Удалить',exact=True).click()
                 expect(advertiser.locator('[data-page=channels]')).not_to_contain_text('Изменённый канал управления')
                 go(advertiser,'archive')
@@ -742,9 +754,9 @@ def main():
                 admin.evaluate('window.scrollTo(0,600)')
                 expect(admin.locator('.cabinet-topbar')).to_be_visible()
                 assert abs(admin.locator('.cabinet-topbar').bounding_box()['y']) <= 2
-                admin.locator('.top-help summary').click()
-                expect(admin.locator('.help-popup')).to_be_visible()
-                assert admin.locator('.help-popup').bounding_box()['width'] <= 310
+                admin.locator('.mobile-bottom-nav a[data-route=profile]').click()
+                expect(admin.locator('[data-page=profile]')).to_be_visible()
+                expect(admin.locator('.profile-menu a[href="#/help"]')).to_be_visible()
                 assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth + 2')
                 admin.screenshot(path=str(output/'31-sticky-menu-help-mobile.png'),full_page=True)
                 admin.keyboard.press('Escape')
@@ -754,6 +766,8 @@ def main():
                 expect(advertiser.locator('.channel-manager').get_by_role('button',name='✏️ Изменить',exact=True)).to_have_count(3)
                 for width in (390,320):
                     advertiser.set_viewport_size({'width':width,'height':844})
+                    for summary in advertiser.locator('.channel-tools:not([open]) summary').all():
+                        summary.click()
                     for action in advertiser.locator('.channel-manager .management-actions>button').all():
                         rect=action.bounding_box()
                         assert rect['x']>=0 and rect['x']+rect['width']<=width+1,rect
@@ -765,7 +779,7 @@ def main():
                     advertiser.set_viewport_size({'width':width,'height':844})
                     go(advertiser,'payments')
                     assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
-                    for cell in advertiser.locator('[data-page=payments] td').all():
+                    for cell in advertiser.locator('[data-page=payments] .campaign-tile').all():
                         rect=cell.bounding_box()
                         assert rect['x']>=0 and rect['x']+rect['width']<=width+1,rect
                 advertiser.screenshot(path=str(output/'33-compact-payments-mobile.png'),full_page=True)

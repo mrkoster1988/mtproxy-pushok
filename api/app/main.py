@@ -2402,8 +2402,8 @@ def miniapp_client():
     html = (WEB_DIR / 'index.html').read_text()
     html = html.replace('initial-scale=1', 'initial-scale=1, viewport-fit=cover')
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
-    html = html.replace('<script src="/assets/app.js?v=060"',
-                        '<script src="/assets/miniapp.js?v=060" defer></script>\n  <script src="/assets/app.js?v=060"')
+    html = html.replace('<script src="/assets/app.js?v=061-mobile"',
+                        '<script src="/assets/miniapp.js?v=061-mobile" defer></script>\n  <script src="/assets/app.js?v=061-mobile"')
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
