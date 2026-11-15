@@ -93,6 +93,8 @@ def discounted(amount, percent, *, rub=False):
 
 def quote(conn, user, tariff, code=None, *, lock=False):
     code = normalize_code(code)
+    if code and tariff['price_kopecks'] == 0:
+        raise HTTPException(409, 'growth_free_tariff')
     # Один и тот же порядок блокировок для параллельных покупок разных кодов.
     offers = conn.execute("""SELECT * FROM growth_offers
         WHERE (kind='discount' OR code=%s) AND active
@@ -103,6 +105,8 @@ def quote(conn, user, tariff, code=None, *, lock=False):
         ORDER BY id""" + (' FOR UPDATE' if lock else ''),
         (code, tariff['id'], tariff['duration_seconds'], user['id'])).fetchall()
     eligible = []
+    if tariff['price_kopecks'] == 0:
+        offers = []
     for offer in offers:
         counts = conn.execute("""SELECT count(*) AS total,count(*) FILTER(WHERE user_id=%s) AS own
             FROM growth_redemptions WHERE offer_id=%s""", (user['id'], offer['id'])).fetchone()
@@ -239,8 +243,12 @@ def router_for(get_dsn, get_user, require_admin):
         no_cache(response)
         def action(conn):
             admin_lock(conn, admin)
-            if payload.tariff_id and not conn.execute('SELECT 1 FROM tariffs WHERE id=%s AND NOT admin_only AND archived_at IS NULL', (payload.tariff_id,)).fetchone():
-                raise HTTPException(404, 'active_tariff_not_found')
+            if payload.tariff_id:
+                tariff = conn.execute('SELECT price_kopecks FROM tariffs WHERE id=%s AND NOT admin_only AND archived_at IS NULL', (payload.tariff_id,)).fetchone()
+                if not tariff:
+                    raise HTTPException(404, 'active_tariff_not_found')
+                if payload.kind == 'gift' and tariff['price_kopecks'] == 0:
+                    raise HTTPException(409, 'growth_free_tariff')
             import secrets
             code = secrets.token_hex(12).upper() if payload.kind == 'gift' else payload.code
             offer = conn.execute('''INSERT INTO growth_offers(kind,name,code,percent,tariff_id,min_duration_seconds,

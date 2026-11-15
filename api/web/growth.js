@@ -2,6 +2,7 @@
 window.pushokGrowth=(()=>{
  let epoch=0,target=null;
  Object.assign(errors,{
+  growth_free_tariff:'Для бесплатного тарифа код не нужен. Выберите платный тариф или уберите код.',
   growth_code_unavailable:'Код недоступен: проверьте тариф, срок действия и лимит использований.',
   growth_code_exists:'Такой код уже существует. Выберите другой.',growth_quote_required:'Сначала рассчитайте стоимость.',
   growth_quote_changed:'Условия предложения изменились. Рассчитайте стоимость ещё раз.',
@@ -36,7 +37,7 @@ window.pushokGrowth=(()=>{
   const end=field(f,'Окончание (ваше местное время; пусто — без срока)','datetime-local');
   const limit=field(f,'Всего заявок (пусто — без ограничения)','number');limit.min=1;limit.max=1000000;
   const own=field(f,'Заявок на одного пользователя','number','1',true);own.min=1;own.max=1000000;
-  function mode(){const gift=kind.value==='gift';code.parentElement.hidden=kind.value!=='promo';code.required=kind.value==='promo';code.disabled=kind.value!=='promo';pct.disabled=gift;if(gift)pct.value=100;tariff.required=gift;limit.disabled=gift;if(gift)limit.value=1;own.disabled=gift;if(gift)own.value=1;}
+  function mode(){const gift=kind.value==='gift',selected=tariff.value;tariff.replaceChildren();option(tariff,gift?'Выберите платный тариф':'Все тарифы','');available.filter(t=>!t.admin_only&&(!gift||t.price_kopecks>0)).forEach(t=>option(tariff,t.name,t.id));tariff.value=[...tariff.options].some(o=>o.value===selected)?selected:'';code.parentElement.hidden=kind.value!=='promo';code.required=kind.value==='promo';code.disabled=kind.value!=='promo';pct.disabled=gift;if(gift)pct.value=100;tariff.required=gift;limit.disabled=gift;if(gift)limit.value=1;own.disabled=gift;if(gift)own.value=1;}
   kind.addEventListener('change',mode);mode();
   f.append(el('p','Применяется одна, самая выгодная скидка. Лимит расходуется при отправке заявки, даже если её потом отзовут или отклонят. Подарок — код на одно бесплатное размещение выбранного тарифа; модерация остаётся обязательной. Условия созданных предложений не редактируются: выключите старое и создайте новое.','muted'));
   save(f,'Создать предложение');bind(f,()=>api('/admin/growth/offers',{method:'POST',body:{kind:kind.value,name:name.value,code:kind.value==='promo'?code.value:null,percent:Number(pct.value),tariff_id:tariff.value||null,min_duration_seconds:Math.round(Number(hours.value)*3600),starts_at:start.value?new Date(start.value).toISOString():null,ends_at:end.value?new Date(end.value).toISOString():null,total_limit:limit.value?Number(limit.value):null,per_user_limit:Number(own.value)}}));create.append(f);root.append(create);

@@ -163,6 +163,15 @@ class GrowthIntegration(unittest.TestCase):
         self.actor={'id':self.owner,'role':'advertiser'};self.quote(code,409)
         self.assertFalse(self.request('GET','/growth/me')['coupons'][0]['active'])
 
+    def test_free_tariff_does_not_consume_coupon(self):
+        promo=self.offer();self.actor={'id':self.owner,'role':'advertiser'}
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE tariffs SET price_kopecks=0,stars_price_xtr=NULL WHERE id=%s',(self.tariff,))
+        self.quote(promo['code'],409)
+        q=self.quote();self.assertIsNone(q['offer_id']);self.assertEqual(q['price_kopecks'],0)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM growth_redemptions WHERE offer_id=%s',(promo['id'],)).fetchone()[0],0)
+
     def test_bot_invite_requires_secret_and_no_reward_for_free(self):
         self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':30})
         self.actor={'id':self.owner,'role':'advertiser'};code=self.request('GET','/growth/me')['code']

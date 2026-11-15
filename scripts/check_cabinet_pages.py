@@ -1178,13 +1178,26 @@ def main():
                 expect(advertiser.locator('[data-page=growth]')).to_contain_text('Мои купоны')
                 expect(advertiser.get_by_role('heading',name='Создать предложение',exact=True)).to_have_count(0)
                 advertiser.screenshot(path=str(output/'36-growth-user-mobile.png'),full_page=True)
+                growth_tariff=uuid4()
+                with psycopg.connect(PostgresIntegration.dsn) as connection:
+                    connection.execute("INSERT INTO tariffs(id,name,duration_seconds,price_kopecks,stars_price_xtr,currency) VALUES(%s,'Проверка скидки',3600,10000,100,'RUB')",(growth_tariff,))
+                refresh(advertiser)
                 go(advertiser,'create')
+                advertiser.locator('#tariff-select').select_option(str(growth_tariff))
                 advertiser.locator('#order-promo').fill('BROWSER20')
                 advertiser.locator('#order-quote').click()
                 expect(advertiser.locator('#order-quote-status')).to_contain_text('Браузерный промокод')
                 expect(advertiser.locator('#order-summary')).to_contain_text('20%')
+                expect(advertiser.locator('#order-summary')).to_contain_text('80')
+                expect(advertiser.locator('#order-summary')).to_contain_text('80 XTR')
                 advertiser.screenshot(path=str(output/'37-growth-quote-mobile.png'),full_page=True)
                 assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                advertiser.locator('#order-submit').click()
+                expect(advertiser.locator('#order-result')).to_contain_text('Заявка на проверке')
+                growth_cid=advertiser.evaluate("location.hash.split('/')[2]")
+                with psycopg.connect(PostgresIntegration.dsn) as connection:
+                    assert connection.execute('SELECT price_kopecks_snapshot,stars_price_snapshot FROM campaigns WHERE id=%s',(growth_cid,)).fetchone()==(8000,80)
+                    assert connection.execute('SELECT count(*) FROM growth_redemptions WHERE campaign_id=%s',(growth_cid,)).fetchone()[0]==1
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))
