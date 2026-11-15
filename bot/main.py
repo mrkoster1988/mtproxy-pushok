@@ -216,7 +216,8 @@ def deliver_operator_outbox(token):
             text = ("📨 Новая кампания на модерации\n"
                     f"Канал: {title}\n"
                     f"Рекламодатель: {name}\n"
-                    f"Заявка: {str(campaign_id)[:8]}")
+                    f"Заявка: {str(campaign_id)[:8]}\n"
+                    "Цена и срок — в карточке заявки.")
             url = miniapp_url()
             button = ({"text": "📋 Открыть заявку", "web_app": {"url": url + "#/moderation/" + str(campaign_id)}}
                       if url else {"text": "📋 Открыть очередь", "callback_data": "moderation"})
