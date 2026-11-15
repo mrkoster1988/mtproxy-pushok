@@ -281,6 +281,18 @@ def main():
                 operator.get_by_label('Проверил поступление денег, сумму и назначение платежа', exact=True).check()
                 operator.get_by_role('button', name='Подтвердить оплату', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Оплачено')
+                # Чужая заявка из очереди спонсоров открывается в представлении оператора.
+                for reviewer, width in ((operator, 320), (admin, 390)):
+                    refresh(reviewer)
+                    reviewer.set_viewport_size({'width': width, 'height': 844})
+                    go(reviewer, 'sponsors')
+                    title_link = reviewer.locator('.sponsor-queue .tile-title').first
+                    expect(title_link).to_have_attribute('href', '#/moderation/' + campaign_id)
+                    title_link.click()
+                    expect(reviewer.locator('[data-page=moderation]')).to_be_visible()
+                    expect(reviewer.locator('#queue .approval-card')).to_have_attribute('data-campaign-id', campaign_id)
+                    expect(reviewer.get_by_role('button', name='Назначить слот', exact=True)).to_be_visible()
+                    reviewer.set_viewport_size({'width': 1440, 'height': 1000})
                 # Пустой выбор объясняется рядом с формой, а не выглядит как молчание.
                 operator.get_by_label('Прокси-узел', exact=True).select_option('')
                 operator.get_by_role('button', name='Назначить слот', exact=True).click()

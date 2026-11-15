@@ -30,7 +30,7 @@ window.pushokViews=(()=>{
  }
  function campaignSummary(c,mode='campaign'){
   const item=el('article',undefined,'campaign-tile'),head=el('div',undefined,'tile-heading'),copy=el('div');
-  const a=el('a',title(c),'tile-title');a.href='#/campaign/'+c.id;copy.append(a,el('small','#'+c.id.slice(0,8)+(c.channel_url?' · '+handle(c.channel_url):'')));
+  const a=el('a',title(c),'tile-title');a.href='#/'+(mode==='sponsors'?'moderation/':'campaign/')+c.id;copy.append(a,el('small','#'+c.id.slice(0,8)+(c.channel_url?' · '+handle(c.channel_url):'')));
   head.append(avatar('megaphone'),copy);item.append(head);
   item.append(el('p',c.scheduled_start_at?'Назначено: '+date(c.scheduled_start_at):c.requested_start_at?'Желаемое начало: '+date(c.requested_start_at):'Дата — по согласованию','tile-period'));
   item.append(statusSteps(c));
