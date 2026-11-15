@@ -13,7 +13,7 @@ window.pushokGrowth=(()=>{
  });
  function field(form,label,type,value='',required=false){
   const box=el('label',label),input=el(type==='select'?'select':'input');
-  if(type!=='select')input.type=type;input.value=value;input.required=required;box.append(input);form.append(box);return input;
+  if(type!=='select')input.type=type;input.value=value;input.required=required;input.setAttribute('aria-label',label);box.append(input);form.append(box);return input;
  }
  function option(select,label,value){const o=el('option',label);o.value=value;select.append(o);}
  function panel(title){const p=el('section',undefined,'panel');p.append(el('h2',title));return p;}
