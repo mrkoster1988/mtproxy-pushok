@@ -111,7 +111,7 @@ class PlacementCompletionTests(unittest.TestCase):
         js = (ROOT / "api/web/app.js").read_text(encoding="utf-8")
         self.assertIn("tag_removed_confirmed:true", js)
         self.assertIn("separate_unsubscribed_client", js)
-        self.assertIn("Вы вручную выключили спонсорский тег", js)
+        self.assertIn("Тег кампании снят вручную или агентом", js)
 
 
 if __name__ == "__main__":
