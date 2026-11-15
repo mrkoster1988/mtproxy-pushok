@@ -230,9 +230,9 @@ def create_bot_campaign_draft(
                 INSERT INTO campaigns (
                     advertiser_user_id, channel_id, tariff_id,
                     tariff_name_snapshot, duration_seconds_snapshot,
-                    price_kopecks_snapshot, currency_snapshot, bot_request_key
+                    price_kopecks_snapshot, currency_snapshot, bot_request_key, purchase_surface
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'telegram')
                 ON CONFLICT (bot_request_key)
                     WHERE bot_request_key IS NOT NULL
                 DO NOTHING

@@ -20,6 +20,7 @@ def validate_sbp_identity(
     expected_campaign_id: str,
     expected_kopecks: int,
     expected_test: bool | None = None,
+    wallet_topup: bool = False,
 ) -> str:
     """Return provider payment ID only for an exact, captured SBP payment.
 
@@ -43,7 +44,7 @@ def validate_sbp_identity(
     if not isinstance(method, Mapping) or method.get("type") != "sbp":
         raise SBPVerificationError("payment_method_mismatch")
     metadata = payment.get("metadata")
-    if not isinstance(metadata, Mapping) or metadata.get("campaign_id") != expected_campaign_id:
+    if not isinstance(metadata, Mapping) or metadata.get("wallet_topup_id" if wallet_topup else "campaign_id") != expected_campaign_id:
         raise SBPVerificationError("campaign_mismatch")
     amount = payment.get("amount")
     if not isinstance(amount, Mapping) or amount.get("currency") != "RUB":
@@ -76,3 +77,4 @@ def verify_sbp_payment(payment: Mapping[str, Any], *, expected_payment_id: str,
         or refunded.get('currency') != 'RUB' or refunded.get('value') != '0.00'):
         raise SBPVerificationError('payment_has_refund')
     return identifier
+

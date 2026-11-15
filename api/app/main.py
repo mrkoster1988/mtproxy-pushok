@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.14",
+    version="1.15",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -387,7 +387,7 @@ def get_current_user(
             user = connection.execute(
                 """
                 SELECT u.id, u.telegram_user_id, u.role, u.first_name, u.last_name,
-                       u.username, s.id AS session_id
+                       u.username, s.id AS session_id, s.login_surface
                 FROM users AS u
                 JOIN user_sessions AS s ON s.user_id = u.id
                 WHERE u.id = %s AND s.id = %s
@@ -459,10 +459,10 @@ def miniapp_login(payload: MiniAppLoginPayload, response: Response):
         raise HTTPException(409, 'miniapp_disabled')
     bot_token = _required_secret(TELEGRAM_BOT_TOKEN, 'TELEGRAM_BOT_TOKEN').decode()
     verified = validate_init_data(payload.init_data, bot_token)
-    return _start_telegram_session(TelegramLoginPayload(**verified))
+    return _start_telegram_session(TelegramLoginPayload(**verified), surface="telegram")
 
 
-def _start_telegram_session(payload: TelegramLoginPayload) -> SessionResponse:
+def _start_telegram_session(payload: TelegramLoginPayload, *, surface="web") -> SessionResponse:
     _required_secret(SESSION_SIGNING_KEY, 'SESSION_SIGNING_KEY')
     session_id = uuid4()
     expires_at = datetime.fromtimestamp(
@@ -501,10 +501,10 @@ def _start_telegram_session(payload: TelegramLoginPayload) -> SessionResponse:
                 ).fetchone()
                 cursor.execute(
                     """
-                    INSERT INTO user_sessions (id, user_id, expires_at)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO user_sessions (id, user_id, expires_at, login_surface)
+                    VALUES (%s, %s, %s, %s)
                     """,
-                    (session_id, user["id"], expires_at),
+                    (session_id, user["id"], expires_at, surface),
                 )
     except HTTPException:
         raise
@@ -614,10 +614,10 @@ def create_campaign(
                 INSERT INTO campaigns (
                     advertiser_user_id, channel_id, tariff_id,
                     tariff_name_snapshot, duration_seconds_snapshot,
-                    price_kopecks_snapshot, currency_snapshot, requested_start_at
+                    price_kopecks_snapshot, currency_snapshot, requested_start_at, purchase_surface
                 )
                 SELECT %s, c.id, t.id, t.name, t.duration_seconds,
-                       t.price_kopecks, t.currency, %s
+                       t.price_kopecks, t.currency, %s, %s
                 FROM sponsor_channels AS c
                 JOIN tariffs AS t ON t.id = %s AND t.is_active = TRUE AND t.archived_at IS NULL
                   AND (NOT t.admin_only OR %s)
@@ -628,7 +628,7 @@ def create_campaign(
                           placement_status, requested_start_at, scheduled_start_at,
                           scheduled_end_at, moderator_comment
                 """,
-                (user["id"], payload.requested_start_at, payload.tariff_id,
+                (user["id"], payload.requested_start_at, user.get("login_surface", "web"), payload.tariff_id,
                  user["role"] == "admin", payload.channel_id, user["id"]),
             ).fetchone()
     except InsufficientPrivilege as exc:
@@ -2970,3 +2970,6 @@ app.include_router(campaign_notice_router)
 
 from .growth import router_for as growth_router_for
 app.include_router(growth_router_for(lambda: DATABASE_URL, get_current_user, require_admin))
+
+from .wallet import router_for as wallet_router_for
+app.include_router(wallet_router_for(lambda: DATABASE_URL, get_current_user, require_admin))
