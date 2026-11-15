@@ -171,7 +171,9 @@ def main():
                 assert admin.get_by_label('ad_tag из MTProxyBot', exact=True).input_value() == ''
 
                 advertiser = new_page("advertiser")
-                expect(advertiser.locator('[data-page=dashboard]')).to_contain_text('Пока нет данных')
+                expect(advertiser.locator('[data-page=dashboard] .empty-state')).to_contain_text('Здесь появятся кампании')
+                expect(advertiser.locator('[data-page=dashboard] .campaign-tile')).to_have_count(0)
+                expect(advertiser.locator('[data-page=dashboard] .payment-counts strong')).to_have_text(['0', '0'])
                 go(advertiser, "settings", expected_page="dashboard")
                 expect(advertiser.locator('[data-page=dashboard]')).to_be_visible()
                 assert advertiser.locator('nav a[data-route=settings]').is_hidden()
@@ -208,6 +210,14 @@ def main():
                 advertiser.locator('#campaign-form button[type=submit]').click()
                 expect(advertiser.locator('#order-result')).to_be_visible()
                 campaign_id = advertiser.evaluate("location.hash.split('/')[2]")
+                go(advertiser, 'campaigns')
+                first_tile = advertiser.locator('#campaigns .campaign-tile')
+                expect(first_tile.locator('.campaign-steps dt')).to_have_text(['Модерация', 'Оплата', 'Размещение'])
+                expect(first_tile.locator('.tile-period')).to_contain_text('Желаемое начало:')
+                expect(first_tile.locator('.badge--active')).to_have_count(0)
+                expect(first_tile.get_by_role('link', name='Перейти к оплате', exact=True)).to_have_count(0)
+                first_tile.get_by_role('link', name='Открыть кампанию', exact=True).click()
+                expect(advertiser.locator('[data-page=campaign]')).to_be_visible()
                 go(advertiser, 'campaign/'+campaign_id)
                 expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На модерации')
 
@@ -560,6 +570,8 @@ def main():
                                                'BOT_INTERNAL_SECRET':'b'*64,'DATABASE_URL':PostgresIntegration.dsn}), \
                             patch.object(stars_checkout,'create_invoice_link',side_effect=invoice_link):
                         refresh(mini)
+                        go(mini,'campaigns')
+                        mini.locator('#campaigns .ui-button[href="#/payments/'+stars_cid+'"]').click()
                         expect(mini.locator('.sbp-checkout')).to_contain_text('200 XTR')
                         mini.get_by_role('button',name='Оплатить 200 XTR',exact=True).click()
                         mini.wait_for_function('typeof window.__miniInvoiceCallback==="function"')
@@ -585,9 +597,17 @@ def main():
                         mini.get_by_role('button',name='Обновить статус оплаты',exact=True).click()
                         expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата подтверждена сервером')
                         mini.screenshot(path=str(output/'19-miniapp-stars.png'),full_page=True)
+                    mini_screens = [('home','dashboard'),('campaigns','campaigns'),('channels','channels'),
+                                    ('create','create'),('calendar','calendar'),('detail','campaign/'+stars_cid),
+                                    ('payments','payments'),('stars','payments/'+stars_cid),
+                                    ('profile','profile'),('help','help')]
                     for width in (320,390):
                         mini.set_viewport_size({'width':width,'height':844})
-                        assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                        for screen, route in mini_screens:
+                            go(mini,route)
+                            assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2'), (width,route)
+                            if width==390:
+                                mini.screenshot(path=str(output/('miniapp-'+screen+'.png')),full_page=True)
                     go(mini,'dashboard');mini.screenshot(path=str(output/'17-miniapp-light.png'),full_page=True)
                     mini.locator('.cabinet-topbar .menu-toggle').click()
                     check_navigation_icons(mini)

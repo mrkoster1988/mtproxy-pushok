@@ -76,6 +76,7 @@
   [c.channel_title,c.channel_url,c.id,channels.find(x=>x.id===c.channel_id)?.title].some(v=>String(v||'').toLocaleLowerCase('ru').includes(state.search.toLocaleLowerCase('ru'))));}
  const shell=el('div',undefined,'cabinet-shell'),sidebar=el('aside',undefined,'cabinet-sidebar');sidebar.id='cabinet-sidebar';
  const brand=link('✳ puShok · MTProxy','dashboard');brand.className='cabinet-brand';sidebar.append(brand);
+ window.pushokViews.brand(brand);
  const nav=el('nav');nav.setAttribute('aria-label','Разделы страниц кабинета');
  const menu=[['create','campaign','Разместить рекламу'],['dashboard','home','Главная'],['channels','channel','Мои каналы'],['campaigns','campaign','Кампании'],['payments','wallet','Оплата'],['calendar','calendar','Календарь'],['reports','chart','Отчёты'],['moderation','moderation','Модерация'],['sponsors','server','Узлы'],['settings','settings','Настройки'],['help','support','Подсказки и инструкции'],['archive','campaign','Удалённые'],['bot','channel','Telegram-бот'],['profile','user','Профиль']];
  menu.forEach(([name,icon,title])=>{
@@ -104,6 +105,7 @@
  window.addEventListener('keydown',e=>{if(e.key==='Escape')topHelp.open=false;});document.addEventListener('click',e=>{if(!topHelp.contains(e.target))topHelp.open=false;});
  const backButton=button('Назад',async()=>back());backButton.className='screen-back';backButton.setAttribute('aria-label','Назад');backButton.replaceChildren(window.pushokViews.icon('back'));
  const mobileBrand=link('puShok','dashboard');mobileBrand.className='mobile-brand';
+ window.pushokViews.brand(mobileBrand);
  const refreshButton=$('refresh');refreshButton.setAttribute('aria-label','Обновить');refreshButton.textContent='↻';bar.append(backButton,mobileBrand,toggle,account,refreshButton,topHelp);sidebar.append($('logout'));bar.append(searchForm);stage.append(bar);shell.append(sidebar,stage);workspace.prepend(shell);
  Object.entries(routes).forEach(([name,[title,subtitle]])=>{
   const page=name==='settings'?$('settings'):el('section');page.dataset.page=name;page.hidden=true;page.classList.add('cabinet-page');
@@ -134,10 +136,11 @@
  filter.addEventListener('change',()=>{state.filter=filter.value;renderList();});listTools.append(filter,reset);content.campaigns.append(listTools,$('campaigns'));
  const dashboardHero=el('section',undefined,'dashboard-hero');
  const heroCopy=el('div',undefined,'dashboard-hero-copy');
- heroCopy.append(el('p','РЕКЛАМА В TELEGRAM','eyebrow'),el('h2','Ваш канал — ближе к аудитории'),el('p','Размещайте канал в спонсорском блоке MTProxy.'));
- const heroActions=el('div',undefined,'dashboard-hero-actions');heroActions.append(link('+ Создать кампанию','create'),link('Как это работает','help'));heroCopy.append(heroActions);
+ heroCopy.append(el('p','РЕКЛАМА В TELEGRAM','eyebrow'),el('h2','Продвигайте свой канал'),el('p','Реклама в MTProxy'));
+ const heroActions=el('div',undefined,'dashboard-hero-actions');heroActions.append(link('+ Создать кампанию','create'));
  const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
- dashboardHero.append(heroCopy,dashboardMascot);pages.dashboard.insertBefore(dashboardHero,stats.dashboard);
+ dashboardHero.append(heroCopy,dashboardMascot,heroActions);
+ const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardPayments=el('div');dashboardIntro.append(dashboardHero,dashboardPayments);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
  const bottomNav=el('nav',undefined,'mobile-bottom-nav');bottomNav.setAttribute('aria-label','Основные разделы');
  [['dashboard','home','Главная'],['campaigns','campaign','Кампании'],['payments','wallet','Оплата'],['profile','user','Профиль']].forEach(([route,icon,title])=>{
   const a=link(title,route);a.dataset.route=route;
@@ -146,6 +149,8 @@
  });
  shell.append(bottomNav);
  const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.classList.add('flat-section');summary.append(summaryRows);content.dashboard.append(summary);
+ const summaryHeading=el('div',undefined,'section-heading');summaryHeading.append(summary.querySelector('h2'),link('Все кампании →','campaigns'));summary.prepend(summaryHeading);
+ const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);content.dashboard.append(dashboardHelp);
  const onboarding=section('С чего начать');onboarding.id='onboarding';onboarding.append(el('p','Заполните одну форму: канал, тариф и желаемая дата. После проверки канала оплатите размещение.'));
  onboarding.append(button('Скрыть инструкцию',async()=>{sessionStorage.setItem('pushok-onboarding-hidden','1');onboarding.hidden=true;}),link('Разместить рекламу','create'));content.dashboard.append(onboarding);
  const paymentOverview=el('div'),paymentRows=el('div');content.payments.append(paymentOverview,paymentRows);
@@ -218,12 +223,8 @@
  $('channel-select').addEventListener('change',renderQuote);$('tariff-select').addEventListener('change',renderQuote);
  function render(){
   if(!state.ready||!state.loaded||!me)return;
-  metrics('dashboard',[
-   ['Активные кампании',state.campaigns.filter(c=>c.placement_status==='active').length,'По статусу размещения'],
-   ['На модерации',state.campaigns.filter(c=>c.moderation_status==='pending').length,'Ожидают решения'],
-   ['Оплата подтверждена',state.campaigns.filter(c=>c.payment_status==='verified'&&c.price_kopecks_snapshot>0).length,'Количество заявок'],
-   ['Ближайший запуск',date(state.campaigns.filter(c=>c.placement_status==='scheduled'&&c.scheduled_start_at&&new Date(c.scheduled_start_at)>new Date()).map(c=>c.scheduled_start_at).sort()[0]),'По назначенному расписанию']
-  ]);
+  metrics('dashboard',[]);
+  window.pushokViews.paymentOverview(dashboardPayments,state.campaigns.filter(c=>c.moderation_status==='approved'),{compact:true});
   metrics('channels',[]);
   metrics('campaigns',[['Всего',state.campaigns.length,'Ваши заявки'],['Ожидают оплаты',state.campaigns.filter(c=>c.payment_status==='awaiting_payment').length,'После модерации'],['Завершены',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным системы']]);
   renderQuote();metrics('calendar',[['Часовой пояс',calendarZone,'Время в календаре'],['Период',14,'Дней в запросе доступности']]);
@@ -378,7 +379,7 @@
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);
   nav.querySelectorAll('a').forEach(a=>a.hidden=!permitted(a.dataset.route));if($('management-menu'))$('management-menu').hidden=!['admin','operator'].includes(me.role);activate();
  },logout(){$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
-  [$('order-result'),detail,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list')].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());
+  [$('order-result'),detail,dashboardPayments,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list')].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['settings-stars-counts','settings-stars-status','settings-sbp-status','launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());
