@@ -187,8 +187,8 @@ class CoreReadinessAPITests(unittest.TestCase):
         js = (ROOT / "api/web/app.js").read_text()
         self.assertIn('id="core-readiness"', html)
         self.assertIn("admin/pushok-core/readiness", js)
-        self.assertIn("textContent=message", js)
-        self.assertIn("не проверялась", js)
+        self.assertIn("не описывают работающий MTProxy Classic", js)
+        self.assertIn("Экспериментальное ядро — отдельные испытания", html)
 
 
 if __name__ == "__main__":

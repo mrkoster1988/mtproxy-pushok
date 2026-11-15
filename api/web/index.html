@@ -8,13 +8,13 @@
   <meta name="description" content="MTProxy Pushok — кабинет спонсорской рекламы в Telegram. Создание заявки, модерация, оплата и управление размещениями.">
   <title>puShok · MTProxy — кабинет спонсора</title>
   <link rel="stylesheet" href="/assets/styles.css?v=060">
-  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=103-tariffs">
-  <script src="/assets/app.js?v=103-tariffs" defer></script>
+  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=104-readiness">
+  <script src="/assets/app.js?v=104-readiness" defer></script>
   <script src="/assets/order.js?v=060" defer></script>
-  <script src="/assets/management.js?v=103-tariffs" defer></script>
+  <script src="/assets/management.js?v=104-readiness" defer></script>
   <script src="/assets/approval.js?v=066-observation" defer></script>
   <script src="/assets/mobile-views.js?v=103-telegram-avatar" defer></script>
-  <script src="/assets/pages.js?v=103-tariffs" defer></script>
+  <script src="/assets/pages.js?v=104-readiness" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -245,11 +245,26 @@
 <button type="button" id="icons-import">Загрузить PushokIcons</button><form id="icons-form"><div id="icons-mapping"></div><button type="submit">Сохранить иконки</button></form><p id="icons-status" role="status"></p></section>
           <div class="core-health" aria-label="Готовность к запуску MTProxy Pushok">
             <div><span class="eyebrow">ГОТОВНОСТЬ ПЛАТФОРМЫ</span><h3>Что осталось до запуска</h3></div>
-            <p class="muted">Инвентаризация базы, не проверка доступности MTProxy и показов Telegram.</p>
-            <div id="launch-readiness" role="status" aria-live="polite">Проверка данных ещё не запускалась.</div>
+            <p class="muted">Результаты проверок и оставшиеся шаги. Уже сохранённые проверки показа и завершения учитываются автоматически; отчёты о платежах и восстановлении добавляет администратор.</p>
+            <button type="button" id="launch-refresh">Обновить готовность</button>
+            <div id="launch-readiness" aria-live="polite">Проверка данных ещё не запускалась.</div>
+            <details id="launch-check-details" class="readiness-report"><summary>Записать результат испытания</summary>
+              <p class="muted">Для платежей и восстановления. Записывайте только выполненные проверки на вашем VPS. Укажите проверку за последние 7 дней. История сохраняется после обновлений; отчёт сам по себе ничего не запускает.</p>
+              <form id="launch-check-form"><fieldset id="launch-check-fields">
+                <label for="launch-check-type">Проверка</label><select id="launch-check-type" required><option value="">Выберите проверку</option></select>
+                <p id="launch-check-instructions" class="muted">Выберите проверку, которую уже выполнили.</p>
+                <label for="launch-check-result">Результат</label><select id="launch-check-result" required><option value="">Выберите результат</option><option value="passed">Пройдена</option><option value="failed">Не пройдена</option></select>
+                <label for="launch-check-at">Когда проверили (местное время)</label><input id="launch-check-at" type="datetime-local" required>
+                <label for="launch-check-note">Что проверили и какой результат получили</label><textarea id="launch-check-note" rows="4" minlength="24" maxlength="2000" placeholder="Опишите этапы, результат сверки и возврата либо восстановления. Без паролей и ключей." required></textarea>
+                <label><input id="launch-check-vps" type="checkbox" required> Проверка выполнена на моём VPS с этой версией кабинета</label>
+                <label><input id="launch-check-steps" type="checkbox"> Все перечисленные выше этапы завершились успешно</label>
+                <button type="submit" id="launch-check-save">Сохранить результат</button>
+              </fieldset></form>
+            </details>
+            <details class="readiness-report"><summary>Сохранность скриншотов</summary><p class="muted">Проверка файлов не подтверждает фактический показ канала.</p><button type="button" id="launch-evidence-integrity">Проверить файлы скриншотов</button></details>
           </div>
-          <details class="core-health" aria-label="Готовность Pushok Core"><summary>Техническая диагностика ядра</summary>
-            <div><span class="eyebrow">PUSHOK SOURCE CORE · v0.027</span><h3>Диагностика ядра</h3></div>
+          <details class="core-health" aria-label="Готовность Pushok Core"><summary>Экспериментальное ядро — отдельные испытания</summary>
+            <div><span class="eyebrow">PUSHOK SOURCE CORE · v0.027</span><h3>Pushok Source Core</h3></div>
             <p id="core-readiness" role="status" aria-live="polite">Локальный статус ещё не запрошен. API не запускает прокси.</p>
             <ul id="core-test-plan" class="core-checklist" aria-label="План проверки Pushok Core"></ul>
           </details>
@@ -257,7 +272,7 @@
       </div>
     </section>
 
-    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.03</span></footer>
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.04</span></footer>
   </main>
 </body>
 </html>

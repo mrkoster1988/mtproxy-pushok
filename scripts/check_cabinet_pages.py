@@ -877,12 +877,12 @@ def main():
                                  'sbp_test_mode':False,'updater_installed':True,'requested':False,
                                  'update':{'state':'succeeded','at':'2026-11-15T14:00:00+00:00'}}
                 admin.route('**/api/v1/admin/control',lambda route:route.fulfill(json=control_fixture))
-                release_fixture.return_value={**release_fixture.return_value,'state':'available','available_version':'1.04'}
+                release_fixture.return_value={**release_fixture.return_value,'state':'available','available_version':'1.05'}
                 admin.locator('#software-check').click()
                 expect(admin.locator('#software-update')).to_be_enabled()
-                expect(admin.locator('#software-update')).to_have_text('Установить v1.04')
+                expect(admin.locator('#software-update')).to_have_text('Установить v1.05')
                 expect(admin.locator('#software-update-status')).to_contain_text('Последняя установка завершена')
-                expect(admin.locator('#software-available')).to_have_text('v1.04')
+                expect(admin.locator('#software-available')).to_have_text('v1.05')
                 for width in (390,320):
                     admin.set_viewport_size({'width':width,'height':844})
                     assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
@@ -901,7 +901,7 @@ def main():
                 expect(admin.locator('#software-release-status')).to_contain_text('Не удалось проверить')
                 expect(admin.locator('#software-update')).to_be_disabled()
                 expect(admin.locator('#software-update-notice')).to_be_hidden()
-                expect(admin.locator('#software-available')).to_have_text('v1.04 (ранее)')
+                expect(admin.locator('#software-available')).to_have_text('v1.05 (ранее)')
                 admin.unroute('**/api/v1/admin/control/release')
                 admin.locator('#software-check').click()
                 expect(admin.locator('#software-update')).to_be_enabled()
@@ -978,6 +978,56 @@ def main():
                 expect(admin.locator('#tariff-admin-free')).to_be_disabled()
                 admin.locator('#tariff-admin-cancel').click()
                 expect(admin.locator('#tariff-admin-select')).to_have_value(paid_tariff['id'])
+
+                # История приёмки: настоящая форма/API, сохранность черновика и отрицательный результат.
+                admin.locator('#settings-system-tab').click()
+                admin.locator('#launch-refresh').click()
+                expect(admin.locator('#launch-readiness')).to_contain_text('Бесплатный пилот')
+                expect(admin.locator('#launch-readiness')).to_contain_text('Платный запуск')
+                admin.locator('#launch-check-details>summary').click()
+                admin.locator('#launch-check-type').select_option('backup_restore')
+                admin.locator('#launch-check-result').select_option('passed')
+                local_check=admin.evaluate("new Date(Date.now()-120000-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16)")
+                admin.locator('#launch-check-at').fill(local_check)
+                report_note='Тестовая база и файлы восстановлены, количества записей и вход проверены. <b>Текст, не HTML</b>'
+                admin.locator('#launch-check-note').fill(report_note)
+                admin.locator('#launch-check-vps').check()
+                admin.locator('#launch-check-steps').check()
+                with admin.expect_response(lambda r:r.url.endswith('/admin/launch-readiness') and r.request.method=='GET'):
+                    admin.locator('#launch-refresh').click()
+                expect(admin.locator('#launch-check-note')).to_have_value(report_note)
+                expect(admin.locator('#launch-check-type')).to_have_value('backup_restore')
+                for width in (390,320):
+                    admin.set_viewport_size({'width':width,'height':844})
+                    assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                    admin.locator('#launch-check-details').screenshot(path=str(output/f'acceptance-form-{width}.png'))
+                with admin.expect_response(lambda r:r.url.endswith('/admin/launch-readiness/checks') and r.request.method=='POST') as acceptance:
+                    admin.locator('#launch-check-save').click()
+                assert acceptance.value.status==201,acceptance.value.text()
+                expect(admin.locator('#notice')).to_contain_text('Отчёт сохранён')
+                backup=admin.locator('#launch-readiness [data-check=backup_restore]')
+                expect(backup).to_have_attribute('data-status','reported')
+                backup.locator('summary').click()
+                expect(backup).to_contain_text('<b>Текст, не HTML</b>')
+                expect(backup.locator('b')).to_have_count(0)
+                admin.locator('#launch-check-details>summary').click()
+                admin.locator('#launch-check-type').select_option('backup_restore')
+                admin.locator('#launch-check-result').select_option('failed')
+                admin.locator('#launch-check-at').fill(local_check)
+                admin.locator('#launch-check-note').fill('Тест: повторное восстановление не прошло, обнаружено расхождение записей.')
+                admin.locator('#launch-check-vps').check()
+                with admin.expect_response(lambda r:r.url.endswith('/admin/launch-readiness/checks') and r.request.method=='POST') as failed_acceptance:
+                    admin.locator('#launch-check-save').click()
+                assert failed_acceptance.value.status==201
+                expect(backup).to_have_attribute('data-status','failed')
+                for width in (390,320):
+                    admin.set_viewport_size({'width':width,'height':844})
+                    assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                    admin.locator('#launch-readiness').screenshot(path=str(output/f'acceptance-status-{width}.png'))
+                admin.locator('[aria-label="Готовность Pushok Core"]>summary').click()
+                expect(admin.locator('#core-readiness')).to_contain_text('не описывают работающий MTProxy Classic')
+                expect(admin.locator('#core-readiness button')).to_have_count(0)
+
 
                 admin.keyboard.press('Escape')
                 expect(admin.locator('.help-popup')).to_be_hidden()
