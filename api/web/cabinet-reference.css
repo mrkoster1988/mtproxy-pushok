@@ -155,3 +155,18 @@ body.cabinet-mode{min-width:0}
 /* Действия тарифа остаются рядом и на узком экране. */
 #tariff-admin-actions{display:flex;align-items:stretch;gap:8px;width:100%;max-width:360px;margin-top:12px}
 #tariff-admin-actions>button{flex:1 1 0;min-width:0;min-height:44px;margin:0;padding:9px 12px;font-size:14px;line-height:1.25}
+/* Версия и обновления: доступны прямо из профиля, без прокрутки настроек. */
+.software-updates{min-width:0;margin:0 0 20px;padding:20px}
+.update-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.update-heading h2{margin:0;font-size:1.25rem}
+.update-versions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:20px 0}
+.update-versions>div{min-width:0;padding:12px;background:var(--bg,#091727);border-radius:12px}
+.update-versions dt{font-size:.85rem;color:var(--muted,#aac1d0)}
+.update-versions dd{margin:6px 0 0;font-weight:700;font-size:1.25rem;overflow-wrap:anywhere}
+.update-actions{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}
+.update-actions button{flex:1 1 130px;min-height:44px;padding:10px 12px;font-size:.95rem}
+.software-updates p{font-size:.9rem;line-height:1.5;margin:10px 0;overflow-wrap:anywhere}
+.software-updates .update-note{font-size:.8rem}
+.update-notice{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin:12px 0;padding:12px 16px;border:1px solid #36c7b7;border-radius:14px;background:#123e42;font-size:.9rem;overflow-wrap:anywhere}
+.update-notice a{font-weight:700;white-space:normal}
+.updates-shortcut{display:inline-block;margin-bottom:16px}
