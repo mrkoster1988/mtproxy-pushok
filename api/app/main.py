@@ -232,6 +232,13 @@ class CampaignResponse(BaseModel):
     archive_pending_actions: list[str] = Field(default_factory=list)
 
 
+class OperatorCampaignResponse(CampaignResponse):
+    advertiser_first_name: str | None = None
+    advertiser_last_name: str | None = None
+    advertiser_username: str | None = None
+    advertiser_telegram_user_id: int | None = None
+
+
 class PaymentReviewRequest(BaseModel):
     decision: str = Field(pattern="^(verified|rejected)$")
     comment: str | None = Field(default=None, max_length=2000)
@@ -1680,13 +1687,13 @@ def complete_placement(
     return _campaign_response(row)
 
 
-@app.get("/api/v1/operator/campaigns", response_model=list[CampaignResponse], tags=["operator"])
+@app.get("/api/v1/operator/campaigns", response_model=list[OperatorCampaignResponse], tags=["operator"])
 def list_operator_campaigns(
     archived: bool = False,
     moderation_status: str | None = None,
     payment_status: str | None = None,
     operator: dict[str, Any] = Depends(require_operator),
-) -> list[CampaignResponse]:
+) -> list[OperatorCampaignResponse]:
     valid_moderation = {"draft", "pending", "approved", "rejected", "changes_requested"}
     valid_payment = {"not_required", "awaiting_payment", "proof_submitted", "verified", "rejected", "refunded"}
     if moderation_status is not None and moderation_status not in valid_moderation:
@@ -1711,6 +1718,10 @@ def list_operator_campaigns(
             rows = connection.execute(
                 f"""
                 SELECT sc.title AS channel_title, sc.telegram_url AS channel_url,
+                       u.first_name AS advertiser_first_name,
+                       u.last_name AS advertiser_last_name,
+                       u.username AS advertiser_username,
+                       u.telegram_user_id AS advertiser_telegram_user_id,
                        c.archived_at,
                        EXISTS(SELECT 1 FROM payment_attempts pa WHERE pa.campaign_id=c.id
                               AND pa.status IN ('created','pending')) AS has_pending_payment,
@@ -1722,6 +1733,7 @@ def list_operator_campaigns(
                        latest_proof.review_comment AS payment_review_comment
                 FROM campaigns AS c
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
+                JOIN users AS u ON u.id = c.advertiser_user_id
                 LEFT JOIN LATERAL (
                     SELECT p.review_comment
                     FROM payment_proofs AS p
@@ -1737,7 +1749,7 @@ def list_operator_campaigns(
             ).fetchall()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
-    return [_campaign_response(row) for row in rows]
+    return [OperatorCampaignResponse(**(row | _campaign_response(row).model_dump())) for row in rows]
 
 
 @app.get("/api/v1/public-config", tags=["configuration"])

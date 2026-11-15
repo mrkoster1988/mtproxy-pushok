@@ -25,6 +25,18 @@ window.pushokApproval=(()=>{
    row.append(button('Открыть для завершения',()=>route(c.id)));panel.append(row);
   }
  }
+ function advertiser(c){
+  const section=el('section',undefined,'approval-advertiser');
+  section.append(el('h3','Рекламодатель'));
+  const name=[c.advertiser_first_name,c.advertiser_last_name].filter(Boolean).join(' ');
+  section.append(el('p',name||'Имя не указано'));
+  const username=c.advertiser_username;
+  if(typeof username==='string'&&/^[A-Za-z0-9_]{1,32}$/.test(username)){
+   const a=el('a','@'+username);a.href='https://t.me/'+username;a.target='_blank';a.rel='noopener noreferrer';section.append(a);
+  }else section.append(el('p','Без @username','muted'));
+  if(c.advertiser_telegram_user_id)section.append(el('p','Telegram ID: '+c.advertiser_telegram_user_id,'muted'));
+  return section;
+ }
  function render(){
   if(!me||!['admin','operator'].includes(me.role))return;
   const parts=location.hash.replace(/^#\/?/,'').split('/');
@@ -45,7 +57,7 @@ window.pushokApproval=(()=>{
   const choices=campaigns.filter(item=>!item.archived_at||item.id===c.id);
   option(choose,'','Все заявки');for(const item of choices)option(choose,item.id,(item.archived_at?'Удалена · ':'')+(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;choose.hidden=choices.length===1;
   choose.addEventListener('change',()=>{selected=choose.value;window.cabinet.go(selected?'moderation/'+selected:'moderation');});box.append(choose);
-  box.append(el('h2',c.channel_title||'Рекламная заявка'));
+  box.append(el('h2',c.channel_title||'Рекламная заявка'),advertiser(c));
   if(c.archived_at){
    const banner=el('section',undefined,'card approval-archive-notice');banner.setAttribute('role','status');
    banner.append(el('h3','Заявка уже удалена'),el('p','Удалено: '+date(c.archived_at)+'. В рабочей очереди её нет.'));
