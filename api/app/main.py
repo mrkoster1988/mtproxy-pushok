@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.12",
+    version="1.13",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1514,8 +1514,8 @@ def get_campaign_report(
                           c.requested_start_at, c.scheduled_start_at, c.scheduled_end_at
                    FROM campaigns AS c
                    JOIN sponsor_channels AS sc ON sc.id = c.channel_id
-                   WHERE c.id = %s AND c.advertiser_user_id = %s""",
-                (campaign_id, user["id"]),
+                   WHERE c.id = %s AND (c.advertiser_user_id = %s OR %s)""",
+                (campaign_id, user["id"], user["role"] in ("admin","operator")),
             ).fetchone()
             if campaign is None:
                 raise HTTPException(status_code=404, detail="campaign_not_found")
@@ -2082,7 +2082,7 @@ def read_launch_readiness(response: Response, admin: dict[str, Any] = Depends(re
                   (SELECT count(*) FROM campaigns WHERE payment_status = 'verified' AND price_kopecks_snapshot > 0 AND archived_at IS NULL) AS payments_verified,
                   (SELECT count(*) FROM campaigns WHERE placement_status = 'scheduled' AND archived_at IS NULL) AS placements_scheduled,
                   (SELECT count(*) FROM campaigns WHERE placement_status = 'active' AND archived_at IS NULL) AS placements_active,
-                  (SELECT count(*) FROM campaigns WHERE placement_status = 'completed' AND archived_at IS NULL) AS placements_completed,
+                  (SELECT count(*) FROM campaigns WHERE placement_status = 'completed') AS placements_completed,
                   (SELECT count(*) FROM placement_observations) AS manual_observations"""
             ).fetchone()
             campaign_query = """SELECT c.id AS campaign_id, c.placement_status, c.scheduled_start_at, c.scheduled_end_at,
@@ -2099,7 +2099,7 @@ def read_launch_readiness(response: Response, admin: dict[str, Any] = Depends(re
                    LEFT JOIN LATERAL (SELECT created_at, details_json FROM audit_events
                        WHERE campaign_id = c.id AND event_type = 'placement_completed_manually'
                        AND created_at >= a.created_at ORDER BY created_at DESC LIMIT 1) AS e ON TRUE
-                   WHERE c.archived_at IS NULL AND n.archived_at IS NULL AND n.status = 'active'
+                   WHERE (c.archived_at IS NULL OR c.placement_status='completed') AND n.archived_at IS NULL AND n.status = 'active'
                      AND c.placement_status IN ('scheduled', 'active', 'completed')
                      AND c.moderation_status = 'approved' AND c.payment_status = 'verified'
 """

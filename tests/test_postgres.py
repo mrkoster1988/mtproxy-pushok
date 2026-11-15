@@ -1879,6 +1879,75 @@ class PostgresIntegration(unittest.TestCase):
             again=handle(conn,request)
             self.assertTrue(handle(conn,dict(request,action='ack',revision=again['revision']))['accepted'])
             self.assertEqual(conn.execute("SELECT count(*) AS n FROM audit_events WHERE campaign_id=%s AND event_type='placement_completed_by_agent'",(f['campaign'],)).fetchone()['n'],1)
+            # Обновление старой завершённой записи не рассылает событие повторно.
+            before=conn.execute('SELECT count(*) AS n FROM campaign_notice_outbox WHERE campaign_id=%s',(f['campaign'],)).fetchone()['n']
+            conn.execute('UPDATE campaigns SET archived_at=NULL WHERE id=%s',(f['campaign'],))
+            conn.execute((ROOT/'database/034_completed_campaign_archive.sql').read_text())
+            self.assertIsNotNone(conn.execute('SELECT archived_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()['archived_at'])
+            self.assertEqual(conn.execute('SELECT count(*) AS n FROM campaign_notice_outbox WHERE campaign_id=%s',(f['campaign'],)).fetchone()['n'],before)
+
+    def test_agent_switch_completes_previous_before_next_activation_and_archives(self):
+        from app.promotion_runtime import handle
+        from psycopg.rows import dict_row
+        f=self._management_fixture(ready=True);second=uuid4()
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['admin'],'role':'admin'}
+        self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
+        request=dict(host='management-'+f['node'].hex+'.example.org',port=8443)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='active',scheduled_start_at=now()-interval '2 hours',scheduled_end_at=now()-interval '1 hour' WHERE id=%s",(f['node'],f['campaign']))
+            conn.execute("""INSERT INTO campaigns(id,advertiser_user_id,channel_id,tariff_id,proxy_node_id,
+                tariff_name_snapshot,duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,
+                moderation_status,payment_status,placement_status,scheduled_start_at,scheduled_end_at)
+                SELECT %s,advertiser_user_id,channel_id,tariff_id,proxy_node_id,tariff_name_snapshot,
+                duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,'approved','verified',
+                'scheduled',now()-interval '1 hour',now()+interval '1 hour' FROM campaigns WHERE id=%s""",(second,f['campaign']))
+            plan=handle(conn,request);self.assertEqual(plan['campaign_id'],str(second))
+            self.assertFalse(handle(conn,dict(request,action='ack',revision='outdated'))['accepted'])
+            self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()['placement_status'],'active')
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+            previous=conn.execute('SELECT * FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
+            self.assertEqual(previous['placement_status'],'completed');self.assertIsNotNone(previous['archived_at'])
+            self.assertEqual(previous['payment_status'],'verified')
+            self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s',(second,)).fetchone()['placement_status'],'active')
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+            self.assertEqual(conn.execute("SELECT count(*) AS n FROM audit_events WHERE campaign_id=%s AND event_type='placement_completed_by_agent'",(f['campaign'],)).fetchone()['n'],1)
+        self.assertNotIn(str(f['campaign']),[c['id'] for c in self.request('GET','/operator/campaigns')])
+        archived=next(c for c in self.request('GET','/management/archive')['items'] if c['id']==str(f['campaign']))
+        self.assertEqual(archived['placement_status'],'completed')
+        self.assertEqual(self.request('GET','/campaigns/'+str(f['campaign'])+'/report')['placement_status'],'completed')
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['owner'],'role':'advertiser'}
+        self.assertNotIn(str(f['campaign']),[c['id'] for c in self.request('GET','/campaigns')])
+        self.assertEqual(self.request('GET','/campaigns/'+str(f['campaign'])+'/report')['payment_status'],'verified')
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['stranger'],'role':'advertiser'}
+        self.request('GET','/campaigns/'+str(f['campaign'])+'/report',404)
+
+    def test_missed_paid_period_gets_full_new_slot_after_agent_recovers(self):
+        from app.auto_schedule import service_once
+        from app.promotion_runtime import handle
+        from psycopg.rows import dict_row
+        f=self._management_fixture(ready=True)
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['admin'],'role':'admin'}
+        self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET price_kopecks_snapshot=100,proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()-interval '2 hours',scheduled_end_at=now()-interval '1 hour' WHERE id=%s",(f['node'],f['campaign']))
+            invoice=conn.execute("INSERT INTO payment_attempts(campaign_id,provider,payment_channel,amount,currency,status,provider_payment_id) VALUES(%s,'telegram_stars','telegram_bot',1,'XTR','succeeded','fixture-paid') RETURNING id",(f['campaign'],)).fetchone()[0]
+        service_once(self.dsn,limit=100)
+        request=dict(host='management-'+f['node'].hex+'.example.org',port=8443)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            self.assertTrue(conn.execute('SELECT scheduled_end_at<now() AS expired FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()['expired'])
+            plan=handle(conn,request);self.assertEqual(plan['state'],'idle')
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+        service_once(self.dsn,limit=100)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            c=conn.execute('SELECT *,scheduled_start_at>now() AS future FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
+            self.assertTrue(c['future']);self.assertEqual(c['placement_status'],'scheduled');self.assertIsNone(c['archived_at'])
+            self.assertEqual((c['scheduled_end_at']-c['scheduled_start_at']).total_seconds(),3600)
+            self.assertEqual(c['payment_status'],'verified');self.assertEqual(c['price_kopecks_snapshot'],100)
+            self.assertEqual(conn.execute('SELECT id FROM payment_attempts WHERE campaign_id=%s',(f['campaign'],)).fetchall(),[{'id':invoice}])
+            self.assertEqual(conn.execute("SELECT details_json->>'reason' AS reason FROM audit_events WHERE campaign_id=%s AND event_type='placement_auto_scheduled'",(f['campaign'],)).fetchone()['reason'],'missed_start_recovered')
+        service_once(self.dsn,limit=100)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT scheduled_start_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()[0],c['scheduled_start_at'])
 
     def test_default_sponsor_priority_and_legacy_completion(self):
         from app.promotion_runtime import handle

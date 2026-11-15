@@ -397,18 +397,22 @@ def main():
                 assert 18 <= bounds['width'] <= 24 and 18 <= bounds['height'] <= 24, bounds
                 confirmation.check()
                 operator.get_by_role('button', name='Подтвердить завершение', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Завершено')
+                expect(operator.locator('#queue')).not_to_contain_text('Размещение активно')
                 refresh(advertiser)
-                go(advertiser, 'reports')
-                advertiser.get_by_role('button', name='История кампании', exact=True).click()
+                go(advertiser, 'archive/'+campaign_id)
                 expect(advertiser.locator('.campaign-report')).to_contain_text('История действий')
                 with advertiser.expect_download() as downloaded:
                     advertiser.get_by_role('button',name='Скачать CSV',exact=True).click()
                 assert downloaded.value.suggested_filename.endswith('.csv')
+                advertiser.set_viewport_size({'width':390,'height':844})
+                advertiser.screenshot(path=str(output/'completed-archive-mobile.png'),full_page=True)
 
                 go(admin, 'settings')
                 admin.locator('#settings-system-tab').click()
                 expect(admin.locator('#team-fields')).to_be_enabled()
+                for field in ('loading-title-fields','team-fields','default-sponsor-fields'):
+                    assert admin.locator('#'+field).evaluate('(e)=>getComputedStyle(e).borderTopWidth')=='0px'
+                admin.locator('#loading-title-form').screenshot(path=str(output/'loading-form-no-frame.png'))
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute("INSERT INTO users(telegram_user_id,first_name) VALUES(991199001,'Тест команды')")
                 admin.locator('#team-id').fill('991199001')

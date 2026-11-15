@@ -98,7 +98,7 @@ class CampaignReportTests(unittest.TestCase):
         calls = conn.__enter__.return_value.execute.call_args_list
         self.assertEqual(len(calls), 3)
         self.assertIn("advertiser_user_id = %s", calls[0].args[0])
-        self.assertEqual(calls[0].args[1], (CID, UID))
+        self.assertEqual(calls[0].args[1], (CID, UID, False))
         self.assertIn("placement_evidence", calls[1].args[0])
         self.assertIn("event_type = ANY", calls[2].args[0])
         self.assertEqual(calls[2].args[1][0], CID)

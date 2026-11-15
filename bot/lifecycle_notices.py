@@ -4,7 +4,7 @@ from .advertiser_notices import deliver_advertiser_notices
 
 TEXTS={
  'started':'✅ Рекламная кампания запущена. Подробности размещения — в карточке заявки.',
- 'completed':'🏁 Рекламная кампания завершена. Отчёт доступен в карточке заявки.',
+ 'completed':'🏁 Рекламная кампания завершена. Кампания перенесена в архив. Отчёт сохранён.',
  'failed':'⚠️ Зафиксирован технический сбой размещения. Заявка сохранена, система повторит проверку. Подробности доступны администратору в диагностике.',
 }
 REASONS={
@@ -33,7 +33,7 @@ def deliver_lifecycle_notices(api,sender,miniapp_url=None):
         cid=str(UUID(str(item['campaign_id']))) if item.get('campaign_id') else None
         staff=item.get('audience')=='staff'
         if miniapp_url:
-            route=(('moderation/' if staff else 'campaign/')+cid) if cid else 'sponsors'
+            route=(('archive/' if item.get('event_type')=='completed' else 'moderation/' if staff else 'campaign/')+cid) if cid else 'sponsors'
             button={'text':'Открыть заявку' if cid else 'Узлы и диагностика','web_app':{'url':miniapp_url+'#/'+route}}
         else:
             button={'text':'Мои кампании' if cid and not staff else 'Модерация','callback_data':'campaigns' if cid and not staff else 'moderation'}

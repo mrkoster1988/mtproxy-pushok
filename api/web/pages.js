@@ -19,7 +19,7 @@
   moderation:['Модерация','Одна карточка — от проверки канала до завершения'],
   sponsors:['Спонсоры и узлы','Реестр узлов и план движка'],
   settings:['Настройки','Тарифы, платежи и готовность системы'],
-  archive:['Удалённые','Восстановление каналов, заявок, узлов и тарифов'],
+  archive:['Архив','Завершённые кампании, отчёты и удалённые объекты'],
   help:['Помощь и инструкции','Пошаговые сценарии и ответы на вопросы'],
   bot:['Telegram-бот','Продолжите работу в Telegram']
  };
@@ -336,7 +336,7 @@
  function renderSelected(){
   const [name,id]=routeParts();
   helpText.textContent=hints[name]||'Удалённые объекты можно восстановить. Для заявки сначала восстановите её канал и тариф.';
-  if(name==='archive')void window.pushokManagement.renderArchive(archiveRows);
+  if(name==='archive')void window.pushokManagement.renderArchive(archiveRows,id);
   if(name==='sponsors')void renderAutomation();
   if(name==='moderation')window.pushokApproval?.render();
   if(name!=='campaign'){detail.replaceChildren();metrics('campaign',[]);}
@@ -357,7 +357,7 @@
   if(name==='campaign'){
    detail.replaceChildren();const c=state.campaigns.find(c=>c.id===id);
    if(c){detail.append(card(c,false));void renderPromotionStatus(c,detail);metrics('campaign',[]);}
-   else{empty(detail,'Кампания не найдена или недоступна вашему аккаунту.');metrics('campaign',[]);}
+   else{empty(detail,'Кампания отсутствует в рабочем списке. Завершённые кампании находятся в архиве.');detail.append(link('Открыть архив','archive/'+id));metrics('campaign',[]);}
   }
   paymentOverview.hidden=name==='payments'&&Boolean(id);
   if(name==='payments'&&id){

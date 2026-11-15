@@ -140,6 +140,18 @@ def handle(conn, request):
               campaign_id=EXCLUDED.campaign_id,state=EXCLUDED.state,
               plan_revision=EXCLUDED.plan_revision,checked_at=now()""",
               (plan['node_id'],plan.get('campaign_id'),'applied' if plan['state'] in ('apply','default') else 'idle',revision(plan)))
+        # Успешный idle ACK означает восстановление исходного тега; apply ACK —
+        # переход к следующей кампании. Ошибка apply/restore не отправляет ACK.
+        if plan.get('node_id'):
+            completed = conn.execute("""UPDATE campaigns c SET placement_status='completed',updated_at=now()
+                WHERE c.proxy_node_id=%s AND c.placement_status='active'
+                  AND c.scheduled_end_at<=now()
+                RETURNING c.id""", (plan['node_id'],)).fetchall()
+            for campaign in completed:
+                conn.execute("""INSERT INTO audit_events(campaign_id,event_type,details_json)
+                    VALUES(%s,'placement_completed_by_agent',
+                    '{"source":"promotion_agent","display_verified":false}'::jsonb)""", (campaign['id'],))
+        # Сначала освобождаем уникальное активное размещение на узле.
         if plan['state']=='apply':
             # ACK приходит только после применения тега и проверки работающего процесса.
             # Это подтверждение запуска, а не измерение показов Telegram.
@@ -155,17 +167,6 @@ def handle(conn, request):
                     VALUES(%s,'placement_activated_by_agent',
                            '{"source":"promotion_agent","display_verified":false}'::jsonb)""",
                     (activated['id'],))
-        # Успешный idle ACK означает восстановление исходного тега; apply ACK —
-        # переход к следующей кампании. Ошибка apply/restore не отправляет ACK.
-        if plan.get('node_id'):
-            completed = conn.execute("""UPDATE campaigns c SET placement_status='completed',updated_at=now()
-                WHERE c.proxy_node_id=%s AND c.placement_status='active'
-                  AND c.scheduled_end_at<=now()
-                RETURNING c.id""", (plan['node_id'],)).fetchall()
-            for campaign in completed:
-                conn.execute("""INSERT INTO audit_events(campaign_id,event_type,details_json)
-                    VALUES(%s,'placement_completed_by_agent',
-                    '{"source":"promotion_agent","display_verified":false}'::jsonb)""", (campaign['id'],))
         if plan.get('node_id') and (plan['state'] in ('apply','default') or plan.get('reason') in ('period_ended','waiting_start','no_current_campaign')):
             conn.execute('UPDATE promotion_incidents SET resolved_at=now() WHERE proxy_node_id=%s AND resolved_at IS NULL',(plan['node_id'],))
         return {'accepted':True}

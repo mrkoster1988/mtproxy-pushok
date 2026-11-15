@@ -87,7 +87,7 @@ window.pushokViews=(()=>{
   target.replaceChildren();const identity=el('section',undefined,'profile-identity');
   const info=el('div');info.append(el('h2',[me.first_name,me.last_name].filter(Boolean).join(' ')||'Пользователь'),el('p',me.username?'@'+me.username:'Вход через Telegram','muted'),badge('approved',({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'})[me.role]||'Пользователь'));identity.append(profileAvatar(),info);target.append(identity);
   const menu=el('nav',undefined,'profile-menu');menu.setAttribute('aria-label','Разделы профиля');
-  const items=[['create','campaign','Разместить рекламу'],['bot','channel','Telegram-бот'],['channels','channel','Мои каналы'],['calendar','calendar','Календарь размещений'],['reports','chart','Отчёты'],['help','support','Помощь'],['archive','campaign','Удалённые']];
+  const items=[['create','campaign','Разместить рекламу'],['bot','channel','Telegram-бот'],['channels','channel','Мои каналы'],['calendar','calendar','Календарь размещений'],['reports','chart','Отчёты'],['help','support','Помощь'],['archive','campaign','Архив']];
   if(['admin','operator'].includes(me.role))items.push(['moderation','moderation','Модерация'],['sponsors','server','Узлы и спонсоры']);
   if(me.role==='admin')items.push(['settings','settings','Настройки']);
   items.forEach(([route,name,text])=>{const a=link(text,route);a.prepend(icon(name));const arrow=el('span','›','menu-chevron');arrow.setAttribute('aria-hidden','true');a.append(arrow);menu.append(a);});target.append(menu);if(updatePanel)target.append(updatePanel);target.append(mascot('Все ваши каналы и размещения — под рукой.'));

@@ -30,6 +30,11 @@ class LifecycleNoticeTests(unittest.TestCase):
         def send(payload):raise URLError('offline')
         deliver_lifecycle_notices(api,send)
         self.assertEqual(calls,['lifecycle/outbox/claim'])
+    def test_completed_notice_opens_archived_report_for_owner_and_staff(self):
+        for audience in ('owner','staff'):
+            item=self.item();item.update(event_type='completed',audience=audience);sent=[]
+            deliver_lifecycle_notices(lambda route,payload:[item] if route.endswith('/claim') else {},sent.append,'https://example.com/miniapp')
+            self.assertTrue(sent[0]['reply_markup']['inline_keyboard'][0][0]['web_app']['url'].endswith('#/archive/'+item['campaign_id']))
     def test_403_marks_permanent_failure(self):
         item=self.item();calls=[]
         def api(route,payload):calls.append((route,payload));return [item] if route.endswith('/claim') else {'acknowledged':True}

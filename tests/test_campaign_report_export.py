@@ -113,7 +113,7 @@ class ExportTests(unittest.TestCase):
         self.assertIn('attachment; filename=',response.headers["content-disposition"])
         sql=connection.__enter__.return_value.execute.call_args_list[0]
         self.assertIn("advertiser_user_id = %s",sql.args[0])
-        self.assertEqual(sql.args[1],(CAMPAIGN,OWNER))
+        self.assertEqual(sql.args[1],(CAMPAIGN,OWNER,False))
 
     def test_non_owner_export_is_404_and_does_not_query_private_tables(self):
         self.login()

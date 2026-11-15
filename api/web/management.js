@@ -66,13 +66,33 @@ window.pushokManagement=(()=>{
   archive(box,'/admin/proxy-nodes/'+n.id,'Удалить узел из реестра? Будущие размещения вернутся на подбор. Активные показы сохранятся у оператора; прокси на VPS продолжит работать.','sponsors');return box;
  }
  function local(value){if(!value)return '';const d=new Date(value);return localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
- async function renderArchive(target){
-  const session=token;target.replaceChildren(el('p','Загрузка удалённых объектов…'));
+ async function renderArchive(target,selectedId=''){
+  const session=token;target.replaceChildren(el('p','Загрузка архива…'));
   try{const data=await api('/management/archive');if(session!==token||!me||!target.isConnected)return;target.replaceChildren();
-   if(!data.items.length)target.append(el('p','Удалённых объектов нет.','empty'));
+   const completed=data.items.filter(x=>x.kind==='campaigns'&&x.placement_status==='completed');
+   const deleted=data.items.filter(x=>!completed.includes(x));
    const kinds={channels:'Канал',campaigns:'Заявка',nodes:'Узел',tariffs:'Тариф'};
-   for(const item of data.items){const row=el('article',undefined,'card');row.dataset.archiveKind=item.kind;row.dataset.archiveId=item.id;row.append(el('h3',kinds[item.kind]+' · '+item.title),el('p','Удалено: '+date(item.archived_at)),button('Восстановить',async()=>{await api('/management/archive/'+item.kind+'/'+item.id+'/restore',{method:'POST'});await refresh();await renderArchive(target);notice('Объект восстановлен. Проверьте настройки перед использованием.',true);}));if(item.kind==='campaigns'&&['admin','operator'].includes(me.role)&&operatorCampaigns.some(c=>c.id===item.id&&c.archived_at))row.append(button('Незавершённые действия',()=>window.cabinet.go('moderation/'+item.id)));target.append(row);}
-  }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p',e.message),button('Повторить загрузку',()=>renderArchive(target)));}
+   for(const [title,items] of [['Завершённые кампании',completed],['Удалённые',deleted]]){
+    target.append(el('h2',title));
+    if(!items.length)target.append(el('p',title==='Удалённые'?'Удалённых объектов нет.':'Завершённых кампаний пока нет.','empty'));
+    for(const item of items){
+     const done=completed.includes(item),row=el('article',undefined,'card');row.dataset.archiveKind=item.kind;row.dataset.archiveId=item.id;
+     row.append(el('h3',kinds[item.kind]+' · '+item.title),el('p',(done?'В архиве: ':'Удалено: ')+date(item.archived_at)));
+     if(item.kind==='campaigns'){
+      if(done)row.append(el('p','Завершено · '+(labels[item.payment_status]||item.payment_status)),el('p','Период: '+date(item.scheduled_start_at)+' — '+date(item.scheduled_end_at)));
+      row.append(button('Отчёт по кампании',()=>showCampaignReport({id:item.id},row)));
+      if(!miniAppMode)row.append(button('Скачать CSV',()=>downloadCampaignCsv({id:item.id})));
+     }
+     if(!done)row.append(button('Восстановить',async()=>{await api('/management/archive/'+item.kind+'/'+item.id+'/restore',{method:'POST'});await refresh();await renderArchive(target);notice('Объект восстановлен. Проверьте настройки перед использованием.',true);}));
+     if(item.kind==='campaigns'&&['admin','operator'].includes(me.role)&&operatorCampaigns.some(c=>c.id===item.id&&c.archived_at))row.append(button('Незавершённые действия',()=>window.cabinet.go('moderation/'+item.id)));
+     target.append(row);
+     if(item.id===selectedId)void showCampaignReport({id:item.id},row)?.catch(e=>row.append(el('p',e.message)));
+    }
+   }
+   if(selectedId&&!data.items.some(x=>x.id===selectedId)){
+    const row=el('article',undefined,'card');target.prepend(row);void showCampaignReport({id:selectedId},row).catch(e=>row.append(el('p',e.message)));
+   }
+  }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p',e.message),button('Повторить загрузку',()=>renderArchive(target,selectedId)));}
  }
  if($('tariff-admin-actions')){
   const removeTariff=button('Удалить',async()=>{const id=$('tariff-admin-select').value;if(!id)throw Error('Выберите тариф.');if(!confirm('Убрать тариф из списка новых заявок? История заказов сохранится.'))return;await api('/admin/tariffs/'+id,{method:'DELETE'});await renderTariffAdmin();await refresh();notice('Тариф перемещён в «Удалённые».',true);});
