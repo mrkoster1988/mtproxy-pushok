@@ -3,14 +3,26 @@ import json
 import os
 import sys
 import hashlib
+import ipaddress
 import psycopg
 from psycopg.rows import dict_row
 
 
-def desired(conn, host, port):
-    node = conn.execute("SELECT id,status,archived_at,target_engine FROM proxy_nodes WHERE host=%s AND port=%s", (host,port)).fetchone()
-    if not node:
+def desired(conn, host, port, resolved_host=None):
+    hosts = [host]
+    if resolved_host is not None:
+        # Дополнительный адрес приходит только от локального агента, без HTTP.
+        address = str(ipaddress.IPv4Address(resolved_host))
+        if address not in hosts:
+            hosts.append(address)
+    nodes = conn.execute(
+        "SELECT id,host,status,archived_at,target_engine FROM proxy_nodes WHERE host=ANY(%s) AND port=%s",
+        (hosts,port),
+    ).fetchall()
+    # Два имени одного адреса могут иметь разные кампании: не угадываем узел.
+    if len(nodes) != 1:
         return {"state":"idle"}
+    node = nodes[0]
     result = {"state":"idle", "node_id":str(node['id'])}
     if node['status'] != 'active' or node['archived_at'] or node['target_engine'] not in (None,'official_mtproxy'):
         return result
@@ -27,7 +39,7 @@ def desired(conn, host, port):
       AND c.archived_at IS NULL AND ch.archived_at IS NULL
       AND b.channel_url=ch.telegram_url AND b.node_host=%s AND b.node_port=%s
       AND c.scheduled_start_at<=now() AND c.scheduled_end_at>now()
-      ORDER BY c.scheduled_start_at,c.id LIMIT 2""", (node['id'],host,port)).fetchall()
+      ORDER BY c.scheduled_start_at,c.id LIMIT 2""", (node['id'],node['host'],port)).fetchall()
     if len(rows) != 1:
         return result
     c=rows[0]
@@ -39,7 +51,7 @@ def revision(plan):
 
 
 def handle(conn, request):
-    plan=desired(conn,request['host'],int(request['port']))
+    plan=desired(conn,request['host'],int(request['port']),request.get('resolved_host'))
     if request.get('action')=='ack':
         if revision(plan)!=request.get('revision'):
             return {'accepted':False}
@@ -66,3 +78,4 @@ if __name__=='__main__':
     except Exception:
         print('{"error":"promotion_runtime_unavailable"}')
         sys.exit(1)
+

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Локальный агент systemd: применяет только hex-тег, никогда команды из БД."""
 import fcntl
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -118,12 +119,27 @@ def restore():
     STATE.unlink()
 
 
+def node_request(cfg):
+    """Старый repair регистрировал IPv4 вместо домена из конфигурации."""
+    host = cfg['MT_PROXY_HOST'].strip().lower()
+    request = dict(host=host, port=int(cfg['MT_PROXY_PORT']))
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        try:
+            request['resolved_host'] = str(ipaddress.IPv4Address(socket.gethostbyname(host)))
+        except (OSError, ValueError):
+            # Точное доменное имя всё ещё может совпадать с записью в реестре.
+            pass
+    return request
+
+
 def tick():
     # Локальный срок снимает тег даже при недоступной БД/API.
     if STATE.exists() and float(json.loads(STATE.read_text())['expires_at'])<=time.time():
         restore()
     cfg=parse_env(ENV.read_text())
-    request=dict(host=cfg['MT_PROXY_HOST'],port=int(cfg['MT_PROXY_PORT']))
+    request=node_request(cfg)
     plan=exchange(request)
     validate_plan(plan)
     if plan['state']=='idle':
@@ -165,3 +181,4 @@ if __name__=='__main__':
         # Не выводить stdout/stderr subprocess: в них могут быть конфигурация и тег.
         print('Автоприменение не завершено: '+type(exc).__name__+'. Повтор через 20 секунд.')
         raise SystemExit(1)
+
