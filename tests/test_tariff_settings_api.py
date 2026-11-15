@@ -4,7 +4,7 @@ import sys
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-from uuid import UUID
+from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +38,7 @@ class TariffSettingsTests(unittest.TestCase):
         with patch("app.main.psycopg.connect") as db:
             self.assertEqual(self.client.get("/api/v1/admin/tariffs").status_code, 401)
             self.assertEqual(self.client.put(PATH, json=VALID).status_code, 401)
+            self.assertEqual(self.client.post("/api/v1/admin/tariffs", json={**VALID,"request_id":str(uuid4())}).status_code, 401)
         db.assert_not_called()
 
     def test_operator_is_not_admin(self):
@@ -47,6 +48,7 @@ class TariffSettingsTests(unittest.TestCase):
         with patch("app.main.psycopg.connect") as db:
             self.assertEqual(self.client.get("/api/v1/admin/tariffs").status_code, 403)
             self.assertEqual(self.client.put(PATH, json=VALID).status_code, 403)
+            self.assertEqual(self.client.post("/api/v1/admin/tariffs", json={**VALID,"request_id":str(uuid4())}).status_code, 403)
         db.assert_not_called()
 
     def test_invalid_price_and_stars_rejected_before_db(self):
@@ -87,6 +89,57 @@ class TariffSettingsTests(unittest.TestCase):
         self.assertIn("UPDATE tariffs", calls[0].args[0])
         self.assertNotIn("campaigns", str(calls))
         self.assertIn("tariff_settings_updated", calls[1].args[0])
+
+    def test_create_free_tariff_audits_once_and_normalizes_zero_stars(self):
+        self.as_admin()
+        request_id=uuid4()
+        body={**VALID,'request_id':str(request_id),'name':'  Бесплатный   день  ',
+              'price_kopecks':0,'stars_price_xtr':0}
+        record={**VALID,'id':request_id,'name':'Бесплатный день','price_kopecks':0,
+                'stars_price_xtr':None,'admin_only':False,'currency':'RUB '}
+        conn=MagicMock()
+        conn.__enter__.return_value.execute.return_value.fetchone.return_value=record
+        with patch('app.main.psycopg.connect',return_value=conn):
+            response=self.client.post('/api/v1/admin/tariffs',json=body)
+        self.assertEqual(response.status_code,201,response.text)
+        self.assertIsNone(response.json()['stars_price_xtr'])
+        self.assertEqual(response.json()['name'],'Бесплатный день')
+        calls=conn.__enter__.return_value.execute.call_args_list
+        self.assertEqual(len(calls),2)
+        self.assertIn('INSERT INTO tariffs',calls[0].args[0])
+        self.assertIn('tariff_created',calls[1].args[0])
+        self.assertNotIn('campaigns',str(calls))
+
+    def test_create_validation_and_access_fail_before_db(self):
+        self.as_admin()
+        body={**VALID,'request_id':str(uuid4())}
+        with patch('app.main.psycopg.connect') as db:
+            for changes in ({'request_id':'bad'},{'name':'   '},{'price_kopecks':-1},
+                            {'price_kopecks':99},{'price_kopecks':0,'stars_price_xtr':1},
+                            {'admin_only':True},{'duration_seconds':3599},
+                            {'duration_seconds':31536001},{'currency':'USD'}):
+                response=self.client.post('/api/v1/admin/tariffs',json={**body,**changes})
+                self.assertEqual(response.status_code,422,response.text)
+        db.assert_not_called()
+        main.app.dependency_overrides.clear()
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':ADMIN,'role':'advertiser'}
+        with patch('app.main.psycopg.connect') as db:
+            self.assertEqual(self.client.post('/api/v1/admin/tariffs',json=body).status_code,403)
+        db.assert_not_called()
+
+    def test_creation_retry_returns_existing_and_rejects_changed_payload(self):
+        self.as_admin()
+        request_id=uuid4()
+        body={**VALID,'request_id':str(request_id)}
+        record={**VALID,'id':request_id,'admin_only':False,'currency':'RUB'}
+        for old,code in ((record,200),({**record,'price_kopecks':0},409),(None,409)):
+            conn=MagicMock()
+            conn.__enter__.return_value.execute.return_value.fetchone.side_effect=[None,old]
+            with patch('app.main.psycopg.connect',return_value=conn):
+                response=self.client.post('/api/v1/admin/tariffs',json=body)
+            self.assertEqual(response.status_code,code,response.text)
+            self.assertEqual(conn.__enter__.return_value.execute.call_count,2)
+            self.assertNotIn('tariff_created',str(conn.__enter__.return_value.execute.call_args_list))
 
     def test_missing_tariff_is_404_and_does_not_audit(self):
         self.as_admin()

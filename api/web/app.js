@@ -492,9 +492,10 @@ async function renderCoreReadiness(){
   $('core-test-plan').replaceChildren();
  }
 }
-let adminTariffs=[];
+let adminTariffs=[],tariffDraftId=null,tariffEditorDirty=false,previousTariffId='';
+Object.assign(errors,{tariff_request_conflict:'Тариф с этим запросом уже сохранён с другими условиями. Выберите его из списка или начните новый тариф.'});
 
-function tariffLabel(t){return t.name+' · '+(t.admin_only?'Бесплатно':money(t.price_kopecks));}
+function tariffLabel(t){return t.name+' · '+(t.price_kopecks===0?'Бесплатно':money(t.price_kopecks));}
 function updatePublicPrice(){
  const publicTariffs=tariffs.filter(t=>!t.admin_only);
  const t=publicTariffs.find(x=>x.duration_seconds===86400)||publicTariffs[0];
@@ -506,55 +507,112 @@ function updatePublicPrice(){
  $('hero-tariff-price').textContent=money(t.price_kopecks);
  $('hero-tariff-duration').textContent='/ '+t.name;
 }
+function previewTariffAdmin(){
+ const amount=Number($('tariff-admin-hours').value),unit=Number($('tariff-admin-unit').value);
+ const rubText=$('tariff-admin-rub').value.trim(),rub=Number(rubText),free=rubText!==''&&rub===0;
+ $('tariff-admin-free').checked=free;
+ $('tariff-admin-hours').max=String(31536000/unit);
+ const summary=$('tariff-admin-preview');summary.replaceChildren(el('strong',$('tariff-admin-name').value.trim()||'Название тарифа'));
+ summary.append(el('p','Длительность: '+(amount>0?amount+(unit===86400?' дн.':' ч'):'не задана')));
+ summary.append(el('p',free&&Number($('tariff-admin-stars').value)>0?'Для бесплатного тарифа очистите цену Stars или укажите 0.':free?'Бесплатно · без счёта Stars и СБП':rubText!==''&&rub>=1?money(Math.round(rub*100))+($('tariff-admin-stars').value>0?' / '+$('tariff-admin-stars').value+' Stars':' · цена Stars не задана'):'Укажите 0 ₽ или цену от 1 ₽.'));
+ summary.append(el('small',($('tariff-admin-audience').value==='admin'?'Только администратору':'Всем рекламодателям')+' · '+($('tariff-admin-active').checked?'Доступен для новых заявок':'Выключен')));
+}
+function tariffEditorMode(creating,privateTariff){
+ $('tariff-admin-mode').textContent=creating?'Новый тариф':'Редактирование тарифа';
+ $('tariff-admin-save').textContent=creating?'Создать':'Сохранить';
+ $('tariff-admin-save').setAttribute('aria-label',creating?'Создать тариф':'Сохранить настройки тарифа');
+ $('tariff-admin-cancel').hidden=!creating;
+ if($('tariff-admin-delete'))$('tariff-admin-delete').hidden=creating;
+ $('tariff-admin-audience').disabled=!creating;
+ $('tariff-admin-free').disabled=privateTariff;
+ $('tariff-admin-rub').readOnly=privateTariff;$('tariff-admin-stars').readOnly=privateTariff;
+ $('tariff-admin-stars').placeholder=privateTariff?'Не требуется':'Не настроено';
+ $('tariff-admin-access').hidden=!privateTariff;
+}
+function newTariffAdmin(){
+ previousTariffId=$('tariff-admin-select').value||previousTariffId;
+ tariffDraftId=crypto.randomUUID();tariffEditorDirty=false;
+ if(!$('tariff-admin-select').querySelector('option[value=""]'))option($('tariff-admin-select'),'','Новый тариф');
+ $('tariff-admin-select').value='';$('tariff-admin-name').value='';
+ $('tariff-admin-hours').value='1';$('tariff-admin-unit').value='86400';
+ $('tariff-admin-rub').value='300.00';$('tariff-admin-stars').value='';
+ $('tariff-admin-audience').value='public';$('tariff-admin-active').checked=true;
+ tariffEditorMode(true,false);previewTariffAdmin();
+ $('tariff-admin-status').textContent='Заполните условия и нажмите «Создать». Нулевая цена делает тариф бесплатным.';
+}
 function fillTariffAdmin(){
  const tariff=adminTariffs.find(t=>t.id===$('tariff-admin-select').value);
- if(!tariff)return;
+ if(!tariff){newTariffAdmin();return;}
+ tariffDraftId=null;tariffEditorDirty=false;previousTariffId=tariff.id;
  $('tariff-admin-name').value=tariff.name;
- $('tariff-admin-hours').value=tariff.duration_seconds/3600;
+ $('tariff-admin-unit').value='3600';$('tariff-admin-hours').value=tariff.duration_seconds/3600;
  $('tariff-admin-rub').value=(tariff.price_kopecks/100).toFixed(2);
  $('tariff-admin-stars').value=tariff.stars_price_xtr===null?'':String(tariff.stars_price_xtr);
  $('tariff-admin-active').checked=tariff.is_active;
- $('tariff-admin-rub').readOnly=!!tariff.admin_only;
- $('tariff-admin-stars').readOnly=!!tariff.admin_only;
- $('tariff-admin-stars').placeholder=tariff.admin_only?'Не требуется':'Не настроено';
- $('tariff-admin-access').hidden=!tariff.admin_only;
+ $('tariff-admin-audience').value=tariff.admin_only?'admin':'public';
+ tariffEditorMode(false,!!tariff.admin_only);previewTariffAdmin();
 }
-async function renderTariffAdmin(){
+async function renderTariffAdmin({selectedId=null}={}){
  if(me?.role!=='admin')return;
+ const session=token;
  try{
-  adminTariffs=await api('/admin/tariffs');
-  const select=$('tariff-admin-select'),previous=select.value;
-  select.replaceChildren();
-  adminTariffs.forEach(t=>option(select,t.id,tariffLabel(t)));
-  if(adminTariffs.some(t=>t.id===previous))select.value=previous;
-  fillTariffAdmin();
-  $('tariff-admin-status').textContent='Изменения тарифа применяются к новым заявкам. Доступность выставления счетов Stars проверяйте в разделе «Платежи».';
- }catch(e){$('tariff-admin-status').textContent='Не удалось прочитать тарифы: '+e.message;}
+  const data=await api('/admin/tariffs');if(session!==token||me?.role!=='admin')return;
+  adminTariffs=data;
+  const select=$('tariff-admin-select'),previous=selectedId??select.value;
+  const preserve=!selectedId&&(tariffDraftId||tariffEditorDirty)&&(!previous||data.some(t=>t.id===previous));
+  select.replaceChildren();adminTariffs.forEach(t=>option(select,t.id,tariffLabel(t)+(t.admin_only?' · администратор':'')+(t.is_active?'':' · выключен')));
+  if(tariffDraftId&&!selectedId)option(select,'','Новый тариф');
+  if(adminTariffs.some(t=>t.id===previous)||preserve)select.value=previous;
+  if(!preserve)fillTariffAdmin();
+  if(!tariffDraftId)$('tariff-admin-status').textContent='Изменения действуют для новых заявок. Доступ тарифа задаётся при создании; способы оплаты — во вкладке «Платежи».';
+ }catch(e){if(session===token&&me?.role==='admin')$('tariff-admin-status').textContent='Не удалось прочитать тарифы: '+e.message;}
 }
 $('tariff-admin-select').addEventListener('change',fillTariffAdmin);
+$('tariff-admin-new').addEventListener('click',()=>{newTariffAdmin();$('tariff-admin-name').focus();});
+$('tariff-admin-cancel').addEventListener('click',()=>{
+ tariffDraftId=null;tariffEditorDirty=false;
+ $('tariff-admin-select').querySelector('option[value=""]')?.remove();
+ $('tariff-admin-select').value=adminTariffs.some(t=>t.id===previousTariffId)?previousTariffId:adminTariffs[0]?.id||'';
+ fillTariffAdmin();
+});
+$('tariff-admin-free').addEventListener('change',()=>{
+ $('tariff-admin-rub').value=$('tariff-admin-free').checked?'0.00':'300.00';
+ if($('tariff-admin-free').checked)$('tariff-admin-stars').value='';
+ tariffEditorDirty=true;previewTariffAdmin();
+});
+$('tariff-admin-audience').addEventListener('change',()=>{
+ const privateTariff=$('tariff-admin-audience').value==='admin';
+ if(privateTariff){$('tariff-admin-rub').value='0.00';$('tariff-admin-stars').value='';}
+ tariffEditorMode(!!tariffDraftId,privateTariff);tariffEditorDirty=true;previewTariffAdmin();
+});
+$('tariff-admin-form').addEventListener('input',event=>{
+ if(['tariff-admin-select','tariff-admin-free'].includes(event.target.id))return;
+ tariffEditorDirty=true;previewTariffAdmin();
+});
 $('tariff-admin-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
- const chosen=$('tariff-admin-select').value;
- const hours=Number($('tariff-admin-hours').value),rub=Number($('tariff-admin-rub').value);
+ const chosen=$('tariff-admin-select').value,creating=!!tariffDraftId,session=token;
+ const hours=Number($('tariff-admin-hours').value)*Number($('tariff-admin-unit').value)/3600,rub=Number($('tariff-admin-rub').value);
  const duration=Math.round(hours*3600),kopecks=Math.round(rub*100);
- const starValue=$('tariff-admin-stars').value.trim();
- const stars=starValue===''?null:Number(starValue);
+ const starValue=$('tariff-admin-stars').value.trim(),stars=starValue===''?null:Number(starValue);
  if(!Number.isInteger(duration)||duration<3600||duration>31536000||
     !Number.isInteger(kopecks)||kopecks<0||kopecks>100000000||
     (stars!==null&&(!Number.isInteger(stars)||stars<0||stars>1000000)))
   throw Error('Укажите допустимую цену, длительность и количество Stars.');
  if(kopecks>0&&kopecks<100)throw Error('Для СБП укажите от 1 ₽; для бесплатного тарифа — 0 ₽.');
  if(kopecks===0&&stars>0)throw Error('Для бесплатного тарифа укажите 0 Stars или оставьте поле пустым.');
- const body={name:$('tariff-admin-name').value.trim(),duration_seconds:duration,
-             price_kopecks:kopecks,stars_price_xtr:stars,
-             is_active:$('tariff-admin-active').checked};
- await api('/admin/tariffs/'+chosen,{method:'PUT',body});
- await renderTariffAdmin();
- tariffs=await api('/me/tariffs');updatePublicPrice();
- $('tariff-select').replaceChildren();
- tariffs.forEach(t=>option($('tariff-select'),t.id,tariffLabel(t)));
- await loadAvailability();
- await renderPaymentSettings();
- notice('Настройки тарифа сохранены. Старые заказы не изменены. Платежи не запущены.',true);
+ const body={name:$('tariff-admin-name').value.trim(),duration_seconds:duration,price_kopecks:kopecks,stars_price_xtr:stars,is_active:$('tariff-admin-active').checked};
+ if(creating)Object.assign(body,{request_id:tariffDraftId,admin_only:$('tariff-admin-audience').value==='admin'});
+ $('tariff-admin-fields').disabled=true;
+ try{
+  const saved=await api(creating?'/admin/tariffs':'/admin/tariffs/'+chosen,{method:creating?'POST':'PUT',body});
+  if(session!==token||me?.role!=='admin')return;
+  tariffDraftId=null;tariffEditorDirty=false;
+  await renderTariffAdmin({selectedId:saved.id});
+  tariffs=await api('/me/tariffs');updatePublicPrice();
+  $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,tariffLabel(t)));
+  await loadAvailability();await renderPaymentSettings();
+  notice(creating?'Тариф создан.': 'Настройки тарифа сохранены. Условия прежних заявок сохранены.',true);
+ }finally{if(session===token&&me?.role==='admin')$('tariff-admin-fields').disabled=false;}
 },e.submitter);});
 
 function renderNodes(){

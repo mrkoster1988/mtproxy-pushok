@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.02",
+    version="1.03",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -149,6 +149,18 @@ class TariffSettingsUpdate(BaseModel):
         if not value:
             raise ValueError("tariff_name_required")
         return value
+
+
+class TariffCreate(TariffSettingsUpdate):
+    """UUID сохраняется при повторе запроса, чтобы не создавать дубликаты."""
+    request_id: UUID
+    admin_only: bool = False
+
+    @model_validator(mode="after")
+    def private_tariff_is_free(self):
+        if self.admin_only and (self.price_kopecks != 0 or self.stars_price_xtr is not None):
+            raise ValueError("admin_tariff_must_be_free")
+        return self
 
 
 class ChannelCreate(BaseModel):
@@ -1837,6 +1849,58 @@ def list_admin_tariffs(
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [TariffAdminResponse(**{**row, "currency": row["currency"].strip()}) for row in rows]
+
+
+@app.post("/api/v1/admin/tariffs", response_model=TariffAdminResponse, status_code=201, tags=["admin"])
+def create_admin_tariff(
+    payload: TariffCreate,
+    response: Response,
+    admin: dict[str, Any] = Depends(require_admin),
+) -> TariffAdminResponse:
+    """Создать тариф и запись аудита одной транзакцией; повтор не дублирует тариф."""
+    expected = dict(name=payload.name, duration_seconds=payload.duration_seconds,
+                    price_kopecks=payload.price_kopecks, stars_price_xtr=payload.stars_price_xtr,
+                    is_active=payload.is_active, admin_only=payload.admin_only)
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            row = connection.execute(
+                """INSERT INTO tariffs(id, name, duration_seconds, price_kopecks, currency,
+                                       stars_price_xtr, is_active, admin_only)
+                   VALUES (%s, %s, %s, %s, 'RUB', %s, %s, %s)
+                   ON CONFLICT (id) DO NOTHING
+                   RETURNING id, name, duration_seconds, price_kopecks, currency,
+                             stars_price_xtr, is_active, admin_only""",
+                (payload.request_id, payload.name, payload.duration_seconds, payload.price_kopecks,
+                 payload.stars_price_xtr, payload.is_active, payload.admin_only),
+            ).fetchone()
+            if row is None:
+                row = connection.execute(
+                    """SELECT id, name, duration_seconds, price_kopecks, currency,
+                              stars_price_xtr, is_active, admin_only
+                       FROM tariffs WHERE id=%s AND archived_at IS NULL AND btrim(currency)='RUB'""",
+                    (payload.request_id,),
+                ).fetchone()
+                if row is None or any(row.get(key) != value for key, value in expected.items()):
+                    raise HTTPException(409, 'tariff_request_conflict')
+                response.status_code = 200
+            else:
+                connection.execute(
+                    """INSERT INTO audit_events(actor_user_id, event_type, details_json)
+                       VALUES (%s, 'tariff_created',
+                               jsonb_build_object('tariff_id', %s::text,
+                                                  'price_kopecks', %s::int,
+                                                  'stars_price_xtr', %s::int,
+                                                  'duration_seconds', %s::int,
+                                                  'is_active', %s::boolean,
+                                                  'admin_only', %s::boolean))""",
+                    (admin['id'], str(payload.request_id), payload.price_kopecks,
+                     payload.stars_price_xtr, payload.duration_seconds, payload.is_active, payload.admin_only),
+                )
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail='database_unavailable') from exc
+    return TariffAdminResponse(**{**row, 'currency': row['currency'].strip()})
 
 
 @app.put("/api/v1/admin/tariffs/{tariff_id}", response_model=TariffAdminResponse, tags=["admin"])
