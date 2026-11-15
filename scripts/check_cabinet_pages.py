@@ -443,9 +443,9 @@ def main():
                 admin.locator('#tariff-admin-form button[type=submit]').click()
                 expect(admin.locator('#notice')).to_contain_text('Настройки тарифа сохранены')
                 refresh(advertiser)
-                go(advertiser, 'campaign/' + campaign_id)
-                expect(advertiser.locator('[data-page=campaign] .campaign-facts')).to_contain_text('300')
-                assert '450' not in advertiser.locator('[data-page=campaign] .campaign-facts').inner_text()
+                go(advertiser, 'archive/' + campaign_id)
+                expect(advertiser.locator('[data-page=archive] .campaign-report')).to_contain_text('300')
+                assert '450' not in advertiser.locator('[data-page=archive] .campaign-report').inner_text()
                 go(advertiser, 'create')
                 expect(advertiser.locator('#order-summary')).to_contain_text('450,55')
 
@@ -462,7 +462,8 @@ def main():
                 advertiser.get_by_label('Поиск кампаний', exact=True).press('Enter')
                 expect(advertiser.locator('#campaigns')).to_contain_text('Поиск не дал результатов')
                 advertiser.get_by_role('button', name='Сбросить поиск и фильтр', exact=True).click()
-                expect(advertiser.locator('#campaigns')).to_contain_text('Исправленный канал')
+                expect(advertiser.locator('#campaigns')).to_contain_text('Заявок пока нет')
+                expect(advertiser.locator('#campaigns')).not_to_contain_text('Исправленный канал')
                 go(advertiser, 'help')
                 advertiser.locator('[data-page=help] summary').first.click()
                 expect(advertiser.locator('[data-page=help] details').first).to_have_attribute('open', '')
@@ -539,7 +540,7 @@ def main():
                 check_navigation_icons(admin)
                 screens = [('01-dashboard', 'dashboard'), ('02-channels', 'channels'),
                     ('03-create', 'create'), ('04-campaigns', 'campaigns'),
-                    ('05-detail', 'campaign/' + campaign_id), ('06-payment', 'payments/' + campaign_id),
+                    ('05-detail', 'campaign/' + sbp_cid), ('06-payment', 'payments/' + sbp_cid),
                     ('07-calendar', 'calendar'), ('08-reports', 'reports'),
                     ('09-moderation', 'moderation'), ('10-sponsors', 'sponsors'),
                     ('11-settings', 'settings'), ('12-help', 'help'), ('13-bot', 'bot'), ('35-profile', 'profile')]

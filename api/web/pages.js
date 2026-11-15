@@ -357,7 +357,7 @@
   if(name==='campaign'){
    detail.replaceChildren();const c=state.campaigns.find(c=>c.id===id);
    if(c){detail.append(card(c,false));void renderPromotionStatus(c,detail);metrics('campaign',[]);}
-   else{empty(detail,'Кампания отсутствует в рабочем списке. Завершённые кампании находятся в архиве.');detail.append(link('Открыть архив','archive/'+id));metrics('campaign',[]);}
+   else{empty(detail,'Кампания отсутствует в рабочем списке или недоступна вашему аккаунту. Завершённые кампании находятся в архиве.');detail.append(link('Открыть архив','archive/'+id));metrics('campaign',[]);}
   }
   paymentOverview.hidden=name==='payments'&&Boolean(id);
   if(name==='payments'&&id){
