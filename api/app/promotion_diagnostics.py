@@ -1,11 +1,5 @@
 """Пояснения к плану и ограниченный отчёт агента. Не подтверждают показ рекламы."""
-import json
-import os
-import re
-import stat
-from datetime import datetime, timezone
-
-from . import control
+from .promotion_report import read_report
 from .promotion_runtime import node_plan
 
 
@@ -54,42 +48,24 @@ def describe(code):
 
 
 def agent_report(now=None):
-    now = now or datetime.now(timezone.utc)
     empty = {'status': 'unknown', 'recent': False, 'checked_at': None,
              'title': 'Нет отчёта агента',
              'next_action': 'Обновите диагностику. Установка и работа агента пока не подтверждены.'}
-    try:
-        fd = os.open(control.root() / 'promotion-agent.json', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        with os.fdopen(fd, 'r') as source:
-            info = os.fstat(source.fileno())
-            if not stat.S_ISREG(info.st_mode) or info.st_size > 8192:
-                return empty
-            data = json.loads(source.read(8193))
-        if not isinstance(data, dict) or data.get('code') not in MESSAGES:
-            return empty
-        checked = datetime.fromisoformat(data['checked_at'])
-        if checked.tzinfo is None:
-            return empty
-        age = (now - checked).total_seconds()
-        if age < 0:
-            return empty
-        recent = age < 120
-        result = {'status': 'recent' if recent else 'stale', 'recent': recent,
-                  'checked_at': checked.isoformat(), **describe(data['code'])}
-        # Возвращаем только разрешённые поля, никогда целиком файл отчёта.
-        host = data.get('host')
-        if isinstance(host, str) and re.fullmatch(r'[a-zA-Z0-9.:-]{1,253}', host):
-            result['host'] = host
-        port = data.get('port')
-        if type(port) is int and 1 <= port <= 65535:
-            result['port'] = port
-        if not recent:
-            result['last_title'] = result['title']
-            result['title'] = 'Отчёт агента устарел'
-            result['next_action'] = 'Обновите диагностику. Если свежий отчёт не появился, проверьте службу агента на сервере.'
-        return result
-    except (OSError, ValueError, KeyError, TypeError):
+    data = read_report(now)
+    if not data or data['code'] not in MESSAGES:
         return empty
+    recent = data['recent']
+    result = {'status': 'recent' if recent else 'stale', 'recent': recent,
+              'checked_at': data['checked_at'].isoformat(), **describe(data['code'])}
+    # Ревизия нужна только для внутренней сверки и не публикуется в API.
+    for key in ('host', 'port'):
+        if key in data:
+            result[key] = data[key]
+    if not recent:
+        result['last_title'] = result['title']
+        result['title'] = 'Отчёт агента устарел'
+        result['next_action'] = 'Обновите диагностику. Если свежий отчёт не появился, проверьте службу агента на сервере.'
+    return result
 
 
 def diagnostics(conn):

@@ -47,10 +47,13 @@ class PromotionDiagnosticsTests(unittest.TestCase):
 
     def test_report_never_forwards_secret_fields_or_unknown_error_text(self):
         secret = 'SECRET-must-not-leak'
-        self.report(ad_tag=secret, secret=secret, stderr=secret, host='proxy.example.org', port=8443)
+        self.report(ad_tag=secret, secret=secret, stderr=secret, host='proxy.example.org', port=8443,
+                    node_id=str(uuid4()), plan_revision='b'*64)
         result = diag.agent_report(self.now)
         self.assertEqual(result['host'], 'proxy.example.org')
         self.assertNotIn(secret, json.dumps(result))
+        self.assertNotIn('plan_revision', result)
+        self.assertNotIn('b'*64, json.dumps(result))
         self.report(code=secret)
         self.assertNotIn(secret, json.dumps(diag.agent_report(self.now)))
 
@@ -110,3 +113,17 @@ class PromotionDiagnosticsTests(unittest.TestCase):
 
     def test_all_agent_codes_have_fixed_explanations(self):
         self.assertEqual(agent.REPORT_CODES, set(diag.MESSAGES))
+
+    def test_agent_publishes_valid_identity_without_secret_fields(self):
+        node_id = str(uuid4())
+        with patch.object(agent, 'STATUS', self.path), patch.object(agent.os, 'fchown'):
+            agent.publish_status(dict(code='tag_applied', node_id=node_id, plan_revision='c'*64, tag='SECRET'))
+        saved = json.loads(self.path.read_text())
+        self.assertEqual(saved['node_id'], node_id)
+        self.assertEqual(saved['plan_revision'], 'c'*64)
+        self.assertNotIn('SECRET', self.path.read_text())
+        with patch.object(agent, 'STATUS', self.path), patch.object(agent.os, 'fchown'):
+            agent.publish_status(dict(code='tag_applied', node_id='SECRET', plan_revision='SECRET'))
+        saved = json.loads(self.path.read_text())
+        self.assertNotIn('node_id', saved)
+        self.assertNotIn('plan_revision', saved)

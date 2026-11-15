@@ -43,6 +43,11 @@ def publish_status(status):
         report['host'] = host
     if type(port) is int and 1 <= port <= 65535:
         report['port'] = port
+    for key, pattern in [('node_id', r'[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}'),
+                         ('plan_revision', r'[0-9a-f]{64}')]:
+        value = status.get(key)
+        if isinstance(value, str) and re.fullmatch(pattern, value):
+            report[key] = value
     name = None
     try:
         fd, name = tempfile.mkstemp(dir=STATUS.parent)
@@ -206,6 +211,7 @@ def tick(status=None):
     plan=exchange(request)
     status['code'] = 'invalid_plan'
     validate_plan(plan)
+    status.update(node_id=plan.get('node_id'), plan_revision=plan['revision'])
     if plan['state']=='idle':
         status['code'] = 'restore_failed'
         restore()

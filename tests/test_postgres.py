@@ -92,6 +92,20 @@ class PostgresIntegration(unittest.TestCase):
         self.assertEqual(result.status_code, expected, result.text)
         return result.json() if expected != 204 else None
 
+    def write_promotion_report(self, plan, **changes):
+        if not hasattr(self, '_promotion_report_directory'):
+            directory = tempfile.TemporaryDirectory()
+            self.addCleanup(directory.cleanup)
+            self._promotion_report_directory = Path(directory.name)
+            env = patch.dict(os.environ, {'PUSHOK_CONTROL_DIR': directory.name})
+            env.start(); self.addCleanup(env.stop)
+        report = dict(code='tag_applied', checked_at=datetime.now(timezone.utc).isoformat(),
+                      node_id=plan['node_id'], plan_revision=plan['revision'])
+        report.update(changes)
+        path = self._promotion_report_directory / 'promotion-agent.json'
+        path.write_text(json.dumps(report))
+        return path
+
     def test_unified_engine_migration_keeps_legacy_and_allows_safe_plan(self):
         migration = (ROOT / "database/009_unified_engine_selection.sql").read_text()
         node_id, admin_id = uuid4(), uuid4()
@@ -1686,6 +1700,7 @@ class PostgresIntegration(unittest.TestCase):
             self.assertEqual(plan['tag'],payload['ad_tag'])
             self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
         path='/campaigns/'+str(f['campaign'])+'/promotion-status'
+        self.write_promotion_report(plan)
         self.assertTrue(self.request('GET',path)['config_applied'])
         actor.update(id=f['stranger'],role='advertiser')
         self.request('GET',path,expected=404)
@@ -1743,6 +1758,7 @@ class PostgresIntegration(unittest.TestCase):
                     self.assertFalse(item['display_verified'])
                     self.assertNotIn(tag,json.dumps(bindings))
                     self.assertNotIn(plan['revision'],json.dumps(bindings))
+                self.write_promotion_report(plan)
                 check(True)
                 with psycopg.connect(self.dsn) as conn:
                     conn.execute(statement,(f[key],))
@@ -1766,7 +1782,46 @@ class PostgresIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
             plan=handle(conn,request)
             self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+        self.write_promotion_report(plan)
         self.assertTrue(self.request('GET',path)['config_applied'])
+
+    def test_latest_agent_report_overrides_old_success_in_both_endpoints(self):
+        from app.promotion_runtime import handle
+        from psycopg.rows import dict_row
+        f = self._management_fixture(ready=True)
+        main.app.dependency_overrides[main.get_current_user] = lambda: {'id': f['admin'], 'role': 'admin'}
+        tag = uuid4().hex
+        self.request('PUT', '/admin/promotion-bindings', json=dict(node_id=str(f['node']),
+                     channel_id=str(f['channel']), ad_tag=tag, telegram_binding_confirmed=True))
+        request = dict(host='management-'+f['node'].hex+'.example.org', port=8443)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s", (f['node'], f['campaign']))
+            plan = handle(conn, request)
+            self.assertTrue(handle(conn, dict(request, action='ack', revision=plan['revision']))['accepted'])
+        path = '/campaigns/'+str(f['campaign'])+'/promotion-status'
+        def check(expected):
+            response = self.request('GET', path)
+            self.assertEqual(response['config_applied'], expected)
+            bindings = self.request('GET', '/admin/promotion-bindings')
+            row = next(r for r in bindings['runtime'] if r['proxy_node_id'] == str(f['node']))
+            self.assertEqual(row['config_applied'], expected)
+            diagnostics = self.request('GET', '/admin/promotion-diagnostics')
+            for result in (response, bindings, diagnostics):
+                self.assertNotIn(tag, json.dumps(result))
+                self.assertNotIn(plan['revision'], json.dumps(result))
+        report = self.write_promotion_report(plan)
+        check(True)
+        for code in ['restore_failed', 'apply_failed', 'restored', 'ack_unavailable']:
+            self.write_promotion_report(plan, code=code)
+            check(False)
+        self.write_promotion_report(plan, node_id=str(uuid4()))
+        check(False)
+        self.write_promotion_report(plan, plan_revision='f'*64)
+        check(False)
+        report.unlink()
+        check(False)
+        self.write_promotion_report(plan)
+        check(True)
 
     def test_promotion_legacy_ip_lookup_and_ambiguous_identity(self):
         from app.promotion_runtime import handle

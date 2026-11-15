@@ -7,6 +7,7 @@ import ipaddress
 from datetime import datetime, timezone
 import psycopg
 from psycopg.rows import dict_row
+from .promotion_report import read_report
 
 
 def desired(conn, host, port, resolved_host=None):
@@ -96,13 +97,19 @@ def confirmation(conn, node, runtime, *, now=None):
     now = now or datetime.now(timezone.utc)
     checked_at = runtime.get('checked_at')
     fresh = bool(checked_at and 0 <= (now - checked_at).total_seconds() < 120)
+    report = read_report(now)
+    recent = bool(node and fresh and report and report['recent']
+                  and report.get('node_id') == str(node['id'])
+                  and report['checked_at'] >= checked_at)
     applied = False
-    if node and fresh and runtime.get('state') == 'applied' and runtime.get('plan_revision'):
+    if (recent and report['code'] == 'tag_applied'
+            and report.get('plan_revision') == runtime.get('plan_revision')
+            and runtime.get('state') == 'applied' and runtime.get('plan_revision')):
         plan = node_plan(conn, node)
         applied = (plan['state'] == 'apply'
                    and plan.get('campaign_id') == str(runtime.get('campaign_id'))
                    and revision(plan) == runtime['plan_revision'])
-    return {'config_applied': applied, 'agent_recent': fresh,
+    return {'config_applied': applied, 'agent_recent': recent,
             'checked_at': checked_at, 'display_verified': False}
 
 
