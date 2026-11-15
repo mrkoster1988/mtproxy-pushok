@@ -20,6 +20,19 @@ class AgentTests(unittest.TestCase):
         for p in self.patches:p.start();self.addCleanup(p.stop)
         self.plan=dict(state='apply',tag='b'*32,expires_at=time.time()+60,revision='c'*64,node_id=str(uuid4()))
 
+    def test_default_sponsor_has_no_paid_period_and_restores_when_disabled(self):
+        plan=dict(state='default',tag='d'*32,revision='e'*64,node_id=str(uuid4()),reason='default_sponsor')
+        agent.validate_plan(plan)
+        with patch.object(agent,'exchange',side_effect=[plan,{'accepted':True}]),patch.object(agent,'apply') as apply:
+            agent.tick()
+            apply.assert_called_once_with('d'*32)
+        self.assertGreater(json.loads(self.state.read_text())['expires_at'],time.time()+366*86400)
+        idle=dict(state='idle',revision='f'*64)
+        with patch.object(agent,'exchange',side_effect=[idle,{'accepted':True}]),patch.object(agent,'apply') as apply:
+            agent.tick()
+            apply.assert_called_once_with('a'*32)
+        self.assertFalse(self.state.exists())
+
     def test_only_tag_changes_and_shell_injection_rejected(self):
         original=self.env.read_text()
         self.assertIn('MT_PROXY_SECRET=keep-this',agent.tag_text(original,'b'*32))

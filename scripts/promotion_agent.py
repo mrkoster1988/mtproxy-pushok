@@ -21,7 +21,7 @@ STATUS = ROOT / '.control' / 'promotion-agent.json'
 SERVICE = 'mtproxy-pushok.service'
 TAG = re.compile(r'[0-9a-fA-F]{32}')
 PLAN_CODES = {
-    'ready', 'idle', 'node_not_found', 'node_ambiguous', 'node_paused', 'node_archived',
+    'ready', 'idle', 'default_sponsor', 'default_binding_missing', 'node_not_found', 'node_ambiguous', 'node_paused', 'node_archived',
     'engine_unsupported', 'manual_placement_active', 'conflicting_campaigns',
     'binding_missing', 'binding_changed', 'channel_archived', 'moderation_pending',
     'payment_pending', 'waiting_start', 'period_ended', 'no_current_campaign',
@@ -156,12 +156,12 @@ def exchange(request):
 
 
 def validate_plan(plan):
-    if plan.get('state') not in ('idle','apply') or not re.fullmatch(r'[0-9a-f]{64}',plan.get('revision','')):
+    if plan.get('state') not in ('idle','apply','default') or not re.fullmatch(r'[0-9a-f]{64}',plan.get('revision','')):
         raise ValueError('invalid_plan')
-    if plan['state']=='apply':
+    if plan['state'] in ('apply','default'):
         if not TAG.fullmatch(plan.get('tag','')) or plan['tag']=='0'*32:
             raise ValueError('invalid_tag')
-        if not time.time()<float(plan['expires_at'])<=time.time()+366*86400:
+        if plan['state']=='apply' and not time.time()<float(plan['expires_at'])<=time.time()+366*86400:
             raise ValueError('expired_plan')
 
 
@@ -220,7 +220,7 @@ def tick(status=None):
         baseline=json.loads(STATE.read_text())['baseline'] if STATE.exists() else cfg.get('MT_PROXY_TAG','')
         # Незавершённая попытка требует возврата к исходному тегу, даже если
         # новый слот ещё не истёк, кабинет недоступен или идёт обновление.
-        saved = dict(baseline=baseline, expires_at=plan['expires_at'], restore_required=True)
+        saved = dict(baseline=baseline, expires_at=plan.get('expires_at',253402214400), restore_required=True)
         atomic(STATE, json.dumps(saved))
         try:
             apply(plan['tag'])
@@ -241,7 +241,7 @@ def tick(status=None):
         status['code'] = 'plan_changed'
         raise RuntimeError('plan_changed')
     reason = plan.get('reason', 'idle')
-    status['code'] = 'tag_applied' if plan['state']=='apply' else reason if reason in PLAN_CODES else 'agent_error'
+    status['code'] = 'tag_applied' if plan['state'] in ('apply','default') else reason if reason in PLAN_CODES else 'agent_error'
 
 
 def main(status=None):

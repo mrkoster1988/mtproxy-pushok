@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 import psycopg
 from psycopg.rows import dict_row
 from .promotion_report import read_report
+from .default_sponsor import fallback_plan
 
 _UNREAD_REPORT = object()
 
@@ -54,7 +55,7 @@ def node_plan(conn, node):
       AND c.scheduled_start_at<=now() AND c.scheduled_end_at>now()
       ORDER BY c.scheduled_start_at,c.id LIMIT 2""", (node['id'],node['host'])).fetchall()
     if len(rows) != 1:
-        return dict(result, **waiting_reason(conn, node)) if not rows else dict(result, reason='conflicting_campaigns')
+        return fallback_plan(conn,node,dict(result, **waiting_reason(conn, node))) if not rows else dict(result, reason='conflicting_campaigns')
     c=rows[0]
     return dict(result,state='apply',reason='ready',campaign_id=str(c['id']),tag=c['ad_tag'],expires_at=c['scheduled_end_at'].timestamp())
 
@@ -111,8 +112,8 @@ def confirmation(conn, node, runtime, *, now=None, plan=None, report=_UNREAD_REP
             and runtime.get('state') == 'applied' and runtime.get('plan_revision')):
         if plan is None:
             plan = node_plan(conn, node)
-        applied = (plan['state'] == 'apply'
-                   and plan.get('campaign_id') == str(runtime.get('campaign_id'))
+        applied = (plan['state'] in ('apply','default')
+                   and str(plan.get('campaign_id')) == str(runtime.get('campaign_id'))
                    and revision(plan) == runtime['plan_revision'])
     return {'config_applied': applied, 'agent_recent': recent,
             'checked_at': checked_at, 'display_verified': False}
@@ -132,7 +133,7 @@ def handle(conn, request):
               VALUES(%s,%s,%s,%s) ON CONFLICT(proxy_node_id) DO UPDATE SET
               campaign_id=EXCLUDED.campaign_id,state=EXCLUDED.state,
               plan_revision=EXCLUDED.plan_revision,checked_at=now()""",
-              (plan['node_id'],plan.get('campaign_id'),'applied' if plan['state']=='apply' else 'idle',revision(plan)))
+              (plan['node_id'],plan.get('campaign_id'),'applied' if plan['state'] in ('apply','default') else 'idle',revision(plan)))
         if plan['state']=='apply':
             # ACK приходит только после применения тега и проверки работающего процесса.
             # Это подтверждение запуска, а не измерение показов Telegram.
@@ -154,8 +155,6 @@ def handle(conn, request):
             completed = conn.execute("""UPDATE campaigns c SET placement_status='completed',updated_at=now()
                 WHERE c.proxy_node_id=%s AND c.placement_status='active'
                   AND c.scheduled_end_at<=now()
-                  AND EXISTS(SELECT 1 FROM audit_events a WHERE a.campaign_id=c.id
-                             AND a.event_type='placement_activated_by_agent')
                 RETURNING c.id""", (plan['node_id'],)).fetchall()
             for campaign in completed:
                 conn.execute("""INSERT INTO audit_events(campaign_id,event_type,details_json)

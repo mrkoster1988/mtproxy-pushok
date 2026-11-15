@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.09",
+    version="1.10",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2952,3 +2952,6 @@ def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_curren
 
 from .team import router_for as team_router
 app.include_router(team_router(lambda: DATABASE_URL, require_admin))
+
+from .default_sponsor import router_for as default_sponsor_router
+app.include_router(default_sponsor_router(lambda: DATABASE_URL, require_admin))

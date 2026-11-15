@@ -1869,6 +1869,7 @@ class PostgresIntegration(unittest.TestCase):
             conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()-interval '1 hour',scheduled_end_at=now()+interval '1 minute' WHERE id=%s",(f['node'],f['campaign']))
             plan=handle(conn,request)
             self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+            conn.execute("DELETE FROM audit_events WHERE campaign_id=%s AND event_type='placement_activated_by_agent'",(f['campaign'],))
             conn.execute("UPDATE campaigns SET scheduled_end_at=now()-interval '1 second' WHERE id=%s",(f['campaign'],))
             self.assertFalse(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
             self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()['placement_status'],'active')
@@ -1878,6 +1879,48 @@ class PostgresIntegration(unittest.TestCase):
             again=handle(conn,request)
             self.assertTrue(handle(conn,dict(request,action='ack',revision=again['revision']))['accepted'])
             self.assertEqual(conn.execute("SELECT count(*) AS n FROM audit_events WHERE campaign_id=%s AND event_type='placement_completed_by_agent'",(f['campaign'],)).fetchone()['n'],1)
+
+    def test_default_sponsor_priority_and_legacy_completion(self):
+        from app.promotion_runtime import handle
+        from psycopg.rows import dict_row
+        f=self._management_fixture(ready=True)
+        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['admin'],'role':'admin'}
+        default_id=uuid4()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("INSERT INTO sponsor_channels(id,owner_user_id,title,telegram_url) VALUES(%s,%s,'Default sponsor',%s)",(default_id,f['admin'],'https://t.me/default_'+default_id.hex[:8]))
+        self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),channel_id=str(default_id),ad_tag='a'+uuid4().hex[1:],telegram_binding_confirmed=True))
+        self.request('PUT','/admin/default-sponsor',json=dict(channel_id=str(default_id)))
+        try:
+            setting=self.request('GET','/admin/default-sponsor')
+            self.assertEqual(setting['channel_id'],str(default_id))
+            self.assertIn(str(f['node']),setting['prepared_node_ids'])
+            self.assertNotIn('ad_tag',json.dumps(setting))
+            request=dict(host='management-'+f['node'].hex+'.example.org',port=8443)
+            with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+                plan=handle(conn,request);self.assertEqual(plan['state'],'default')
+                self.assertEqual(plan['default_channel_id'],str(default_id))
+                self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+            self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),channel_id=str(f['channel']),ad_tag='b'+uuid4().hex[1:],telegram_binding_confirmed=True))
+            with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+                conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()-interval '1 hour',scheduled_end_at=now()+interval '1 minute' WHERE id=%s",(f['node'],f['campaign']))
+                campaign=handle(conn,request);self.assertEqual(campaign['state'],'apply')
+                self.assertEqual(campaign['campaign_id'],str(f['campaign']))
+                self.assertTrue(handle(conn,dict(request,action='ack',revision=campaign['revision']))['accepted'])
+                conn.execute("DELETE FROM audit_events WHERE campaign_id=%s AND event_type='placement_activated_by_agent'",(f['campaign'],))
+                conn.execute("UPDATE campaigns SET scheduled_end_at=now()-interval '1 second' WHERE id=%s",(f['campaign'],))
+                default=handle(conn,request);self.assertEqual(default['state'],'default')
+                self.assertFalse(handle(conn,dict(request,action='ack',revision=campaign['revision']))['accepted'])
+                self.assertTrue(handle(conn,dict(request,action='ack',revision=default['revision']))['accepted'])
+                self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()['placement_status'],'completed')
+            self.request('DELETE','/admin/promotion-bindings/'+str(f['node'])+'/'+str(default_id))
+            with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+                plan=handle(conn,request);self.assertEqual(plan['state'],'idle');self.assertEqual(plan['reason'],'default_binding_missing')
+            main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['stranger'],'role':'advertiser'}
+            self.request('GET','/admin/default-sponsor',expected=403)
+            self.request('PUT','/admin/default-sponsor',json=dict(channel_id=None),expected=403)
+        finally:
+            main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['admin'],'role':'admin'}
+            self.request('PUT','/admin/default-sponsor',json=dict(channel_id=None))
 
     def test_promotion_preparation_apply_ack_cancel_and_ownership(self):
         from app.promotion_runtime import handle
