@@ -1651,6 +1651,22 @@ class PostgresIntegration(unittest.TestCase):
                 if check=='backup_restore':
                     r=self.request('GET',path);self.assertTrue(r['ready_for_free_pilot']);self.assertFalse(r['ready_for_public_launch'])
             self.assertTrue(self.request('GET',path)['ready_for_public_launch'])
+            # Следующая кампания не стирает приёмку уже завершённого полного цикла.
+            next_cid=uuid4()
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("""INSERT INTO campaigns(id,advertiser_user_id,channel_id,tariff_id,proxy_node_id,
+                    tariff_name_snapshot,duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,
+                    moderation_status,payment_status,placement_status,scheduled_start_at,scheduled_end_at)
+                    SELECT %s,advertiser_user_id,channel_id,tariff_id,proxy_node_id,tariff_name_snapshot,
+                    duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,'approved','verified',
+                    'scheduled',now()-interval '1 minute',now()+interval '59 minutes' FROM campaigns WHERE id=%s""",(next_cid,cid))
+            self.request('POST','/operator/campaigns/'+str(next_cid)+'/display-observations',201,
+                json=dict(result='visible',method='separate_unsubscribed_client',observed_at=datetime.now(timezone.utc).isoformat(),
+                          note='Next campaign visible; previous acceptance remains recorded.'))
+            r=self.request('GET',path)
+            self.assertTrue(r['ready_for_public_launch'])
+            self.assertEqual(next(x for x in r['checks'] if x['id']=='real_sponsor')['campaign_id'],str(next_cid))
+            self.assertEqual(next(x for x in r['checks'] if x['id']=='campaign_cycle')['campaign_id'],str(cid))
             rid=uuid4();ids.append(rid)
             self.request('POST',path+'/checks',201,json={**payload,'request_id':str(rid),'result':'failed','steps_confirmed':False})
             r=self.request('GET',path);self.assertTrue(r['ready_for_free_pilot']);self.assertFalse(r['ready_for_public_launch'])

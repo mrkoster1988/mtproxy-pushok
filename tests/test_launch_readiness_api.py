@@ -83,6 +83,16 @@ class ReadinessEvidenceTests(unittest.TestCase):
         item=next(x for x in result['checks'] if x['id']=='backup_restore')
         self.assertEqual(item['version'],'1.02');self.assertEqual(item['status'],'reported')
 
+    def test_new_campaign_does_not_erase_completed_cycle(self):
+        old=campaign()
+        active=campaign(placement_status='active',completed_at=None)
+        result=build(active,reports(),cycle_campaign=old)
+        self.assertTrue(result['ready_for_public_launch'])
+        cycle=next(x for x in result['checks'] if x['id']=='campaign_cycle')
+        self.assertEqual(cycle['campaign_id'],old['campaign_id'])
+        self.assertNotEqual(cycle['campaign_id'],active['campaign_id'])
+        self.assertIn('campaign_cycle',build(active,reports(),cycle_campaign={})['pending_free'])
+
     def test_ci_must_match_installed_commit(self):
         for ci in (None,dict(verified=True,commit='b'*40),dict(verified=False,commit=SHA)):
             result=build_launch_readiness({},campaign(),reports(),version='1.04',commit=SHA,ci=ci,now=NOW)
@@ -112,14 +122,14 @@ class LaunchReadinessApiTests(unittest.TestCase):
 
     def test_get_uses_read_only_snapshot_and_never_exports_secrets(self):
         self.admin();conn=MagicMock();db=conn.__enter__.return_value
-        db.execute.return_value.fetchone.side_effect=[{'nodes_active':1},None]
+        db.execute.return_value.fetchone.side_effect=[{'nodes_active':1},None,None]
         db.execute.return_value.fetchall.return_value=[]
         with patch('app.main.psycopg.connect',return_value=conn),patch('app.main.control.read',return_value={}),patch('app.release_ci.lookup',return_value=None):
             r=self.client.get(self.path)
         self.assertEqual(r.status_code,200,r.text);self.assertEqual(r.json()['statistics']['nodes_active'],1)
         self.assertEqual(r.headers['cache-control'],'private, no-store')
         queries=[call.args[0].strip() for call in db.execute.call_args_list]
-        self.assertIn('READ ONLY',queries[0]);self.assertEqual(len(queries),4)
+        self.assertIn('READ ONLY',queries[0]);self.assertEqual(len(queries),5)
         for query in queries[1:]:
             self.assertTrue(query.startswith('SELECT'));self.assertNotIn('ad_tag',query)
             self.assertNotIn('SELECT *',query);self.assertNotIn('INSERT',query);self.assertNotIn('DELETE',query)

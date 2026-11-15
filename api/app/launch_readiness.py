@@ -17,7 +17,7 @@ def timestamp(value):
         return None
 
 
-def build_launch_readiness(counts, campaign=None, manual_checks=(), *, version=None, commit=None, ci=None, now=None):
+def build_launch_readiness(counts, campaign=None, manual_checks=(), *, version=None, commit=None, ci=None, now=None, cycle_campaign=None):
     now = now or datetime.now(timezone.utc)
     keys = ("nodes_total", "nodes_active", "nodes_with_registered_tag", "campaigns_total", "moderation_pending",
             "payments_pending", "payments_verified", "placements_scheduled", "placements_active",
@@ -58,13 +58,18 @@ def build_launch_readiness(counts, campaign=None, manual_checks=(), *, version=N
                    action="Профиль → Модерация → Управлять размещением: сохраните фактический результат проверки показа.")
     add("real_mtproxy", "Подключение через MTProxy при проверке показа", "reported" if visible else "stale" if valid_observation and not known else "not_verified", **details)
     add("real_sponsor", "Спонсорский канал виден в Telegram", status, **details)
-    activated, completed = timestamp(c.get("activated_at")), timestamp(c.get("completed_at"))
-    cycle = bool(visible and activated and completed and c.get("placement_status") == "completed"
-                 and observed <= activated <= completed <= now
-                 and c.get("tag_removed_confirmed") is True
-                 and c.get("verification_method") == "separate_unsubscribed_client")
+    cc = cycle_campaign if cycle_campaign is not None else c
+    cycle_observed = timestamp(cc.get("observed_at"))
+    cycle_start, cycle_end = timestamp(cc.get("scheduled_start_at")), timestamp(cc.get("scheduled_end_at"))
+    activated, completed = timestamp(cc.get("activated_at")), timestamp(cc.get("completed_at"))
+    cycle = bool(cycle_observed and cycle_start and cycle_end and activated and completed
+                 and cycle_start <= cycle_observed < cycle_end and cc.get("result") == "visible"
+                 and cc.get("method") == "separate_unsubscribed_client" and cc.get("placement_status") == "completed"
+                 and cycle_observed <= activated <= completed <= now
+                 and cc.get("tag_removed_confirmed") is True
+                 and cc.get("verification_method") == "separate_unsubscribed_client")
     add("campaign_cycle", "Полная кампания: показ и завершение", "reported" if cycle else "not_verified",
-        proof="operator_campaign_completion", campaign_id=c.get("campaign_id"), observed_at=c.get("completed_at") if cycle else None,
+        proof="operator_campaign_completion", campaign_id=cc.get("campaign_id"), observed_at=cc.get("completed_at") if cycle else None,
         action="В карточке активного размещения после окончания проверьте прекращение показа и подтвердите завершение. Возврат того же тега не подтверждает снятие спонсора.")
 
     latest = {}
@@ -97,5 +102,5 @@ def build_launch_readiness(counts, campaign=None, manual_checks=(), *, version=N
         "ci_verified": ci_ok, "vps_verified": by_id["backup_restore"]["status"] == "reported",
         "payments_automatically_verified": False, "telegram_api_verified": False, "changes_applied": False,
         "manual_check_types": [{"id": key, "title": title, "instructions": instructions} for key, (title, instructions) in MANUAL_CHECKS.items()],
-        "note": "История приёмки по последней проверенной кампании на активном узле и отчётам администратора. Это не мониторинг всех узлов. Даты и версии указаны у результатов; обновление кабинета не стирает историю. При изменении узла, провайдера или процедуры восстановления повторите соответствующее испытание. Публикация и приём платежей сами не включаются.",
+        "note": "История приёмки: последнее наблюдение показа, последняя проверенная завершённая кампания на активном узле и отчёты администратора. Это не мониторинг всех узлов. Даты и версии указаны у результатов; обновление кабинета не стирает историю. При изменении узла, провайдера или процедуры восстановления повторите соответствующее испытание. Публикация и приём платежей сами не включаются.",
     }

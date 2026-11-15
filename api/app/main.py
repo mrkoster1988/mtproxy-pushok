@@ -2057,8 +2057,7 @@ def read_launch_readiness(response: Response, admin: dict[str, Any] = Depends(re
                   (SELECT count(*) FROM campaigns WHERE placement_status = 'completed' AND archived_at IS NULL) AS placements_completed,
                   (SELECT count(*) FROM placement_observations) AS manual_observations"""
             ).fetchone()
-            campaign = connection.execute(
-                """SELECT c.id AS campaign_id, c.placement_status, c.scheduled_start_at, c.scheduled_end_at,
+            campaign_query = """SELECT c.id AS campaign_id, c.placement_status, c.scheduled_start_at, c.scheduled_end_at,
                           n.name AS node_name, o.id AS observation_id, o.result, o.method, o.observed_at,
                           a.created_at AS activated_at, e.created_at AS completed_at,
                           e.details_json->'tag_removed_confirmed' AS tag_removed_confirmed,
@@ -2075,7 +2074,11 @@ def read_launch_readiness(response: Response, admin: dict[str, Any] = Depends(re
                    WHERE c.archived_at IS NULL AND n.archived_at IS NULL AND n.status = 'active'
                      AND c.placement_status IN ('scheduled', 'active', 'completed')
                      AND c.moderation_status = 'approved' AND c.payment_status = 'verified'
-                   ORDER BY o.recorded_at DESC, o.id DESC LIMIT 1"""
+"""
+            campaign_order = " ORDER BY o.recorded_at DESC, o.id DESC LIMIT 1"
+            campaign = connection.execute(campaign_query + campaign_order).fetchone()
+            completed_campaign = connection.execute(
+                campaign_query + " AND c.placement_status = 'completed'" + campaign_order
             ).fetchone()
             reports = connection.execute(
                 """SELECT DISTINCT ON (details_json->>'check_id') id, created_at, details_json
@@ -2088,7 +2091,7 @@ def read_launch_readiness(response: Response, admin: dict[str, Any] = Depends(re
     commit = _installed_commit()
     ci = lookup(commit)
     response.headers['Cache-Control'] = 'private, no-store'
-    return build_launch_readiness(counts or {}, campaign, reports, version=app.version, commit=commit, ci=ci)
+    return build_launch_readiness(counts or {}, campaign, reports, version=app.version, commit=commit, ci=ci, cycle_campaign=completed_campaign or {})
 
 
 @app.get("/api/v1/admin/pushok-core/readiness", tags=["admin"])
