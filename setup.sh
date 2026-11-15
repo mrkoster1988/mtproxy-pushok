@@ -403,6 +403,7 @@ EOF
     database/027_promotion_runtime.sql
     database/028_promotion_revision.sql
     database/029_moderation_notifications.sql
+    database/030_agent_activation_audit.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"
