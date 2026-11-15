@@ -6,7 +6,7 @@ window.pushokOrder=(()=>{
  let newChannel=false,initialized=false,busy=false,attempt=null,owner=null;
  const storageKey=()=> 'pushok-order-pending:'+me.id;
  Object.assign(errors,{order_tariff_changed:'Тариф изменился. Проверьте обновлённую стоимость и длительность перед отправкой.',order_request_conflict:'Параметры сохранённой отправки не совпали. Проверьте список ваших заявок.'});
- function currentKey(){return me?.id+':'+$('tariff-select').value+':'+$('order-promo').value.trim().toUpperCase();}
+ function currentKey(){const t=tariffs.find(t=>t.id===$('tariff-select').value);return [me?.id,t?.id,t?.price_kopecks,t?.stars_price_xtr,t?.duration_seconds,$('order-promo').value.trim().toUpperCase()].join(':');}
  async function calculate(){
   const tid=$('tariff-select').value;if(!tid||!me)return null;
   const key=currentKey(),version=++quoteEpoch,session=token;
@@ -32,7 +32,7 @@ window.pushokOrder=(()=>{
   const channel=newChannel?($('order-channel-title').value.trim()||$('order-channel-url').value.trim()||'Укажите канал'):channels.find(c=>c.id===$('channel-select').value)?.title||'Выберите канал';
   const start=$('requested-start').value;
   const q=quoteKey===currentKey()?priceQuote:null;
-  const total=q?q.price_kopecks:tariff?.price_kopecks;
+  const total=attempt?attempt.expected_price_kopecks:q?q.price_kopecks:tariff?.price_kopecks;
   $('order-date').querySelector('summary').textContent='3. Дата · '+(start?date(start):'согласовать с оператором');
   const rows=[['Канал',channel],['Тариф',tariff?tariff.name+' · '+tariff.duration_seconds/3600+' ч':'Не выбран'],['Стоимость',tariff?(total===0?'Бесплатно':money(total)):'—'],['Начало',start?date(start):'По согласованию']];
   if(q?.offer_name)rows.push(['Скидка',q.offer_name+' · '+q.discount_percent+'%']);
