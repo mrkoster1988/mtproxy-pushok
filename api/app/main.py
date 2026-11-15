@@ -39,7 +39,7 @@ from .placement_evidence import sanitize_image, store_image, read_verified_image
 from .placement_report import build_campaign_report, PUBLIC_EVENTS
 from .report_export import render_campaign_csv
 from .payment_gate import stars_invoices_enabled
-from .launch_readiness import build_launch_readiness
+from .launch_readiness import build_launch_readiness, MAX_AGE
 from . import sbp_checkout, sbp_admin, stars_checkout
 from .promotion_diagnostics import diagnostics as promotion_diagnostics
 from .promotion_runtime import confirmation as promotion_confirmation
@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.03",
+    version="1.04",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1968,43 +1968,127 @@ def _engine_plan(payload: EngineSelectionInput) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
-@app.get("/api/v1/admin/launch-readiness", tags=["admin"])
-def read_launch_readiness(
-    admin: dict[str, Any] = Depends(require_admin),
-) -> dict[str, Any]:
-    """Только агрегаты БД: не сканировать сеть, не читать рекламные теги и секреты."""
+class LaunchCheckRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    request_id: UUID
+    check_id: Literal["backup_restore", "stars_payment", "sbp_payment"]
+    result: Literal["passed", "failed"]
+    checked_at: datetime
+    note: str = Field(min_length=24, max_length=2000)
+    steps_confirmed: bool = False
+    performed_on_vps: Literal[True]
+
+    @field_validator("note")
+    @classmethod
+    def clean_note(cls, value):
+        value = value.strip()
+        if len(value) < 24:
+            raise ValueError("Опишите проверку и результат: минимум 24 символа")
+        return value
+
+    @model_validator(mode="after")
+    def validate_check(self):
+        if self.checked_at.utcoffset() is None:
+            raise ValueError("Укажите часовой пояс проверки")
+        now = datetime.now(timezone.utc)
+        if not now - MAX_AGE <= self.checked_at <= now:
+            raise ValueError("Нужна проверка за последние 7 дней, не в будущем")
+        if self.result == "passed" and not self.steps_confirmed:
+            raise ValueError("Подтвердите все этапы проверки")
+        return self
+
+
+def _installed_commit():
+    installed = control.read('status.json', {})
+    commit = installed.get('commit') if isinstance(installed, dict) and installed.get('state') == 'succeeded' else None
+    return commit if isinstance(commit, str) and re.fullmatch('[0-9a-f]{40}', commit) else None
+
+
+@app.post("/api/v1/admin/launch-readiness/checks", status_code=201, tags=["admin"])
+def record_launch_check(payload: LaunchCheckRequest, response: Response,
+                        admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """Заявление администратора о внешнем испытании; не выполняет платёж или restore."""
+    data = payload.model_dump(mode='json', exclude={'request_id'})
+    data.update(version=app.version, commit=_installed_commit())
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            row = connection.execute(
+                """INSERT INTO audit_events (id, actor_user_id, event_type, details_json)
+                   VALUES (%s, %s, 'launch_check_recorded', %s::jsonb)
+                   ON CONFLICT (id) DO NOTHING RETURNING id, created_at""",
+                (payload.request_id, admin['id'], json.dumps(data)),
+            ).fetchone()
+            if row is None:
+                saved = connection.execute(
+                    "SELECT id, actor_user_id, event_type, details_json, created_at FROM audit_events WHERE id=%s",
+                    (payload.request_id,),
+                ).fetchone()
+                if not saved or saved['event_type'] != 'launch_check_recorded' or saved['actor_user_id'] != admin['id'] or saved['details_json'] != data:
+                    raise HTTPException(status_code=409, detail='launch_check_request_conflict')
+                row = saved
+                response.status_code = 200
+    except HTTPException:
+        raise
+    except psycopg.Error as exc:
+        raise HTTPException(status_code=503, detail='database_unavailable') from exc
+    response.headers['Cache-Control'] = 'private, no-store'
+    return {'id': row['id'], 'recorded_at': row['created_at'], 'version': app.version,
+            'administrator_report_only': True, 'changes_applied': False}
+
+
+@app.get("/api/v1/admin/launch-readiness", tags=["admin"])
+def read_launch_readiness(response: Response, admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    """Сохранённые доказательства: без сетевого сканирования и чтения рекламных тегов."""
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            connection.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')
             counts = connection.execute(
                 """SELECT
-                  (SELECT count(*) FROM proxy_nodes) AS nodes_total,
-                  (SELECT count(*) FROM proxy_nodes WHERE status = 'active') AS nodes_active,
-                  (SELECT count(*) FROM proxy_sponsor_registrations AS r
-                   JOIN proxy_nodes AS n ON n.id = r.proxy_node_id
+                  (SELECT count(*) FROM proxy_nodes WHERE archived_at IS NULL) AS nodes_total,
+                  (SELECT count(*) FROM proxy_nodes WHERE status = 'active' AND archived_at IS NULL) AS nodes_active,
+                  (SELECT count(*) FROM proxy_sponsor_registrations AS r JOIN proxy_nodes AS n ON n.id = r.proxy_node_id
                    WHERE n.status = 'active' AND n.archived_at IS NULL) AS nodes_with_registered_tag,
-                  (SELECT count(*) FROM campaigns) AS campaigns_total,
-                  (SELECT count(*) FROM campaigns WHERE moderation_status = 'pending') AS moderation_pending,
-                  (SELECT count(*) FROM campaigns WHERE payment_status = 'proof_submitted') AS payments_pending,
-                  (SELECT count(*) FROM campaigns WHERE payment_status = 'verified' AND price_kopecks_snapshot > 0) AS payments_verified,
-                  (SELECT count(*) FROM campaigns WHERE placement_status = 'scheduled') AS placements_scheduled,
-                  (SELECT count(*) FROM campaigns WHERE placement_status = 'active') AS placements_active,
-                  (SELECT count(*) FROM campaigns WHERE placement_status = 'completed') AS placements_completed,
-                  (SELECT count(*) FROM placement_observations) AS manual_observations
-                """
+                  (SELECT count(*) FROM campaigns WHERE archived_at IS NULL) AS campaigns_total,
+                  (SELECT count(*) FROM campaigns WHERE moderation_status = 'pending' AND archived_at IS NULL) AS moderation_pending,
+                  (SELECT count(*) FROM campaigns WHERE payment_status = 'proof_submitted' AND archived_at IS NULL) AS payments_pending,
+                  (SELECT count(*) FROM campaigns WHERE payment_status = 'verified' AND price_kopecks_snapshot > 0 AND archived_at IS NULL) AS payments_verified,
+                  (SELECT count(*) FROM campaigns WHERE placement_status = 'scheduled' AND archived_at IS NULL) AS placements_scheduled,
+                  (SELECT count(*) FROM campaigns WHERE placement_status = 'active' AND archived_at IS NULL) AS placements_active,
+                  (SELECT count(*) FROM campaigns WHERE placement_status = 'completed' AND archived_at IS NULL) AS placements_completed,
+                  (SELECT count(*) FROM placement_observations) AS manual_observations"""
             ).fetchone()
+            campaign = connection.execute(
+                """SELECT c.id AS campaign_id, c.placement_status, c.scheduled_start_at, c.scheduled_end_at,
+                          n.name AS node_name, o.id AS observation_id, o.result, o.method, o.observed_at,
+                          a.created_at AS activated_at, e.created_at AS completed_at,
+                          e.details_json->'tag_removed_confirmed' AS tag_removed_confirmed,
+                          e.details_json->>'verification_method' AS verification_method
+                   FROM campaigns AS c JOIN proxy_nodes AS n ON n.id = c.proxy_node_id
+                   JOIN LATERAL (SELECT id, result, method, observed_at, recorded_at FROM placement_observations
+                       WHERE campaign_id = c.id ORDER BY id DESC LIMIT 1) AS o ON TRUE
+                   LEFT JOIN LATERAL (SELECT created_at FROM audit_events
+                       WHERE campaign_id = c.id AND event_type = 'placement_activated_manually'
+                       AND created_at >= o.recorded_at ORDER BY created_at DESC LIMIT 1) AS a ON TRUE
+                   LEFT JOIN LATERAL (SELECT created_at, details_json FROM audit_events
+                       WHERE campaign_id = c.id AND event_type = 'placement_completed_manually'
+                       AND created_at >= a.created_at ORDER BY created_at DESC LIMIT 1) AS e ON TRUE
+                   WHERE c.archived_at IS NULL AND n.archived_at IS NULL AND n.status = 'active'
+                     AND c.placement_status IN ('scheduled', 'active', 'completed')
+                     AND c.moderation_status = 'approved' AND c.payment_status = 'verified'
+                   ORDER BY o.recorded_at DESC, o.id DESC LIMIT 1"""
+            ).fetchone()
+            reports = connection.execute(
+                """SELECT DISTINCT ON (details_json->>'check_id') id, created_at, details_json
+                   FROM audit_events WHERE event_type = 'launch_check_recorded'
+                   ORDER BY details_json->>'check_id', created_at DESC, id DESC"""
+            ).fetchall()
     except psycopg.Error as exc:
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
-    report=build_launch_readiness(counts or {})
     from .release_ci import lookup
-    installed=control.read('status.json', {})
-    evidence=lookup(installed.get('commit')) if isinstance(installed,dict) and installed.get('state')=='succeeded' else None
-    report['release_ci']=evidence
-    if evidence and evidence['verified']:
-        report['ci_verified']=True
-        for check in report['checks']:
-            if check['id']=='ci_acceptance':
-                check.update(status='verified',proof='github_actions_installed_commit',commit=evidence['commit'],checked_at=evidence['checked_at'])
-    return report
+    commit = _installed_commit()
+    ci = lookup(commit)
+    response.headers['Cache-Control'] = 'private, no-store'
+    return build_launch_readiness(counts or {}, campaign, reports, version=app.version, commit=commit, ci=ci)
 
 
 @app.get("/api/v1/admin/pushok-core/readiness", tags=["admin"])

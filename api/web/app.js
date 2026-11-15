@@ -435,63 +435,84 @@ $('engine-preview').addEventListener('click',()=>run(async()=>{
  $('engine-advice').textContent='План: '+plan.title+' · '+(availability[plan.availability]||'требуется отдельная проверка')+
   '. Не установлено и не проверено. Смена работающего прокси не выполняется.';
 }));
+let launchReadinessEpoch=0,launchCheckAttempt=null;
+function clearLaunchCheck(){launchCheckAttempt=null;$('launch-check-form').reset();$('launch-check-details').open=false;launchCheckInstructions();}
+function launchCheckInstructions(){
+ const selected=$('launch-check-type').selectedOptions[0];
+ $('launch-check-instructions').textContent=selected?.dataset.instructions||'Выберите проверку, которую уже выполнили.';
+ $('launch-check-steps').required=$('launch-check-result').value==='passed';
+}
+$('launch-check-type').addEventListener('change',launchCheckInstructions);
+$('launch-check-result').addEventListener('change',launchCheckInstructions);
+$('launch-refresh').addEventListener('click',()=>run(renderLaunchReadiness,$('launch-refresh')));
+$('launch-check-form').addEventListener('submit',event=>{
+ event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;
+ void run(async()=>{
+  const session=token;
+  const at=new Date($('launch-check-at').value);if(!Number.isFinite(at.getTime())||at.getTime()>Date.now())throw Error('Укажите время уже выполненной проверки.');
+  const payload={check_id:$('launch-check-type').value,result:$('launch-check-result').value,checked_at:at.toISOString(),note:$('launch-check-note').value.trim(),steps_confirmed:$('launch-check-steps').checked,performed_on_vps:$('launch-check-vps').checked};
+  if(payload.note.length<24)throw Error('Опишите проверку и результат: минимум 24 символа.');
+  const signature=JSON.stringify(payload);if(!launchCheckAttempt||launchCheckAttempt.signature!==signature)launchCheckAttempt={signature,id:crypto.randomUUID()};
+  $('launch-check-fields').disabled=true;
+  try{
+   const result=await api('/admin/launch-readiness/checks',{method:'POST',body:{...payload,request_id:launchCheckAttempt.id}});
+   if(token!==session||me?.role!=='admin')return;
+   clearLaunchCheck();await renderLaunchReadiness();
+   if(token===session)notice('Отчёт сохранён для v'+result.version+'. Сводка обновлена; настройки оплаты и прокси не менялись.',true);
+  }finally{if(token===session)$('launch-check-fields').disabled=false;}
+ },$('launch-check-save'));
+});
+Object.assign(errors,{launch_check_request_conflict:'Такой отчёт уже записан с другими данными. Обновите страницу перед новой проверкой.'});
 async function renderLaunchReadiness(){
  if(me?.role!=='admin')return;
- const target=$('launch-readiness');
- target.replaceChildren(el('p','Загрузка сведений из БД…','muted'));
+ const target=$('launch-readiness'),session=token,epoch=++launchReadinessEpoch;
+ const current=()=>token===session&&me?.role==='admin'&&epoch===launchReadinessEpoch;
  try{
-  const data=await api('/admin/launch-readiness');
+  const data=await api('/admin/launch-readiness');if(!current())return;
   target.replaceChildren();
-  const s=data.statistics;
-  target.append(el('p','Узлы: '+s.nodes_total+' (активных в реестре: '+s.nodes_active+
-   ', с зарегистрированным тегом: '+s.nodes_with_registered_tag+'). Заявки: '+
-   s.campaigns_total+', на модерации: '+s.moderation_pending+
-   ', чеки на проверке: '+s.payments_pending+'.','muted'));
-  target.append(el('p','Оплата подтверждена оператором: '+s.payments_verified+
-   ' · Размещений запланировано: '+s.placements_scheduled+
-   ' · Вручную отмечено активными: '+s.placements_active+
-   ' · Завершено: '+s.placements_completed+
-   ' · Ручных проверок: '+s.manual_observations+'.','muted'));
-  const list=el('ul',undefined,'core-checklist');
-  for(const step of data.checks){
-   const state=step.status==='verified'?'Проверено: ':step.status==='data_present'?'Данные в реестре: ':step.status==='missing'?
-    'Нет данных в реестре: ':'Нет результата проверки в кабинете: ';
-   list.append(el('li',state+step.title+(step.status==='data_present'?' ('+step.count+')':step.status==='verified'?' · '+step.commit.slice(0,8)+' · '+date(step.checked_at):''),
-     step.status==='not_verified'?'core-check-pending':'core-check-ci'));
+  const summary=el('div',undefined,'readiness-summary');
+  for(const [title,ready,pending,total] of [['Бесплатный пилот',data.ready_for_free_pilot,data.pending_free,data.free_total],['Платный запуск',data.ready_for_public_launch,data.pending_paid,data.paid_total]]){
+   const box=el('section',undefined,'readiness-summary-item');box.append(el('h4',title),el('strong',(total-pending.length)+' из '+total),el('p',ready?'Проверки пройдены по сохранённым результатам':'Осталось проверок: '+pending.length));summary.append(box);
   }
-  const ciLink=el('a','Открыть результаты CI в GitHub');ciLink.href='https://github.com/mrkoster1988/mtproxy-pushok/actions';ciLink.target='_blank';ciLink.rel='noopener noreferrer';target.append(ciLink);
-  target.append(list,el('p','Готовность к публичному запуску: НЕ ПОДТВЕРЖДЕНА. Наличие узла или тега в БД не означает, что прокси работает.','muted'));
- }catch(e){
-  target.replaceChildren(el('p','Не удалось собрать сводку готовности: '+e.message,'muted'));
- }
+  target.append(summary,el('p','Сводка: '+date(data.checked_at)+' · установленная версия v'+data.version,'muted'));
+  const s=data.statistics;target.append(el('p','Активных узлов в реестре: '+s.nodes_active+' · заявок: '+s.campaigns_total+' · запланировано: '+s.placements_scheduled+' · активных размещений: '+s.placements_active+' · завершено: '+s.placements_completed,'muted'));
+  const labels={verified:'Проверено автоматически',reported:'Подтверждено вручную',failed:'Проверка не пройдена',stale:'Нужна повторная проверка',not_verified:'Нет результата в кабинете'};
+  const list=el('ul',undefined,'readiness-checks');
+  for(const step of data.checks.filter(x=>!['data_present','missing'].includes(x.status))){
+   const item=el('li',undefined,'readiness-check');item.dataset.check=step.id;item.dataset.status=step.status;
+   item.append(el('h4',step.title),el('span',labels[step.status]||'Нет результата в кабинете','readiness-state'));
+   const at=step.observed_at||step.checked_at;if(at)item.append(el('p','Проверка: '+date(at)+(step.version?' · v'+step.version:''),'muted'));
+   if(step.node_name)item.append(el('p','Узел: '+step.node_name,'muted'));
+   if(step.proof==='operator_telegram_observation')item.append(el('p','Источник: запись оператора о показе в Telegram. Это результат на дату проверки, а не текущая доступность.','muted'));
+   if(step.proof==='operator_campaign_completion')item.append(el('p','Источник: проверка показа, активация и подтверждение завершения одной кампании.','muted'));
+   if(step.proof==='administrator_acceptance_report')item.append(el('p','Источник: отчёт администратора об испытании на VPS.','muted'));
+   if(step.note){const details=el('details'),heading=el('summary','Описание проверки');details.append(heading,el('p',step.note));item.append(details);}
+   if(!['verified','reported'].includes(step.status))item.append(el('p',step.action));
+   if(step.campaign_id){const link=el('a','Открыть контрольную кампанию ↗');link.href='#/moderation/'+step.campaign_id;item.append(link);}
+   if(step.id==='ci_acceptance'){const link=el('a','Результаты сборки в GitHub ↗');link.href='https://github.com/mrkoster1988/mtproxy-pushok/actions';link.target='_blank';link.rel='noopener noreferrer';item.append(link);}
+   list.append(item);
+  }
+  target.append(list,el('p',data.note,'muted'));
+  const select=$('launch-check-type'),old=select.value;
+  select.replaceChildren(new Option('Выберите проверку',''));
+  for(const item of data.manual_check_types){const option=new Option(item.title,item.id);option.dataset.instructions=item.instructions;select.append(option);}
+  if([...select.options].some(x=>x.value===old))select.value=old;launchCheckInstructions();
+ }catch(e){if(current())target.replaceChildren(el('p','Не удалось обновить сводку: '+e.message+'. Повторите проверку.','muted'));}
 }
 
 async function renderCoreReadiness(){
- if(me?.role!=='admin')return;
+ if(me?.role!=='admin')return;const session=token;
  try{
-  const report=await api('/admin/pushok-core/readiness');
-  const message=(report.source_pinned?'Исходный код закреплён. ':'Источник не подтверждён. ')+
-   'Проверка бинарника на этом сервере: '+(report.local_build_verified===true?'подтверждена':'не проводилась')+
-   '. Работа MTProxy: '+(report.runtime_status==='not_checked'?'не проверялась':report.runtime_status)+
-   '. Подключение Telegram и показ спонсора не подтверждены. Никаких действий на сервере.';
-  $('core-readiness').textContent=message;
-  $('core-readiness').append(button('Проверить скриншоты',async()=>{
-   const report=await api('/admin/placement-evidence/integrity?limit=50');
-   const problems=report.issues.map(issue=>'#'+issue.observation_id+': '+issue.issue).join('; ');
-   notice('Проверено: '+report.checked+'; целых файлов: '+report.healthy+
-    (problems?'; ошибки: '+problems:'; ошибок в проверенной выборке нет.')+
-    ' Это не подтверждение показа Telegram.',!report.issues.length);
-  }));
-  const plan=await api('/admin/pushok-core/diagnostic-plan');
-  $('core-test-plan').replaceChildren(...plan.steps.map(step =>
-   el('li',(step.verification==='ci_only'?'Проверка в CI: ':'Ещё не подтверждено: ')+step.title,
-      step.verification==='ci_only'?'core-check-ci':'core-check-pending')));
-
- }catch{
-  $('core-readiness').textContent='Не удалось получить состояние подготовки ядра. Это не означает, что прокси работает.';
-  $('core-test-plan').replaceChildren();
- }
+  const report=await api('/admin/pushok-core/readiness');if(token!==session||me?.role!=='admin')return;
+  $('core-readiness').textContent='Экспериментальный Pushok Source Core v'+report.core_version+'. Это отдельное ядро: результаты ниже не описывают работающий MTProxy Classic и не входят в приёмку кабинета. API не проверяет и не переключает работающую службу.';
+  const plan=await api('/admin/pushok-core/diagnostic-plan');if(token!==session||me?.role!=='admin')return;
+  $('core-test-plan').replaceChildren(...plan.steps.map(step=>el('li',(step.verification==='ci_only'?'Проверка в CI: ':'Ещё не подтверждено для экспериментального ядра: ')+step.title,step.verification==='ci_only'?'core-check-ci':'core-check-pending')));
+ }catch{if(token===session&&me?.role==='admin'){$('core-readiness').textContent='Не удалось получить сведения об экспериментальном ядре. Состояние работающего MTProxy проверяется в разделе «Спонсоры».';$('core-test-plan').replaceChildren();}}
 }
+$('launch-evidence-integrity').addEventListener('click',()=>run(async()=>{
+ const session=token,report=await api('/admin/placement-evidence/integrity?limit=50');if(token!==session||me?.role!=='admin')return;
+ notice('Проверено файлов: '+report.checked+'; целых: '+report.healthy+'; проблем: '+report.issues.length+'. Проверяется сохранность скриншотов; факт показа подтверждает оператор.',!report.issues.length);
+},$('launch-evidence-integrity')));
 let adminTariffs=[],tariffDraftId=null,tariffEditorDirty=false,previousTariffId='';
 Object.assign(errors,{tariff_request_conflict:'Тариф с этим запросом уже сохранён с другими условиями. Выберите его из списка или начните новый тариф.'});
 

@@ -180,3 +180,17 @@ body.cabinet-mode{min-width:0}
 .tariff-builder-preview p{margin:8px 0;font-size:.95rem}
 .tariff-builder-preview small{color:var(--muted)}
 @media(max-width:480px){.tariff-builder-toolbar{grid-template-columns:minmax(0,1fr)}.tariff-builder-toolbar button{margin:0 0 12px;justify-self:start}.tariff-builder-prices{grid-template-columns:minmax(0,1fr)}}
+
+/* Приёмка: результаты и следующие действия читаются на узком экране. */
+.readiness-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:20px 0}
+.readiness-summary-item,.readiness-check{border:1px solid var(--line,#345361);border-radius:16px;padding:18px;background:var(--surface,#11283e)}
+.readiness-summary h4,.readiness-check h4{margin:0 0 12px}.readiness-summary strong{font-size:28px}
+.readiness-checks{list-style:none;padding:0;display:grid;gap:14px}.readiness-checks li{min-width:0;overflow-wrap:anywhere}
+.readiness-check p{margin:12px 0}.readiness-state{display:inline-block;padding:6px 10px;border-radius:10px;background:#243c54;color:#dcecf7;font-size:13px}
+.readiness-check[data-status=reported] .readiness-state,.readiness-check[data-status=verified] .readiness-state{background:#164b47;color:#92e3cf}
+.readiness-check[data-status=failed] .readiness-state{background:#542d35;color:#ffc1ba}
+.readiness-check[data-status=stale] .readiness-state{background:#514326;color:#ffdaa3}
+.readiness-report{margin:20px 0}.readiness-report>summary{cursor:pointer;min-height:44px;padding:10px 0}
+#launch-check-fields{border:0;padding:0;margin:0;min-width:0;display:grid;gap:12px}
+#launch-check-fields input[type=datetime-local],#launch-check-fields textarea,#launch-check-fields select{min-width:0;width:100%;box-sizing:border-box}
+@media(max-width:480px){.readiness-summary{grid-template-columns:1fr}.readiness-summary-item,.readiness-check{padding:14px}}

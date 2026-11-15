@@ -1611,6 +1611,58 @@ class PostgresIntegration(unittest.TestCase):
         self.addCleanup(cleanup)
         return dict(owner=owner,admin=admin,stranger=stranger,channel=channel,node=node,tariff=tariff,campaign=campaign)
 
+    def test_launch_acceptance_campaign_cycle_reports_and_failure(self):
+        f=self._management_fixture(ready=True)
+        uid=f['admin'];cid=f['campaign'];now=datetime.now(timezone.utc)
+        main.app.dependency_overrides[main.get_current_user]=lambda:dict(id=uid,role='admin')
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("""UPDATE campaigns SET placement_status='scheduled',proxy_node_id=%s,
+                scheduled_start_at=%s,scheduled_end_at=%s WHERE id=%s""",
+                (f['node'],now-timedelta(minutes=5),now+timedelta(minutes=55),cid))
+            before_attempts=conn.execute('SELECT count(*) FROM payment_attempts').fetchone()[0]
+        from app import release_ci
+        sha='a'*40;path='/admin/launch-readiness';base='/operator/campaigns/'+str(cid)
+        with patch.object(main,'_installed_commit',return_value=sha),patch.object(release_ci,'lookup',return_value=dict(verified=True,commit=sha,checked_at=now.isoformat())):
+            self.request('POST',base+'/display-observations',201,json=dict(result='not_visible',
+                method='separate_unsubscribed_client',observed_at=now.isoformat(),note='Test fixture: connected but sponsor not visible'))
+            report=self.request('GET',path)
+            self.assertIn('real_sponsor',report['pending_free']);self.assertFalse(report['ready_for_free_pilot'])
+            observed=datetime.now(timezone.utc)
+            self.request('POST',base+'/display-observations',201,json=dict(result='visible',
+                method='separate_unsubscribed_client',observed_at=observed.isoformat(),note='Test fixture: sponsor visible through this proxy'))
+            report=self.request('GET',path)
+            self.assertNotIn('real_sponsor',report['pending_free']);self.assertIn('campaign_cycle',report['pending_free'])
+            self.request('POST',base+'/activate')
+            self.request('POST',base+'/complete',json=dict(tag_removed_confirmed=True,verification_method='separate_unsubscribed_client'))
+            report=self.request('GET',path)
+            cycle=next(x for x in report['checks'] if x['id']=='campaign_cycle')
+            self.assertEqual(cycle['status'],'reported');self.assertEqual(cycle['campaign_id'],str(cid))
+            ids=[]
+            def cleanup_reports():
+                with psycopg.connect(self.dsn) as conn:
+                    conn.execute('DELETE FROM audit_events WHERE id = ANY(%s::uuid[])',(ids,))
+            self.addCleanup(cleanup_reports)
+            for check in ('backup_restore','stars_payment','sbp_payment'):
+                rid=uuid4();ids.append(rid)
+                payload=dict(request_id=str(rid),check_id=check,result='passed',checked_at=now.isoformat(),
+                    note='Isolated test fixture, external acceptance simulated for API checks.',steps_confirmed=True,performed_on_vps=True)
+                self.request('POST',path+'/checks',201,json=payload)
+                self.request('POST',path+'/checks',200,json=payload)
+                if check=='backup_restore':
+                    r=self.request('GET',path);self.assertTrue(r['ready_for_free_pilot']);self.assertFalse(r['ready_for_public_launch'])
+            self.assertTrue(self.request('GET',path)['ready_for_public_launch'])
+            rid=uuid4();ids.append(rid)
+            self.request('POST',path+'/checks',201,json={**payload,'request_id':str(rid),'result':'failed','steps_confirmed':False})
+            r=self.request('GET',path);self.assertTrue(r['ready_for_free_pilot']);self.assertFalse(r['ready_for_public_launch'])
+            self.assertEqual(r['pending_paid'],['sbp_payment'])
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT count(*) FROM audit_events WHERE id=ANY(%s::uuid[])',(ids,)).fetchone()[0],4)
+                self.assertEqual(conn.execute('SELECT count(*) FROM payment_attempts').fetchone()[0],before_attempts)
+                # Старый успешный показ не считается приёмкой неактивного/архивного узла.
+                conn.execute("UPDATE proxy_nodes SET status='paused' WHERE id=%s",(f['node'],))
+            r=self.request('GET',path)
+            self.assertNotEqual(next(x for x in r['checks'] if x['id']=='real_sponsor')['campaign_id'],str(cid))
+
     def test_management_ownership_edit_archive_and_restore(self):
         f=self._management_fixture()
         actor={'id':f['owner'],'role':'advertiser'}
