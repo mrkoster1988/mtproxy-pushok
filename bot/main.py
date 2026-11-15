@@ -207,17 +207,22 @@ def deliver_operator_outbox(token):
             recipient = notice["telegram_user_id"]
             if type(recipient) is not int or recipient <= 0:
                 raise ValueError("Неверный получатель")
-            telegram_call(token, "sendMessage", {
-                "chat_id": recipient,
-                "text": (
-                    "📨 Заявка на модерацию MTProxy Pushok\n"
-                    f"Заявка: {str(campaign_id)[:8]}\n"
-                    "Цена и срок — в карточке заявки.\n"
-                    "Откройте /moderation для проверки."
-                ),
-                "reply_markup": {"inline_keyboard": [[
-                    {"text": "📋 Открыть очередь", "callback_data": "moderation"},
-                ]]},
+            # Уведомление должно быть новым сообщением, а не правкой меню навигации.
+            title = " ".join(str(notice.get("channel_title") or "Канал").split())[:160]
+            name = " ".join(str(notice.get("advertiser_name") or "Пользователь").split())[:160]
+            username = notice.get("advertiser_username")
+            if isinstance(username, str) and re.fullmatch(r"[A-Za-z0-9_]{1,32}", username):
+                name += " (@" + username + ")"
+            text = ("📨 Новая кампания на модерации\n"
+                    f"Канал: {title}\n"
+                    f"Рекламодатель: {name}\n"
+                    f"Заявка: {str(campaign_id)[:8]}")
+            url = miniapp_url()
+            button = ({"text": "📋 Открыть заявку", "web_app": {"url": url + "#/moderation/" + str(campaign_id)}}
+                      if url else {"text": "📋 Открыть очередь", "callback_data": "moderation"})
+            raw_telegram_call(token, "sendMessage", {
+                "chat_id": recipient, "text": text,
+                "reply_markup": {"inline_keyboard": [[button]]},
             }, timeout=4)
         except (HTTPError, URLError, OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
             # Сбой доставки: запись останется в PostgreSQL, повтор через 2 мин.

@@ -21,6 +21,10 @@ class Notice(BaseModel):
     notice_id: UUID
     campaign_id: UUID
     telegram_user_id: int
+    channel_title: str | None = None
+    channel_url: str | None = None
+    advertiser_name: str | None = None
+    advertiser_username: str | None = None
 
 
 class NoticeAck(BaseModel):
@@ -40,12 +44,19 @@ def claim_notifications(
         ) as connection:
             rows = connection.execute(
                 """
-                SELECT n.id AS notice_id, n.campaign_id, u.telegram_user_id
+                SELECT n.id AS notice_id, n.campaign_id, u.telegram_user_id,
+                       sc.title AS channel_title, sc.telegram_url AS channel_url,
+                       concat_ws(' ', advertiser.first_name, advertiser.last_name) AS advertiser_name,
+                       advertiser.username AS advertiser_username
                 FROM bot_operator_notice_outbox AS n
                 JOIN bot_operator_subscriptions AS s
                   ON s.operator_user_id = n.operator_user_id
                 JOIN users AS u ON u.id = n.operator_user_id
+                JOIN campaigns AS c ON c.id = n.campaign_id
+                JOIN sponsor_channels AS sc ON sc.id = c.channel_id
+                JOIN users AS advertiser ON advertiser.id = c.advertiser_user_id
                 WHERE n.delivered_at IS NULL
+                  AND c.moderation_status = 'pending' AND c.archived_at IS NULL
                   AND u.role IN ('admin', 'operator')
                   AND u.telegram_user_id > 0
                   AND (n.last_attempt_at IS NULL
