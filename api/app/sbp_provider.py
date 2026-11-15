@@ -73,7 +73,7 @@ def _request(method: str, url: str, *, body: Mapping | None = None,
 
 def create_sbp_payment(*, campaign_id: str, amount_kopecks: int,
                        idempotence_key: str, return_url: str,
-                       expected_test: bool | None = None) -> dict:
+                       expected_test: bool | None = None, wallet_topup: bool = False) -> dict:
     """Request a redirect invoice. NEVER treat its creation as payment proof."""
     if not sbp_enabled():
         raise SBPProviderError("sbp_checkout_disabled_until_acceptance")
@@ -104,8 +104,8 @@ def create_sbp_payment(*, campaign_id: str, amount_kopecks: int,
         "payment_method_data": {"type": "sbp"},
         "capture": True,
         "confirmation": {"type": "redirect", "return_url": return_url},
-        "description": "MTProxy Pushok campaign " + campaign_id[:32],
-        "metadata": {"campaign_id": campaign_id},
+        "description": ("MTProxy Pushok balance " if wallet_topup else "MTProxy Pushok campaign ") + campaign_id[:32],
+        "metadata": {"wallet_topup_id" if wallet_topup else "campaign_id": campaign_id},
     })
     confirmation = result.get("confirmation")
     url = confirmation.get("confirmation_url") if isinstance(confirmation, dict) else None
@@ -144,3 +144,4 @@ def get_sbp_payment(payment_id: str) -> dict:
         raise SBPProviderError("sbp_invalid_provider_payment_id")
     # Deliberately permit status reconciliation when checkout was disabled later.
     return _request("GET", _API + "/" + payment_id)
+

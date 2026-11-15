@@ -100,6 +100,11 @@ def main():
             result = {'status': 'database_unavailable'}
         if args.apply:
             try:
+                from .wallet_worker import service_once as wallet_once
+                result['wallet'] = wallet_once(os.environ['DATABASE_URL'], limit=args.limit)
+            except psycopg.Error:
+                result['wallet'] = {'status': 'retry'}
+            try:
                 from .auto_schedule import service_once as schedule_once
                 result['slots'] = schedule_once(os.environ['DATABASE_URL'])
             except psycopg.Error:
@@ -113,3 +118,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

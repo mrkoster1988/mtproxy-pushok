@@ -413,7 +413,7 @@ def process_stars_update(update, token, internal_api=None, send=None):
         try:
             if not query_id or type(sender) is not int or sender <= 0:
                 raise ValueError("bad_precheckout")
-            approval = internal_api("stars/precheckout", {
+            approval = internal_api("wallet/precheckout" if str(pre.get("invoice_payload", "")).startswith("wallet:") else "stars/precheckout", {
                 "query_id": query_id, "telegram_user_id": sender,
                 "invoice_payload": pre.get("invoice_payload"),
                 "currency": pre.get("currency"),
@@ -437,7 +437,8 @@ def process_stars_update(update, token, internal_api=None, send=None):
         if (type(sender) is not int or sender <= 0
             or chat.get("id") != sender or chat.get("type") != "private"):
             raise RuntimeError("payment_sender_invalid")
-        confirmation = internal_api("stars/settle", {
+        is_wallet = str(paid.get("invoice_payload", "")).startswith("wallet:")
+        confirmation = internal_api("wallet/settle" if is_wallet else "stars/settle", {
             "telegram_user_id": sender,
             "invoice_payload": paid.get("invoice_payload"),
             "currency": paid.get("currency"),
@@ -452,7 +453,24 @@ def process_stars_update(update, token, internal_api=None, send=None):
             if state in ("applied", "already_processed")
             else "⚠️ Платёж поступил, но требует сверки. Напишите /paysupport."
         )
+        if is_wallet and state in ("applied", "already_processed"):
+            text = ("Тестовое пополнение обработано. Рабочий баланс не увеличен." if confirmation.get('test_mode')
+                    else "Пополнение Stars обработано. Остаток и журнал доступны в кабинете: Профиль → Баланс.")
         send(token, "sendMessage", {"chat_id": sender, "text": text}, timeout=5)
+        return True
+
+    refunded = message.get("refunded_payment")
+    if refunded is not None:
+        chat = message.get("chat") or {}
+        sender = chat.get("id")
+        if type(sender) is not int or sender <= 0 or chat.get("type") != "private":
+            raise RuntimeError("refund_sender_invalid")
+        result = internal_api("wallet/refund", {
+            "telegram_user_id": sender, "currency": refunded.get("currency"),
+            "total_amount": refunded.get("total_amount"),
+            "telegram_payment_charge_id": refunded.get("telegram_payment_charge_id"),
+        })
+        if result.get("status") != "recorded": raise RuntimeError("refund_not_persisted")
         return True
 
     callback = update.get("callback_query") or {}

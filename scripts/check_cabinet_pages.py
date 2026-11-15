@@ -1198,6 +1198,42 @@ def main():
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     assert connection.execute('SELECT price_kopecks_snapshot,stars_price_snapshot FROM campaigns WHERE id=%s',(growth_cid,)).fetchone()==(8000,80)
                     assert connection.execute('SELECT count(*) FROM growth_redemptions WHERE campaign_id=%s',(growth_cid,)).fetchone()[0]==1
+                # Баланс: реальная запись администратора, оплата владельца и возврат.
+                go(admin,'wallet')
+                expect(admin.locator('[data-page=wallet]')).to_contain_text('Управление балансами')
+                admin.get_by_label('Telegram ID пользователя',exact=True).fill('99116000')
+                admin.get_by_role('button',name='Найти пользователя',exact=True).click()
+                expect(admin.get_by_role('heading',name='Ручная операция',exact=True)).to_be_visible()
+                admin.get_by_label('Сумма операции',exact=True).fill('300')
+                admin.get_by_label('Основание (видно пользователю)',exact=True).fill('Подтверждённый перевод для браузерной проверки')
+                admin.get_by_role('button',name='Провести операцию',exact=True).click()
+                expect(admin.locator('.wallet-entry')).to_contain_text('Подтверждённый перевод')
+                expect(admin.locator('[data-page=wallet]')).to_contain_text('Сверка: остатки совпадают с журналом.')
+                admin.screenshot(path=str(output/'38-wallet-admin-mobile.png'),full_page=True)
+                with psycopg.connect(PostgresIntegration.dsn) as connection:
+                    connection.execute("UPDATE campaigns SET moderation_status='approved',payment_status='awaiting_payment' WHERE id=%s",(growth_cid,))
+                refresh(advertiser)
+                go(advertiser,'payments/'+growth_cid)
+                expect(advertiser.get_by_role('button',name='Оплатить с баланса',exact=True)).to_be_enabled()
+                advertiser.get_by_role('button',name='Оплатить с баланса',exact=True).click()
+                expect(advertiser.locator('[data-page=payments]')).to_contain_text('Оплачено с баланса')
+                go(advertiser,'wallet')
+                expect(advertiser.locator('.wallet-balances').first).to_contain_text('220')
+                expect(advertiser.get_by_role('heading',name='Управление балансами',exact=True)).to_have_count(0)
+                expect(advertiser.get_by_label('Автоматически оплачивать мои одобренные заявки')).not_to_be_checked()
+                for width in (320,390):
+                    advertiser.set_viewport_size({'width':width,'height':844})
+                    assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                advertiser.screenshot(path=str(output/'39-wallet-user-mobile.png'),full_page=True)
+                go(admin,'wallet')
+                expect(admin.get_by_label('Основание возврата',exact=True)).to_be_visible()
+                admin.get_by_label('Основание возврата',exact=True).fill('Отмена тестового размещения')
+                admin.get_by_role('button',name='Вернуть на баланс',exact=True).click()
+                expect(admin.locator('[data-page=wallet]')).to_contain_text('Возвращено на баланс')
+                advertiser.get_by_role('button',name='Обновить баланс',exact=True).click()
+                expect(advertiser.locator('.wallet-balances').first).to_contain_text('300')
+                with psycopg.connect(PostgresIntegration.dsn) as connection:
+                    assert connection.execute('SELECT status FROM wallet_payments WHERE campaign_id=%s',(growth_cid,)).fetchone()[0]=='refunded'
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))

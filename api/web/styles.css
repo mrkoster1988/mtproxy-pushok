@@ -626,3 +626,15 @@ body.miniapp-loading #workspace{visibility:hidden}
 
 /* Коды можно выделить и скопировать на узком экране. */
 .growth-code {overflow-wrap:anywhere;font-family:monospace;user-select:all;}
+
+/* Баланс: компактные карточки, без горизонтальной прокрутки на телефоне. */
+.wallet-balances{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:20px}
+.wallet-balances .card{display:flex;flex-direction:column;gap:10px;margin:0;min-width:0}
+.wallet-balances strong{font-size:1.55rem;overflow-wrap:anywhere}
+.wallet-page .card,.wallet-entry{overflow-wrap:anywhere}
+.wallet-page form{margin:18px 0;display:grid;gap:14px}
+.wallet-page input[type="checkbox"]{width:auto;min-width:24px;vertical-align:middle;margin-left:8px}
+.wallet-warning{border-left:3px solid var(--accent,#2acdbf);padding:12px;background:#472e27;color:#ffd4be}
+.wallet-checkout{margin:16px 0;padding:18px;border:1px solid #2b485a;border-radius:18px}
+.wallet-checkout form{display:grid;gap:12px}.wallet-checkout input[type="checkbox"]{width:auto}
+@media(max-width:420px){.wallet-balances{grid-template-columns:1fr}.wallet-page .inline-actions{flex-wrap:wrap}}
