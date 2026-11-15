@@ -74,7 +74,11 @@ window.pushokManagement=(()=>{
    for(const item of data.items){const row=el('article',undefined,'card');row.append(el('h3',kinds[item.kind]+' · '+item.title),el('p','Удалено: '+date(item.archived_at)),button('Восстановить',async()=>{await api('/management/archive/'+item.kind+'/'+item.id+'/restore',{method:'POST'});await refresh();await renderArchive(target);notice('Объект восстановлен. Проверьте настройки перед использованием.',true);}));target.append(row);}
   }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p',e.message),button('Повторить загрузку',()=>renderArchive(target)));}
  }
- if($('tariff-admin-form'))$('tariff-admin-form').append(button('Удалить тариф из списка',async()=>{const id=$('tariff-admin-select').value;if(!id)throw Error('Выберите тариф.');if(!confirm('Убрать тариф из списка новых заявок? История заказов сохранится.'))return;await api('/admin/tariffs/'+id,{method:'DELETE'});await renderTariffAdmin();await refresh();notice('Тариф перемещён в «Удалённые».',true);}));
+ if($('tariff-admin-actions')){
+  const removeTariff=button('Удалить',async()=>{const id=$('tariff-admin-select').value;if(!id)throw Error('Выберите тариф.');if(!confirm('Убрать тариф из списка новых заявок? История заказов сохранится.'))return;await api('/admin/tariffs/'+id,{method:'DELETE'});await renderTariffAdmin();await refresh();notice('Тариф перемещён в «Удалённые».',true);});
+  removeTariff.setAttribute('aria-label','Удалить тариф из списка');
+  $('tariff-admin-actions').append(removeTariff);
+ }
  return {channelActions,campaignActions,nodeActions,renderArchive};
 })();
 
