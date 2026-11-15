@@ -126,7 +126,7 @@ body.cabinet-mode{min-width:0}
  .cabinet-mode .campaign-tile,.cabinet-mode .channel-tile,.cabinet-mode .payment-overview{padding:18px}.cabinet-mode .mobile-card-list{grid-template-columns:1fr}
  .cabinet-mode .list-tools{display:grid;grid-template-columns:1fr;gap:8px}.cabinet-mode .list-tools button{font-size:13px}
  .dashboard-intro{grid-template-columns:minmax(0,1fr);gap:16px;margin-bottom:24px}
- .cabinet-mode .dashboard-hero{padding:20px 16px 16px;gap:14px 0;grid-template-columns:minmax(0,1fr) minmax(0,.85fr)}
+ .cabinet-mode .dashboard-hero{padding:20px 16px 16px;gap:14px 0;grid-template-columns:minmax(0,1.1fr) minmax(0,.8fr)}
  .cabinet-mode .dashboard-hero-copy h2{font-size:clamp(20px,6vw,28px);line-height:1.15;margin:0 0 12px}.dashboard-hero-copy>p{font-size:14px;margin:0}.dashboard-hero-copy>.eyebrow{display:none}
  .dashboard-hero>img{width:100%;max-height:180px;align-self:end}.dashboard-hero-actions>a{font-size:16px}
  .dashboard-intro .payment-overview{display:grid;grid-template-columns:1fr auto;gap:12px;padding:18px}.dashboard-intro .payment-overview>.ui-icon,.dashboard-intro .payment-overview>p{display:none}

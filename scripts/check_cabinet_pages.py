@@ -606,6 +606,19 @@ def main():
                         for screen, route in mini_screens:
                             go(mini,route)
                             assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2'), (width,route)
+                            if screen=='stars':
+                                expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата подтверждена сервером')
+                            if screen=='detail':
+                                expect(mini.locator('[data-page=campaign]')).not_to_contain_text('Проверяем применение тега')
+                            if screen=='home':
+                                assert mini.evaluate('''() => {
+                                    const title=document.querySelector('.dashboard-hero h2');
+                                    const image=document.querySelector('.dashboard-hero>img').getBoundingClientRect();
+                                    const text=document.createRange();text.selectNodeContents(title);
+                                    return [...text.getClientRects()].every(rect=>rect.right<=image.left+1);
+                                }'''), ('Hero text overlaps mascot',width)
+                                if width==320:
+                                    mini.screenshot(path=str(output/'miniapp-home-320.png'),full_page=True)
                             if width==390:
                                 mini.screenshot(path=str(output/('miniapp-'+screen+'.png')),full_page=True)
                     go(mini,'dashboard');mini.screenshot(path=str(output/'17-miniapp-light.png'),full_page=True)
