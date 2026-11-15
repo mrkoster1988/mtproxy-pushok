@@ -2546,7 +2546,44 @@ app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
 @app.get('/api/v1/miniapp/config', tags=['configuration'])
 def miniapp_config(response: Response):
     response.headers['Cache-Control'] = 'no-store'
-    return {'enabled': os.getenv('PUSHOK_MINIAPP_ENABLED', '0') == '1'}
+    return {'enabled': os.getenv('PUSHOK_MINIAPP_ENABLED', '0') == '1',
+            'loading_title': _loading_title()}
+
+
+DEFAULT_LOADING_TITLE = 'Пушок готовит кабинет…'
+
+
+def _loading_title():
+    value = control.read('miniapp-loading-title.json', DEFAULT_LOADING_TITLE)
+    return value if isinstance(value, str) and 1 <= len(value.strip()) <= 100 else DEFAULT_LOADING_TITLE
+
+
+class LoadingTitleSettings(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    loading_title: str = Field(min_length=1, max_length=100)
+
+    @field_validator('loading_title')
+    @classmethod
+    def clean_title(cls, value):
+        value = value.strip()
+        if not value or any(ord(c) < 32 for c in value):
+            raise ValueError('Укажите текст в одну строку')
+        return value
+
+
+@app.get('/api/v1/admin/miniapp/loading', tags=['admin'])
+def read_loading_title(admin=Depends(require_admin)):
+    return {'loading_title': _loading_title()}
+
+
+@app.put('/api/v1/admin/miniapp/loading', tags=['admin'])
+def save_loading_title(payload: LoadingTitleSettings, admin=Depends(require_admin)):
+    try:
+        control.write('miniapp-loading-title.json', payload.loading_title)
+    except OSError as exc:
+        raise HTTPException(503, 'loading_settings_unavailable') from exc
+    return {'loading_title': payload.loading_title}
+
 
 
 @app.get('/miniapp', response_class=HTMLResponse, include_in_schema=False)
@@ -2557,7 +2594,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=061-cards" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=103-loading-title" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 

@@ -228,6 +228,16 @@
           </section>
         </div>
         <div id="settings-system" class="settings-panel" hidden>
+<section class="core-health" aria-labelledby="loading-title-heading">
+<h3 id="loading-title-heading">Экран загрузки Mini App</h3>
+<form id="loading-title-form"><fieldset id="loading-title-fields" disabled>
+<label>Текст надписи<input id="loading-title-input" maxlength="100" required placeholder="Пушок готовит кабинет…"></label>
+<p class="muted">До 100 символов. Появится при следующем открытии Mini App.</p>
+<p id="loading-title-preview" aria-live="polite">Пушок готовит кабинет…</p>
+<button type="submit">Сохранить надпись</button>
+</fieldset></form>
+<p id="loading-title-status" role="status"></p>
+</section>
 <a href="#/profile/updates" class="updates-shortcut">Версия и обновления →</a>
 <section id="software-updates" class="panel software-updates" aria-labelledby="software-updates-title" hidden>
 <div class="update-heading"><h2 id="software-updates-title" tabindex="-1">Версия и обновления</h2><span id="software-release-badge" class="badge">Проверяем</span></div>

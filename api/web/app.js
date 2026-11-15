@@ -46,6 +46,30 @@ function showSettingsPane(pane){
   $('settings-'+name+'-tab').setAttribute('aria-pressed',String(name===selected));
  }
 }
+async function renderLoadingSettings(){
+ if(me?.role!=='admin')return;
+ const fields=$('loading-title-fields');fields.disabled=true;
+ try{
+  const config=await api('/admin/miniapp/loading');
+  $('loading-title-input').value=config.loading_title;
+  $('loading-title-preview').textContent=config.loading_title;
+  fields.disabled=false;
+ }catch(e){$('loading-title-status').textContent='Не удалось загрузить настройки. Откройте раздел повторно.';throw e;}
+}
+$('loading-title-input').addEventListener('input',()=>{
+ $('loading-title-preview').textContent=$('loading-title-input').value.trim()||'Пушок готовит кабинет…';
+});
+$('loading-title-form').addEventListener('submit',async event=>{
+ event.preventDefault();const fields=$('loading-title-fields'),status=$('loading-title-status');
+ if(fields.disabled)return;
+ fields.disabled=true;status.textContent='Сохраняем…';
+ try{
+  const config=await api('/admin/miniapp/loading',{method:'PUT',body:{loading_title:$('loading-title-input').value.trim()}});
+  $('loading-title-input').value=config.loading_title;$('loading-title-preview').textContent=config.loading_title;
+  status.textContent='Сохранено. Текст появится при следующем открытии Mini App.';
+ }catch{status.textContent='Не удалось сохранить. Повторите попытку.';}
+ finally{fields.disabled=false;}
+});
 async function renderPaymentSettings(){
  if(me?.role!=='admin')return;
  const target=$('settings-payments-note');
@@ -133,7 +157,7 @@ function loadAdminSettings(){
  $('tariff-admin-fields').disabled=true;
  adminSettingsLoad=(async()=>{
   const results=await Promise.allSettled([loadControl({payments:true}),api('/admin/icons').then(showIcons),
-   renderPaymentSettings(),renderSBPReview(),renderTariffAdmin(),renderCoreReadiness(),renderLaunchReadiness()]);
+   renderLoadingSettings(),renderPaymentSettings(),renderSBPReview(),renderTariffAdmin(),renderCoreReadiness(),renderLaunchReadiness()]);
   const failed=results.find(x=>x.status==='rejected');if(failed)throw failed.reason;
  })().finally(()=>{$('tariff-admin-fields').disabled=false;adminSettingsLoad=null;});
  return adminSettingsLoad;

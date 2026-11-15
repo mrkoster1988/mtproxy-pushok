@@ -51,6 +51,7 @@ window.pushokMiniApp=(()=>{
   if(busy)return;busy=true;retry.disabled=true;message('Проверяем вход через Telegram…');
   try{
    const config=await api('/miniapp/config');
+   title.textContent=config.loading_title||'Пушок готовит кабинет…';
    if(!config.enabled){message('Mini App пока не включён владельцем. Попробуйте позже.');return;}
    const publicConfig=await api('/public-config');window.cabinetBotConfig=publicConfig;window.cabinet?.config(publicConfig);
    app=await sdk();
