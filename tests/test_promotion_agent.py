@@ -7,6 +7,7 @@ import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import mock_open, patch
+from uuid import uuid4
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import promotion_agent as agent
 
@@ -17,7 +18,7 @@ class AgentTests(unittest.TestCase):
         self.env.write_text('MT_PROXY_HOST=45.90.57.136\nMT_PROXY_PORT=8443\nMT_PROXY_SECRET=keep-this\nMT_PROXY_TAG="'+('a'*32)+'"\n')
         self.patches=[patch.object(agent,'ENV',self.env),patch.object(agent,'STATE',self.state)]
         for p in self.patches:p.start();self.addCleanup(p.stop)
-        self.plan=dict(state='apply',tag='b'*32,expires_at=time.time()+60,revision='c'*64)
+        self.plan=dict(state='apply',tag='b'*32,expires_at=time.time()+60,revision='c'*64,node_id=str(uuid4()))
 
     def test_only_tag_changes_and_shell_injection_rejected(self):
         original=self.env.read_text()
@@ -27,15 +28,18 @@ class AgentTests(unittest.TestCase):
         with self.assertRaises(ValueError):agent.tag_text(original+'MT_PROXY_TAG=x\n','b'*32)
 
     def test_apply_ack_saves_baseline_before_mutation(self):
+        status = {}
         def apply_tag(tag):
             saved = json.loads(self.state.read_text())
             self.assertEqual(saved['baseline'], 'a'*32)
             self.assertTrue(saved['restore_required'])
         with patch.object(agent,'exchange',side_effect=[self.plan,{'accepted':True}]),patch.object(agent,'apply',side_effect=apply_tag) as apply:
-            agent.tick()
+            agent.tick(status)
             self.assertEqual(json.loads(self.state.read_text())['baseline'],'a'*32)
             self.assertFalse(json.loads(self.state.read_text())['restore_required'])
             apply.assert_called_once_with('b'*32)
+            self.assertEqual(status['node_id'], self.plan['node_id'])
+            self.assertEqual(status['plan_revision'], self.plan['revision'])
 
     def test_failed_switch_returns_to_baseline_not_previous_sponsor(self):
         self.env.write_text(self.env.read_text().replace('"'+('a'*32)+'"', 'b'*32))
