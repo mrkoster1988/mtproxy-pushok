@@ -877,12 +877,12 @@ def main():
                                  'sbp_test_mode':False,'updater_installed':True,'requested':False,
                                  'update':{'state':'succeeded','at':'2026-11-15T14:00:00+00:00'}}
                 admin.route('**/api/v1/admin/control',lambda route:route.fulfill(json=control_fixture))
-                release_fixture.return_value={**release_fixture.return_value,'state':'available','available_version':'1.02'}
+                release_fixture.return_value={**release_fixture.return_value,'state':'available','available_version':'1.03'}
                 admin.locator('#software-check').click()
                 expect(admin.locator('#software-update')).to_be_enabled()
-                expect(admin.locator('#software-update')).to_have_text('Установить v1.02')
+                expect(admin.locator('#software-update')).to_have_text('Установить v1.03')
                 expect(admin.locator('#software-update-status')).to_contain_text('Последняя установка завершена')
-                expect(admin.locator('#software-available')).to_have_text('v1.02')
+                expect(admin.locator('#software-available')).to_have_text('v1.03')
                 for width in (390,320):
                     admin.set_viewport_size({'width':width,'height':844})
                     assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
@@ -895,13 +895,13 @@ def main():
                 admin.screenshot(path=str(output/'updates-notification-mobile.png'),full_page=True)
                 admin.locator('#software-update-notice a').click()
                 expect(admin.locator('[data-page=profile]')).to_be_visible()
-                expect(admin.locator('#software-updates')).to_be_visible()
+                expect(admin.locator('#software-updates-title')).to_be_in_viewport()
                 admin.route('**/api/v1/admin/control/release',lambda route:route.fulfill(status=503,json={'detail':'unavailable'}))
                 admin.locator('#software-check').click()
                 expect(admin.locator('#software-release-status')).to_contain_text('Не удалось проверить')
                 expect(admin.locator('#software-update')).to_be_disabled()
                 expect(admin.locator('#software-update-notice')).to_be_hidden()
-                expect(admin.locator('#software-available')).to_have_text('v1.02 (ранее)')
+                expect(admin.locator('#software-available')).to_have_text('v1.03 (ранее)')
                 admin.unroute('**/api/v1/admin/control/release')
                 admin.locator('#software-check').click()
                 expect(admin.locator('#software-update')).to_be_enabled()
