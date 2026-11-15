@@ -87,7 +87,7 @@ def main():
                 except (OSError, ValueError):
                     previous = {}
                 if previous.get('state') == 'running':
-                    status('failed', code='worker_interrupted')
+                    status('failed', code='worker_interrupted', stage=previous.get('stage'))
             return
         with queue_lock():
             request = CONTROL / 'request.json'
@@ -120,20 +120,27 @@ def main():
             profile = ['--profile', 'bot'] if 'bot' in running else []
             # Full private archive includes DB, uploads, .env and deployment configuration.
             stage = "backup"
+            status('running', stage=stage)
             run('python3', 'scripts/cabinet_backup.py', 'create', '--allow-downtime')
             stage = "source"
+            status('running', stage=stage)
             if target != old:
                 run('git', 'merge', '--ff-only', target)
             stage = "build"
+            status('running', stage=stage)
             run('python3', 'scripts/installer_runtime.py', 'compose', *profile, 'build')
             stage = "migration"
+            status('running', stage=stage)
             migrations = sorted(str(p.relative_to(ROOT)) for p in (ROOT / 'database').glob('*.sql') if not p.name.startswith('001_'))
             run('python3', 'scripts/installer_runtime.py', 'migrate', *migrations)
             stage = "restart"
+            status('running', stage=stage)
             run('python3', 'scripts/installer_runtime.py', 'compose', *profile, 'up', '-d')
             stage = "health"
+            status('running', stage=stage)
             run('python3', 'scripts/installer_runtime.py', 'wait-api')
             stage = "proxy"
+            status('running', stage=stage)
             run('python3', 'scripts/repair_proxy.py')
             if '--enable-stars' in sys.argv and '--bootstrap' in sys.argv:
                 enable_stars()

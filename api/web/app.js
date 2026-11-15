@@ -807,7 +807,7 @@ function renderSoftware(){
  const stages={preflight:'проверка окружения',backup:'резервная копия',source:'получение кода',build:'сборка',migration:'обновление базы',restart:'перезапуск',health:'проверка API',proxy:'настройка прокси'};
  if(c){
  let status=!c.updater_installed?'Служба обновления ещё не установлена на VPS.':c.requested?'Запрос принят. Ожидаем запуск.':states[c.update.state]||'Состояние установки неизвестно.';
- if(c.update.state==='failed'&&stages[c.update.stage])status+=' Этап: '+stages[c.update.stage]+'.';
+ if(['running','failed'].includes(c.update.state)&&stages[c.update.stage])status+=' Этап: '+stages[c.update.stage]+'.';
  if(c.update.at)status+=' '+date(c.update.at);
  $('software-update-status').textContent=status;
  }

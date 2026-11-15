@@ -7,6 +7,7 @@
 import argparse
 import base64
 import http.client
+import hashlib
 import json
 import os
 import re
@@ -135,15 +136,44 @@ def migration_sql(root, names):
                       if not path.name.startswith('001_'))
     if list(names) != expected or not expected:
         raise InstallError('Список миграций мастера не совпадает с файлами database/002+; обновите полный репозиторий.')
-    prefix = "SET LOCAL lock_timeout = '10s';\nSET LOCAL statement_timeout = '60s';\n"
-    return (prefix + '\n'.join((root / name).read_text(encoding='utf-8') for name in names) + '\n').encode()
+    # Весь проход и журнал фиксируются одной транзакцией. На старой БД
+    # без журнала выполняется совместимый проход 002+, затем только новые файлы.
+    parts = ["SET LOCAL lock_timeout = '10s';\nSET LOCAL statement_timeout = '60s';",
+             "SELECT pg_advisory_xact_lock(726783201129);",
+             "CREATE TABLE IF NOT EXISTS pushok_schema_migrations ("
+             "name TEXT PRIMARY KEY, sha256 CHAR(64) NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now());"]
+    for name in names:
+        if not re.fullmatch(r'database/[0-9]{3}_[A-Za-z0-9_]+\.sql', name):
+            raise InstallError('Некорректное имя миграции.')
+        body = (root / name).read_text(encoding='utf-8')
+        digest = hashlib.sha256(body.encode()).hexdigest()
+        parts.extend([
+            '\\echo PUSHOK_MIGRATION ' + name,
+            "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pushok_schema_migrations "
+            f"WHERE name='{name}' AND sha256<>'{digest}') THEN "
+            "RAISE EXCEPTION 'migration_checksum_mismatch' USING ERRCODE='P0001'; END IF; END $$;",
+            f"SELECT NOT EXISTS(SELECT 1 FROM pushok_schema_migrations WHERE name='{name}') AS apply_migration \\gset",
+            '\\if :apply_migration', body,
+            f"INSERT INTO pushok_schema_migrations(name,sha256) VALUES ('{name}','{digest}');",
+            '\\endif'])
+    return ('\n'.join(parts) + '\n').encode()
 
 
 def migrate(root, names):
     data = migration_sql(root, names)
-    run(root, ['exec', '-T', 'db', 'sh', '-c',
-               'exec psql -X --single-transaction -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" --file=-'],
-        input=data, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300)
+    try:
+        run(root, ['exec', '-T', 'db', 'sh', '-c',
+                   'exec psql -X --single-transaction -v ON_ERROR_STOP=1 -v VERBOSITY=sqlstate -U "$POSTGRES_USER" -d "$POSTGRES_DB" --file=-'],
+            input=data, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=300)
+    except subprocess.CalledProcessError as exc:
+        # Только известный путь и SQLSTATE: строки БД/секреты в журнал не выводим.
+        output = (exc.stdout or b'').decode('utf-8', errors='replace')
+        errors = (exc.stderr or b'').decode('utf-8', errors='replace')
+        files = re.findall(r'^PUSHOK_MIGRATION (database/[0-9]{3}_[A-Za-z0-9_]+\.sql)$', output, re.M)
+        codes = re.findall(r'ERROR:\s+([0-9A-Z]{5})\b', errors)
+        name = files[-1] if files and files[-1] in names else 'не определена'
+        code = codes[-1] if codes else 'не определён'
+        raise InstallError(f'Миграции отменены целиком. Файл: {name}; SQLSTATE: {code}. Данные не откатывались из копии.') from None
 
 
 class NoRedirect(HTTPRedirectHandler):

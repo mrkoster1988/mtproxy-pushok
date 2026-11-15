@@ -181,6 +181,19 @@ class InstallerRuntimeTests(unittest.TestCase):
         self.assertEqual(opener.open.call_args.args[0], 'http://127.0.0.1:8000/health/ready')
         self.assertLessEqual(opener.open.call_args.kwargs['timeout'], 3)
 
+    def test_migration_diagnostics_hide_data_and_include_safe_file_and_sqlstate(self):
+        (self.root / 'database').mkdir()
+        name = 'database/002_one.sql'
+        (self.root / name).write_text('SELECT 1;')
+        error = subprocess.CalledProcessError(3, ['psql'],
+            output=b'PUSHOK_MIGRATION database/002_one.sql\n',
+            stderr=b'psql:<stdin>:20: ERROR: 23514\nDETAIL: private-customer-data\n')
+        with patch.object(runtime, 'run', side_effect=error), self.assertRaises(runtime.InstallError) as caught:
+            runtime.migrate(self.root, [name])
+        self.assertIn(name, str(caught.exception))
+        self.assertIn('23514', str(caught.exception))
+        self.assertNotIn('private-customer-data', str(caught.exception))
+
     def test_unready_and_invalid_api_responses_time_out_without_printing_body(self):
         self.create()
         for raw in (b'{"status":"ready","database":"down"}', b'[]', b'SECRET', b'x'*65537):
