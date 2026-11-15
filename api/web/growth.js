@@ -13,7 +13,7 @@ window.pushokGrowth=(()=>{
  });
  function field(form,label,type,value='',required=false){
   const box=el('label',label),input=el(type==='select'?'select':'input');
-  if(type!=='select')input.type=type;input.value=value;input.required=required;box.append(input);form.append(box);return input;
+  if(type!=='select')input.type=type;input.value=value;input.required=required;input.setAttribute('aria-label',label);box.append(input);form.append(box);return input;
  }
  function option(select,label,value){const o=el('option',label);o.value=value;select.append(o);}
  function panel(title){const p=el('section',undefined,'panel');p.append(el('h2',title));return p;}
@@ -22,10 +22,15 @@ window.pushokGrowth=(()=>{
  function adminPanels(root,data,available){
   const referral=panel('Реферальная программа'),rf=el('form');
   const enabled=field(rf,'Принимать новые приглашения','checkbox');enabled.checked=data.settings.referrals_enabled;
+  const rewardMode=field(rf,'Награда за приглашённого','select');option(rewardMode,'Купон на скидку','coupon');option(rewardMode,'На бонусный баланс','bonus');rewardMode.value=data.settings.reward_mode;
   const percent=field(rf,'Скидка за приглашённого, %','number',data.settings.reward_percent,true);percent.min=1;percent.max=100;
   const days=field(rf,'Срок купона, дней','number',data.settings.reward_days,true);days.min=1;days.max=365;
-  rf.append(el('p','Награда — одноразовая скидка после первого оплаченного и завершённого размещения приглашённого. Процент и срок фиксируются при принятии приглашения. Отключение программы закрывает новые приглашения; уже принятые сохраняют условия.','muted'));
-  save(rf,'Сохранить условия');bind(rf,()=>api('/admin/growth/settings',{method:'PUT',body:{referrals_enabled:enabled.checked,reward_percent:Number(percent.value),reward_days:Number(days.value)}}));referral.append(rf);root.append(referral);
+  const bonus=field(rf,'Награда на бонусный баланс, ₽','number',(data.settings.reward_bonus_kopecks/100).toFixed(2),true);bonus.min='0.01';bonus.max='10000';bonus.step='0.01';
+  function rewardFields(){const isBonus=rewardMode.value==='bonus';for(const input of [percent,days]){input.disabled=isBonus;input.parentElement.hidden=isBonus;}bonus.disabled=!isBonus;bonus.parentElement.hidden=!isBonus;}
+  rewardMode.addEventListener('change',rewardFields);rewardFields();
+  rf.append(el('p','Награда выдаётся один раз после первого оплаченного и завершённого размещения приглашённого. Тип, сумма или условия купона фиксируются при принятии приглашения. Изменения действуют только для новых приглашений. Отключение программы закрывает новые приглашения; уже принятые сохраняют условия.','muted'));
+  rf.append(el('p','Бонусная награда — фиксированная сумма, не процент и не обмен Stars. Бесплатные, тестовые и полностью бонусные оплаты не дают награду. При возврате оплаты награда отменяется; потраченные бонусы образуют задолженность. Бонусы без срока, для рублёвых размещений на сайте; без вывода и перевода другому пользователю.','muted'));
+  save(rf,'Сохранить условия');bind(rf,()=>api('/admin/growth/settings',{method:'PUT',body:{referrals_enabled:enabled.checked,reward_percent:Number(percent.value),reward_days:Number(days.value),reward_mode:rewardMode.value,reward_bonus_kopecks:Math.round(Number(bonus.value)*100)}}));referral.append(rf);root.append(referral);
   const create=panel('Создать предложение'),f=el('form');
   const kind=field(f,'Тип предложения','select');[['Промокод','promo'],['Автоматическая скидка','discount'],['Подарочное размещение','gift']].forEach(([l,v])=>option(kind,l,v));
   const name=field(f,'Название','text','',true);name.maxLength=100;
@@ -48,15 +53,24 @@ window.pushokGrowth=(()=>{
    if(o.kind!=='referral')row.append(button(o.active?'Выключить':'Включить',async()=>{await api('/admin/growth/offers/'+o.id,{method:'PATCH',body:{active:!o.active}});await load(target);}));list.append(row);
   });root.append(list);
  }
+ function rewardDescription(r){return r.reward_mode==='bonus'?money(r.reward_bonus_kopecks)+' на бонусный баланс':'купон на скидку '+r.reward_percent+'%, срок '+r.reward_days+' дней';}
+ function invitationList(root,mine){
+  const p=panel('Мои приглашения');p.append(el('p','Начислено на бонусный баланс: '+money(mine.bonus_rewards.credited)),el('p','Отменено при возвратах: '+money(mine.bonus_rewards.reversed),'muted'));
+  const wallet=el('a','Баланс и история операций →');wallet.href='#/wallet';p.append(wallet);
+  if(!mine.invitations.length)p.append(el('p','Принятых приглашений пока нет.'));
+  else p.append(el('p','Последние 100 приглашений. Для каждого сохранены условия на момент принятия.','muted'));
+  mine.invitations.forEach(r=>{const row=el('article',undefined,'card');row.append(el('h3',({waiting:'Ожидается оплаченное и завершённое размещение',rewarded:'Награда выдана',reversed:'Награда отменена после возврата'})[r.status]),el('p',rewardDescription(r)),el('p','Приглашение принято: '+date(r.created_at),'muted'));p.append(row);});root.append(p);
+ }
  async function load(node){
   if(!node||!me)return;target=node;const version=++epoch,session=token,uid=me.id;node.replaceChildren(el('p','Загружаем бонусы…'));
   try{
    const mine=await api('/growth/me');if(version!==epoch||session!==token||uid!==me?.id)return;
    const root=el('div'),p=panel('Пригласить рекламодателя');
-   p.append(el('p',mine.referrals_enabled?'За первое оплаченное и завершённое размещение приглашённого вы получите одноразовый купон на скидку '+mine.reward_percent+'%, действующий '+mine.reward_days+' дней.':'Новые приглашения пока отключены администратором.'),el('p','Приглашено: '+mine.invited));
+   p.append(el('p',mine.referrals_enabled?'Для новых приглашений: за первое оплаченное и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены администратором.'),el('p','Приглашено: '+mine.invited));
+   if(mine.reward_mode==='bonus')p.append(el('p','Бонусами можно оплатить рублёвое размещение на сайте. Они не обмениваются на Stars и не выводятся. Бесплатные, тестовые и полностью бонусные оплаты друга не дают награду. При возврате оплаты награда отменяется, даже если бонусы уже потрачены.','muted'));
    if(mine.referrals_enabled&&mine.link){const input=field(p,'Ваша ссылка для друзей','text',mine.link);input.readOnly=true;input.addEventListener('click',()=>input.select());p.append(el('p','Друг должен открыть эту ссылку и нажать «Запустить» до создания первой заявки. Это приглашение в рекламный кабинет.','muted'));}
    if(!mine.bound&&mine.referrals_enabled){const form=el('form'),code=field(form,'Код пригласившего вас пользователя','text','',true);code.maxLength=48;save(form,'Принять приглашение');bind(form,()=>api('/growth/referral',{method:'POST',body:{code:code.value}}));p.append(form);}
-   root.append(p);
+   root.append(p);invitationList(root,mine);
    const rewards=panel('Мои купоны');if(!mine.coupons.length)rewards.append(el('p','Бонусных купонов пока нет.'));
    mine.coupons.forEach(c=>{const row=el('article',undefined,'card'),expired=c.ends_at&&new Date(c.ends_at)<=new Date();row.append(el('h3',c.name+' · '+c.percent+'%'),el('p',c.used?'Использован':!c.active?'Отменён':expired?'Срок истёк':'Доступен'),el('p',c.code,'growth-code'));if(c.ends_at)row.append(el('p','До '+date(c.ends_at),'muted'));rewards.append(row);});
    rewards.append(el('p','Введите код купона, подарка или промокод при создании заявки. Он применяется к одной заявке; скидки не суммируются. Это скидка на размещение puShok, не денежный баланс.','muted'));const order=el('a','Создать размещение →');order.href='#/create';rewards.append(order);root.append(rewards);
