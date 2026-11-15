@@ -12,6 +12,23 @@ window.pushokViews=(()=>{
  function title(c){return c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||'Кампания';}
  function handle(value){try{return '@'+new URL(value).pathname.replace(/^\//,'').replace(/\/$/,'');}catch{return '';}}
  function avatar(kind='channel'){const a=el('span',undefined,'ui-avatar');a.append(icon(kind));return a;}
+ // Фото из Telegram используется только для отображения, не для авторизации.
+ function profileAvatar(){
+  const fallback=avatar('user');
+  try{
+   const raw=window.Telegram?.WebApp?.initData;
+   const user=JSON.parse(new URLSearchParams(raw||'').get('user')||'null');
+   if(!user||String(user.id)!==String(me.telegram_user_id)||typeof user.photo_url!=='string')return fallback;
+   const url=new URL(user.photo_url);
+   if(url.protocol!=='https:'||url.username||url.password)return fallback;
+   const img=el('img');img.alt='Фото профиля Telegram';img.width=72;img.height=72;
+   img.referrerPolicy='no-referrer';img.decoding='async';
+   img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:50%;display:block';
+   img.addEventListener('error',()=>fallback.replaceChildren(icon('user')),{once:true});
+   fallback.style.overflow='hidden';fallback.replaceChildren(img);img.src=url.href;
+  }catch{}
+  return fallback;
+ }
  function brand(target){
   const img=el('img');img.src='/assets/pushok-pencil.png';img.alt='';img.width=44;img.height=44;
   const copy=el('span',undefined,'brand-copy');copy.append(el('strong','puShok'),el('small','MTProxy'));
@@ -68,7 +85,7 @@ window.pushokViews=(()=>{
  }
  function profile(target,updatePanel){
   target.replaceChildren();const identity=el('section',undefined,'profile-identity');
-  const info=el('div');info.append(el('h2',[me.first_name,me.last_name].filter(Boolean).join(' ')||'Пользователь'),el('p',me.username?'@'+me.username:'Вход через Telegram','muted'),badge('approved',({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'})[me.role]||'Пользователь'));identity.append(avatar('user'),info);target.append(identity);
+  const info=el('div');info.append(el('h2',[me.first_name,me.last_name].filter(Boolean).join(' ')||'Пользователь'),el('p',me.username?'@'+me.username:'Вход через Telegram','muted'),badge('approved',({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'})[me.role]||'Пользователь'));identity.append(profileAvatar(),info);target.append(identity);
   const menu=el('nav',undefined,'profile-menu');menu.setAttribute('aria-label','Разделы профиля');
   const items=[['channels','channel','Мои каналы'],['calendar','calendar','Календарь размещений'],['reports','chart','Отчёты'],['help','support','Помощь'],['archive','campaign','Удалённые']];
   if(['admin','operator'].includes(me.role))items.push(['moderation','moderation','Модерация'],['sponsors','sponsor','Спонсоры']);
