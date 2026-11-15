@@ -279,3 +279,13 @@ class WalletIntegration(unittest.TestCase):
             future.result(timeout=5)
         self.assertTrue(data['reconciled']);self.assertEqual(data['balances']['RUB'],100)
         self.assertEqual(self.balances()['RUB'],300)
+
+
+    def test_same_transaction_entries_keep_posting_order(self):
+        with topups.connect(self.dsn) as conn:
+            first=ledger.post(conn,self.owner,'RUB',100,'manual_credit','order1:'+str(uuid4()),'Первая операция',actor=self.admin)
+            second=ledger.post(conn,self.owner,'RUB',200,'manual_credit','order2:'+str(uuid4()),'Вторая операция',actor=self.admin)
+            self.assertLess(first['entry_number'],second['entry_number'])
+        data=self.request('GET','/wallet/entries')
+        self.assertEqual([r['balance_after'] for r in data['entries']],[300,100])
+        self.assertEqual([r['id'] for r in data['entries']],[str(second['id']),str(first['id'])])

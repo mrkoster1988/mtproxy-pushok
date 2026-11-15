@@ -102,11 +102,11 @@ def router_for(dsn,current_user,require_admin):
             dict(auto_pay=False,currency='XTR',per_campaign_limit=0,use_bonus=True)}
 
     def journal(conn,uid,page,limit=30):
-        rows=conn.execute('''SELECT e.id,e.currency,e.delta,e.balance_after,e.kind,e.reason,e.created_at,e.campaign_id,
+        rows=conn.execute('''SELECT e.id,e.entry_number,e.currency,e.delta,e.balance_after,e.kind,e.reason,e.created_at,e.campaign_id,
             e.topup_id,e.reversal_of,EXISTS(SELECT 1 FROM wallet_payments p WHERE p.campaign_id=e.campaign_id AND p.automatic) AS automatic,u.username AS actor_username,u.telegram_user_id AS actor_telegram_id,
             EXISTS(SELECT 1 FROM wallet_entries r WHERE r.reversal_of=e.id) AS reversed
             FROM wallet_entries e LEFT JOIN users u ON u.id=e.actor_user_id WHERE e.user_id=%s
-            ORDER BY e.created_at DESC,e.id DESC LIMIT %s OFFSET %s''',(uid,limit,page*limit)).fetchall()
+            ORDER BY e.entry_number DESC LIMIT %s OFFSET %s''',(uid,limit,page*limit)).fetchall()
         count=conn.execute('SELECT count(*) AS n FROM wallet_entries WHERE user_id=%s',(uid,)).fetchone()['n']
         return {'entries':rows,'page':page,'total':count,'page_size':limit}
 
@@ -225,9 +225,9 @@ def router_for(dsn,current_user,require_admin):
         with db() as conn:
             user=target(conn,tg);rows=journal(conn,user['id'],0,10000)['entries']
         output=io.StringIO();writer=csv.writer(output,delimiter=';')
-        writer.writerow(['ID','Дата UTC','Валюта','Изменение (копейки/Stars)','Остаток (копейки/Stars)','Тип','Основание','Автор Telegram ID','Кампания','Пополнение'])
+        writer.writerow(['Проводка','ID','Дата UTC','Валюта','Изменение (копейки/Stars)','Остаток (копейки/Stars)','Тип','Основание','Автор Telegram ID','Кампания','Пополнение'])
         for e in rows:
-            writer.writerow([e['id'],e['created_at'].isoformat(),e['currency'],e['delta'],e['balance_after'],e['kind'],csv_cell(e['reason']),e['actor_telegram_id'],e['campaign_id'],e['topup_id']])
+            writer.writerow([e['entry_number'],e['id'],e['created_at'].isoformat(),e['currency'],e['delta'],e['balance_after'],e['kind'],csv_cell(e['reason']),e['actor_telegram_id'],e['campaign_id'],e['topup_id']])
         return Response('\ufeff'+output.getvalue(),media_type='text/csv; charset=utf-8',headers={'Content-Disposition':f'attachment; filename="wallet-{tg}.csv"','Cache-Control':'no-store'})
 
     # Роуты доступны только обработчику update из доверенного Bot API.

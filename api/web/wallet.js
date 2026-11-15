@@ -74,7 +74,7 @@ window.pushokWallet=(()=>{
  }
  function entries(root,data,admin=false,onPage){
   const p=panel(admin?'Журнал пользователя':'История операций');if(!data.entries.length)p.append(el('p','Операций пока нет.'));
-  data.entries.forEach(e=>{const row=el('article',undefined,'card wallet-entry');row.append(el('h3',(e.delta>0?'+':'')+amount(e.delta,e.currency)),el('p',e.kind==='payment'&&e.automatic?'Автоматическая оплата размещения':kinds[e.kind]||e.kind),el('p',e.reason),el('p','Остаток после операции: '+amount(e.balance_after,e.currency),'muted'),el('p',date(e.created_at)+' · #'+e.id.slice(0,8),'muted'));
+  data.entries.forEach(e=>{const row=el('article',undefined,'card wallet-entry');row.append(el('h3',(e.delta>0?'+':'')+amount(e.delta,e.currency)),el('p',e.kind==='payment'&&e.automatic?'Автоматическая оплата размещения':kinds[e.kind]||e.kind),el('p',e.reason),el('p','Остаток после операции: '+amount(e.balance_after,e.currency),'muted'),el('p',date(e.created_at)+' · проводка №'+e.entry_number,'muted'));
    if(e.actor_telegram_id)row.append(el('p','Автор: '+(e.actor_username?'@'+e.actor_username+' · ':'')+e.actor_telegram_id,'muted'));
    if(e.campaign_id){const a=el('a','Открыть заявку →');a.href='#/'+(admin?'moderation/':'create/')+e.campaign_id;row.append(a);}
    if(admin&&['manual_credit','manual_debit'].includes(e.kind)&&!e.reversed){const f=el('form'),reason=field(f,'Причина отмены корректировки','text');reason.required=true;reason.minLength=3;reason.maxLength=500;submit(f,'Отменить корректировку',async()=>{await api('/admin/wallet/entries/'+e.id+'/reverse',{method:'POST',body:{reason:reason.value}});await adminLookup();});row.append(f);}

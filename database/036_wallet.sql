@@ -41,16 +41,17 @@ CREATE TABLE IF NOT EXISTS wallet_payments (
  CHECK(cash_amount+bonus_amount>0),CHECK(currency='RUB' OR bonus_amount=0)
 );
 CREATE TABLE IF NOT EXISTS wallet_entries (
+ entry_number BIGINT GENERATED ALWAYS AS IDENTITY UNIQUE,
  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),user_id UUID NOT NULL REFERENCES users(id),
  currency TEXT NOT NULL CHECK(currency IN ('RUB','XTR','BONUS')),
  delta BIGINT NOT NULL CHECK(delta<>0 AND abs(delta)<=1000000000000),balance_after BIGINT NOT NULL,
  kind TEXT NOT NULL CHECK(kind IN ('topup','payment','refund','manual_credit','manual_debit','reversal','provider_refund')),
  operation_key TEXT NOT NULL UNIQUE,reason TEXT NOT NULL CHECK(length(reason) BETWEEN 3 AND 500),
  actor_user_id UUID REFERENCES users(id),campaign_id UUID REFERENCES campaigns(id),topup_id UUID REFERENCES wallet_topups(id),
- reversal_of UUID UNIQUE REFERENCES wallet_entries(id),created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ reversal_of UUID UNIQUE REFERENCES wallet_entries(id),created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
  FOREIGN KEY(user_id,currency) REFERENCES wallet_accounts(user_id,currency)
 );
-CREATE INDEX IF NOT EXISTS wallet_entries_user_date ON wallet_entries(user_id,created_at DESC,id);
+CREATE INDEX IF NOT EXISTS wallet_entries_user_date ON wallet_entries(user_id,entry_number DESC);
 CREATE INDEX IF NOT EXISTS wallet_topups_due ON wallet_topups(next_check_at) WHERE provider='sbp' AND status IN ('created','pending','succeeded');
 CREATE OR REPLACE FUNCTION pushok_wallet_journal() RETURNS trigger AS $$
 DECLARE old_balance BIGINT;
