@@ -44,7 +44,9 @@ BEGIN
  IF NEW.placement_status='completed' AND NEW.payment_status='verified'
     AND (OLD.placement_status IS DISTINCT FROM NEW.placement_status OR OLD.payment_status IS DISTINCT FROM NEW.payment_status)
     AND NEW.price_kopecks_snapshot>0
-    AND (EXISTS(SELECT 1 FROM payment_attempts WHERE campaign_id=NEW.id AND status='succeeded' AND NOT telegram_test_environment)
+    AND (EXISTS(SELECT 1 FROM payment_attempts WHERE campaign_id=NEW.id AND status='succeeded'
+                AND ((provider='telegram_stars' AND NOT telegram_test_environment)
+                     OR (provider='sbp' AND sbp_test_mode IS FALSE)))
          OR EXISTS(SELECT 1 FROM wallet_payments WHERE campaign_id=NEW.id AND status='paid' AND cash_amount>0)) THEN
    -- Два одновременно завершившихся размещения одного друга дают одну награду.
    SELECT * INTO r FROM growth_referrals WHERE referred_user_id=NEW.advertiser_user_id AND created_at<=NEW.created_at FOR UPDATE;

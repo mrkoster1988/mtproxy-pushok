@@ -8,8 +8,8 @@ import psycopg
 from psycopg.rows import dict_row
 from fastapi import HTTPException
 import test_postgres as fixture
-from test_growth import GrowthIntegration
-from app.growth import ReferralSettings, claim_referral
+import test_growth as growth_fixture
+from app.growth import ReferralSettings
 from app import wallet_ledger as ledger
 
 
@@ -29,11 +29,11 @@ class ReferralBalanceIntegration(unittest.TestCase):
     setUpClass = classmethod(fixture.PostgresIntegration.setUpClass.__func__)
     tearDownClass = classmethod(fixture.PostgresIntegration.tearDownClass.__func__)
     request = fixture.PostgresIntegration.request
-    quote = GrowthIntegration.quote
-    payload = GrowthIntegration.payload
+    quote = growth_fixture.GrowthIntegration.quote
+    payload = growth_fixture.GrowthIntegration.payload
 
     def setUp(self):
-        GrowthIntegration.setUp(self)
+        growth_fixture.GrowthIntegration.setUp(self)
         with psycopg.connect(self.dsn) as conn:
             conn.execute("UPDATE growth_settings SET reward_mode='coupon',reward_bonus_kopecks=10000")
         self.settings()
@@ -160,6 +160,17 @@ class ReferralBalanceIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
             self.assertEqual(ledger.accounts(conn,self.friend),dict(RUB=20000,BONUS=10000,XTR=0))
 
+    def test_sbp_requires_recorded_live_environment(self):
+        self.bind()
+        for test_mode in (True,None,False):
+            cid=self.order()
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("""INSERT INTO payment_attempts(campaign_id,provider,payment_channel,amount,currency,status,
+                    provider_payment_id,sbp_test_mode,settled_at)
+                    VALUES(%s,'sbp','external_web',30000,'RUB','succeeded',%s,%s,now())""",(cid,uuid4().hex,test_mode))
+            self.complete(cid)
+            self.assertEqual(self.balance(),12345 if test_mode is False else 0)
+
     def test_legacy_coupon_survives_mode_change_and_migration_replay(self):
         self.settings(reward_mode='coupon');self.bind();cid=self.order();self.external(cid)
         self.settings(reward_mode='bonus');self.complete(cid)
@@ -187,7 +198,9 @@ class ReferralBalanceIntegration(unittest.TestCase):
         self.bind();cid=self.order();self.external(cid);self.complete(cid)
         root=Path(__file__).resolve().parents[1]
         with psycopg.connect(self.dsn) as conn:
-            for migration in sorted((root/'database').glob('*.sql')):conn.execute(migration.read_text())
+            # Как установщик: 001 создаёт новую БД один раз, обновления идут с 002.
+            for migration in sorted((root/'database').glob('*.sql')):
+                if not migration.name.startswith('001_'):conn.execute(migration.read_text())
         self.complete(cid);self.assertEqual(self.balance(),12345)
         self.actor={'id':self.admin,'role':'admin'}
         data=self.request('GET','/admin/wallet/users/'+str(self.telegram))
