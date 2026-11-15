@@ -42,6 +42,7 @@ from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
 from . import sbp_checkout, sbp_admin, stars_checkout
 from .promotion_diagnostics import diagnostics as promotion_diagnostics
+from .promotion_runtime import confirmation as promotion_confirmation
 from .miniapp_auth import validate_init_data
 from .sbp_webhook import router as sbp_webhook_router
 from .sbp_provider import SBPProviderError
@@ -50,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.062",
+    version="0.063",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2648,6 +2649,13 @@ class PromotionBindingRequest(BaseModel):
 @app.get('/api/v1/admin/promotion-bindings', tags=['admin'])
 def promotion_bindings(admin: dict = Depends(require_admin)):
     with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as conn:
+        runtime = []
+        for row in conn.execute('''SELECT n.id,n.name,n.host,n.port,n.status,n.archived_at,n.target_engine,
+                r.campaign_id,r.state,r.checked_at,r.plan_revision
+                FROM promotion_runtime r JOIN proxy_nodes n ON n.id=r.proxy_node_id''').fetchall():
+            runtime.append({'proxy_node_id': row['id'], 'name': row['name'],
+                            'campaign_id': row['campaign_id'], 'state': row['state'],
+                            **promotion_confirmation(conn, row, row)})
         return {
             'channels': conn.execute('SELECT id,title,telegram_url FROM sponsor_channels WHERE archived_at IS NULL ORDER BY title,id').fetchall(),
             'bindings': conn.execute('''SELECT b.proxy_node_id,b.channel_id,n.name,ch.title,
@@ -2655,8 +2663,7 @@ def promotion_bindings(admin: dict = Depends(require_admin)):
                 FROM channel_promotion_bindings b JOIN proxy_nodes n ON n.id=b.proxy_node_id
                 JOIN sponsor_channels ch ON ch.id=b.channel_id
                 WHERE n.archived_at IS NULL AND ch.archived_at IS NULL''').fetchall(),
-            'runtime': conn.execute('''SELECT r.proxy_node_id,n.name,r.campaign_id,r.state,r.checked_at
-                FROM promotion_runtime r JOIN proxy_nodes n ON n.id=r.proxy_node_id''').fetchall(),
+            'runtime': runtime,
         }
 
 
@@ -2705,15 +2712,17 @@ def delete_promotion_binding(node_id: UUID, channel_id: UUID, admin: dict = Depe
 @app.get('/api/v1/campaigns/{campaign_id}/promotion-status', tags=['campaigns'])
 def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_current_user)):
     with psycopg.connect(DATABASE_URL,connect_timeout=3,row_factory=dict_row) as conn:
-        row=conn.execute('''SELECT c.advertiser_user_id,c.scheduled_end_at,
+        row=conn.execute('''SELECT c.advertiser_user_id,c.proxy_node_id,
             EXISTS(SELECT 1 FROM channel_promotion_bindings b WHERE b.proxy_node_id=c.proxy_node_id AND b.channel_id=c.channel_id
             AND b.channel_url=(SELECT telegram_url FROM sponsor_channels WHERE id=c.channel_id)
             AND (b.node_host,b.node_port)=(SELECT host,port FROM proxy_nodes WHERE id=c.proxy_node_id)) AS prepared,
-            r.campaign_id AS applied_campaign_id,r.state,r.checked_at
+            r.campaign_id,r.state,r.checked_at,r.plan_revision
             FROM campaigns c LEFT JOIN promotion_runtime r ON r.proxy_node_id=c.proxy_node_id
             WHERE c.id=%s''',(campaign_id,)).fetchone()
         if not row or (user['role'] not in ('admin','operator') and row['advertiser_user_id']!=user['id']):
             raise HTTPException(404,'campaign_not_found')
-        fresh=bool(row['checked_at'] and (datetime.now(timezone.utc)-row['checked_at']).total_seconds()<120)
-        applied=bool(fresh and row['state']=='applied' and row['applied_campaign_id']==campaign_id and row['scheduled_end_at'] and row['scheduled_end_at']>datetime.now(timezone.utc))
-        return {'prepared':row['prepared'],'config_applied':applied,'agent_recent':fresh,'checked_at':row['checked_at'],'display_verified':False}
+        node=conn.execute('SELECT id,host,port,status,archived_at,target_engine FROM proxy_nodes WHERE id=%s',
+                          (row['proxy_node_id'],)).fetchone()
+        result=promotion_confirmation(conn, node, row)
+        result['config_applied'] = bool(result['config_applied'] and row['campaign_id']==campaign_id)
+        return {'prepared':row['prepared'], **result}

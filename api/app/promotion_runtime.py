@@ -4,6 +4,7 @@ import os
 import sys
 import hashlib
 import ipaddress
+from datetime import datetime, timezone
 import psycopg
 from psycopg.rows import dict_row
 
@@ -90,16 +91,32 @@ def revision(plan):
     return hashlib.sha256(json.dumps(plan,sort_keys=True).encode()).hexdigest()
 
 
+def confirmation(conn, node, runtime, *, now=None):
+    """Свежий ответ относится только к тому же текущему плану, без публикации тега."""
+    now = now or datetime.now(timezone.utc)
+    checked_at = runtime.get('checked_at')
+    fresh = bool(checked_at and 0 <= (now - checked_at).total_seconds() < 120)
+    applied = False
+    if node and fresh and runtime.get('state') == 'applied' and runtime.get('plan_revision'):
+        plan = node_plan(conn, node)
+        applied = (plan['state'] == 'apply'
+                   and plan.get('campaign_id') == str(runtime.get('campaign_id'))
+                   and revision(plan) == runtime['plan_revision'])
+    return {'config_applied': applied, 'agent_recent': fresh,
+            'checked_at': checked_at, 'display_verified': False}
+
+
 def handle(conn, request):
     plan=desired(conn,request['host'],int(request['port']),request.get('resolved_host'))
     if request.get('action')=='ack':
         if revision(plan)!=request.get('revision'):
             return {'accepted':False}
         if plan.get('node_id'):
-            conn.execute("""INSERT INTO promotion_runtime(proxy_node_id,campaign_id,state)
-              VALUES(%s,%s,%s) ON CONFLICT(proxy_node_id) DO UPDATE SET
-              campaign_id=EXCLUDED.campaign_id,state=EXCLUDED.state,checked_at=now()""",
-              (plan['node_id'],plan.get('campaign_id'),'applied' if plan['state']=='apply' else 'idle'))
+            conn.execute("""INSERT INTO promotion_runtime(proxy_node_id,campaign_id,state,plan_revision)
+              VALUES(%s,%s,%s,%s) ON CONFLICT(proxy_node_id) DO UPDATE SET
+              campaign_id=EXCLUDED.campaign_id,state=EXCLUDED.state,
+              plan_revision=EXCLUDED.plan_revision,checked_at=now()""",
+              (plan['node_id'],plan.get('campaign_id'),'applied' if plan['state']=='apply' else 'idle',revision(plan)))
         return {'accepted':True}
     return dict(plan,revision=revision(plan))
 

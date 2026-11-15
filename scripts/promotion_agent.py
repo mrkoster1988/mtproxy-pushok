@@ -126,7 +126,12 @@ def apply(tag):
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
         matches = False
     if cfg.get('MT_PROXY_TAG','').lower()==tag.lower() and matches:
-        return
+        try:
+            # Совпадение аргумента -P не доказывает, что служба принимает соединения.
+            wait_ready(tag, cfg)
+            return
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+            pass  # Недоступную службу пробуем восстановить тем же перезапуском.
     updated=tag_text(text,tag)
     atomic(ENV,updated)
     try:
