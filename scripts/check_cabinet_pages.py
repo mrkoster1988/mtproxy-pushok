@@ -713,6 +713,7 @@ def main():
                 expect(admin.locator('#tariff-admin-rub')).to_have_value('0.00')
                 toggle = admin.locator('#tariff-admin-active').bounding_box()
                 assert toggle['width'] <= 48 and toggle['height'] <= 32, toggle
+                admin.locator('#notice>button').click()
                 admin.set_viewport_size({'width':390,'height':844})
                 admin.screenshot(path=str(output/'23-settings-free-mobile.png'), full_page=True)
                 assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth')
