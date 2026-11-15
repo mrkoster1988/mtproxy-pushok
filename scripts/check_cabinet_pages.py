@@ -1201,7 +1201,9 @@ def main():
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))
-                advertiser.locator('#refresh').click()
+                # Фоновое обновление может уже обработать 401 и скрыть кнопку.
+                # Проверяем сброс сессии, независимо от того, какой запрос пришёл первым.
+                advertiser.evaluate("async () => { try { await refresh(); } catch (error) { if (token) throw error; } }")
                 expect(advertiser.locator('#login')).to_be_visible()
                 expect(advertiser.locator('#workspace')).to_be_hidden()
                 print('PASS: real API/SQL forms, roles, lifecycle, upload/download, reports, routing and mobile widths')
