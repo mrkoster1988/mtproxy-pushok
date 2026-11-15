@@ -95,7 +95,7 @@ window.pushokViews=(()=>{
  }
  function sponsors(target,list){
   target.replaceChildren();
-  const active=list.filter(c=>c.placement_status==='active'),queued=list.filter(c=>c.moderation_status==='approved'&&c.payment_status==='verified'&&['scheduled','not_scheduled'].includes(c.placement_status));
+  const active=list.filter(c=>c.placement_status==='active'),queued=list.filter(c=>!c.archived_at&&c.moderation_status==='approved'&&c.payment_status==='verified'&&['scheduled','not_scheduled'].includes(c.placement_status));
   target.append(el('h2','Сейчас в эфире'));if(!active.length)target.append(el('p','Активных размещений пока нет.','empty'));active.forEach(c=>target.append(campaignSummary(c,'sponsors')));
   target.append(el('h2','Очередь размещений'));if(!queued.length)target.append(el('p','Нет оплаченных кампаний в очереди.','empty'));
   queued.sort((a,b)=>(a.scheduled_start_at||'9999').localeCompare(b.scheduled_start_at||'9999')).forEach(c=>target.append(campaignSummary(c,'sponsors')));

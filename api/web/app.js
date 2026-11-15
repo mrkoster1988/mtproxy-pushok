@@ -704,10 +704,10 @@ async function refresh(){
  if(me&&['operator','admin'].includes(me.role)){
   const currentNodes=await api('/operator/proxy-nodes');if(!current())return;nodes=currentNodes;renderNodes();
   if(me.role==='admin'&&!$('settings').hidden)await loadAdminSettings();
-  const queue=await api('/operator/campaigns');if(!current())return;operatorCampaigns=queue;
-  $('queue-count').textContent=queue.length+' заявок';
+  const [working,archived]=await Promise.all([api('/operator/campaigns'),api('/operator/campaigns?archived=true')]);if(!current())return;const queue=[...working,...archived];operatorCampaigns=queue;
+  $('queue-count').textContent=working.length+' заявок';
   if(window.pushokApproval)window.pushokApproval.sync(queue);
-  else $('queue').replaceChildren(...queue.map(c=>card(c,true)));
+  else $('queue').replaceChildren(...working.map(c=>card(c,true)));
  }
  window.pushokOrder?.sync();
  if(window.cabinet)window.cabinet.sync(own);

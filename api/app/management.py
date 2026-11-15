@@ -269,7 +269,10 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
                 params=[]
                 if kind=='channels':condition=' AND owner_user_id=%s';params=[user['id']]
                 if kind=='campaigns' and user['role'] not in ('operator','admin'):condition=' AND advertiser_user_id=%s';params=[user['id']]
-                rows=conn.execute(f'SELECT id,{title} AS title,archived_at FROM {table} WHERE archived_at IS NOT NULL'+condition+' ORDER BY archived_at DESC LIMIT 100',params).fetchall()
+                if kind=='campaigns':
+                    rows=conn.execute('SELECT c.id,sc.title,c.archived_at FROM campaigns c JOIN sponsor_channels sc ON sc.id=c.channel_id WHERE c.archived_at IS NOT NULL'+condition+' ORDER BY c.archived_at DESC LIMIT 100',params).fetchall()
+                else:
+                    rows=conn.execute(f'SELECT id,{title} AS title,archived_at FROM {table} WHERE archived_at IS NOT NULL'+condition+' ORDER BY archived_at DESC LIMIT 100',params).fetchall()
                 result.extend({**row,'kind':kind} for row in rows)
         return {'items':result}
 
@@ -293,3 +296,4 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
         return {'restored':True}
 
     return router
+
