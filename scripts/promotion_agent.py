@@ -13,6 +13,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from staging_preflight import parse_env
+from publish_proxy_link import publish_proxy_link
 
 ROOT = Path(__file__).resolve().parent.parent
 ENV = Path('/etc/mtproxy-pushok/mtproxy.env')
@@ -300,6 +301,7 @@ def run_cycle():
     try:
         main(status)
     finally:
+        publish_proxy_link(ROOT, ENV)
         publish_status(status)
         preserve_failure_notice(status)
         flush_failure_notice()
