@@ -894,7 +894,8 @@ def main():
                     assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth + 2')
                     admin.screenshot(path=str(output/('40-archived-invoice-'+str(width)+'.png')),full_page=True)
                 go(admin,'archive')
-                row=admin.locator('[data-page=archive] .card').filter(has_text='Счёт в архиве')
+                row=admin.locator('[data-page=archive] [data-archive-id="'+archive_id+'"]')
+                expect(row).to_contain_text('Счёт в архиве')
                 row.get_by_role('button',name='Незавершённые действия',exact=True).click()
                 expect(archive_card).to_contain_text('Заявка уже удалена')
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
@@ -904,7 +905,7 @@ def main():
                 go(admin,'moderation')
                 expect(admin.locator('.archived-review').filter(has_text='Счёт в архиве')).to_have_count(0)
                 go(admin,'archive')
-                row=admin.locator('[data-page=archive] .card').filter(has_text='Счёт в архиве')
+                row=admin.locator('[data-page=archive] [data-archive-id="'+archive_id+'"]')
                 row.get_by_role('button',name='Восстановить',exact=True).click()
                 expect(admin.locator('[data-page=archive]')).not_to_contain_text('Счёт в архиве')
                 go(admin,'moderation/'+archive_id)

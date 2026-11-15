@@ -75,7 +75,7 @@ window.pushokApproval=(()=>{
    f.addEventListener('submit',event=>{event.preventDefault();if(!f.reportValidity())return;void perform(guard=>fn(guard),'Заявка обновлена. Следующий этап — здесь же.');});
    content.append(f);return {f,submit,finish(){f.append(submit);}};
   }
-  if(['cancelled','completed'].includes(c.placement_status))content.append(el('h3',c.placement_status==='completed'?'Размещение завершено':'Размещение отменено'));
+  if(!c.archived_at&&['cancelled','completed'].includes(c.placement_status))content.append(el('h3',c.placement_status==='completed'?'Размещение завершено':'Размещение отменено'));
   else if(c.archived_at&&c.placement_status!=='active'&&c.payment_status!=='proof_submitted'){
    content.append(el('h3','Проверка платежа удалённой заявки'),el('p','История оплаты сохранена. Архивирование не отменяет выставленный счёт у платёжной системы. Когда счёт будет закрыт, заявка исчезнет из этого раздела и останется в «Удалённых».'),button('Проверить статус оплаты',refresh));
   }else if(c.moderation_status==='pending'){

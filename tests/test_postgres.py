@@ -1759,7 +1759,10 @@ class PostgresIntegration(unittest.TestCase):
                 self.assertEqual(archived['archive_pending_actions'],['payment'])
                 self.assertEqual(archived['placement_status'],'not_scheduled')
                 self.assertEqual(archived['payment_status'],'awaiting_payment')
-        self.assertTrue(any(c['id']==str(f['campaign']) for c in self.request('GET','/management/archive')['items']))
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE sponsor_channels SET title=%s WHERE id=%s',('Удаляемый канал',f['channel']))
+        archived=next(c for c in self.request('GET','/management/archive')['items'] if c['id']==str(f['campaign']))
+        self.assertEqual(archived['title'],'Удаляемый канал')
         self.request('DELETE','/campaigns/'+str(f['campaign']))
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute("SELECT count(*) FROM audit_events WHERE campaign_id=%s AND event_type='campaign_archived'",(f['campaign'],)).fetchone()[0],1)
