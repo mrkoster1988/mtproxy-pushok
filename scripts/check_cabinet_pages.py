@@ -796,13 +796,15 @@ def main():
                 expect(admin.locator('.help-popup')).to_be_hidden()
                 admin.evaluate('window.scrollTo(0,0)')
                 go(advertiser,'channels')
-                for summary in advertiser.locator('.channel-tools:not([open]) summary').all():
-                    summary.click()
+                for channel_tools in advertiser.locator('.channel-tools').all():
+                    if channel_tools.get_attribute('open') is None:
+                        channel_tools.locator('summary').click()
                 expect(advertiser.locator('.channel-manager').get_by_role('button',name='✏️ Изменить',exact=True)).to_have_count(3)
                 for width in (390,320):
                     advertiser.set_viewport_size({'width':width,'height':844})
-                    for summary in advertiser.locator('.channel-tools:not([open]) summary').all():
-                        summary.click()
+                    for channel_tools in advertiser.locator('.channel-tools').all():
+                        if channel_tools.get_attribute('open') is None:
+                            channel_tools.locator('summary').click()
                     for action in advertiser.locator('.channel-manager .management-actions>button').all():
                         rect=action.bounding_box()
                         assert rect['x']>=0 and rect['x']+rect['width']<=width+1,rect
