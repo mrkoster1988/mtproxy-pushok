@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 from staging_preflight import parse_env
 from installer_runtime import run
+from publish_proxy_link import publish_proxy_link
 
 
 def register_proxy_node(root, host, public, port):
@@ -26,10 +27,13 @@ def register_proxy_node(root, host, public, port):
 
 
 def main():
+    root = Path(__file__).resolve().parent.parent
     env = Path('/etc/mtproxy-pushok/mtproxy.env')
     binary = Path('/opt/MTProxy/objs/bin/mtproto-proxy')
     runner = Path('/usr/local/sbin/mtproxy-pushok-run')
     if not env.exists() or not binary.exists() or not runner.exists():
+        if not env.exists():
+            publish_proxy_link(root, env)
         return
     cfg = parse_env(env.read_text())
     routes = json.loads(subprocess.check_output(['ip','-j','-4','route','get','1.1.1.1'], text=True))
@@ -62,7 +66,7 @@ def main():
             subprocess.run(['systemctl','restart','mtproxy-pushok.service'],check=False)
             raise
     subprocess.run(['systemctl','is-active','--quiet','mtproxy-pushok.service'],check=True)
-    root = Path(__file__).resolve().parent.parent
+    publish_proxy_link(root, env)
     if (root / '.env').exists():
         port = int(cfg['MT_PROXY_PORT'])
         if not 1 <= port <= 65535:

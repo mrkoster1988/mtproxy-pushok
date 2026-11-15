@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 ROOT="$(pwd -P)"
 [[ "$ROOT" == /opt/mtproxy-pushok ]] || { echo 'Служба рассчитана на /opt/mtproxy-pushok'; exit 1; }
 install -d -o 10001 -g 10001 -m 0700 .control
+python3 scripts/publish_proxy_link.py
 cat > /etc/systemd/system/mtproxy-pushok-updater.service <<'UNIT'
 [Unit]
 Description=Pushok published release updater

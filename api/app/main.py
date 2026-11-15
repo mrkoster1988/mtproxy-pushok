@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.15",
+    version="1.16",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)

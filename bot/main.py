@@ -18,6 +18,7 @@ from .lifecycle_notices import deliver_lifecycle_notices
 from .delivery_inbox import DeliveryInbox
 from .button_icons import decorate, configured_icons, without_button_icons, icon_rejection
 from .button_styles import with_button_styles
+from .proxy_link import current_proxy_url
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
@@ -61,18 +62,26 @@ def keyboard():
         [{"text": "❓ Помощь", "callback_data": "help"}],
     ]}
     url = miniapp_url()
+    proxy = current_proxy_url()
     if url:
         result['inline_keyboard'][0] = [{'text': '📢 Разместить рекламу', 'web_app': {'url': url + '#/create'}}]
+    if proxy:
+        result['inline_keyboard'].insert(0, [{'text': '🔗 Подключить прокси', 'url': proxy}])
     # Необязательные фирменные иконки; без реальных IDs структура кнопок не меняется.
     icons = configured_icons()
     # Один стиль на всё меню: неполный набор не смешиваем с обычными эмодзи.
-    if not {"advertise", "campaigns", "tariffs", "channels", "help"}.issubset(icons):
+    required = {"advertise", "campaigns", "tariffs", "channels", "help"}
+    if proxy:
+        required.add('miniapp')
+    if not required.issubset(icons):
         icons = {}
     for row in result['inline_keyboard']:
         for position, button in enumerate(row):
             action = button.get('callback_data')
             if action is None and button.get('url') == CHANNEL_URL:
                 action = 'channels'
+            if action is None and proxy and button.get('url') == proxy:
+                action = 'miniapp'
             if action is None and 'web_app' in button:
                 action = 'advertise'
             if action:
@@ -82,14 +91,17 @@ def keyboard():
 
 def message_for(command):
     if command == "start":
-        return ("🐱 Добро пожаловать в MTProxy Pushok!\n\n"
-                "Выберите действие в меню.\n\n"
-                "⚙️ Автоматическое размещение пока разрабатывается.")
+        text = ("🐱 Привет! Я Пушок. Добро пожаловать в MTProxy Pushok!\n\n"
+                "Подключай прокси для Telegram и размещай рекламу своего канала. "
+                "Заявки, оплата и статусы кампаний — в рекламном кабинете.")
+        proxy = current_proxy_url()
+        if proxy:
+            text += '\n\n🔗 Ссылка для подключения:\n' + proxy
+        return text + '\n\nВыбери действие в меню ниже. Всё нужное — под лапой! 🐾'
     if command == "advertise":
-        return ("📢 Пока заявки принимаются через сообщения нашему каналу:\n"
-                + CHANNEL_URL + "\nОформление через бота в разработке.")
+        return "📢 Для размещения рекламы открой кабинет или напиши в поддержку:\n" + CHANNEL_URL
     if command == "campaigns":
-        return "📋 Просмотр личных кампаний через бота ещё не подключён."
+        return "📋 Кампании временно недоступны. Попробуй позже или открой кабинет."
     if command == "tariffs":
         return "💎 Актуальная стоимость и доступность оплаты указаны в кабинете."
     if command == "paysupport":
@@ -265,7 +277,7 @@ def submission_reply(callback, submitter):
         if isinstance(result, dict) and result.get("verified_now") is True:
             text = ("✅ Права администратора канала подтверждены.\n"
                     "Черновик отправлен на модерацию.\n"
-                    "Оплату и размещение рекламы пока не выполняем.")
+                    "Статус проверки и дальнейшие действия доступны в карточке заявки.")
         else:
             text = ("✅ Заявка уже находится на модерации.\n"
                     "Повторная проверка прав администратора не выполнялась.")
@@ -292,7 +304,7 @@ def submission_reply(callback, submitter):
 def format_campaigns(campaigns):
     if not campaigns:
         return ("📋 Пока у вас нет заявок в рекламном кабинете.\n"
-                "Оформление заказов через бота пока в разработке.")
+                "Нажми «Разместить рекламу», чтобы создать первую кампанию.")
     moderation = {"draft": "Черновик", "pending": "На модерации",
                   "approved": "Одобрено", "rejected": "Отклонено",
                   "changes_requested": "Нужны исправления"}
