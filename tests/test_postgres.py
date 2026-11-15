@@ -1699,6 +1699,74 @@ class PostgresIntegration(unittest.TestCase):
             self.assertFalse(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
             self.assertEqual(handle(conn,request)['state'],'idle')
         self.request('DELETE','/admin/promotion-bindings/'+str(f['node'])+'/'+str(f['channel']))
+        self.assertFalse(self.request('GET',path)['config_applied'])
+
+    def test_promotion_confirmation_invalidates_changed_plan_in_both_endpoints(self):
+        from app.promotion_runtime import handle
+        from psycopg.rows import dict_row
+        mutations = [
+            ("UPDATE campaigns SET placement_status='cancelled' WHERE id=%s", 'campaign'),
+            ("UPDATE campaigns SET archived_at=now() WHERE id=%s", 'campaign'),
+            ("UPDATE campaigns SET moderation_status='pending' WHERE id=%s", 'campaign'),
+            ("UPDATE campaigns SET price_kopecks_snapshot=30000,payment_status='awaiting_payment' WHERE id=%s", 'campaign'),
+            ("UPDATE campaigns SET scheduled_start_at=now()+interval '1 minute' WHERE id=%s", 'campaign'),
+            ("UPDATE campaigns SET scheduled_end_at=scheduled_end_at+interval '1 hour' WHERE id=%s", 'campaign'),
+            ("UPDATE proxy_nodes SET status='paused' WHERE id=%s", 'node'),
+            ("UPDATE proxy_nodes SET archived_at=now() WHERE id=%s", 'node'),
+            ("UPDATE proxy_nodes SET port=9443 WHERE id=%s", 'node'),
+            ("UPDATE sponsor_channels SET archived_at=now() WHERE id=%s", 'channel'),
+            ("UPDATE channel_promotion_bindings SET ad_tag=md5(ad_tag) WHERE channel_id=%s", 'channel'),
+            ("DELETE FROM channel_promotion_bindings WHERE channel_id=%s", 'channel'),
+            ("UPDATE promotion_runtime SET plan_revision=NULL WHERE proxy_node_id=%s", 'node'),
+            ("UPDATE promotion_runtime SET checked_at=now()+interval '1 minute' WHERE proxy_node_id=%s", 'node'),
+        ]
+        for statement, key in mutations:
+            with self.subTest(statement=statement):
+                f = self._management_fixture(ready=True)
+                main.app.dependency_overrides[main.get_current_user] = lambda: {'id':f['admin'],'role':'admin'}
+                tag = uuid4().hex
+                self.request('PUT','/admin/promotion-bindings',json=dict(
+                    node_id=str(f['node']),channel_id=str(f['channel']),ad_tag=tag,telegram_binding_confirmed=True))
+                request = dict(host='management-'+f['node'].hex+'.example.org',port=8443)
+                with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+                    conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s",(f['node'],f['campaign']))
+                    plan = handle(conn,request)
+                    self.assertEqual(plan['state'],'apply')
+                    self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+                path='/campaigns/'+str(f['campaign'])+'/promotion-status'
+                def check(expected):
+                    result=self.request('GET',path)
+                    self.assertEqual(result['config_applied'],expected)
+                    bindings=self.request('GET','/admin/promotion-bindings')
+                    item=next(r for r in bindings['runtime'] if r['proxy_node_id']==str(f['node']))
+                    self.assertEqual(item['config_applied'],expected)
+                    self.assertFalse(item['display_verified'])
+                    self.assertNotIn(tag,json.dumps(bindings))
+                    self.assertNotIn(plan['revision'],json.dumps(bindings))
+                check(True)
+                with psycopg.connect(self.dsn) as conn:
+                    conn.execute(statement,(f[key],))
+                check(False)
+
+    def test_promotion_revision_migration_and_reconfirmation(self):
+        from app.promotion_runtime import handle
+        from psycopg.rows import dict_row
+        f = self._management_fixture(ready=True)
+        main.app.dependency_overrides[main.get_current_user] = lambda: {'id':f['admin'],'role':'admin'}
+        self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
+        request=dict(host='management-'+f['node'].hex+'.example.org',port=8443)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s",(f['node'],f['campaign']))
+            conn.execute("INSERT INTO promotion_runtime(proxy_node_id,campaign_id,state) VALUES(%s,%s,'applied')",(f['node'],f['campaign']))
+            migration=(ROOT/'database/028_promotion_revision.sql').read_text()
+            conn.execute(migration)
+            conn.execute(migration)
+        path='/campaigns/'+str(f['campaign'])+'/promotion-status'
+        self.assertFalse(self.request('GET',path)['config_applied'])
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            plan=handle(conn,request)
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+        self.assertTrue(self.request('GET',path)['config_applied'])
 
     def test_promotion_legacy_ip_lookup_and_ambiguous_identity(self):
         from app.promotion_runtime import handle
