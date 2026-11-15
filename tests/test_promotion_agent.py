@@ -108,8 +108,37 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(self.env.read_text(),original)
 
     def test_same_config_and_process_are_idempotent(self):
-        with patch.object(agent,'running_tag',return_value='A'*32),patch.object(agent,'command') as cmd:
-            agent.apply('a'*32);cmd.assert_not_called()
+        with patch.object(agent,'running_tag',return_value='A'*32),patch.object(agent,'command') as cmd,patch.object(agent.socket,'create_connection') as connect:
+            agent.apply('a'*32)
+        self.assertFalse(any(c.args[:2]==('systemctl','restart') for c in cmd.call_args_list))
+        connect.assert_called_once_with(('45.90.57.136',8443),timeout=1)
+
+    def test_same_tag_unreachable_service_is_restarted_before_ack(self):
+        self.env.write_text(self.env.read_text().replace('a'*32, 'b'*32))
+        calls = []
+        def exchange(request):
+            calls.append(request.get('action','plan'))
+            return {'accepted':True} if request.get('action')=='ack' else self.plan
+        def command(*args):
+            if args[:2]==('systemctl','restart'):
+                calls.append('restart')
+        with patch.object(agent,'running_tag',return_value='b'*32),patch.object(agent,'command',side_effect=command), \
+             patch.object(agent,'wait_ready',side_effect=[RuntimeError('proxy_start_timeout'),None]), \
+             patch.object(agent,'exchange',side_effect=exchange):
+            agent.tick()
+        self.assertEqual(calls,['plan','restart','ack'])
+
+    def test_failed_health_and_restart_do_not_ack(self):
+        self.env.write_text(self.env.read_text().replace('a'*32, 'b'*32))
+        status = {}
+        with patch.object(agent,'running_tag',return_value='b'*32),patch.object(agent,'command'), \
+             patch.object(agent,'wait_ready',side_effect=RuntimeError('proxy_start_timeout')), \
+             patch.object(agent,'exchange',return_value=self.plan) as exchange:
+            with self.assertRaisesRegex(RuntimeError,'proxy_start_timeout'):
+                agent.tick(status)
+        self.assertEqual(status['code'],'apply_failed')
+        self.assertEqual(exchange.call_count,1)
+        self.assertTrue(self.state.exists())
 
     def test_stopped_process_with_same_tag_is_restarted(self):
         with patch.object(agent,'running_tag',side_effect=[FileNotFoundError(), 'a'*32]),patch.object(agent,'command') as cmd,patch.object(agent.socket,'create_connection'):

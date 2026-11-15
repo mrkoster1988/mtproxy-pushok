@@ -220,7 +220,7 @@
    automationBody.replaceChildren(form);
    if(!nodes.length)automationBody.prepend(el('p','Нет узлов. Добавьте узел выше или восстановите его в разделе «Удалённые».'));
    for(const b of data.bindings){const row=el('div',undefined,'card');row.append(el('p',b.name+' → '+b.title+' · тег …'+b.tag_ending),button('Отключить',async()=>{await api('/admin/promotion-bindings/'+b.proxy_node_id+'/'+b.channel_id,{method:'DELETE'});await renderAutomation();notice('Связь отключена. При следующей проверке агент вернёт исходный тег.',true);}));automationBody.append(row);}
-   for(const item of data.runtime){const fresh=Date.now()-new Date(item.checked_at).getTime()<120000;automationBody.append(el('p',item.name+': '+(!fresh?'Нет свежего подтверждения агента':item.state==='applied'?'Тег применён; показ не проверен':'Нет автоматически применённого тега')+' · '+date(item.checked_at)));}
+   for(const item of data.runtime){automationBody.append(el('p',item.name+': '+(!item.agent_recent?'Нет свежего подтверждения агента':item.config_applied?'Тег применён; показ не проверен':'Применение текущего плана не подтверждено')+' · '+date(item.checked_at)));}
    if(!data.runtime.length)automationBody.append(el('p','Подтверждения от агента пока нет. Служба устанавливается обновлением на VPS с классическим MTProxy.','muted'));
   }catch(e){if(rev===automationRevision&&token===session)automationBody.replaceChildren(el('p',e.message));}
  }
