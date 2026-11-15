@@ -134,7 +134,12 @@ def verify(dsn,tid,uid):
     with connect(dsn) as conn:
         row=conn.execute('SELECT * FROM wallet_topups WHERE id=%s AND user_id=%s FOR UPDATE',(tid,uid)).fetchone()
         if not row:raise HTTPException(404,'wallet_topup_not_found')
-        if row['provider']=='telegram_stars' or row['status'] in ('failed','refunded','review'):return view(row)
+        if row['provider']=='telegram_stars':
+            if (row['status']=='pending' and not row['precheckout_approved_at'] and row['expires_at']
+                and row['expires_at']<=datetime.now(timezone.utc)):
+                row=conn.execute("UPDATE wallet_topups SET status='failed',invoice_url=NULL WHERE id=%s RETURNING *",(tid,)).fetchone()
+            return view(row)
+        if row['status'] in ('failed','refunded','review'):return view(row)
         if not row['provider_payment_id']:raise HTTPException(409,'wallet_resume_topup')
         cfg=sbp_settings()
         if not cfg['configured'] or row['provider_account']!=cfg['shop'] or row['test_mode']!=cfg['test_mode']:

@@ -103,7 +103,7 @@ def router_for(dsn,current_user,require_admin):
 
     def journal(conn,uid,page,limit=30):
         rows=conn.execute('''SELECT e.id,e.currency,e.delta,e.balance_after,e.kind,e.reason,e.created_at,e.campaign_id,
-            e.topup_id,e.reversal_of,u.username AS actor_username,u.telegram_user_id AS actor_telegram_id,
+            e.topup_id,e.reversal_of,EXISTS(SELECT 1 FROM wallet_payments p WHERE p.campaign_id=e.campaign_id AND p.automatic) AS automatic,u.username AS actor_username,u.telegram_user_id AS actor_telegram_id,
             EXISTS(SELECT 1 FROM wallet_entries r WHERE r.reversal_of=e.id) AS reversed
             FROM wallet_entries e LEFT JOIN users u ON u.id=e.actor_user_id WHERE e.user_id=%s
             ORDER BY e.created_at DESC,e.id DESC LIMIT %s OFFSET %s''',(uid,limit,page*limit)).fetchall()
@@ -207,6 +207,16 @@ def router_for(dsn,current_user,require_admin):
             return conn.execute('''SELECT t.id,t.user_id,u.telegram_user_id,t.currency,t.amount,t.status,t.test_mode,
                 t.created_at,t.settled_at,t.review_reason,t.refunded_amount FROM wallet_topups t JOIN users u ON u.id=t.user_id
                 ORDER BY t.created_at DESC,t.id DESC LIMIT 30 OFFSET %s''',(page*30,)).fetchall()
+
+    @router.get('/api/v1/admin/wallet/unmatched-stars')
+    def unmatched(admin=Depends(require_admin)):
+        with db() as conn:
+            receipts=conn.execute("""SELECT id,payer_telegram_user_id,currency,total_amount,reason_code,received_at
+                FROM stars_payment_receipts WHERE handling_status='requires_review' AND reason_code LIKE 'wallet_%'
+                ORDER BY received_at DESC LIMIT 30""").fetchall()
+            refunds=conn.execute("""SELECT charge_id,telegram_user_id,currency,amount,status,created_at FROM wallet_star_refunds
+                WHERE status<>'applied' ORDER BY created_at DESC LIMIT 30""").fetchall()
+            return {'receipts':receipts,'refunds':refunds}
 
     @router.get('/api/v1/admin/wallet/users/{tg}/export')
     def export(tg:int,admin=Depends(require_admin)):
