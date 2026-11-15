@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.05",
+    version="1.06",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2622,7 +2622,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=103-loading-title" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=106-safe-header" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 

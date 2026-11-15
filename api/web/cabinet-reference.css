@@ -16,6 +16,10 @@ body.cabinet-mode{min-width:0}
 .cabinet-brand img,.mobile-brand img{width:44px;height:44px;object-fit:contain;flex:none}
 .brand-copy{display:flex;flex-direction:column;line-height:1.1}.brand-copy small{font-size:12px;font-weight:400;letter-spacing:0;color:var(--muted);margin-top:4px}
 .cabinet-mode .cabinet-topbar{background:var(--bg);border-bottom:1px solid var(--line);box-shadow:none;min-height:68px;margin-bottom:24px}
+/* В полноэкранном Telegram содержимое при прокрутке не попадает под его кнопки. */
+.miniapp-mode .cabinet-topbar::before{content:"";position:fixed;top:0;left:0;right:0;height:var(--mini-safe-top,0px);background:var(--bg);pointer-events:none}
+.cabinet-mode.miniapp-mode .cabinet-sidebar{padding-top:calc(24px + var(--mini-safe-top,0px))}
+.cabinet-mode.miniapp-mode .menu-close{top:calc(12px + var(--mini-safe-top,0px))}
 .cabinet-mode .cabinet-account{color:var(--text-soft);font-size:13px}
 .cabinet-mode .page-heading{align-items:flex-start;gap:16px}
 .cabinet-mode .page-heading h1{font-size:30px;line-height:1.15;letter-spacing:-.8px;margin-bottom:8px}
