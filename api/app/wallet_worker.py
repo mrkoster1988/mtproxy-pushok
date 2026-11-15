@@ -10,7 +10,10 @@ from .sbp_verification import SBPVerificationError
 def service_once(dsn,limit=20):
     report={'topups_checked':0,'auto_paid':0,'deferred':0}
     with topups.connect(dsn) as conn:
-        rows=conn.execute("SELECT id,user_id FROM wallet_topups WHERE provider='sbp' AND status IN ('pending','succeeded') AND next_check_at<=now() ORDER BY next_check_at LIMIT %s",(limit,)).fetchall()
+        # У новых оплат свой бюджет: старые проверки возвратов не занимают их очередь.
+        pending=conn.execute("SELECT id,user_id FROM wallet_topups WHERE provider='sbp' AND status='pending' AND next_check_at<=now() ORDER BY next_check_at,id LIMIT %s",(limit,)).fetchall()
+        history=conn.execute("SELECT id,user_id FROM wallet_topups WHERE provider='sbp' AND status='succeeded' AND next_check_at<=now() ORDER BY next_check_at,id LIMIT %s",(max(1,limit//4),)).fetchall()
+        rows=pending+history
     for row in rows:
         try:
             topups.verify(dsn,row['id'],row['user_id']);report['topups_checked']+=1

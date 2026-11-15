@@ -1,4 +1,5 @@
 """Неизменяемый журнал. Все операции — в транзакции владельца вызывающего кода."""
+from datetime import datetime, timezone
 from fastapi import HTTPException
 
 CURRENCIES = ('BONUS', 'RUB', 'XTR')
@@ -85,6 +86,9 @@ def refund_campaign(conn,cid,admin,reason):
     if pay['status']=='refunded':return pay
     if c['placement_status']=='active':raise HTTPException(409,'wallet_stop_placement_first')
     if c['placement_status']=='scheduled':
+        if (not c['scheduled_start_at'] or c['scheduled_start_at']<=datetime.now(timezone.utc)
+            or conn.execute('SELECT 1 FROM placement_observations WHERE campaign_id=%s LIMIT 1',(cid,)).fetchone()):
+            raise HTTPException(409,'wallet_stop_placement_first')
         conn.execute('DELETE FROM slot_holds WHERE campaign_id=%s',(cid,))
     conn.execute("UPDATE campaigns SET payment_status='refunded',placement_status=CASE WHEN placement_status='scheduled' THEN 'cancelled' ELSE placement_status END,auto_schedule_paused=true,updated_at=now() WHERE id=%s",(cid,))
     if pay['cash_amount']:post(conn,uid,pay['currency'],pay['cash_amount'],'refund','refund:'+str(cid)+':'+pay['currency'],reason,actor=admin,campaign=cid)

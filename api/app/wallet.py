@@ -170,6 +170,8 @@ def router_for(dsn,current_user,require_admin):
     def admin_user(tg:int,page:int=Query(default=0,ge=0,le=100000),admin=Depends(require_admin)):
         with db() as conn:
             user=target(conn,tg);uid=user['id']
+            # Остаток и суммы журнала читаются, пока проводки этого пользователя заблокированы.
+            ledger.accounts(conn,uid,lock=True)
             totals=conn.execute('''SELECT currency,coalesce(sum(delta) FILTER(WHERE delta>0),0)::bigint AS credited,
                 coalesce(-sum(delta) FILTER(WHERE delta<0),0)::bigint AS debited,coalesce(sum(delta),0)::bigint AS journal_balance
                 FROM wallet_entries WHERE user_id=%s GROUP BY currency''',(uid,)).fetchall()

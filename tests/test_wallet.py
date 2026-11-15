@@ -231,3 +231,51 @@ class WalletIntegration(unittest.TestCase):
                 topups.create(self.dsn,self.actor,data)
             self.assertEqual(failed.call_args.kwargs['idempotence_key'],retry.call_args.kwargs['idempotence_key'])
         with topups.connect(self.dsn) as conn:self.assertEqual(conn.execute('SELECT count(*) AS n FROM wallet_topups WHERE user_id=%s',(self.owner,)).fetchone()['n'],1)
+
+    def test_refund_rejects_started_scheduled_slot_without_agent_ack(self):
+        self.credit();cid=self.campaign();self.charge(cid)
+        node=uuid4()
+        with topups.connect(self.dsn) as conn:
+            conn.execute("INSERT INTO proxy_nodes(id,name,host,port,status) VALUES(%s,'Wallet node','127.0.0.1',18443,'active')",(node,))
+            conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s",(node,cid))
+        with self.assertRaises(HTTPException) as failure:
+            with topups.connect(self.dsn) as conn:ledger.refund_campaign(conn,cid,self.admin,'Запрос возврата')
+        self.assertEqual(failure.exception.detail,'wallet_stop_placement_first');self.assertEqual(self.balances()['RUB'],0)
+        with topups.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT payment_status FROM campaigns WHERE id=%s',(cid,)).fetchone()['payment_status'],'verified')
+            conn.execute("UPDATE campaigns SET scheduled_start_at=now()+interval '1 hour',scheduled_end_at=now()+interval '2 hours' WHERE id=%s",(cid,))
+            ledger.refund_campaign(conn,cid,self.admin,'Отмена будущего размещения')
+        self.assertEqual(self.balances()['RUB'],30000)
+
+    def test_pending_topup_has_capacity_independent_of_refund_history(self):
+        with topups.connect(self.dsn) as conn:
+            # Убираем другие пополнения этого тестового класса из очереди.
+            conn.execute("UPDATE wallet_topups SET next_check_at=now()+interval '1 day'")
+            for _ in range(5):
+                conn.execute("""INSERT INTO wallet_topups(user_id,request_id,provider,currency,amount,provider_account,test_mode,status,next_check_at)
+                    VALUES(%s,%s,'sbp','RUB',100,'shop',false,'succeeded',now()-interval '1 day')""",(self.owner,uuid4()))
+            pending=conn.execute("""INSERT INTO wallet_topups(user_id,request_id,provider,currency,amount,provider_account,test_mode,status,next_check_at)
+                    VALUES(%s,%s,'sbp','RUB',100,'shop',false,'pending',now()-interval '1 minute') RETURNING id""",(self.owner,uuid4())).fetchone()['id']
+        with patch('app.wallet_worker.topups.verify',return_value={}) as verify:
+            wallet_worker.service_once(self.dsn,limit=1)
+        self.assertEqual(verify.call_args_list[0].args[1],pending)
+        self.assertEqual(verify.call_count,2) # один новый платёж и отдельная историческая проверка
+
+    def test_reconciliation_stays_consistent_during_concurrent_credit(self):
+        from threading import Event
+        self.actor={'id':self.admin,'role':'admin'};self.credit(amount=100)
+        locked,attempted=Event(),Event();original=ledger.accounts
+        def observed(conn,uid,*,lock=False):
+            result=original(conn,uid,lock=lock)
+            if lock and uid==self.owner and not locked.is_set():
+                locked.set();self.assertTrue(attempted.wait(3))
+            return result
+        def concurrent_credit():
+            self.assertTrue(locked.wait(3));attempted.set();self.credit(amount=200)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            future=pool.submit(concurrent_credit)
+            with patch('app.wallet.ledger.accounts',side_effect=observed):
+                data=self.request('GET','/admin/wallet/users/'+str(self.tg))
+            future.result(timeout=5)
+        self.assertTrue(data['reconciled']);self.assertEqual(data['balances']['RUB'],100)
+        self.assertEqual(self.balances()['RUB'],300)
