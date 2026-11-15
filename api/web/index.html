@@ -8,10 +8,10 @@
   <meta name="description" content="MTProxy Pushok — кабинет спонсорской рекламы в Telegram. Создание заявки, модерация, оплата и управление размещениями.">
   <title>puShok · MTProxy — кабинет спонсора</title>
   <link rel="stylesheet" href="/assets/styles.css?v=060">
-  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=061-reviewed">
+  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=064-tariff-actions">
   <script src="/assets/app.js?v=062-confirmation" defer></script>
   <script src="/assets/order.js?v=060" defer></script>
-  <script src="/assets/management.js?v=060" defer></script>
+  <script src="/assets/management.js?v=064-tariff-actions" defer></script>
   <script src="/assets/approval.js?v=060" defer></script>
   <script src="/assets/mobile-views.js?v=061-routes" defer></script>
   <script src="/assets/pages.js?v=062-confirmation" defer></script>
@@ -219,7 +219,9 @@
               <label>Цена для СБП, ₽<input id="tariff-admin-rub" type="number" min="0" max="1000000" step="0.01" required></label>
               <label>Цена в Telegram Stars, XTR<input id="tariff-admin-stars" type="number" min="0" max="1000000" step="1" placeholder="Не настроено"></label>
               <label><input id="tariff-admin-active" type="checkbox"> Тариф активен для новых заказов</label>
-              <button class="primary" type="submit">Сохранить настройки тарифа</button>
+              <div id="tariff-admin-actions">
+                <button class="primary" type="submit" aria-label="Сохранить настройки тарифа">Сохранить</button>
+              </div>
             </fieldset></form>
             <p id="tariff-admin-status" class="muted" role="status">Настройки читаются из базы. Способы оплаты настраиваются во вкладке «Платежи».</p>
           </section>

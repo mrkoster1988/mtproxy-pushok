@@ -151,3 +151,7 @@ body.cabinet-mode{min-width:0}
 
 .cabinet-mode .flat-section{padding:0;background:transparent;border:0}
 .cabinet-mode .cabinet-topbar #refresh{width:44px;flex:none;min-height:44px;font-size:24px;padding:6px;line-height:1}
+
+/* Действия тарифа остаются рядом и на узком экране. */
+#tariff-admin-actions{display:flex;align-items:stretch;gap:8px;width:100%;max-width:360px;margin-top:12px}
+#tariff-admin-actions>button{flex:1 1 0;min-width:0;min-height:44px;margin:0;padding:9px 12px;font-size:14px;line-height:1.25}
