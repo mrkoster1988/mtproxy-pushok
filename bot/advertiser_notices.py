@@ -39,7 +39,7 @@ def render_advertiser_notice(notice):
     return "\n\n".join(lines)
 
 
-def deliver_advertiser_notices(api, sender):
+def deliver_advertiser_notices(api, sender, *, renderer=None, keyboard_builder=None):
     """Отправить не более пяти уведомлений; не терять их при сбое."""
     try:
         items = api("advertisers/outbox/claim", {})
@@ -58,8 +58,8 @@ def deliver_advertiser_notices(api, sender):
                 raise ValueError("Некорректный Telegram ID")
             sender({
                 "chat_id": recipient,
-                "text": render_advertiser_notice(item),
-                "reply_markup": {"inline_keyboard": [[
+                "text": (renderer or render_advertiser_notice)(item),
+                "reply_markup": keyboard_builder(item) if keyboard_builder else {"inline_keyboard": [[
                     {"text": "📋 Мои кампании", "callback_data": "campaigns"},
                 ]]},
             })

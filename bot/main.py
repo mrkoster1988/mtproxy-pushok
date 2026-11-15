@@ -14,6 +14,7 @@ from .wizard import DraftWizard, format_tariff
 from .navigation import Navigation
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
+from .lifecycle_notices import deliver_lifecycle_notices
 from .delivery_inbox import DeliveryInbox
 from .button_icons import decorate, configured_icons, without_button_icons, icon_rejection
 from .button_styles import with_button_styles
@@ -647,8 +648,9 @@ def run():
                 deliver_operator_outbox(token)
                 deliver_advertiser_notices(
                     _internal_api,
-                    lambda payload: telegram_call(token, "sendMessage", payload, timeout=4),
+                    lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4),
                 )
+                deliver_lifecycle_notices(_internal_api,lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4),miniapp_url())
                 navigation.cleanup_pending(token)
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
             # Не включать str(exc): HTTPError содержит URL с секретным токеном.

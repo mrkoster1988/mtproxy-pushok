@@ -1922,6 +1922,41 @@ class PostgresIntegration(unittest.TestCase):
             main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['admin'],'role':'admin'}
             self.request('PUT','/admin/default-sponsor',json=dict(channel_id=None))
 
+    def test_lifecycle_notifications_dedupe_role_filter_and_lease(self):
+        from app.campaign_notices import record_failure
+        from psycopg.rows import dict_row
+        f=self._management_fixture(ready=True)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            conn.execute("UPDATE campaign_notice_outbox SET next_attempt_at=now()+interval '1 day'")
+            conn.execute('INSERT INTO bot_operator_subscriptions(operator_user_id) VALUES(%s) ON CONFLICT DO NOTHING',(f['admin'],))
+            conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='active',scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s",(f['node'],f['campaign']))
+            owner=conn.execute('SELECT advertiser_user_id FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()['advertiser_user_id']
+            self.assertEqual(conn.execute("SELECT count(*) AS n FROM campaign_notice_outbox WHERE campaign_id=%s AND event_type='started' AND recipient_user_id=%s",(f['campaign'],owner)).fetchone()['n'],1)
+            conn.execute("UPDATE campaigns SET placement_status='active' WHERE id=%s",(f['campaign'],))
+            self.assertEqual(conn.execute("SELECT count(*) AS n FROM campaign_notice_outbox WHERE campaign_id=%s AND event_type='started' AND recipient_user_id=%s",(f['campaign'],owner)).fetchone()['n'],1)
+            record_failure(conn,f['node'],'apply_failed');record_failure(conn,f['node'],'apply_failed')
+            self.assertEqual(conn.execute("SELECT count(*) AS n FROM campaign_notice_outbox WHERE campaign_id=%s AND event_type='failed' AND recipient_user_id=%s",(f['campaign'],owner)).fetchone()['n'],1)
+            conn.execute('UPDATE promotion_incidents SET resolved_at=now() WHERE proxy_node_id=%s',(f['node'],))
+            record_failure(conn,f['node'],'apply_failed')
+            self.assertEqual(conn.execute("SELECT count(*) AS n FROM campaign_notice_outbox WHERE campaign_id=%s AND event_type='failed' AND recipient_user_id=%s",(f['campaign'],owner)).fetchone()['n'],2)
+            conn.execute("UPDATE users SET role='advertiser' WHERE id=%s",(f['admin'],))
+            conn.execute("UPDATE campaign_notice_outbox SET next_attempt_at=now()+interval '1 day' WHERE recipient_user_id<>%s",(owner,))
+        headers={'X-Pushok-Bot-Secret':'f'*64}
+        with patch.dict(os.environ,{'DATABASE_URL':self.dsn,'BOT_INTERNAL_SECRET':'f'*64}):
+            self.request('POST','/internal/bot/lifecycle/outbox/claim',expected=401)
+            notices=self.request('POST','/internal/bot/lifecycle/outbox/claim',headers=headers)
+            self.assertEqual(len(notices),3)
+            self.assertTrue(all(n['audience']=='owner' and n['reason'] is None for n in notices))
+            one=notices[0]
+            self.request('POST','/internal/bot/lifecycle/outbox/finish',expected=409,headers=headers,json=dict(notice_id=one['notice_id'],claim_token=str(uuid4())))
+            self.request('POST','/internal/bot/lifecycle/outbox/finish',headers=headers,json=dict(notice_id=one['notice_id'],claim_token=one['claim_token']))
+            self.request('POST','/internal/bot/lifecycle/outbox/finish',expected=409,headers=headers,json=dict(notice_id=one['notice_id'],claim_token=one['claim_token']))
+            self.assertEqual(self.request('POST','/internal/bot/lifecycle/outbox/claim',headers=headers),[])
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            conn.execute("UPDATE campaigns SET placement_status='completed' WHERE id=%s",(f['campaign'],))
+            conn.execute("UPDATE campaigns SET placement_status='completed' WHERE id=%s",(f['campaign'],))
+            self.assertEqual(conn.execute("SELECT count(*) AS n FROM campaign_notice_outbox WHERE campaign_id=%s AND event_type='completed' AND recipient_user_id=%s",(f['campaign'],owner)).fetchone()['n'],1)
+
     def test_promotion_preparation_apply_ack_cancel_and_ownership(self):
         from app.promotion_runtime import handle
         from psycopg.rows import dict_row

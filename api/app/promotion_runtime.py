@@ -9,6 +9,7 @@ import psycopg
 from psycopg.rows import dict_row
 from .promotion_report import read_report
 from .default_sponsor import fallback_plan
+from .campaign_notices import record_failure, FAILURE_CODES
 
 _UNREAD_REPORT = object()
 
@@ -121,6 +122,11 @@ def confirmation(conn, node, runtime, *, now=None, plan=None, report=_UNREAD_REP
 
 def handle(conn, request):
     plan=desired(conn,request['host'],int(request['port']),request.get('resolved_host'))
+    if request.get('action')=='failure':
+        if plan.get('node_id') and request.get('code') in FAILURE_CODES:
+            record_failure(conn,plan['node_id'],request['code'])
+            return {'recorded':True}
+        return {'recorded':False}
     if request.get('action')=='ack':
         if plan.get('node_id'):
             # Смена расписания и отмена не должны обгонять подтверждение агента.
@@ -160,6 +166,8 @@ def handle(conn, request):
                 conn.execute("""INSERT INTO audit_events(campaign_id,event_type,details_json)
                     VALUES(%s,'placement_completed_by_agent',
                     '{"source":"promotion_agent","display_verified":false}'::jsonb)""", (campaign['id'],))
+        if plan.get('node_id') and (plan['state'] in ('apply','default') or plan.get('reason') in ('period_ended','waiting_start','no_current_campaign')):
+            conn.execute('UPDATE promotion_incidents SET resolved_at=now() WHERE proxy_node_id=%s AND resolved_at IS NULL',(plan['node_id'],))
         return {'accepted':True}
     return dict(plan,revision=revision(plan))
 

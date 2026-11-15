@@ -204,10 +204,11 @@ def tick(status=None):
     # Локальный срок снимает тег даже при недоступной БД/API.
     status['code'] = 'restore_failed'
     restore_pending_or_expired()
+    flush_failure_notice()
     status['code'] = 'config_error'
     cfg=parse_env(ENV.read_text())
     request=node_request(cfg)
-    status.update(host=request['host'], port=request['port'], code='runtime_unavailable')
+    status.update(host=request['host'], port=request['port'], resolved_host=request.get('resolved_host'), code='runtime_unavailable')
     plan=exchange(request)
     status['code'] = 'invalid_plan'
     validate_plan(plan)
@@ -271,12 +272,37 @@ def main(status=None):
             tick(status)
 
 
+def flush_failure_notice():
+    path=STATE.with_name('promotion-notice-pending.json')
+    try:
+        if not path.exists() or path.stat().st_size>8192:
+            return
+        data=json.loads(path.read_text())
+        if exchange(data).get('recorded'):
+            path.unlink(missing_ok=True)
+    except Exception:
+        pass  # Локальная запись сохраняется до восстановления кабинета.
+
+
+def preserve_failure_notice(status):
+    if status.get('code') not in {'apply_failed','restore_failed','ack_unavailable','runtime_unavailable','binding_missing','binding_changed','default_binding_missing','conflicting_campaigns'} or not status.get('host') or not status.get('port'):
+        return
+    path=STATE.with_name('promotion-notice-pending.json')
+    try:
+        if not path.exists():
+            atomic(path,json.dumps(dict(host=status['host'],port=status['port'],resolved_host=status.get('resolved_host'),action='failure',code=status['code'])))
+    except OSError:
+        pass
+
+
 def run_cycle():
     status = {'code': 'agent_error'}
     try:
         main(status)
     finally:
         publish_status(status)
+        preserve_failure_notice(status)
+        flush_failure_notice()
 
 if __name__=='__main__':
     try:

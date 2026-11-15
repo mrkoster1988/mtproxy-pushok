@@ -33,6 +33,19 @@ class AgentTests(unittest.TestCase):
             apply.assert_called_once_with('a'*32)
         self.assertFalse(self.state.exists())
 
+    def test_failure_notice_survives_offline_cabinet(self):
+        status=dict(host='45.90.57.136',port=8443,code='runtime_unavailable')
+        agent.preserve_failure_notice(status)
+        path=self.state.with_name('promotion-notice-pending.json')
+        self.assertTrue(path.exists())
+        with patch.object(agent,'exchange',side_effect=RuntimeError('offline')):
+            agent.flush_failure_notice()
+        self.assertTrue(path.exists())
+        with patch.object(agent,'exchange',return_value={'recorded':True}) as exchange:
+            agent.flush_failure_notice()
+            self.assertEqual(exchange.call_args.args[0]['action'],'failure')
+        self.assertFalse(path.exists())
+
     def test_only_tag_changes_and_shell_injection_rejected(self):
         original=self.env.read_text()
         self.assertIn('MT_PROXY_SECRET=keep-this',agent.tag_text(original,'b'*32))
