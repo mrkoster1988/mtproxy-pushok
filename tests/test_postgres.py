@@ -1848,7 +1848,13 @@ class PostgresIntegration(unittest.TestCase):
             plan=handle(conn,request)
             self.assertEqual(plan['state'],'apply')
             self.assertEqual(plan['tag'],payload['ad_tag'])
+            self.assertEqual(conn.execute("SELECT placement_status FROM campaigns WHERE id=%s",(f['campaign'],)).fetchone()['placement_status'],'scheduled')
+            self.assertFalse(handle(conn,dict(request,action='ack',revision='0'*64))['accepted'])
+            self.assertEqual(conn.execute("SELECT placement_status FROM campaigns WHERE id=%s",(f['campaign'],)).fetchone()['placement_status'],'scheduled')
             self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+            self.assertEqual(conn.execute("SELECT placement_status FROM campaigns WHERE id=%s",(f['campaign'],)).fetchone()['placement_status'],'active')
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+            self.assertEqual(conn.execute("SELECT count(*) AS n FROM audit_events WHERE campaign_id=%s AND event_type='placement_activated_by_agent'",(f['campaign'],)).fetchone()['n'],1)
         path='/campaigns/'+str(f['campaign'])+'/promotion-status'
         self.write_promotion_report(plan)
         self.assertTrue(self.request('GET',path)['config_applied'])

@@ -121,6 +121,10 @@ def confirmation(conn, node, runtime, *, now=None, plan=None, report=_UNREAD_REP
 def handle(conn, request):
     plan=desired(conn,request['host'],int(request['port']),request.get('resolved_host'))
     if request.get('action')=='ack':
+        if plan.get('node_id'):
+            # Смена расписания и отмена не должны обгонять подтверждение агента.
+            conn.execute("SELECT id FROM campaigns WHERE proxy_node_id=%s AND placement_status IN ('scheduled','active') FOR UPDATE", (plan['node_id'],))
+            plan=desired(conn,request['host'],int(request['port']),request.get('resolved_host'))
         if revision(plan)!=request.get('revision'):
             return {'accepted':False}
         if plan.get('node_id'):
@@ -129,6 +133,21 @@ def handle(conn, request):
               campaign_id=EXCLUDED.campaign_id,state=EXCLUDED.state,
               plan_revision=EXCLUDED.plan_revision,checked_at=now()""",
               (plan['node_id'],plan.get('campaign_id'),'applied' if plan['state']=='apply' else 'idle',revision(plan)))
+        if plan['state']=='apply':
+            # ACK приходит только после применения тега и проверки работающего процесса.
+            # Это подтверждение запуска, а не измерение показов Telegram.
+            activated = conn.execute("""UPDATE campaigns
+                SET placement_status='active', updated_at=now()
+                WHERE id=%s AND proxy_node_id=%s AND placement_status='scheduled'
+                  AND moderation_status='approved' AND payment_status='verified'
+                  AND archived_at IS NULL
+                  AND scheduled_start_at<=now() AND scheduled_end_at>now()
+                RETURNING id""", (plan['campaign_id'],plan['node_id'])).fetchone()
+            if activated:
+                conn.execute("""INSERT INTO audit_events(campaign_id,event_type,details_json)
+                    VALUES(%s,'placement_activated_by_agent',
+                           '{"source":"promotion_agent","display_verified":false}'::jsonb)""",
+                    (activated['id'],))
         return {'accepted':True}
     return dict(plan,revision=revision(plan))
 
