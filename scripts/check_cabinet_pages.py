@@ -155,8 +155,12 @@ def main():
                 expect(admin.locator('#engine-advice')).to_contain_text('План:')
                 admin.locator('#node-form button[type=submit]').click()
                 expect(admin.locator('#nodes-list')).to_contain_text('Тестовый узел')
+                expect(admin.locator('#promotion-diagnostics')).to_be_visible()
+                expect(admin.locator('#promotion-agent-report')).to_have_attribute('data-status', 'unknown')
+                expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=binding_missing]')).to_contain_text('Не подготовлена связь канала с тегом')
                 admin.get_by_role('button', name='Поставить на паузу', exact=True).click()
                 expect(admin.get_by_role('button', name='Возобновить', exact=True)).to_be_visible()
+                expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=node_paused]')).to_be_visible()
                 admin.get_by_role('button', name='Возобновить', exact=True).click()
                 expect(admin.get_by_role('button', name='Поставить на паузу', exact=True)).to_be_visible()
                 admin.locator('#engine-mode').select_option('manual')
@@ -169,6 +173,8 @@ def main():
                 admin.locator('#sponsor-form button[type=submit]').click()
                 expect(admin.locator('[data-page=sponsors]')).to_contain_text('окончанием aaaa')
                 assert admin.get_by_label('ad_tag из MTProxyBot', exact=True).input_value() == ''
+                admin.get_by_role('button', name='Обновить диагностику', exact=True).click()
+                expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=binding_missing]')).to_be_visible()
 
                 advertiser = new_page("advertiser")
                 expect(advertiser.locator('[data-page=dashboard]')).to_contain_text('Пока нет данных')
@@ -805,3 +811,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

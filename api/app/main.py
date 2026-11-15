@@ -41,6 +41,7 @@ from .report_export import render_campaign_csv
 from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
 from . import sbp_checkout, sbp_admin, stars_checkout
+from .promotion_diagnostics import diagnostics as promotion_diagnostics
 from .miniapp_auth import validate_init_data
 from .sbp_webhook import router as sbp_webhook_router
 from .sbp_provider import SBPProviderError
@@ -2658,6 +2659,16 @@ def promotion_bindings(admin: dict = Depends(require_admin)):
         }
 
 
+@app.get('/api/v1/admin/promotion-diagnostics', tags=['admin'])
+def read_promotion_diagnostics(admin: dict = Depends(require_admin)):
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row,
+                             options='-c statement_timeout=5000') as conn:
+            return promotion_diagnostics(conn)
+    except psycopg.Error as exc:
+        raise HTTPException(503, 'database_unavailable') from exc
+
+
 @app.put('/api/v1/admin/promotion-bindings', tags=['admin'])
 def save_promotion_binding(payload: PromotionBindingRequest, admin: dict = Depends(require_admin)):
     if not payload.telegram_binding_confirmed:
@@ -2705,3 +2716,4 @@ def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_curren
         fresh=bool(row['checked_at'] and (datetime.now(timezone.utc)-row['checked_at']).total_seconds()<120)
         applied=bool(fresh and row['state']=='applied' and row['applied_campaign_id']==campaign_id and row['scheduled_end_at'] and row['scheduled_end_at']>datetime.now(timezone.utc))
         return {'prepared':row['prepared'],'config_applied':applied,'agent_recent':fresh,'checked_at':row['checked_at'],'display_verified':False}
+

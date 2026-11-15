@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import hmac
+import json
 import os
 import sys
 import tempfile
@@ -1762,4 +1763,50 @@ class PostgresIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             after = conn.execute('SELECT id,status FROM proxy_nodes WHERE port=8443 AND host IN (%s,%s)', (domain,address)).fetchall()
             self.assertEqual(after, before)
+
+    def test_promotion_diagnostics_explains_readiness_without_claiming_runtime(self):
+        f = self._management_fixture(ready=True)
+        main.app.dependency_overrides[main.get_current_user] = lambda: {'id': f['admin'], 'role': 'admin'}
+        path = '/admin/promotion-diagnostics'
+        def diagnostic():
+            report = self.request('GET', path)
+            self.assertFalse(report['display_verified'])
+            self.assertEqual(report['agent']['status'], 'unknown')
+            return next(n for n in report['nodes'] if n['node_id'] == str(f['node']))
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'PUSHOK_CONTROL_DIR': directory}):
+            self.assertEqual(diagnostic()['code'], 'binding_missing')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE proxy_nodes SET status='paused' WHERE id=%s", (f['node'],))
+            self.assertEqual(diagnostic()['code'], 'node_paused')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE proxy_nodes SET status='active' WHERE id=%s", (f['node'],))
+            tag = uuid4().hex
+            self.request('PUT', '/admin/promotion-bindings', json=dict(node_id=str(f['node']), channel_id=str(f['channel']), ad_tag=tag, telegram_binding_confirmed=True))
+            self.assertEqual(diagnostic()['code'], 'no_current_campaign')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()+interval '1 hour',scheduled_end_at=now()+interval '2 hours' WHERE id=%s", (f['node'], f['campaign']))
+            future = diagnostic()
+            self.assertEqual(future['code'], 'waiting_start')
+            self.assertIn('next_start_at', future)
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s", (f['campaign'],))
+                before = conn.execute('SELECT count(*) FROM audit_events').fetchone()[0]
+            self.assertEqual(diagnostic()['code'], 'ready')
+            self.assertNotIn(tag, json.dumps(self.request('GET', path)))
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(before, conn.execute('SELECT count(*) FROM audit_events').fetchone()[0])
+                conn.execute('UPDATE channel_promotion_bindings SET node_host=%s WHERE proxy_node_id=%s', ('changed.example.org', f['node']))
+            self.assertEqual(diagnostic()['code'], 'binding_changed')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET payment_status='awaiting_payment' WHERE id=%s", (f['campaign'],))
+            self.assertEqual(diagnostic()['code'], 'payment_pending')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET moderation_status='pending' WHERE id=%s", (f['campaign'],))
+            self.assertEqual(diagnostic()['code'], 'moderation_pending')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET moderation_status='approved',payment_status='verified',placement_status='active' WHERE id=%s", (f['campaign'],))
+            self.assertEqual(diagnostic()['code'], 'manual_placement_active')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '2 hours',scheduled_end_at=now()-interval '1 hour' WHERE id=%s", (f['campaign'],))
+            self.assertEqual(diagnostic()['code'], 'period_ended')
 

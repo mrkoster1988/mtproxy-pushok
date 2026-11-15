@@ -11,13 +11,56 @@ import stat
 import subprocess
 import tempfile
 import time
+from datetime import datetime, timezone
 from staging_preflight import parse_env
 
 ROOT = Path(__file__).resolve().parent.parent
 ENV = Path('/etc/mtproxy-pushok/mtproxy.env')
 STATE = Path('/etc/mtproxy-pushok/promotion-state.json')
+STATUS = ROOT / '.control' / 'promotion-agent.json'
 SERVICE = 'mtproxy-pushok.service'
 TAG = re.compile(r'[0-9a-fA-F]{32}')
+PLAN_CODES = {
+    'ready', 'idle', 'node_not_found', 'node_ambiguous', 'node_paused', 'node_archived',
+    'engine_unsupported', 'manual_placement_active', 'conflicting_campaigns',
+    'binding_missing', 'binding_changed', 'channel_archived', 'moderation_pending',
+    'payment_pending', 'waiting_start', 'period_ended', 'no_current_campaign',
+}
+REPORT_CODES = PLAN_CODES | {
+    'tag_applied', 'waiting_update', 'agent_busy', 'env_missing', 'config_error',
+    'unsafe_config', 'permission_error', 'runtime_unavailable', 'invalid_plan',
+    'apply_failed', 'restore_failed', 'ack_unavailable', 'plan_changed', 'restored', 'agent_error',
+}
+
+
+def publish_status(status):
+    """Пишем только короткие коды; недоступность отчёта не мешает откату тега."""
+    code = status.get('code')
+    report = dict(code=code if code in REPORT_CODES else 'agent_error',
+                  checked_at=datetime.now(timezone.utc).isoformat())
+    host, port = status.get('host'), status.get('port')
+    if isinstance(host, str) and re.fullmatch(r'[a-zA-Z0-9.:-]{1,253}', host):
+        report['host'] = host
+    if type(port) is int and 1 <= port <= 65535:
+        report['port'] = port
+    name = None
+    try:
+        fd, name = tempfile.mkstemp(dir=STATUS.parent)
+        with os.fdopen(fd, 'w') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            os.fchown(stream.fileno(), 10001, 10001)
+            json.dump(report, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(name, STATUS)
+    except OSError:
+        pass
+    finally:
+        if name:
+            try:
+                Path(name).unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def atomic(path, text):
@@ -113,10 +156,11 @@ def validate_plan(plan):
 
 
 def restore():
-    if not STATE.exists(): return
+    if not STATE.exists(): return False
     state=json.loads(STATE.read_text())
     apply(state['baseline'])
     STATE.unlink()
+    return True
 
 
 def node_request(cfg):
@@ -134,47 +178,76 @@ def node_request(cfg):
     return request
 
 
-def tick():
+def tick(status=None):
+    status = status if status is not None else {}
     # Локальный срок снимает тег даже при недоступной БД/API.
+    status['code'] = 'restore_failed'
     if STATE.exists() and float(json.loads(STATE.read_text())['expires_at'])<=time.time():
         restore()
+    status['code'] = 'config_error'
     cfg=parse_env(ENV.read_text())
     request=node_request(cfg)
+    status.update(host=request['host'], port=request['port'], code='runtime_unavailable')
     plan=exchange(request)
+    status['code'] = 'invalid_plan'
     validate_plan(plan)
     if plan['state']=='idle':
+        status['code'] = 'restore_failed'
         restore()
     else:
+        status['code'] = 'apply_failed'
         baseline=json.loads(STATE.read_text())['baseline'] if STATE.exists() else cfg.get('MT_PROXY_TAG','')
         # Сначала сохраняем исходный тег: восстановление возможно и после аварии.
         atomic(STATE,json.dumps(dict(baseline=baseline,expires_at=plan['expires_at'])))
         apply(plan['tag'])
+    status['code'] = 'ack_unavailable'
     ack=exchange(dict(request,action='ack',revision=plan['revision']))
     if not ack.get('accepted'):
+        status['code'] = 'restore_failed'
         restore()
+        status['code'] = 'plan_changed'
         raise RuntimeError('plan_changed')
+    reason = plan.get('reason', 'idle')
+    status['code'] = 'tag_applied' if plan['state']=='apply' else reason if reason in PLAN_CODES else 'agent_error'
 
 
-def main():
+def main(status=None):
+    status = status if status is not None else {}
+    status['code'] = 'permission_error'
     if os.geteuid()!=0: raise RuntimeError('root_required')
+    status['code'] = 'env_missing'
     if not ENV.exists(): return
+    status['code'] = 'unsafe_config'
     info=ENV.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_mode & 0o022:
         raise RuntimeError('unsafe_proxy_env')
     with open('/run/lock/pushok-promotion.lock','w') as lock:
+        status['code'] = 'agent_busy'
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         if '--restore' in __import__('sys').argv:
-            restore(); return
+            status['code'] = 'restore_failed'
+            status['code'] = 'restored' if restore() else 'idle'
+            return
         # Обновление кабинета может идти долго: истёкший тег снимается до ожидания.
+        status['code'] = 'restore_failed'
         if STATE.exists() and float(json.loads(STATE.read_text())['expires_at'])<=time.time(): restore()
         from updater import lock_file
+        status['code'] = 'waiting_update'
         with lock_file('host-lock') as update_lock:
             fcntl.flock(update_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-            tick()
+            tick(status)
+
+
+def run_cycle():
+    status = {'code': 'agent_error'}
+    try:
+        main(status)
+    finally:
+        publish_status(status)
 
 if __name__=='__main__':
     try:
-        main()
+        run_cycle()
     except BlockingIOError:
         pass
     except Exception as exc:
