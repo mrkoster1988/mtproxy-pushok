@@ -1090,7 +1090,8 @@ def main():
                 for channel_tools in advertiser.locator('.channel-tools').all():
                     if channel_tools.get_attribute('open') is None:
                         channel_tools.locator('summary').click()
-                expect(advertiser.locator('.channel-manager').get_by_role('button',name='✏️ Изменить',exact=True)).to_have_count(3)
+                # Четвёртый канал добавлен сценарием удаления неоплаченной заявки.
+                expect(advertiser.locator('.channel-manager').get_by_role('button',name='✏️ Изменить',exact=True)).to_have_count(4)
                 for width in (390,320):
                     advertiser.set_viewport_size({'width':width,'height':844})
                     for channel_tools in advertiser.locator('.channel-tools').all():
