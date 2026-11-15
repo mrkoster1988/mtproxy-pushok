@@ -2,6 +2,9 @@
 
 Запись оператора — декларация о визуальной проверке, НЕ доказательство от API Telegram.
 Никаких обращений к Telegram и изменений MTProxy этот модуль не выполняет.
+Совместимое имя метода separate_unsubscribed_client означает визуальную проверку
+в Telegram через нужный прокси без подписки на канал. Второй аккаунт не требуется;
+separate отделяет проверку в Telegram от состояния рекламного кабинета.
 """
 from datetime import datetime, timedelta
 
@@ -23,3 +26,4 @@ def validate_observation_window(
         raise ValueError("observation_outside_placement_window")
     if observed < now - timedelta(minutes=10) or observed > now + timedelta(seconds=60):
         raise ValueError("observation_not_recent")
+

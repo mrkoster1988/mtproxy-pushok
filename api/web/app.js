@@ -361,7 +361,7 @@ function card(c,op,{compact=false}={}){
    actions.append(screenshot);
    for(const [result,label] of [['visible','Показ виден — записать'],['not_visible','Показ не обнаружен']]){
     actions.append(button(label,async()=>{
-     const note=prompt('Опишите проверку в отдельном аккаунте Telegram, не подписанном на канал (не менее 12 символов):');
+     const note=prompt('Опишите проверку в своём Telegram через прокси этой кампании, без подписки на канал: видна ли отметка «Спонсор прокси»? Второй аккаунт не нужен (не менее 12 символов):');
      if(note===null)return;if(note.trim().length<12)throw Error('Опишите наблюдение подробнее (не менее 12 символов).');
      const report=await api('/operator/campaigns/'+c.id+'/display-observations',{method:'POST',body:{
       result,method:'separate_unsubscribed_client',observed_at:new Date().toISOString(),note:note.trim()
@@ -375,7 +375,7 @@ function card(c,op,{compact=false}={}){
     }));
    }
    actions.append(button('Активировать после проверки',async()=>{
-    if(confirm('Вы записали положительное наблюдение за последние 10 минут и вручную включили тег?'))await change('activate');
+    if(confirm('Тег применён вручную или агентом, и вы записали положительное наблюдение показа за последние 10 минут?'))await change('activate');
    }));
   }
   if(['scheduled','active','completed'].includes(c.placement_status))
@@ -410,8 +410,8 @@ function card(c,op,{compact=false}={}){
     }
     panel.append(button('Закрыть',()=>panel.remove()));box.append(panel);
    }));
-  if(c.placement_status==='active')actions.append(button('Тег выключен — завершить',async()=>{
-   if(!confirm('Вы вручную выключили спонсорский тег и проверили в отдельном Telegram-клиенте, не подписанном на канал, что спонсор отсутствует?'))return;
+  if(c.placement_status==='active')actions.append(button('Подтвердить завершение',async()=>{
+   if(!confirm('Тег кампании снят вручную или агентом? В подключённом к этому прокси Telegram без подписки канал кампании больше не показан как спонсор? Второй аккаунт не нужен. Если исходный тег ведёт на тот же канал, возврат настроек не подтверждает прекращение показа.'))return;
    await change('complete',{tag_removed_confirmed:true,verification_method:'separate_unsubscribed_client'});
   }));
  }

@@ -45,7 +45,7 @@ def build_readiness(row: dict, now: datetime | None = None) -> dict:
     """Проверить кампанию по фактам из БД. Не заявлять об изменении Telegram.
 
     Даже если все проверки пройдены, Set promotion нужно выполнить вручную
-    в @MTProxyBot и подтвердить наблюдение с другого Telegram-аккаунта.
+    в @MTProxyBot и подтвердить наблюдение в Telegram без подписки на канал.
     """
     now = now or datetime.now(timezone.utc)
     start = row.get("scheduled_start_at")
@@ -89,7 +89,7 @@ def build_readiness(row: dict, now: datetime | None = None) -> dict:
             "Проверьте реальную доступность прокси и резервную копию его конфигурации.",
             "Убедитесь, что ad_tag применён в конфигурации соответствующего прокси.",
             "Через @MTProxyBot → /myproxies → Set promotion вручную выберите публичный канал.",
-            "Подтвердите показ с отдельного Telegram-клиента, не подписанного на канал.",
+            "Проверьте в своём Telegram через этот прокси, без подписки на канал: должна быть отметка «Спонсор прокси». Второй аккаунт не нужен.",
             "Фиксируйте активацию в кабинете только после фактического подтверждения.",
         ],
         "changes_applied": False,
@@ -107,3 +107,4 @@ def render_config_fragment(engine: str, tag: str) -> str:
     if style == "TAG":
         return "TAG=" + tag
     raise ValueError("Неизвестный движок MTProxy")
+

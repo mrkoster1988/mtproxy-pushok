@@ -99,15 +99,18 @@ window.pushokApproval=(()=>{
     if(screenshot.files[0]){const body=new FormData();body.append('file',screenshot.files[0]);try{await api('/operator/campaigns/'+c.id+'/display-observations/'+savedReport.id+'/evidence',{method:'POST',body});screenshot.value='';}catch(e){throw Error('Наблюдение сохранено. Скриншот не прикреплён: '+e.message);}}
     guard();try{await post('activate');}catch(e){throw Error('Наблюдение сохранено, активация не подтверждена: '+e.message);}
    });
-   block.f.append(el('p','Проверьте применение тега агентом (или включите вручную). Проверьте показ в отдельном Telegram-аккаунте, не подписанном на канал. Эта кнопка сама тег не переключает.'));
+   block.f.append(el('p','Проверьте показ в своём Telegram: подключитесь к прокси этой кампании и убедитесь, что вы не подписаны на канал. У канала в списке чатов должна быть отметка «Спонсор прокси». Второй аккаунт не нужен. Кнопка сохраняет результат проверки, сам тег она не переключает.'));
    const observation=note(block.f,'Что увидели при проверке'),screenshot=el('input');screenshot.type='file';screenshot.accept='image/png,image/jpeg';field(block.f,'Скриншот проверки (необязательно)',screenshot);
-   check(block.f,'Тег включён, спонсорский канал действительно виден в отдельном аккаунте');block.finish();
+   check(block.f,'Я подключён к этому прокси, не подписан на канал и вижу отметку «Спонсор прокси»');block.finish();
    const extra=details('Показ не обнаружен',content),f=el('form'),comment=note(f,'Что проверили'),submit=el('button','Записать: показ не обнаружен');submit.type='submit';f.append(submit);extra.append(f);
    f.addEventListener('submit',e=>{e.preventDefault();if(f.reportValidity())void perform(()=>post('display-observations',{result:'not_visible',method:'separate_unsubscribed_client',observed_at:new Date().toISOString(),note:comment.value.trim()}),'Отрицательное наблюдение сохранено. Размещение не активировано.');});
   }else if(c.placement_status==='active'){
-   const block=form('5. Завершите размещение','Тег выключен — завершить',()=>post('complete',{tag_removed_confirmed:true,verification_method:'separate_unsubscribed_client'}));
+   void renderPromotionStatus(c,content);
+   const block=form('5. Завершите размещение','Подтвердить завершение',()=>post('complete',{tag_removed_confirmed:true,verification_method:'separate_unsubscribed_client'}));
    block.f.append(el('p','Период: '+date(c.scheduled_start_at)+' — '+date(c.scheduled_end_at)));
-   check(block.f,'Выключил тег и проверил отсутствие спонсора в отдельном аккаунте');block.finish();
+   block.f.append(el('p','При настроенном автоприменении агент вернёт исходный тег после окончания периода. При ручном размещении снимите тег самостоятельно. Затем проверьте в подключённом Telegram без подписки, что канал этой кампании больше не отмечен как спонсор. Второй аккаунт не нужен.'));
+   block.f.append(el('p','Если исходный тег ведёт на тот же канал, канал может остаться спонсором. Возврат настроек сам по себе не подтверждает прекращение показа. Кнопка закрывает кампанию после вашей проверки.','muted'));
+   check(block.f,'Тег кампании снят; в подключённом Telegram без подписки канал больше не показан как спонсор');block.finish();
   }
   if(window.pushokManagement)box.append(window.pushokManagement.campaignActions(c,true));
   const history=details('История и документы',box);

@@ -43,7 +43,7 @@ class PlacementVerificationTests(unittest.TestCase):
     def body(self, result="visible"):
         return {"result": result, "method": "separate_unsubscribed_client",
                 "observed_at": self.now.isoformat(),
-                "note": "Проверено вручную на втором аккаунте"}
+                "note": "Проверено в своём подключённом Telegram без подписки"}
 
     def campaign(self, **changes):
         return {**{"id": CAMPAIGN, "moderation_status": "approved",
@@ -173,3 +173,4 @@ class PlacementVerificationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
