@@ -110,6 +110,17 @@ class GrowthIntegration(unittest.TestCase):
         self.actor={'id':self.friend,'role':'advertiser'};self.quote(gift['code'],409)
         self.request('POST','/admin/growth/offers',403,json={'kind':'discount','name':'No','percent':100})
 
+    def test_discounted_date_edit_preserves_price(self):
+        promo=self.offer();self.actor={'id':self.owner,'role':'advertiser'}
+        c=self.request('POST','/orders',201,json=self.payload(self.quote(promo['code']),promo['code']))
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET moderation_status='changes_requested' WHERE id=%s",(c['id'],))
+            conn.execute('UPDATE tariffs SET price_kopecks=90000 WHERE id=%s',(self.tariff,))
+        self.request('PATCH','/campaigns/'+c['id'],json={'tariff_id':str(self.tariff),'requested_start_at':(datetime.now(timezone.utc)+timedelta(days=2)).isoformat()})
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT price_kopecks_snapshot,stars_price_snapshot FROM campaigns WHERE id=%s',(c['id'],)).fetchone(),(24000,121))
+        self.request('PATCH','/campaigns/'+c['id'],409,json={'tariff_id':str(uuid4())})
+
     def test_best_discount_no_stack_and_changed_quote(self):
         auto=self.offer('discount',percent=30,min_duration_seconds=86400,total_limit=None)
         promo=self.offer(percent=10);self.actor={'id':self.owner,'role':'advertiser'}
