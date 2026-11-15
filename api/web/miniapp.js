@@ -27,15 +27,14 @@ window.pushokMiniApp=(()=>{
   if(document.querySelector('.cabinet-sidebar.is-open')){document.querySelector('.menu-toggle')?.click();return;}
   window.cabinet?.back();
  }
+ function inset(value){const n=Number(value);return Number.isFinite(n)?Math.max(0,Math.min(160,n)):0;}
  function theme(){
   document.body.dataset.miniappTheme=app.colorScheme==='dark'?'dark':'light';
   const root=document.documentElement;
-  for(const [key,value] of Object.entries({
-   '--mini-safe-top':Math.max(app.safeAreaInset?.top||0,app.contentSafeAreaInset?.top||0),
-   '--mini-safe-bottom':Math.max(app.safeAreaInset?.bottom||0,app.contentSafeAreaInset?.bottom||0),
-   '--mini-safe-left':Math.max(app.safeAreaInset?.left||0,app.contentSafeAreaInset?.left||0),
-   '--mini-safe-right':Math.max(app.safeAreaInset?.right||0,app.contentSafeAreaInset?.right||0)
-  }))root.style.setProperty(key,Math.max(0,Math.min(160,Number(value)||0))+'px');
+  // Системная строка и кнопки Telegram занимают последовательные области сверху.
+  root.style.setProperty('--mini-safe-top',(inset(app.safeAreaInset?.top)+inset(app.contentSafeAreaInset?.top))+'px');
+  for(const side of ['bottom','left','right'])root.style.setProperty('--mini-safe-'+side,
+   Math.max(inset(app.safeAreaInset?.[side]),inset(app.contentSafeAreaInset?.[side]))+'px');
  }
  async function sdk(){
   if(window.Telegram?.WebApp)return window.Telegram.WebApp;
@@ -58,7 +57,7 @@ window.pushokMiniApp=(()=>{
    if(!app?.initData){clear();message('Откройте Mini App из меню Telegram-бота.');return;}
    if(!loaded){
     loaded=true;app.ready?.();app.expand?.();theme();
-    app.onEvent?.('themeChanged',theme);app.onEvent?.('safeAreaChanged',theme);app.onEvent?.('contentSafeAreaChanged',theme);
+    app.onEvent?.('themeChanged',theme);app.onEvent?.('safeAreaChanged',theme);app.onEvent?.('contentSafeAreaChanged',theme);app.onEvent?.('fullscreenChanged',theme);
     app.BackButton?.onClick(back);
    }
    const clean=new URL(location.href);

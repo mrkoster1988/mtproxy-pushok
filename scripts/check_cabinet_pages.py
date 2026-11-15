@@ -700,12 +700,51 @@ def main():
                     mini.keyboard.press('Escape')
                     mini.evaluate("window.Telegram.WebApp.colorScheme='dark';window.__miniEvents.themeChanged()")
                     expect(mini.locator('body')).to_have_attribute('data-miniapp-theme','dark')
-                    assert mini.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--mini-safe-top").trim()')=='18px'
+                    assert mini.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--mini-safe-top").trim()')=='30px'
                     mini.screenshot(path=str(output/'18-miniapp-dark.png'),full_page=True)
                     mini.locator('.cabinet-topbar .menu-toggle').click()
                     check_navigation_icons(mini)
                     mini.screenshot(path=str(output/'22-miniapp-menu-dark.png'),full_page=True)
                     mini.keyboard.press('Escape')
+                    # Полноэкранный Telegram: системная строка + собственные кнопки клиента.
+                    go(mini,'profile')
+                    mini.evaluate("""() => {
+                        const app=window.Telegram.WebApp;app.isFullscreen=true;
+                        app.safeAreaInset.top=24;app.contentSafeAreaInset.top=56;
+                        window.__miniEvents.fullscreenChanged();
+                        const native=document.createElement('div');native.id='telegram-controls-fixture';
+                        native.style.cssText='position:fixed;inset:0 0 auto;height:80px;z-index:10000;background:#071526;color:#9ab4c9;font:12px sans-serif;display:flex;align-items:center;justify-content:space-between;padding:24px 16px 0;box-sizing:border-box';
+                        native.textContent='← Назад (Telegram)                         ⋯';document.body.append(native);
+                    }""")
+                    for width in (320,390):
+                        mini.set_viewport_size({'width':width,'height':844})
+                        for scroll in (0,500):
+                            mini.evaluate('(y)=>window.scrollTo(0,y)',scroll)
+                            expect(mini.locator('.cabinet-topbar')).to_be_visible()
+                            rect=mini.locator('.cabinet-topbar').bounding_box()
+                            assert abs(rect['y']-80)<=1,('Fullscreen header overlaps Telegram',width,scroll,rect)
+                            assert mini.evaluate("""() => ['.cabinet-topbar .menu-toggle','#refresh','.screen-back'].every(selector=>{
+                                const button=document.querySelector(selector),r=button.getBoundingClientRect();
+                                return r.top>=80&&button.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));
+                            })""")
+                        mini.evaluate('window.scrollTo(0,0)')
+                        mini.screenshot(path=str(output/('41-miniapp-safe-header-'+str(width)+'.png')))
+                        mini.locator('.cabinet-topbar .menu-toggle').click()
+                        expect(mini.locator('.cabinet-sidebar')).to_have_class('cabinet-sidebar is-open')
+                        assert mini.locator('.menu-close').bounding_box()['y']>=80
+                        mini.keyboard.press('Escape')
+                    mini.evaluate("window.Telegram.WebApp.contentSafeAreaInset.top=64;window.__miniEvents.contentSafeAreaChanged()")
+                    assert abs(mini.locator('.cabinet-topbar').bounding_box()['y']-88)<=1
+                    mini.evaluate("window.Telegram.WebApp.safeAreaInset.top=32;window.__miniEvents.safeAreaChanged()")
+                    assert abs(mini.locator('.cabinet-topbar').bounding_box()['y']-96)<=1
+                    mini.evaluate("""() => {
+                        document.getElementById('telegram-controls-fixture').remove();
+                        const app=window.Telegram.WebApp;app.isFullscreen=false;
+                        app.safeAreaInset.top=18;app.contentSafeAreaInset.top=0;
+                        window.__miniEvents.fullscreenChanged();window.scrollTo(0,0);
+                    }""")
+                    assert abs(mini.locator('.cabinet-topbar').bounding_box()['y']-18)<=1
+                    mini.evaluate("window.Telegram.WebApp.contentSafeAreaInset.top=12;window.__miniEvents.contentSafeAreaChanged()")
                     mini_token=mini.evaluate("sessionStorage.getItem('pushok-miniapp-session')")
                     _,mini_sid,_=api._decode_session_token(mini_token)
                     with psycopg.connect(PostgresIntegration.dsn) as connection:
