@@ -7,7 +7,12 @@ window.pushokMiniApp=(()=>{
  const title=document.createElement('h1');title.textContent='Пушок готовит кабинет…';
  const status=document.createElement('p');status.setAttribute('role','status');
  const retry=document.createElement('button');retry.type='button';retry.textContent='Повторить вход';
- const runner=document.createElement('img');runner.src='/assets/pushok-running.svg';runner.alt='Бегущий Пушок';runner.className='pushok-runner';
+ const runner=document.createElement('div');runner.className='pushok-loading-cat';
+ runner.setAttribute('role','img');runner.setAttribute('aria-label','Пушок в бирюзовом худи');
+ for(const part of ['base','tail']){
+  const img=document.createElement('img');img.src='/assets/pushok-loading-cat.webp';img.alt='';img.className='pushok-cat-'+part;
+  img.width=850;img.height=638;runner.append(img);
+ }
  panel.append(runner,title,status,retry);document.querySelector('main').prepend(panel);
  document.body.classList.add('miniapp-mode');
  function message(text,canRetry=false){document.body.classList.add('miniapp-loading');panel.classList.toggle('load-failed',canRetry);panel.hidden=false;status.textContent=text;retry.hidden=!canRetry;}

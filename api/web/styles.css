@@ -611,3 +611,13 @@ body.miniapp-loading #workspace{visibility:hidden}
 .cabinet-mode .channel-manager .management-actions>button{width:auto;flex:0 1 auto}
 .cabinet-mode .channel-manager td:last-child{grid-column:1/-1}
 .cabinet-mode .channel-manager .management-form{flex:1 0 100%}
+
+/* Утверждённый Пушок: дыхание и движение хвоста на экране загрузки. */
+#miniapp-login .pushok-loading-cat{position:relative;width:min(280px,75vw);aspect-ratio:4/3;margin:0 auto 18px;transform-origin:50% 88%;animation:pushok-cat-breathe 3s ease-in-out infinite}
+.pushok-loading-cat img{display:block;width:100%;height:100%;object-fit:contain}
+.pushok-loading-cat .pushok-cat-base{clip-path:polygon(0 0,100% 0,100% 54%,76% 57%,76% 100%,0 100%)}
+.pushok-loading-cat .pushok-cat-tail{position:absolute;inset:0;clip-path:polygon(76% 57%,100% 54%,100% 100%,76% 100%);transform-origin:77% 87%;animation:pushok-cat-tail 3s ease-in-out infinite}
+@keyframes pushok-cat-breathe{0%,100%{transform:translateY(0) scale(1) rotate(-.5deg)}50%{transform:translateY(-5px) scale(1.015,1.025) rotate(.5deg)}}
+@keyframes pushok-cat-tail{0%,100%{transform:rotate(0)}50%{transform:rotate(-6deg)}}
+#miniapp-login.load-failed .pushok-loading-cat,#miniapp-login.load-failed .pushok-cat-tail{animation:none}
+@media(prefers-reduced-motion:reduce){#miniapp-login .pushok-loading-cat,#miniapp-login .pushok-cat-tail{animation:none}}
