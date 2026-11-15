@@ -402,6 +402,7 @@ EOF
     database/026_auto_schedule.sql \
     database/027_promotion_runtime.sql
     database/028_promotion_revision.sql
+    database/029_moderation_notifications.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"
