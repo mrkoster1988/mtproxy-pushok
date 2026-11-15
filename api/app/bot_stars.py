@@ -135,7 +135,7 @@ def prepare_for_user(dsn, payload: StarsPrepareInput) -> StarsPrepareOutput:
             c = conn.execute(
                 """SELECT c.id, c.moderation_status, c.payment_status,
                           c.placement_status, c.currency_snapshot,
-                          t.stars_price_xtr, t.is_active
+                          CASE WHEN c.pricing_version=1 THEN c.stars_price_snapshot ELSE t.stars_price_xtr END AS stars_price_xtr, t.is_active
                    FROM campaigns AS c
                    JOIN users AS u ON u.id=c.advertiser_user_id
                    JOIN tariffs AS t ON t.id=c.tariff_id

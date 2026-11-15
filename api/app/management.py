@@ -107,12 +107,14 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
             if 'requested_start_at' in payload.model_fields_set:
                 conn.execute('UPDATE campaigns SET requested_start_at=%s,updated_at=now() WHERE id=%s', (start, campaign_id))
             if payload.tariff_id:
+                if c.get('growth_offer_id'):
+                    raise HTTPException(409, 'growth_tariff_locked')
                 actor=conn.execute('SELECT role FROM users WHERE id=%s FOR SHARE',(user['id'],)).fetchone()
                 tariff=conn.execute('SELECT * FROM tariffs WHERE id=%s AND is_active AND archived_at IS NULL FOR SHARE',(payload.tariff_id,)).fetchone()
                 if not tariff or (tariff['admin_only'] and actor['role']!='admin'):
                     raise HTTPException(404,'active_tariff_not_found')
-                conn.execute('UPDATE campaigns SET tariff_id=%s,tariff_name_snapshot=%s,duration_seconds_snapshot=%s,price_kopecks_snapshot=%s,currency_snapshot=%s,updated_at=now() WHERE id=%s',
-                             (tariff['id'],tariff['name'],tariff['duration_seconds'],tariff['price_kopecks'],tariff['currency'],campaign_id))
+                conn.execute('UPDATE campaigns SET tariff_id=%s,tariff_name_snapshot=%s,duration_seconds_snapshot=%s,price_kopecks_snapshot=%s,currency_snapshot=%s,pricing_version=1,base_price_kopecks_snapshot=%s,stars_price_snapshot=%s,updated_at=now() WHERE id=%s',
+                             (tariff['id'],tariff['name'],tariff['duration_seconds'],tariff['price_kopecks'],tariff['currency'],tariff['price_kopecks'],tariff['stars_price_xtr'],campaign_id))
             event(conn, user, 'campaign_date_updated', {'requested_start_at': start}, campaign_id)
         return {'updated': True}
 

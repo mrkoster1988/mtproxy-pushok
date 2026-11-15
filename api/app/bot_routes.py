@@ -67,7 +67,7 @@ def list_bot_campaigns(
         ) as connection:
             rows = connection.execute(
                 """
-                SELECT c.id AS campaign_id, t.stars_price_xtr,
+                SELECT c.id AS campaign_id, CASE WHEN c.pricing_version=1 THEN c.stars_price_snapshot ELSE t.stars_price_xtr END AS stars_price_xtr,
                        sc.title AS channel_title,
                        c.tariff_name_snapshot, c.price_kopecks_snapshot,
                        c.currency_snapshot, c.moderation_status,

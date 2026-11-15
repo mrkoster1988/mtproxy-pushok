@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.13",
+    version="1.14",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -199,6 +199,8 @@ class OrderSubmission(BaseModel):
     tariff_id: UUID
     expected_price_kopecks: int = Field(ge=0)
     expected_duration_seconds: int = Field(gt=0)
+    promo_code: str | None = Field(default=None, max_length=48)
+    quote_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     requested_start_at: datetime | None = None
 
     @model_validator(mode="after")
@@ -230,6 +232,10 @@ class CampaignResponse(BaseModel):
     channel_url: str | None = None
     archived_at: datetime | None = None
     archive_pending_actions: list[str] = Field(default_factory=list)
+    base_price_kopecks_snapshot: int | None = None
+    stars_price_snapshot: int | None = None
+    growth_offer_name: str | None = None
+    discount_percent_snapshot: int | None = None
 
 
 class OperatorCampaignResponse(CampaignResponse):
@@ -652,7 +658,8 @@ def list_campaigns(
                 """
                 SELECT sc.title AS channel_title, sc.telegram_url AS channel_url,
                        c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
-                       c.duration_seconds_snapshot, c.price_kopecks_snapshot,
+                       c.duration_seconds_snapshot, c.price_kopecks_snapshot, c.base_price_kopecks_snapshot, c.stars_price_snapshot,
+                       c.growth_offer_name, c.discount_percent_snapshot,
                        c.currency_snapshot, c.moderation_status, c.payment_status,
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
                        c.scheduled_end_at, c.moderator_comment,
@@ -1509,7 +1516,8 @@ def get_campaign_report(
             campaign = connection.execute(
                 """SELECT c.id, sc.title AS channel_title, sc.telegram_url AS channel_url,
                           c.tariff_name_snapshot, c.duration_seconds_snapshot,
-                          c.price_kopecks_snapshot, c.currency_snapshot,
+                          c.price_kopecks_snapshot, c.base_price_kopecks_snapshot, c.stars_price_snapshot,
+                       c.growth_offer_name, c.discount_percent_snapshot, c.currency_snapshot,
                           c.moderation_status, c.payment_status, c.placement_status,
                           c.requested_start_at, c.scheduled_start_at, c.scheduled_end_at
                    FROM campaigns AS c
@@ -1726,7 +1734,8 @@ def list_operator_campaigns(
                        EXISTS(SELECT 1 FROM payment_attempts pa WHERE pa.campaign_id=c.id
                               AND pa.status IN ('created','pending')) AS has_pending_payment,
                        c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
-                       c.duration_seconds_snapshot, c.price_kopecks_snapshot,
+                       c.duration_seconds_snapshot, c.price_kopecks_snapshot, c.base_price_kopecks_snapshot, c.stars_price_snapshot,
+                       c.growth_offer_name, c.discount_percent_snapshot,
                        c.currency_snapshot, c.moderation_status, c.payment_status,
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
                        c.scheduled_end_at, c.moderator_comment,
@@ -2958,3 +2967,6 @@ app.include_router(default_sponsor_router(lambda: DATABASE_URL, require_admin))
 
 from .campaign_notices import router as campaign_notice_router
 app.include_router(campaign_notice_router)
+
+from .growth import router_for as growth_router_for
+app.include_router(growth_router_for(lambda: DATABASE_URL, get_current_user, require_admin))

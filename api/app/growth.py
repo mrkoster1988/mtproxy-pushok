@@ -1,0 +1,267 @@
+"""Серверный расчёт предложений; лимиты списываются атомарно вместе с заявкой."""
+import hashlib
+import json
+import os
+import re
+from datetime import datetime, timezone
+from typing import Literal
+from uuid import UUID
+
+import psycopg
+from psycopg.rows import dict_row
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from .bot_routes import _verify_bot_secret
+
+
+class Input(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
+class QuoteInput(Input):
+    tariff_id: UUID
+    code: str | None = Field(default=None, max_length=48)
+
+
+class OfferInput(Input):
+    kind: Literal['discount', 'promo', 'gift']
+    name: str = Field(min_length=1, max_length=100)
+    code: str | None = Field(default=None, max_length=48)
+    percent: int = Field(ge=1, le=100, strict=True)
+    tariff_id: UUID | None = None
+    min_duration_seconds: int = Field(default=0, ge=0, le=31536000, strict=True)
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+    total_limit: int | None = Field(default=None, ge=1, le=1000000, strict=True)
+    per_user_limit: int = Field(default=1, ge=1, le=1000000, strict=True)
+
+    @field_validator('name')
+    @classmethod
+    def name_required(cls, value):
+        if not value.strip():
+            raise ValueError('Укажите название')
+        return value.strip()
+
+    @model_validator(mode='after')
+    def validate_offer(self):
+        self.code = normalize_code(self.code)
+        if self.kind == 'promo' and not re.fullmatch(r'[A-Z0-9_-]{3,48}', self.code or ''):
+            raise ValueError('Промокод: 3–48 латинских букв, цифр, - или _')
+        if self.kind == 'discount' and self.code:
+            raise ValueError('Автоматическая скидка не требует кода')
+        if self.kind == 'gift' and (not self.tariff_id or self.percent != 100):
+            raise ValueError('Для подарка выберите тариф; скидка 100%')
+        for value in (self.starts_at, self.ends_at):
+            if value is not None and value.utcoffset() is None:
+                raise ValueError('Укажите часовой пояс')
+        if self.ends_at and self.ends_at <= (self.starts_at or datetime.now(timezone.utc)):
+            raise ValueError('Дата окончания должна быть позже начала')
+        return self
+
+
+class ReferralSettings(Input):
+    referrals_enabled: bool
+    reward_percent: int = Field(ge=1, le=100, strict=True)
+    reward_days: int = Field(ge=1, le=365, strict=True)
+
+
+class ClaimInput(Input):
+    code: str = Field(min_length=3, max_length=48)
+
+
+class BotClaimInput(ClaimInput):
+    telegram_user_id: int = Field(gt=0, lt=2**52)
+
+
+class ToggleInput(Input):
+    active: bool
+
+
+def normalize_code(code):
+    return code.strip().upper() if code and code.strip() else None
+
+
+def discounted(amount, percent, *, rub=False):
+    if amount is None:
+        return None
+    if percent == 100 or amount == 0:
+        return 0
+    result = (amount * (100 - percent) + 99) // 100
+    # Платный СБП-счёт не может быть меньше одного рубля.
+    return max(min(amount, 100), result) if rub else result
+
+
+def quote(conn, user, tariff, code=None, *, lock=False):
+    code = normalize_code(code)
+    # Один и тот же порядок блокировок для параллельных покупок разных кодов.
+    offers = conn.execute("""SELECT * FROM growth_offers
+        WHERE (kind='discount' OR code=%s) AND active
+          AND starts_at<=now() AND (ends_at IS NULL OR ends_at>now())
+          AND (tariff_id IS NULL OR tariff_id=%s)
+          AND min_duration_seconds<=%s
+          AND (recipient_user_id IS NULL OR recipient_user_id=%s)
+        ORDER BY id""" + (' FOR UPDATE' if lock else ''),
+        (code, tariff['id'], tariff['duration_seconds'], user['id'])).fetchall()
+    eligible = []
+    for offer in offers:
+        counts = conn.execute("""SELECT count(*) AS total,count(*) FILTER(WHERE user_id=%s) AS own
+            FROM growth_redemptions WHERE offer_id=%s""", (user['id'], offer['id'])).fetchone()
+        if ((offer['total_limit'] is None or counts['total'] < offer['total_limit'])
+                and counts['own'] < offer['per_user_limit']):
+            eligible.append(offer)
+    if code and not any(o['code'] == code for o in eligible):
+        raise HTTPException(409, 'growth_code_unavailable')
+    offer = max(eligible, key=lambda o: (o['percent'], o['code'] == code, str(o['id'])), default=None)
+    percent = offer['percent'] if offer else 0
+    result = dict(tariff_id=str(tariff['id']), duration_seconds=tariff['duration_seconds'],
+        base_price_kopecks=tariff['price_kopecks'],
+        price_kopecks=discounted(tariff['price_kopecks'], percent, rub=True),
+        stars_price_xtr=discounted(tariff['stars_price_xtr'], percent),
+        discount_percent=percent, offer_id=str(offer['id']) if offer else None,
+        offer_name=offer['name'] if offer else None)
+    result['revision'] = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
+    return result
+
+
+def claim_referral(conn, uid, code):
+    conn.execute('SELECT pg_advisory_xact_lock(736102484)')
+    conn.execute('SELECT id FROM users WHERE id=%s FOR UPDATE', (uid,))
+    settings = conn.execute('SELECT * FROM growth_settings').fetchone()
+    if not settings['referrals_enabled']:
+        raise HTTPException(409, 'growth_referrals_disabled')
+    inviter = conn.execute('SELECT user_id FROM growth_profiles WHERE code=%s', (normalize_code(code),)).fetchone()
+    if not inviter or inviter['user_id'] == uid:
+        raise HTTPException(409, 'growth_invitation_unavailable')
+    old = conn.execute('SELECT inviter_user_id FROM growth_referrals WHERE referred_user_id=%s', (uid,)).fetchone()
+    if old:
+        if old['inviter_user_id'] == inviter['user_id']:
+            return {'saved': True}
+        raise HTTPException(409, 'growth_invitation_already_bound')
+    if conn.execute('SELECT 1 FROM campaigns WHERE advertiser_user_id=%s LIMIT 1', (uid,)).fetchone():
+        raise HTTPException(409, 'growth_invitation_before_order')
+    cycle = conn.execute('''WITH RECURSIVE parents(id) AS (
+        SELECT %s::uuid UNION SELECT r.inviter_user_id FROM growth_referrals r JOIN parents p ON r.referred_user_id=p.id)
+        SELECT 1 FROM parents WHERE id=%s''', (inviter['user_id'], uid)).fetchone()
+    if cycle:
+        raise HTTPException(409, 'growth_invitation_unavailable')
+    conn.execute('''INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days)
+        VALUES(%s,%s,%s,%s)''', (uid, inviter['user_id'], settings['reward_percent'], settings['reward_days']))
+    conn.execute("INSERT INTO audit_events(actor_user_id,event_type) VALUES(%s,'referral_bound')", (uid,))
+    return {'saved': True}
+
+
+def router_for(get_dsn, get_user, require_admin):
+    router = APIRouter(prefix='/api/v1', tags=['growth'])
+
+    def db(action):
+        try:
+            with psycopg.connect(get_dsn(), row_factory=dict_row, connect_timeout=3) as conn:
+                return action(conn)
+        except psycopg.errors.UniqueViolation as exc:
+            raise HTTPException(409, 'growth_code_exists') from exc
+        except psycopg.Error as exc:
+            raise HTTPException(503, 'database_unavailable') from exc
+
+    def no_cache(response):
+        response.headers['Cache-Control'] = 'private, no-store'
+
+    def admin_lock(conn, admin):
+        actor = conn.execute('SELECT role FROM users WHERE id=%s FOR SHARE', (admin['id'],)).fetchone()
+        if not actor or actor['role'] != 'admin':
+            raise HTTPException(403, 'admin_role_required')
+
+    @router.post('/growth/quote')
+    def price(payload: QuoteInput, response: Response, user=Depends(get_user)):
+        no_cache(response)
+        def action(conn):
+            tariff = conn.execute('SELECT * FROM tariffs WHERE id=%s AND is_active AND archived_at IS NULL', (payload.tariff_id,)).fetchone()
+            if not tariff or (tariff['admin_only'] and user['role'] != 'admin'):
+                raise HTTPException(404, 'active_tariff_not_found')
+            return quote(conn, user, tariff, payload.code)
+        return db(action)
+
+    @router.get('/growth/me')
+    def mine(response: Response, user=Depends(get_user)):
+        no_cache(response)
+        def action(conn):
+            conn.execute('INSERT INTO growth_profiles(user_id) VALUES(%s) ON CONFLICT DO NOTHING', (user['id'],))
+            profile = conn.execute('SELECT code FROM growth_profiles WHERE user_id=%s', (user['id'],)).fetchone()
+            settings = conn.execute('SELECT * FROM growth_settings').fetchone()
+            coupons = conn.execute('''SELECT o.id,o.name,o.code,o.percent,o.ends_at,o.active,
+                EXISTS(SELECT 1 FROM growth_redemptions d WHERE d.offer_id=o.id) AS used
+                FROM growth_offers o WHERE recipient_user_id=%s ORDER BY created_at DESC LIMIT 100''', (user['id'],)).fetchall()
+            count = conn.execute('SELECT count(*) AS n FROM growth_referrals WHERE inviter_user_id=%s', (user['id'],)).fetchone()['n']
+            bound = conn.execute('SELECT 1 FROM growth_referrals WHERE referred_user_id=%s', (user['id'],)).fetchone()
+            bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
+            link = 'https://t.me/'+bot+'?start=ref_'+profile['code'] if re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot) else None
+            return {**settings, 'code':profile['code'], 'link':link, 'invited':count, 'bound':bool(bound), 'coupons':coupons}
+        return db(action)
+
+    @router.post('/growth/referral')
+    def claim(payload: ClaimInput, response: Response, user=Depends(get_user)):
+        no_cache(response)
+        return db(lambda conn: claim_referral(conn, user['id'], payload.code))
+
+    @router.post('/internal/bot/referral', include_in_schema=False)
+    def bot_claim(payload: BotClaimInput, response: Response, x_pushok_bot_secret: str | None = Header(default=None)):
+        _verify_bot_secret(x_pushok_bot_secret)
+        no_cache(response)
+        def action(conn):
+            conn.execute('INSERT INTO users(telegram_user_id) VALUES(%s) ON CONFLICT DO NOTHING', (payload.telegram_user_id,))
+            uid = conn.execute('SELECT id FROM users WHERE telegram_user_id=%s', (payload.telegram_user_id,)).fetchone()['id']
+            return claim_referral(conn, uid, payload.code)
+        return db(action)
+
+    @router.get('/admin/growth')
+    def admin_data(response: Response, admin=Depends(require_admin)):
+        no_cache(response)
+        def action(conn):
+            return {'settings':conn.execute('SELECT * FROM growth_settings').fetchone(),
+                'offers':conn.execute('''SELECT o.*,t.name AS tariff_name,
+                    (SELECT count(*) FROM growth_redemptions d WHERE d.offer_id=o.id) AS uses
+                    FROM growth_offers o LEFT JOIN tariffs t ON t.id=o.tariff_id
+                    ORDER BY o.created_at DESC LIMIT 200''').fetchall()}
+        return db(action)
+
+    @router.put('/admin/growth/settings')
+    def settings(payload: ReferralSettings, response: Response, admin=Depends(require_admin)):
+        no_cache(response)
+        def action(conn):
+            admin_lock(conn, admin)
+            conn.execute('UPDATE growth_settings SET referrals_enabled=%s,reward_percent=%s,reward_days=%s',
+                         (payload.referrals_enabled, payload.reward_percent, payload.reward_days))
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'growth_settings_changed',%s::jsonb)", (admin['id'], payload.model_dump_json()))
+            return {'saved':True}
+        return db(action)
+
+    @router.post('/admin/growth/offers', status_code=201)
+    def create(payload: OfferInput, response: Response, admin=Depends(require_admin)):
+        no_cache(response)
+        def action(conn):
+            admin_lock(conn, admin)
+            if payload.tariff_id and not conn.execute('SELECT 1 FROM tariffs WHERE id=%s AND NOT admin_only AND archived_at IS NULL', (payload.tariff_id,)).fetchone():
+                raise HTTPException(404, 'active_tariff_not_found')
+            import secrets
+            code = secrets.token_hex(12).upper() if payload.kind == 'gift' else payload.code
+            offer = conn.execute('''INSERT INTO growth_offers(kind,name,code,percent,tariff_id,min_duration_seconds,
+                starts_at,ends_at,total_limit,per_user_limit,created_by)
+                VALUES(%s,%s,%s,%s,%s,%s,coalesce(%s,now()),%s,%s,%s,%s) RETURNING *''',
+                (payload.kind,payload.name,code,payload.percent,payload.tariff_id,payload.min_duration_seconds,
+                 payload.starts_at,payload.ends_at,1 if payload.kind=='gift' else payload.total_limit,
+                 payload.per_user_limit,admin['id'])).fetchone()
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'growth_offer_created',jsonb_build_object('offer_id',%s::uuid))", (admin['id'],offer['id']))
+            return offer
+        return db(action)
+
+    @router.patch('/admin/growth/offers/{offer_id}')
+    def toggle(offer_id: UUID, payload: ToggleInput, response: Response, admin=Depends(require_admin)):
+        no_cache(response)
+        def action(conn):
+            admin_lock(conn, admin)
+            row = conn.execute("UPDATE growth_offers SET active=%s WHERE id=%s AND kind<>'referral' RETURNING id", (payload.active,offer_id)).fetchone()
+            if not row:
+                raise HTTPException(404, 'growth_offer_not_found')
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'growth_offer_toggled',jsonb_build_object('offer_id',%s::uuid,'active',%s::boolean))", (admin['id'],offer_id,payload.active))
+            return {'saved':True}
+        return db(action)
+    return router

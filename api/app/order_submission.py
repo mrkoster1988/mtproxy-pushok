@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import psycopg
 from fastapi import HTTPException
 from psycopg.rows import dict_row
+from .growth import quote
 
 
 def create_order(dsn, payload, user):
@@ -18,7 +19,10 @@ def create_order(dsn, payload, user):
             saved = conn.execute("SELECT * FROM order_submissions WHERE user_id=%s AND request_id=%s",
                                  (user["id"], payload.request_id)).fetchone()
             if saved:
-                if saved["request_hash"] != fingerprint:
+                hashes = {fingerprint}
+                if not payload.quote_revision and not payload.promo_code:
+                    hashes.add(hashlib.sha256(payload.model_dump_json(exclude={'promo_code','quote_revision'}).encode()).hexdigest())
+                if saved["request_hash"] not in hashes:
                     raise HTTPException(409, "order_request_conflict")
                 return conn.execute("SELECT * FROM campaigns WHERE id=%s AND advertiser_user_id=%s",
                                     (saved["campaign_id"], user["id"])).fetchone()
@@ -28,7 +32,13 @@ def create_order(dsn, payload, user):
                                   (payload.tariff_id,)).fetchone()
             if not actor or not tariff or (tariff["admin_only"] and actor["role"] != "admin"):
                 raise HTTPException(404, "active_tariff_not_found")
-            if (tariff["price_kopecks"] != payload.expected_price_kopecks or
+            pricing = quote(conn, user, tariff, payload.promo_code, lock=True) if payload.quote_revision else None
+            if payload.promo_code and not pricing:
+                raise HTTPException(409, 'growth_quote_required')
+            if pricing and pricing['revision'] != payload.quote_revision:
+                raise HTTPException(409, 'growth_quote_changed')
+            final_price = pricing['price_kopecks'] if pricing else tariff['price_kopecks']
+            if (final_price != payload.expected_price_kopecks or
                     tariff["duration_seconds"] != payload.expected_duration_seconds):
                 raise HTTPException(409, "order_tariff_changed")
             if payload.requested_start_at and payload.requested_start_at <= datetime.now(timezone.utc):
@@ -58,10 +68,18 @@ def create_order(dsn, payload, user):
             campaign = conn.execute("""
                 INSERT INTO campaigns(advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,
                     duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,requested_start_at,
-                    moderation_status)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,'pending') RETURNING *
+                    moderation_status,pricing_version,base_price_kopecks_snapshot,stars_price_snapshot,
+                    growth_offer_id,growth_offer_name,discount_percent_snapshot)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,'pending',%s,%s,%s,%s,%s,%s) RETURNING *
                 """, (user["id"], channel["id"], tariff["id"], tariff["name"], tariff["duration_seconds"],
-                      tariff["price_kopecks"], tariff["currency"], payload.requested_start_at)).fetchone()
+                      final_price, tariff["currency"], payload.requested_start_at,
+                      1 if pricing else None, tariff['price_kopecks'] if pricing else None,
+                      pricing['stars_price_xtr'] if pricing else None,
+                      pricing['offer_id'] if pricing else None, pricing['offer_name'] if pricing else None,
+                      (pricing['discount_percent'] or None) if pricing else None)).fetchone()
+            if pricing and pricing['offer_id']:
+                conn.execute('INSERT INTO growth_redemptions(campaign_id,offer_id,user_id) VALUES(%s,%s,%s)',
+                             (campaign['id'],pricing['offer_id'],user['id']))
             conn.execute("INSERT INTO audit_events(actor_user_id,campaign_id,event_type) VALUES(%s,%s,'campaign_submitted')",
                          (user["id"], campaign["id"]))
             conn.execute("INSERT INTO order_submissions(user_id,request_id,request_hash,campaign_id) VALUES(%s,%s,%s,%s)",
