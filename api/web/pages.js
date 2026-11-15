@@ -12,7 +12,8 @@
   create:['Разместить рекламу','Канал, тариф и дата — в одной заявке'],
   campaigns:['Кампании','Статусы ваших рекламных заявок'],
   campaign:['Карточка кампании','Модерация, оплата и размещение — отдельные этапы'],
-  payments:['Оплата рекламы','Подтверждение оплаты и доступные способы'],
+  payments:['Мои оплаты','Оплата и история ваших кампаний'],
+  profile:['Профиль','Ваш аккаунт и разделы кабинета'],
   calendar:['Календарь размещений','Доступность на полную длительность тарифа'],
   reports:['Отчёты и история','Подтверждённые события ваших кампаний'],
   moderation:['Модерация','Одна карточка — от проверки канала до завершения'],
@@ -23,6 +24,7 @@
   bot:['Telegram-бот','Продолжите работу в Telegram']
  };
  const hints={
+  profile:'Ваши каналы, отчёты и настройки. Разделы управления доступны по роли аккаунта.',
   dashboard:'Здесь показаны данные ваших кампаний из кабинета. Показ спонсора проверяется отдельно.',
   channels:'API принимает публичную ссылку https://t.me/channel. Добавление канала ещё не означает одобрение рекламы.',
   create:'Заполните форму и отправьте заявку. После одобрения оплатите размещение здесь же.',
@@ -74,8 +76,9 @@
   [c.channel_title,c.channel_url,c.id,channels.find(x=>x.id===c.channel_id)?.title].some(v=>String(v||'').toLocaleLowerCase('ru').includes(state.search.toLocaleLowerCase('ru'))));}
  const shell=el('div',undefined,'cabinet-shell'),sidebar=el('aside',undefined,'cabinet-sidebar');sidebar.id='cabinet-sidebar';
  const brand=link('✳ puShok · MTProxy','dashboard');brand.className='cabinet-brand';sidebar.append(brand);
+ window.pushokViews.brand(brand);
  const nav=el('nav');nav.setAttribute('aria-label','Разделы страниц кабинета');
- const menu=[['create','campaign','Разместить рекламу'],['dashboard','home','Главная'],['channels','channel','Мои каналы'],['campaigns','campaign','Кампании'],['payments','wallet','Оплата'],['calendar','calendar','Календарь'],['reports','chart','Отчёты'],['moderation','moderation','Модерация'],['sponsors','server','Узлы'],['settings','settings','Настройки'],['help','support','Подсказки и инструкции'],['archive','campaign','Удалённые'],['bot','channel','Telegram-бот']];
+ const menu=[['create','campaign','Разместить рекламу'],['dashboard','home','Главная'],['channels','channel','Мои каналы'],['campaigns','campaign','Кампании'],['payments','wallet','Оплата'],['calendar','calendar','Календарь'],['reports','chart','Отчёты'],['moderation','moderation','Модерация'],['sponsors','server','Узлы'],['settings','settings','Настройки'],['help','support','Подсказки и инструкции'],['archive','campaign','Удалённые'],['bot','channel','Telegram-бот'],['profile','user','Профиль']];
  menu.forEach(([name,icon,title])=>{
    const a=link(title,name);a.dataset.route=name;a.classList.add('pushok-nav-link');
    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -100,11 +103,14 @@
  const account=el('span',undefined,'cabinet-account');account.id='cabinet-account';
  const topHelp=el('details',undefined,'top-help'),helpSummary=el('summary','?'),helpText=el('p');helpSummary.setAttribute('aria-label','Подсказка по разделу');topHelp.append(helpSummary);const helpPopup=el('div',undefined,'help-popup');helpPopup.append(helpText,link('Подсказки и инструкции','help'));topHelp.append(helpPopup);
  window.addEventListener('keydown',e=>{if(e.key==='Escape')topHelp.open=false;});document.addEventListener('click',e=>{if(!topHelp.contains(e.target))topHelp.open=false;});
- const refreshButton=$('refresh');bar.append(toggle,account,refreshButton,topHelp);sidebar.append($('logout'));bar.append(searchForm);stage.append(bar);shell.append(sidebar,stage);workspace.prepend(shell);
+ const backButton=button('Назад',async()=>back());backButton.className='screen-back';backButton.setAttribute('aria-label','Назад');backButton.replaceChildren(window.pushokViews.icon('back'));
+ const mobileBrand=link('puShok','dashboard');mobileBrand.className='mobile-brand';
+ window.pushokViews.brand(mobileBrand);
+ const refreshButton=$('refresh');refreshButton.setAttribute('aria-label','Обновить');refreshButton.textContent='↻';bar.append(backButton,mobileBrand,toggle,account,refreshButton,topHelp);sidebar.append($('logout'));bar.append(searchForm);stage.append(bar);shell.append(sidebar,stage);workspace.prepend(shell);
  Object.entries(routes).forEach(([name,[title,subtitle]])=>{
   const page=name==='settings'?$('settings'):el('section');page.dataset.page=name;page.hidden=true;page.classList.add('cabinet-page');
   const heading=el('header',undefined,'page-heading'),titles=el('div');const h=el('h1',title);h.tabIndex=-1;titles.append(h,el('p',subtitle));heading.append(titles);
-  if(['dashboard','campaigns','channels'].includes(name)){
+  if(['campaigns','channels'].includes(name)){
    const action=link(name==='channels'?'+ Добавить канал':'+ Создать кампанию',name==='channels'?'channels':'create');
    if(name==='channels')action.addEventListener('click',event=>{event.preventDefault();const input=$('channel-form').elements.title;input.focus({preventScroll:true});input.scrollIntoView({block:'center'});});
    heading.append(action);
@@ -117,7 +123,7 @@
  });
  // Перемещаем существующие формы вместе с обработчиками. Все id остаются уникальными.
  const channelPanel=$('channel-form').closest('section');content.channels.append(channelPanel);
- const channelList=section('Ваши каналы'),channelRows=el('div');channelList.append(channelRows);content.channels.prepend(channelList);
+ const channelList=section('Ваши каналы'),channelRows=el('div');channelList.classList.add('flat-section');channelList.append(channelRows);content.channels.prepend(channelList);
  content.create.append($('campaign-form').closest('section'));
  const createNotice=el('p',undefined,'muted');content.create.prepend(createNotice);
  const calendar=$('availability-days').closest('.calendar');const calendarOrigin=$('order-calendar-home');
@@ -128,10 +134,27 @@
  [['','Все статусы'],['draft','Черновики'],['pending','На модерации'],['changes_requested','Нужны исправления'],['awaiting_payment','Ожидают оплаты'],['active','Активные'],['completed','Завершённые']].forEach(([v,t])=>option(filter,v,t));
  const reset=button('Сбросить поиск и фильтр',async()=>{state.search='';state.filter='';search.value='';filter.value='';renderList();});
  filter.addEventListener('change',()=>{state.filter=filter.value;renderList();});listTools.append(filter,reset);content.campaigns.append(listTools,$('campaigns'));
- const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.append(summaryRows);content.dashboard.append(summary);
+ const dashboardHero=el('section',undefined,'dashboard-hero');
+ const heroCopy=el('div',undefined,'dashboard-hero-copy');
+ heroCopy.append(el('p','РЕКЛАМА В TELEGRAM','eyebrow'),el('h2','Продвигайте свой канал'),el('p','Реклама в MTProxy'));
+ const heroActions=el('div',undefined,'dashboard-hero-actions');heroActions.append(link('+ Создать кампанию','create'));
+ const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
+ dashboardHero.append(heroCopy,dashboardMascot,heroActions);
+ const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardPayments=el('div');dashboardIntro.append(dashboardHero,dashboardPayments);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
+ const bottomNav=el('nav',undefined,'mobile-bottom-nav');bottomNav.setAttribute('aria-label','Основные разделы');
+ [['dashboard','home','Главная'],['campaigns','campaign','Кампании'],['payments','wallet','Оплата'],['profile','user','Профиль']].forEach(([route,icon,title])=>{
+  const a=link(title,route);a.dataset.route=route;
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
+  const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);bottomNav.append(a);
+ });
+ shell.append(bottomNav);
+ const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.classList.add('flat-section');summary.append(summaryRows);content.dashboard.append(summary);
+ const summaryHeading=el('div',undefined,'section-heading');summaryHeading.append(summary.querySelector('h2'),link('Все кампании →','campaigns'));summary.prepend(summaryHeading);
+ const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);content.dashboard.append(dashboardHelp);
  const onboarding=section('С чего начать');onboarding.id='onboarding';onboarding.append(el('p','Заполните одну форму: канал, тариф и желаемая дата. После проверки канала оплатите размещение.'));
- onboarding.append(button('Скрыть инструкцию',async()=>{sessionStorage.setItem('pushok-onboarding-hidden','1');onboarding.hidden=true;}),link('Разместить рекламу','create'));content.dashboard.prepend(onboarding);
- const paymentRows=el('div');content.payments.append(paymentRows);const reportRows=el('div');content.reports.append(reportRows);
+ onboarding.append(button('Скрыть инструкцию',async()=>{sessionStorage.setItem('pushok-onboarding-hidden','1');onboarding.hidden=true;}),link('Разместить рекламу','create'));content.dashboard.append(onboarding);
+ const paymentOverview=el('div'),paymentRows=el('div');content.payments.append(paymentOverview,paymentRows);
+ const sponsorQueue=el('section',undefined,'sponsor-queue');content.sponsors.append(sponsorQueue);const reportRows=el('div');content.reports.append(reportRows);
  const archiveRows=el('div');content.archive.append(archiveRows);
  const detail=el('div');content.campaign.append(link('← Все кампании','campaigns'),detail);
  content.moderation.append($('queue-filter'),$('queue-count'),$('queue'));
@@ -222,7 +245,7 @@
   return safeChannel('https://t.me/'+state.bot,'Открыть @'+state.bot);
  }
  function renderList(){
-  const list=filtered();table($('campaigns'),campaignRows(list),campaignHeaders);
+  const list=filtered();window.pushokViews.campaigns($('campaigns'),list);
   $('campaign-count').textContent=list.length+' заявок';
   if(!list.length)empty($('campaigns'),state.search||state.filter?'Поиск не дал результатов. Измените запрос или сбросьте фильтр.':'Заявок пока нет. Создайте первую кампанию.');
  }
@@ -230,19 +253,17 @@
  $('channel-select').addEventListener('change',renderQuote);$('tariff-select').addEventListener('change',renderQuote);
  function render(){
   if(!state.ready||!state.loaded||!me)return;
-  metrics('dashboard',[
-   ['Активные кампании',state.campaigns.filter(c=>c.placement_status==='active').length,'По статусу размещения'],
-   ['На модерации',state.campaigns.filter(c=>c.moderation_status==='pending').length,'Ожидают решения'],
-   ['Оплата подтверждена',state.campaigns.filter(c=>c.payment_status==='verified'&&c.price_kopecks_snapshot>0).length,'Количество заявок'],
-   ['Ближайший запуск',date(state.campaigns.filter(c=>c.placement_status==='scheduled'&&c.scheduled_start_at&&new Date(c.scheduled_start_at)>new Date()).map(c=>c.scheduled_start_at).sort()[0]),'По назначенному расписанию']
-  ]);
-  metrics('channels',[['Каналов',channels.length,'Добавлены в кабинет']]);
+  metrics('dashboard',[]);
+  window.pushokViews.paymentOverview(dashboardPayments,state.campaigns.filter(c=>c.moderation_status==='approved'),{compact:true});
+  metrics('channels',[]);
   metrics('campaigns',[['Всего',state.campaigns.length,'Ваши заявки'],['Ожидают оплаты',state.campaigns.filter(c=>c.payment_status==='awaiting_payment').length,'После модерации'],['Завершены',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным системы']]);
   renderQuote();metrics('calendar',[['Часовой пояс',calendarZone,'Время в календаре'],['Период',14,'Дней в запросе доступности']]);
   metrics('reports',[['Кампаний',state.campaigns.length,'В вашем аккаунте'],['В эфире',state.campaigns.filter(c=>c.placement_status==='active').length,'По ручной отметке оператора'],['Завершено',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным API']]);
   channelRows.classList.add('channel-manager');
-  table(channelRows,channels.map(c=>{const action=link('Создать кампанию','create');action.addEventListener('click',()=>{$('channel-select').value=c.id;window.pushokOrder.selectChannel();renderQuote();});const tools=el('div');tools.append(action,window.pushokManagement?.channelActions(c)||el('span'));return [c.title,safeChannel(c.telegram_url,c.telegram_url),tools];}),['Название','Ссылка','Действие']);
-  table(summaryRows,campaignRows(state.campaigns.slice(0,5)),campaignHeaders);renderList();
+  window.pushokViews.channelCards(channelRows,channels);
+  window.pushokViews.campaigns(summaryRows,state.campaigns.slice(0,3));renderList();
+  window.pushokViews.profile(content.profile);
+  if(['admin','operator'].includes(me.role))window.pushokViews.sponsors(sponsorQueue,operatorCampaigns);
   onboarding.hidden=sessionStorage.getItem('pushok-onboarding-hidden')==='1';
   createNotice.hidden=Boolean(tariffs.length);createNotice.textContent='Нет доступных тарифов. Обратитесь к администратору.';
   sponsorPanel.hidden=me.role!=='admin';sponsorNode.replaceChildren();nodes.forEach(n=>option(sponsorNode,n.id,n.name));if(!nodes.length)option(sponsorNode,'','Нет узлов — добавьте выше или восстановите из удалённых');sponsorNode.disabled=!nodes.length;sponsorSave.disabled=!nodes.length;
@@ -250,10 +271,10 @@
   botPanel.replaceChildren(el('h2','Продолжить в Telegram'),botLink(),el('p','Кампании, статусы и оплата доступны в боте согласно настройкам сервера.'),el('h3','Сценарии в кабинете'));
   const shortcuts=el('nav',undefined,'bot-shortcuts');shortcuts.setAttribute('aria-label','Сценарии кабинета');[['create','Разместить рекламу'],['campaigns','Мои кампании'],['payments','Оплата'],['help','Помощь']].forEach(([route,text])=>shortcuts.append(link(text,route)));botPanel.append(shortcuts);
   const own=state.campaigns;
-  table(reportRows,own.map(c=>[link(c.channel_title||c.id.slice(0,8),'campaign/'+c.id),badge(c.placement_status),button('Открыть отчёт',async()=>{reportRows.querySelectorAll('.campaign-report').forEach(x=>x.remove());await showCampaignReport(c,reportRows);})]),['Кампания','Размещение','История']);
+  window.pushokViews.campaigns(reportRows,own,'reports');
   const approved=own.filter(c=>c.moderation_status==='approved');
-  table(paymentRows,approved.map(c=>[link(c.channel_title||c.id.slice(0,8),'payments/'+c.id),money(c.price_kopecks_snapshot),(c.price_kopecks_snapshot===0?'Бесплатно':badge(c.payment_status)),link(c.price_kopecks_snapshot===0?'Открыть размещение':'Открыть оплату','payments/'+c.id)]),['Кампания','Цена заявки','Статус','Действие']);
-  paymentRows.prepend(el('p',miniAppMode?'Для оплаты сначала требуется одобрение канала. Stars доступны в карточке оплаты при включении на сервере.':'Для оплаты сначала требуется одобрение канала. СБП — во внешнем кабинете после настройки владельцем. Stars — через бота при включении на сервере.','muted'));
+  window.pushokViews.paymentOverview(paymentOverview,approved);
+  window.pushokViews.campaigns(paymentRows,approved,'payments');
   operatorNodes.replaceChildren();if(me.role==='operator')table(operatorNodes,nodes.map(n=>[n.name,n.host+':'+n.port,n.status==='active'?'В реестре: активен':'На паузе']),['Узел','Адрес','Статус реестра']);
   metrics('sponsors',[['Узлов в реестре',nodes.length,'Доступность отдельно не проверялась']]);
   if(state.route)renderSelected();
@@ -268,12 +289,12 @@
    panel.replaceChildren(el('h3','Оплата Telegram Stars'));
    if(data.test_environment)panel.append(el('p','Тестовая среда Telegram · тестовые Stars'));
    if(data.payment_status==='verified'){panel.append(el('p','Оплата подтверждена сервером.'));return;}
-   if(data.amount_xtr)panel.append(el('p','Стоимость счёта: '+data.amount_xtr+' XTR'));
+   if(data.amount_xtr)panel.append(el('p','К оплате','eyebrow'),el('strong',data.amount_xtr+' XTR','checkout-amount'));
    if(!data.available)panel.append(el('p','Оплата Stars выключена до настройки и приёмки.'));
    if(data.available&&!data.amount_xtr)panel.append(el('p','Цена Stars ещё не настроена владельцем.'));
    if(data.processing)panel.append(el('p','Платёж обрабатывается. Не оплачивайте повторно.'));
    else if(data.available&&data.amount_xtr&&data.payment_status==='awaiting_payment'){
-    const pay=button('Оплатить Stars',async()=>{
+    const pay=button('Оплатить '+data.amount_xtr+' XTR',async()=>{
      if(!window.pushokMiniApp.canPay())throw Error('Обновите Telegram для оплаты Stars.');
      const invoice=await api(base+'/checkout',{method:'POST'});if(!current())return;
      if(invoice.amount_xtr!==data.amount_xtr){notice('Стоимость Stars обновилась. Проверьте сумму перед оплатой.');await renderStars(c,panel);return;}
@@ -282,9 +303,10 @@
      if(!current())return;
      // invoiceClosed("paid") не является доказательством. Только API после bot receipt.
      await refresh();if(current())await renderStars(c,panel);
-    });panel.append(pay);
+    });pay.classList.add('primary');pay.prepend(window.pushokViews.icon('star'));panel.append(pay);
    }
    panel.append(button('Обновить статус оплаты',async()=>{await refresh();if(current())await renderStars(c,panel);}));
+   panel.append(window.pushokViews.mascot('Оплата и подтверждение запуска — отдельные этапы.'));
    panel.append(el('p','Закрытие окна оплаты не подтверждает перевод. Если статус ещё не обновился, проверьте его позже.','muted'));
   }catch(e){if(current()){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку Stars',()=>renderStars(c,panel)));}}
  }
@@ -348,15 +370,21 @@
   }
   if(name==='campaign'){
    detail.replaceChildren();const c=state.campaigns.find(c=>c.id===id);
-   if(c){detail.append(card(c,false));void renderPromotionStatus(c,detail);metrics('campaign',[['Модерация',labels[c.moderation_status],'По данным API'],['Оплата',c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status],'По данным API'],['Размещение',labels[c.placement_status],'По данным API'],['Окончание',date(c.scheduled_end_at),'Назначенный период']]);}
+   if(c){detail.append(card(c,false));void renderPromotionStatus(c,detail);metrics('campaign',[]);}
    else{empty(detail,'Кампания не найдена или недоступна вашему аккаунту.');metrics('campaign',[]);}
   }
+  paymentOverview.hidden=name==='payments'&&Boolean(id);
   if(name==='payments'&&id){
    paymentRows.replaceChildren();const c=state.campaigns.find(c=>c.id===id&&c.moderation_status==='approved');
    paymentRows.append(link('← Все оплаты','payments'));
    if(c){const panel=el('section',undefined,'panel sbp-checkout');paymentRows.append(card(c,false),panel,botLink(),el('p',miniAppMode?'Статус оплаты Stars обновляется по данным сервера.':'Stars: продолжите в Telegram-боте, если приём включён. Ручной чек — запасной способ по инструкции владельца.','muted'));void renderSbp(c,panel);}
    else paymentRows.append(el('p','Заявка недоступна или ещё не одобрена.'));
   }
+ }
+ function back(){
+  const [name,id]=routeParts();
+  if(name==='moderation'&&id)window.pushokApproval?.resetSelection();
+  go(id?(name==='campaign'||name==='create'?'campaigns':name):['dashboard','profile'].includes(name)?'dashboard':'profile');
  }
  function go(route){if(location.hash==='#/'+route){activate();return;}location.hash='/'+route;}
  function activate(){
@@ -368,19 +396,20 @@
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
   nav.querySelectorAll('a').forEach(a=>{const active=a.dataset.route===name||name==='campaign'&&a.dataset.route==='campaigns';a.classList.toggle('selected',active);if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
-  menuState(false);
+  bottomNav.querySelectorAll('a').forEach(a=>{const section=['campaign','create'].includes(name)?'campaigns':['dashboard','campaigns','payments'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  menuState(false);backButton.hidden=name==='dashboard';
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
   searchForm.hidden=name!=='campaigns';
   if(name==='settings')run(loadAdminSettings);
   if(miniAppMode)window.pushokMiniApp.syncNavigation();
  }
- window.cabinet={go,sync(own){state.campaigns=own;state.loaded=true;document.body.dataset.cabinetLoaded='true';render();},enter(){
+ window.cabinet={go,back,sync(own){state.campaigns=own;state.loaded=true;document.body.dataset.cabinetLoaded='true';render();},enter(){
   const url=new URL(location.href),returned=url.searchParams.get('sbp_campaign');
   if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);
   nav.querySelectorAll('a').forEach(a=>a.hidden=!permitted(a.dataset.route));if($('management-menu'))$('management-menu').hidden=!['admin','operator'].includes(me.role);activate();
  },logout(){$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
-  [$('order-result'),detail,paymentRows,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
+  [$('order-result'),detail,dashboardPayments,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['settings-stars-counts','settings-stars-status','settings-sbp-status','launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());
@@ -398,4 +427,3 @@
  if(window.cabinetBotConfig)window.cabinet.config(window.cabinetBotConfig);
  if(window.cabinetBootReady&&me){window.cabinet.sync(ownCampaigns);window.cabinet.enter();}
 })();
-

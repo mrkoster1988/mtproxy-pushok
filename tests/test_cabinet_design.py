@@ -35,7 +35,7 @@ class Elements(HTMLParser):
 class CabinetDesignTests(unittest.TestCase):
     def setUp(self):
         self.html = (WEB / "index.html").read_text(encoding="utf-8")
-        self.css = (WEB / "styles.css").read_text(encoding="utf-8")
+        self.css = (WEB / "styles.css").read_text(encoding="utf-8") + (WEB / "cabinet-reference.css").read_text(encoding="utf-8")
         self.js = (WEB / "app.js").read_text(encoding="utf-8")
         self.parser = Elements()
         self.parser.feed(self.html)
@@ -63,7 +63,7 @@ class CabinetDesignTests(unittest.TestCase):
 
     def test_no_external_styles_scripts_or_tracking(self):
         self.assertEqual({url.split('?')[0] for url in self.parser.links}, {
-            "/assets/styles.css", "/assets/app.js", "/assets/order.js", "/assets/approval.js", "/assets/management.js", "/assets/pages.js", "/assets/pushok-mascot.svg"
+            "/assets/styles.css", "/assets/cabinet-reference.css", "/assets/app.js", "/assets/order.js", "/assets/approval.js", "/assets/management.js", "/assets/pages.js", "/assets/mobile-views.js", "/assets/pushok-pencil.png"
         })
         self.assertNotIn("onclick=", self.html)
         self.assertNotIn("onload=", self.html)

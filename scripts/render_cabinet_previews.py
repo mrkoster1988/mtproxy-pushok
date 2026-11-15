@@ -131,6 +131,7 @@ class StaticHandler(SimpleHTTPRequestHandler):
 def main() -> None:
     parser = argparse.ArgumentParser(description="MTProxy Pushok — private visual preview")
     parser.add_argument("--out", type=Path, default=ROOT / ".build" / "ui-preview")
+    parser.add_argument("--browser-executable")
     args = parser.parse_args()
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -142,7 +143,8 @@ def main() -> None:
 
     try:
         with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"])
+            browser = playwright.chromium.launch(headless=True, args=["--no-sandbox"],
+                                                 executable_path=args.browser_executable)
             def create_page(role: str, width: int, height: int):
                 page = browser.new_page(viewport={"width": width, "height": height},
                                         device_scale_factor=1)

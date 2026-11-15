@@ -50,7 +50,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="0.060",
+    version="0.061",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2403,8 +2403,9 @@ def miniapp_client():
     html = (WEB_DIR / 'index.html').read_text()
     html = html.replace('initial-scale=1', 'initial-scale=1, viewport-fit=cover')
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
-    html = html.replace('<script src="/assets/app.js?v=060"',
-                        '<script src="/assets/miniapp.js?v=060" defer></script>\n  <script src="/assets/app.js?v=060"')
+    # Вход Mini App не должен зависеть от версии кеша основного скрипта.
+    html = html.replace('<script src="/assets/app.js',
+                        '<script src="/assets/miniapp.js?v=061-cards" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
@@ -2716,4 +2717,3 @@ def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_curren
         fresh=bool(row['checked_at'] and (datetime.now(timezone.utc)-row['checked_at']).total_seconds()<120)
         applied=bool(fresh and row['state']=='applied' and row['applied_campaign_id']==campaign_id and row['scheduled_end_at'] and row['scheduled_end_at']>datetime.now(timezone.utc))
         return {'prepared':row['prepared'],'config_applied':applied,'agent_recent':fresh,'checked_at':row['checked_at'],'display_verified':False}
-

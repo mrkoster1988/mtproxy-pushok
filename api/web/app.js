@@ -282,14 +282,18 @@ function card(c,op,{compact=false}={}){
  const box=el('article',undefined,'card'),head=el('div',undefined,'cardhead');
  head.append(el('h3',(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||'Заявка')+' · '+c.id.slice(0,8)),el('span',labels[c.placement_status]||c.placement_status,'badge badge--'+c.placement_status));box.append(head);
  if(c.channel_url){try{const u=new URL(c.channel_url);if(u.protocol==='https:'&&['t.me','telegram.me'].includes(u.hostname)){const link=el('a','Открыть канал');link.href=u.href;link.target='_blank';link.rel='noopener noreferrer';box.append(link);}}catch{}}
+ if(!op&&window.pushokViews){box.classList.add('campaign-detail');box.append(window.pushokViews.statusSteps(c),window.pushokViews.facts(c));}
+ else{
  const meta=el('div',undefined,'meta');
  [labels[c.moderation_status],(c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status]),c.tariff_name_snapshot+' · '+money(c.price_kopecks_snapshot),'Желаемое начало: '+date(c.requested_start_at),'Назначено: '+date(c.scheduled_start_at)].forEach(t=>meta.append(el('span',t)));box.append(meta);
+ }
  if(c.moderator_comment)box.append(el('p','Модерация: '+c.moderator_comment));
  if(c.payment_review_comment)box.append(el('p','Проверка оплаты: '+c.payment_review_comment));
  const actions=el('div',undefined,'actions');box.append(actions);
  if(!op&&window.pushokManagement)box.append(window.pushokManagement.campaignActions(c));
  const change=async(path,body)=>{await api('/operator/campaigns/'+c.id+'/'+path,{method:'POST',body});notice('Изменения сохранены.',true);await refresh();};
  if(!op){
+  if(c.moderation_status==='approved'&&c.price_kopecks_snapshot>0&&!location.hash.startsWith('#/payments/')){const pay=el('a',c.payment_status==='verified'?'Посмотреть оплату':'Перейти к оплате','ui-button primary');pay.href='#/payments/'+c.id;actions.append(pay);}
   const reports=compact?el('details',undefined,'order-reports'):actions;if(compact){reports.append(el('summary','История и отчёт'));box.append(reports);}
   reports.append(button('Отчёт по кампании',()=>showCampaignReport(c,box)));
   if(['scheduled','active','completed'].includes(c.placement_status)){
@@ -633,7 +637,10 @@ async function loadAvailability(){
    const calendarLabels={available:'Свободно: '+day.available_nodes,unconfigured:'По согласованию',occupied:'Нет мест',past:'Время прошло',invalid_local_time:'Нет такого времени',ambiguous_local_time:'Неоднозначное время'};
    const b=button(new Date(day.start_at).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})+' · '+(calendarLabels[day.status]||'Недоступно'),async()=>{
     clearRequestedDate();b.setAttribute('aria-pressed','true');$('requested-start').value=day.start_at;$('calendar-selection').textContent='Желаемое начало: '+date(day.start_at)+(day.status==='unconfigured'?' · расписание ещё не настроено, требуется согласование':'');window.pushokOrder?.summary();
-   });b.disabled=!['available','unconfigured'].includes(day.status);b.setAttribute('aria-pressed','false');return b;
+   });
+   const display=new Date(day.start_at);b.setAttribute('aria-label',b.textContent);b.dataset.availability=day.status;
+   b.replaceChildren(el('small',display.toLocaleDateString('ru-RU',{weekday:'short',month:'short'})),el('strong',String(display.getDate())),el('span',calendarLabels[day.status]||'Недоступно'));
+   b.disabled=!['available','unconfigured'].includes(day.status);b.setAttribute('aria-pressed','false');return b;
   }));
  }catch(e){if(request===calendarRequest){$('availability-days').replaceChildren(el('p','Не удалось получить доступные даты.','muted'));throw e;}}
 }
