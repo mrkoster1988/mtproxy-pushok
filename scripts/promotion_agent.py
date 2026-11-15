@@ -163,9 +163,20 @@ def validate_plan(plan):
 def restore():
     if not STATE.exists(): return False
     state=json.loads(STATE.read_text())
+    if state.get('restore_required') is not True:
+        state['restore_required'] = True
+        atomic(STATE, json.dumps(state))
     apply(state['baseline'])
     STATE.unlink()
     return True
+
+
+def restore_pending_or_expired():
+    if not STATE.exists():
+        return
+    state = json.loads(STATE.read_text())
+    if state.get('restore_required') is True or float(state['expires_at']) <= time.time():
+        restore()
 
 
 def node_request(cfg):
@@ -187,8 +198,7 @@ def tick(status=None):
     status = status if status is not None else {}
     # Локальный срок снимает тег даже при недоступной БД/API.
     status['code'] = 'restore_failed'
-    if STATE.exists() and float(json.loads(STATE.read_text())['expires_at'])<=time.time():
-        restore()
+    restore_pending_or_expired()
     status['code'] = 'config_error'
     cfg=parse_env(ENV.read_text())
     request=node_request(cfg)
@@ -202,9 +212,21 @@ def tick(status=None):
     else:
         status['code'] = 'apply_failed'
         baseline=json.loads(STATE.read_text())['baseline'] if STATE.exists() else cfg.get('MT_PROXY_TAG','')
-        # Сначала сохраняем исходный тег: восстановление возможно и после аварии.
-        atomic(STATE,json.dumps(dict(baseline=baseline,expires_at=plan['expires_at'])))
-        apply(plan['tag'])
+        # Незавершённая попытка требует возврата к исходному тегу, даже если
+        # новый слот ещё не истёк, кабинет недоступен или идёт обновление.
+        saved = dict(baseline=baseline, expires_at=plan['expires_at'], restore_required=True)
+        atomic(STATE, json.dumps(saved))
+        try:
+            apply(plan['tag'])
+            saved['restore_required'] = False
+            atomic(STATE, json.dumps(saved))
+        except Exception:
+            # apply() возвращает предыдущий env, в котором может быть тег
+            # уже отменённой кампании. Завершаем возврат к исходному тегу.
+            status['code'] = 'restore_failed'
+            restore()
+            status['code'] = 'apply_failed'
+            raise
     status['code'] = 'ack_unavailable'
     ack=exchange(dict(request,action='ack',revision=plan['revision']))
     if not ack.get('accepted'):
@@ -235,7 +257,7 @@ def main(status=None):
             return
         # Обновление кабинета может идти долго: истёкший тег снимается до ожидания.
         status['code'] = 'restore_failed'
-        if STATE.exists() and float(json.loads(STATE.read_text())['expires_at'])<=time.time(): restore()
+        restore_pending_or_expired()
         from updater import lock_file
         status['code'] = 'waiting_update'
         with lock_file('host-lock') as update_lock:

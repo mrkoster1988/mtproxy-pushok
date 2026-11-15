@@ -5,7 +5,8 @@ import sys
 import tempfile
 import time
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import mock_open, patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 import promotion_agent as agent
 
@@ -26,10 +27,139 @@ class AgentTests(unittest.TestCase):
         with self.assertRaises(ValueError):agent.tag_text(original+'MT_PROXY_TAG=x\n','b'*32)
 
     def test_apply_ack_saves_baseline_before_mutation(self):
-        with patch.object(agent,'exchange',side_effect=[self.plan,{'accepted':True}]),patch.object(agent,'apply') as apply:
+        def apply_tag(tag):
+            saved = json.loads(self.state.read_text())
+            self.assertEqual(saved['baseline'], 'a'*32)
+            self.assertTrue(saved['restore_required'])
+        with patch.object(agent,'exchange',side_effect=[self.plan,{'accepted':True}]),patch.object(agent,'apply',side_effect=apply_tag) as apply:
             agent.tick()
             self.assertEqual(json.loads(self.state.read_text())['baseline'],'a'*32)
+            self.assertFalse(json.loads(self.state.read_text())['restore_required'])
             apply.assert_called_once_with('b'*32)
+
+    def test_failed_switch_returns_to_baseline_not_previous_sponsor(self):
+        self.env.write_text(self.env.read_text().replace('"'+('a'*32)+'"', 'b'*32))
+        self.state.write_text(json.dumps(dict(baseline='a'*32, expires_at=time.time()+600)))
+        next_plan = dict(self.plan, tag='c'*32, expires_at=time.time()+3600)
+        process = {'tag': 'b'*32}
+        def systemctl(*args):
+            if args == ('systemctl', 'restart', agent.SERVICE):
+                process['tag'] = agent.parse_env(self.env.read_text())['MT_PROXY_TAG']
+            return ''
+        status = {}
+        with patch.object(agent, 'exchange', return_value=next_plan) as exchange, \
+             patch.object(agent, 'running_tag', side_effect=lambda: process['tag']), \
+             patch.object(agent, 'command', side_effect=systemctl), \
+             patch.object(agent, 'wait_ready', side_effect=[RuntimeError('new tag failed'), None]):
+            with self.assertRaisesRegex(RuntimeError, 'new tag failed'):
+                agent.tick(status)
+        self.assertEqual(exchange.call_count, 1)  # Не подтверждаем неудачное применение.
+        self.assertEqual(process['tag'], 'a'*32)
+        self.assertEqual(agent.parse_env(self.env.read_text())['MT_PROXY_TAG'], 'a'*32)
+        self.assertIn('MT_PROXY_SECRET=keep-this', self.env.read_text())
+        self.assertFalse(self.state.exists())
+        self.assertEqual(status['code'], 'apply_failed')
+
+    def test_failed_baseline_restore_is_retried_before_offline_api(self):
+        self.state.write_text(json.dumps(dict(baseline='d'*32, expires_at=time.time()+600)))
+        status = {}
+        with patch.object(agent, 'exchange', return_value=self.plan), \
+             patch.object(agent, 'apply', side_effect=[RuntimeError('apply failed'), RuntimeError('restore failed')]):
+            with self.assertRaisesRegex(RuntimeError, 'restore failed'):
+                agent.tick(status)
+        self.assertTrue(json.loads(self.state.read_text())['restore_required'])
+        self.assertEqual(status['code'], 'restore_failed')
+        with patch.object(agent, 'apply') as apply, \
+             patch.object(agent, 'exchange', side_effect=RuntimeError('api unavailable')):
+            with self.assertRaisesRegex(RuntimeError, 'api unavailable'):
+                agent.tick()
+        apply.assert_called_once_with('d'*32)
+        self.assertFalse(self.state.exists())
+
+    def test_interrupted_apply_is_restored_on_next_cycle(self):
+        def interrupted(tag):
+            self.env.write_text(agent.tag_text(self.env.read_text(), tag))
+            raise KeyboardInterrupt()
+        with patch.object(agent, 'exchange', return_value=self.plan), \
+             patch.object(agent, 'apply', side_effect=interrupted):
+            with self.assertRaises(KeyboardInterrupt):
+                agent.tick()
+        self.assertEqual(agent.parse_env(self.env.read_text())['MT_PROXY_TAG'], 'b'*32)
+        self.assertTrue(json.loads(self.state.read_text())['restore_required'])
+        def restored(tag):
+            self.env.write_text(agent.tag_text(self.env.read_text(), tag))
+        with patch.object(agent, 'apply', side_effect=restored), \
+             patch.object(agent, 'exchange', side_effect=RuntimeError('api unavailable')):
+            with self.assertRaisesRegex(RuntimeError, 'api unavailable'):
+                agent.tick()
+        self.assertEqual(agent.parse_env(self.env.read_text())['MT_PROXY_TAG'], 'a'*32)
+        self.assertFalse(self.state.exists())
+
+    def test_applied_unexpired_tag_survives_temporary_api_failure(self):
+        for saved in [dict(baseline='a'*32, expires_at=time.time()+600),
+                      dict(baseline='a'*32, expires_at=time.time()+600, restore_required=False)]:
+            self.state.write_text(json.dumps(saved))
+            with patch.object(agent, 'apply') as apply, \
+                 patch.object(agent, 'exchange', side_effect=RuntimeError('api unavailable')):
+                with self.assertRaisesRegex(RuntimeError, 'api unavailable'):
+                    agent.tick()
+            apply.assert_not_called()
+            self.assertEqual(json.loads(self.state.read_text()), saved)
+
+    def test_pending_restore_precedes_busy_updater(self):
+        self.state.write_text(json.dumps(dict(baseline='a'*32, expires_at=time.time()+600,
+                                             restore_required=True)))
+        status = {}
+        with patch.object(agent.os, 'geteuid', return_value=0), \
+             patch.object(agent, 'ENV') as env, patch('builtins.open', mock_open()), \
+             patch.object(agent.fcntl, 'flock'), \
+             patch('updater.lock_file', side_effect=BlockingIOError('update running')), \
+             patch.object(agent, 'apply') as apply, patch.object(agent, 'exchange') as exchange:
+            env.exists.return_value = True
+            env.lstat.return_value = SimpleNamespace(st_mode=0o100600, st_uid=0)
+            with self.assertRaises(BlockingIOError):
+                agent.main(status)
+        apply.assert_called_once_with('a'*32)
+        exchange.assert_not_called()
+        self.assertFalse(self.state.exists())
+        self.assertEqual(status['code'], 'waiting_update')
+
+    def test_failed_success_checkpoint_restores_baseline(self):
+        atomic = agent.atomic
+        writes = []
+        def save(path, text):
+            writes.append(json.loads(text))
+            if len(writes) == 2:
+                raise OSError('checkpoint unavailable')
+            return atomic(path, text)
+        with patch.object(agent, 'atomic', side_effect=save), \
+             patch.object(agent, 'exchange', return_value=self.plan) as exchange, \
+             patch.object(agent, 'apply') as apply:
+            with self.assertRaisesRegex(OSError, 'checkpoint unavailable'):
+                agent.tick()
+        self.assertEqual([c.args[0] for c in apply.call_args_list], ['b'*32, 'a'*32])
+        self.assertEqual(exchange.call_count, 1)
+        self.assertFalse(self.state.exists())
+
+    def test_failed_restore_after_cancel_or_rejected_ack_retries_offline(self):
+        for cancelled in (True, False):
+            with self.subTest(cancelled=cancelled):
+                self.state.write_text(json.dumps(dict(baseline='d'*32, expires_at=time.time()+600)))
+                replies = [dict(state='idle', revision='e'*64)] if cancelled else [self.plan, {'accepted': False}]
+                results = [RuntimeError('restore failed')] if cancelled else [None, RuntimeError('restore failed')]
+                status = {}
+                with patch.object(agent, 'exchange', side_effect=replies), \
+                     patch.object(agent, 'apply', side_effect=results):
+                    with self.assertRaisesRegex(RuntimeError, 'restore failed'):
+                        agent.tick(status)
+                self.assertTrue(json.loads(self.state.read_text())['restore_required'])
+                self.assertEqual(status['code'], 'restore_failed')
+                with patch.object(agent, 'apply') as apply, \
+                     patch.object(agent, 'exchange', side_effect=RuntimeError('api unavailable')):
+                    with self.assertRaisesRegex(RuntimeError, 'api unavailable'):
+                        agent.tick()
+                apply.assert_called_once_with('d'*32)
+                self.assertFalse(self.state.exists())
 
     def test_expiration_restores_even_when_api_down(self):
         self.state.write_text(json.dumps(dict(baseline='a'*32,expires_at=time.time()-1)))
@@ -136,9 +266,11 @@ class AgentTests(unittest.TestCase):
              patch.object(agent,'exchange',return_value=self.plan) as exchange:
             with self.assertRaisesRegex(RuntimeError,'proxy_start_timeout'):
                 agent.tick(status)
-        self.assertEqual(status['code'],'apply_failed')
+        # Недоступен и исходный тег: сохраняем необходимость повторного возврата.
+        self.assertEqual(status['code'],'restore_failed')
         self.assertEqual(exchange.call_count,1)
         self.assertTrue(self.state.exists())
+        self.assertTrue(json.loads(self.state.read_text())['restore_required'])
 
     def test_stopped_process_with_same_tag_is_restarted(self):
         with patch.object(agent,'running_tag',side_effect=[FileNotFoundError(), 'a'*32]),patch.object(agent,'command') as cmd,patch.object(agent.socket,'create_connection'):
