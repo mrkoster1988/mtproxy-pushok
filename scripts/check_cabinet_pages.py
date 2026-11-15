@@ -377,10 +377,14 @@ def main():
                     expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Применение текущего плана не подтверждено')
                     expect(draft_tag).to_have_value('d' * 32)
                     admin.set_viewport_size({'width': 1440, 'height': 1000})
-                # Вернуть только этот тестовый узел к ручному сценарию ниже.
+                # ACK агента автоматически активирует кампанию, без формы проверки.
+                refresh(operator)
+                expect(operator.locator('#queue')).to_contain_text('Размещение активно')
+                # Вернуть только эту изолированную кампанию к отдельному ручному сценарию.
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('DELETE FROM channel_promotion_bindings WHERE proxy_node_id=%s', (fixture['id'],))
                     connection.execute('DELETE FROM promotion_runtime WHERE proxy_node_id=%s', (fixture['id'],))
+                    connection.execute("UPDATE campaigns SET placement_status='scheduled' WHERE id=%s", (campaign_id,))
                 refresh(operator)
                 operator.locator('summary').filter(has_text='Показ не обнаружен').click()
                 operator.get_by_label('Что проверили', exact=True).fill('Тест: в подключённом Telegram без подписки спонсор не найден')
