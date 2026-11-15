@@ -2,14 +2,14 @@
 window.pushokWallet=(()=>{
  let epoch=0,target=null,adminTelegram='',historyPage=0,adminPage=0;
  const names={RUB:'Рубли',XTR:'Stars',BONUS:'Бонусные рубли'};
- const kinds={topup:'Пополнение',payment:'Оплата размещения',refund:'Возврат на баланс',manual_credit:'Ручное начисление',manual_debit:'Ручное списание',reversal:'Отмена корректировки',provider_refund:'Возврат провайдером'};
+ const kinds={topup:'Пополнение',payment:'Оплата размещения',refund:'Возврат на баланс',manual_credit:'Ручное начисление',manual_debit:'Ручное списание',reversal:'Отмена корректировки',provider_refund:'Возврат провайдером',referral_reward:'Реферальная награда',referral_reversal:'Отмена реферальной награды'};
  const statuses={created:'Выпуск счёта не завершён',pending:'Ожидает оплаты',succeeded:'Подтверждено',failed:'Счёт закрыт',refunded:'Возвращено провайдером',review:'Требуется сверка'};
  Object.assign(errors,{
   wallet_request_conflict:'Этот запрос уже использован с другими данными. Обновите журнал и проверьте операцию.',
   wallet_insufficient_funds:'Недостаточно средств. Пополните баланс или уменьшите сумму.',
   wallet_limit_exceeded:'Превышен предел остатка на балансе.',wallet_stars_only_in_telegram:'В Telegram размещение оплачивается Stars. Выберите баланс Stars.',
   wallet_campaign_not_payable:'Заявка ещё не готова к оплате или уже имеет открытый счёт. Проверьте её статус.',
-  wallet_price_changed:'Цена изменилась. Обновите карточку перед оплатой.',wallet_provider_refund_debt:'Есть задолженность после возврата провайдером. Пополните соответствующий баланс или обратитесь в поддержку.',
+  wallet_price_changed:'Цена изменилась. Обновите карточку перед оплатой.',wallet_provider_refund_debt:'Есть задолженность после возврата платежа или отмены награды. Проверьте журнал и обратитесь в поддержку.',
   wallet_payment_refunded:'Эта оплата уже возвращена. Для нового размещения создайте заявку.',
   wallet_stop_placement_first:'Время размещения уже началось или есть наблюдения о показе. Сначала подтвердите его остановку; при задержке ответа агента дождитесь обновления статуса.',
   wallet_payment_not_found:'Заявка не оплачивалась с внутреннего баланса.',wallet_use_payment_refund:'Используйте возврат оплаты по заявке. Эта операция не является ручной корректировкой.',
@@ -40,7 +40,7 @@ window.pushokWallet=(()=>{
   catch(e){if(e.status>=400&&e.status<500)sessionStorage.removeItem(storageKey);throw e;}
   finally{if(session===token&&target)await load(target);}
  }
- function balances(root,data){const grid=el('div',undefined,'wallet-balances');for(const c of ['RUB','XTR','BONUS']){const card=el('article',undefined,'card');card.append(el('span',names[c],'muted'),el('strong',amount(data.balances[c],c)));grid.append(card);}root.append(grid);if(data.has_debt)root.append(el('p','Есть задолженность после возврата платёжной системой. Новые оплаты с баланса приостановлены до погашения.','wallet-warning'));}
+ function balances(root,data){const grid=el('div',undefined,'wallet-balances');for(const c of ['RUB','XTR','BONUS']){const card=el('article',undefined,'card');card.append(el('span',names[c],'muted'),el('strong',amount(data.balances[c],c)));grid.append(card);}root.append(grid);if(data.has_debt)root.append(el('p','Есть задолженность после возврата платежа или отмены награды. Новые оплаты с баланса приостановлены до погашения. Бонусная задолженность погашается новыми бонусами; вопросы — в поддержку.','wallet-warning'));}
  async function openInvoice(t){if(t.currency==='XTR'&&miniAppMode)await window.pushokMiniApp.payInvoice(t.invoice_url);else window.open(t.invoice_url,'_blank','noopener,noreferrer');}
  function topupForm(root,data){
   const p=panel('Пополнить баланс'),form=el('form'),c=currencies(form,'Валюта пополнения',miniAppMode||data.stars_only);
@@ -76,9 +76,9 @@ window.pushokWallet=(()=>{
   const p=panel(admin?'Журнал пользователя':'История операций');if(!data.entries.length)p.append(el('p','Операций пока нет.'));
   data.entries.forEach(e=>{const row=el('article',undefined,'card wallet-entry');row.append(el('h3',(e.delta>0?'+':'')+amount(e.delta,e.currency)),el('p',e.kind==='payment'&&e.automatic?'Автоматическая оплата размещения':kinds[e.kind]||e.kind),el('p',e.reason),el('p','Остаток после операции: '+amount(e.balance_after,e.currency),'muted'),el('p',date(e.created_at)+' · проводка №'+e.entry_number,'muted'));
    if(e.actor_telegram_id)row.append(el('p','Автор: '+(e.actor_username?'@'+e.actor_username+' · ':'')+e.actor_telegram_id,'muted'));
-   if(e.campaign_id){const a=el('a','Открыть заявку →');a.href='#/'+(admin?'moderation/':'create/')+e.campaign_id;row.append(a);}
+   if(e.campaign_id&&(admin||!['referral_reward','referral_reversal'].includes(e.kind))){const a=el('a','Открыть заявку →');a.href='#/'+(admin?'moderation/':'create/')+e.campaign_id;row.append(a);}
    if(admin&&['manual_credit','manual_debit'].includes(e.kind)&&!e.reversed){const f=el('form'),reason=field(f,'Причина отмены корректировки','text');reason.required=true;reason.minLength=3;reason.maxLength=500;submit(f,'Отменить корректировку',async()=>{await api('/admin/wallet/entries/'+e.id+'/reverse',{method:'POST',body:{reason:reason.value}});await adminLookup();});row.append(f);}
-   if(e.reversed)row.append(el('p','Корректировка отменена отдельной записью.','muted'));p.append(row);
+   if(e.reversed)row.append(el('p',e.kind==='referral_reward'?'Награда отменена отдельной записью.':'Корректировка отменена отдельной записью.','muted'));p.append(row);
   });
   const nav=el('div',undefined,'inline-actions');if(data.page>0)nav.append(button('Предыдущие',()=>onPage(data.page-1)));if((data.page+1)*data.page_size<data.total)nav.append(button('Следующие',()=>onPage(data.page+1)));p.append(el('p','Операций: '+data.total,'muted'),nav);root.append(p);
  }

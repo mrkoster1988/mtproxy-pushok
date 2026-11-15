@@ -1234,6 +1234,46 @@ def main():
                 expect(advertiser.locator('.wallet-balances').first).to_contain_text('300')
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     assert connection.execute('SELECT status FROM wallet_payments WHERE campaign_id=%s',(growth_cid,)).fetchone()[0]=='refunded'
+                # Реферальная награда: настройки через UI, приглашение друга и реальная проводка.
+                go(admin,'growth')
+                admin.get_by_label('Награда за приглашённого',exact=True).select_option('bonus')
+                expect(admin.get_by_label('Скидка за приглашённого, %',exact=True)).to_be_hidden()
+                admin.get_by_label('Награда на бонусный баланс, ₽',exact=True).fill('125.50')
+                admin.get_by_label('Принимать новые приглашения',exact=True).check()
+                admin.get_by_role('button',name='Сохранить условия',exact=True).click()
+                expect(admin.get_by_label('Награда за приглашённого',exact=True)).to_have_value('bonus')
+                expect(admin.get_by_label('Награда на бонусный баланс, ₽',exact=True)).to_have_value('125.50')
+                go(advertiser,'growth')
+                invite_link=advertiser.get_by_label('Ваша ссылка для друзей',exact=True).input_value()
+                go(outsider,'growth')
+                outsider.get_by_label('Код пригласившего вас пользователя',exact=True).fill(invite_link.split('ref_')[1])
+                outsider.get_by_role('button',name='Принять приглашение',exact=True).click()
+                expect(outsider.get_by_label('Код пригласившего вас пользователя',exact=True)).to_have_count(0)
+                with psycopg.connect(PostgresIntegration.dsn) as connection:
+                    friend_id=connection.execute('SELECT id FROM users WHERE telegram_user_id=99116003').fetchone()[0]
+                    friend_channel=connection.execute("INSERT INTO sponsor_channels(owner_user_id,title,telegram_url) VALUES(%s,'Друг','https://t.me/browser_friend') RETURNING id",(friend_id,)).fetchone()[0]
+                    referral_cid=connection.execute("""INSERT INTO campaigns(advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot)
+                        VALUES(%s,%s,%s,'Реферальный тест',3600,10000,'RUB') RETURNING id""",(friend_id,friend_channel,growth_tariff)).fetchone()[0]
+                    connection.execute("""INSERT INTO payment_attempts(campaign_id,provider,payment_channel,amount,currency,status,provider_payment_id)
+                        VALUES(%s,'telegram_stars','telegram_bot',100,'XTR','succeeded',%s)""",(referral_cid,'browser-referral-'+str(referral_cid)))
+                    connection.execute("UPDATE campaigns SET moderation_status='approved',payment_status='verified',placement_status='completed' WHERE id=%s",(referral_cid,))
+                go(advertiser,'wallet')
+                expect(advertiser.locator('.wallet-entry').filter(has_text='Реферальная награда')).to_have_count(1)
+                expect(advertiser.locator('.wallet-entry').filter(has_text='Реферальная награда').get_by_role('link',name='Открыть заявку →')).to_have_count(0)
+                go(advertiser,'growth')
+                expect(advertiser.get_by_role('heading',name='Награда выдана',exact=True)).to_be_visible()
+                for page in (admin,advertiser):
+                    for width in (320,390):
+                        page.set_viewport_size({'width':width,'height':844})
+                        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                admin.screenshot(path=str(output/'40-referral-settings-mobile.png'),full_page=True)
+                advertiser.screenshot(path=str(output/'41-referral-reward-mobile.png'),full_page=True)
+                with psycopg.connect(PostgresIntegration.dsn) as connection:
+                    connection.execute("UPDATE campaigns SET payment_status='refunded' WHERE id=%s",(referral_cid,))
+                go(advertiser,'wallet')
+                expect(advertiser.locator('.wallet-entry').filter(has_text='Отмена реферальной награды')).to_have_count(1)
+                go(advertiser,'growth')
+                expect(advertiser.get_by_role('heading',name='Награда отменена после возврата',exact=True)).to_be_visible()
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))

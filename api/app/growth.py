@@ -63,6 +63,8 @@ class ReferralSettings(Input):
     referrals_enabled: bool
     reward_percent: int = Field(ge=1, le=100, strict=True)
     reward_days: int = Field(ge=1, le=365, strict=True)
+    reward_mode: Literal['coupon', 'bonus'] = 'coupon'
+    reward_bonus_kopecks: int = Field(default=10000, ge=1, le=1000000, strict=True)
 
 
 class ClaimInput(Input):
@@ -148,8 +150,9 @@ def claim_referral(conn, uid, code):
         SELECT 1 FROM parents WHERE id=%s''', (inviter['user_id'], uid)).fetchone()
     if cycle:
         raise HTTPException(409, 'growth_invitation_unavailable')
-    conn.execute('''INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days)
-        VALUES(%s,%s,%s,%s)''', (uid, inviter['user_id'], settings['reward_percent'], settings['reward_days']))
+    conn.execute('''INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days,reward_mode,reward_bonus_kopecks)
+        VALUES(%s,%s,%s,%s,%s,%s)''', (uid, inviter['user_id'], settings['reward_percent'], settings['reward_days'],
+                                   settings['reward_mode'], settings['reward_bonus_kopecks']))
     conn.execute("INSERT INTO audit_events(actor_user_id,event_type) VALUES(%s,'referral_bound')", (uid,))
     return {'saved': True}
 
@@ -195,10 +198,21 @@ def router_for(get_dsn, get_user, require_admin):
                 EXISTS(SELECT 1 FROM growth_redemptions d WHERE d.offer_id=o.id) AS used
                 FROM growth_offers o WHERE recipient_user_id=%s ORDER BY created_at DESC LIMIT 100''', (user['id'],)).fetchall()
             count = conn.execute('SELECT count(*) AS n FROM growth_referrals WHERE inviter_user_id=%s', (user['id'],)).fetchone()['n']
+            bonus = conn.execute('''SELECT coalesce(sum(amount),0)::bigint AS credited,
+                coalesce(sum(amount) FILTER(WHERE reversal_id IS NOT NULL),0)::bigint AS reversed
+                FROM growth_wallet_rewards WHERE inviter_user_id=%s''', (user['id'],)).fetchone()
+            # Пригласившему не выдаём телефоны, Telegram ID или заявки друга.
+            invitations = conn.execute('''SELECT r.created_at,r.reward_mode,r.reward_percent,r.reward_days,r.reward_bonus_kopecks,
+                CASE WHEN w.reversal_id IS NOT NULL OR (o.id IS NOT NULL AND NOT o.active) THEN 'reversed'
+                     WHEN w.entry_id IS NOT NULL OR o.id IS NOT NULL THEN 'rewarded' ELSE 'waiting' END AS status
+                FROM growth_referrals r LEFT JOIN growth_wallet_rewards w ON w.referred_user_id=r.referred_user_id
+                LEFT JOIN growth_offers o ON o.reward_for_user_id=r.referred_user_id
+                WHERE r.inviter_user_id=%s ORDER BY r.created_at DESC,r.referred_user_id LIMIT 100''', (user['id'],)).fetchall()
             bound = conn.execute('SELECT 1 FROM growth_referrals WHERE referred_user_id=%s', (user['id'],)).fetchone()
             bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
             link = 'https://t.me/'+bot+'?start=ref_'+profile['code'] if re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot) else None
-            return {**settings, 'code':profile['code'], 'link':link, 'invited':count, 'bound':bool(bound), 'coupons':coupons}
+            return {**settings, 'code':profile['code'], 'link':link, 'invited':count, 'bound':bool(bound),
+                    'coupons':coupons, 'bonus_rewards':bonus, 'invitations':invitations}
         return db(action)
 
     @router.post('/growth/referral')
@@ -232,8 +246,10 @@ def router_for(get_dsn, get_user, require_admin):
         no_cache(response)
         def action(conn):
             admin_lock(conn, admin)
-            conn.execute('UPDATE growth_settings SET referrals_enabled=%s,reward_percent=%s,reward_days=%s',
-                         (payload.referrals_enabled, payload.reward_percent, payload.reward_days))
+            conn.execute('''UPDATE growth_settings SET referrals_enabled=%s,reward_percent=%s,reward_days=%s,
+                reward_mode=%s,reward_bonus_kopecks=%s''',
+                         (payload.referrals_enabled, payload.reward_percent, payload.reward_days,
+                          payload.reward_mode, payload.reward_bonus_kopecks))
             conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'growth_settings_changed',%s::jsonb)", (admin['id'], payload.model_dump_json()))
             return {'saved':True}
         return db(action)
