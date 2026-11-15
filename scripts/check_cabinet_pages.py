@@ -732,7 +732,8 @@ def main():
                         mini.locator('.cabinet-topbar .menu-toggle').click()
                         expect(mini.locator('.cabinet-sidebar')).to_have_class('cabinet-sidebar is-open')
                         assert mini.locator('.menu-close').bounding_box()['y']>=80
-                        mini.keyboard.press('Escape')
+                        mini.locator('.menu-close').click()
+                        expect(mini.locator('.cabinet-sidebar')).not_to_have_class('cabinet-sidebar is-open')
                     mini.evaluate("window.Telegram.WebApp.contentSafeAreaInset.top=64;window.__miniEvents.contentSafeAreaChanged()")
                     assert abs(mini.locator('.cabinet-topbar').bounding_box()['y']-88)<=1
                     mini.evaluate("window.Telegram.WebApp.safeAreaInset.top=32;window.__miniEvents.safeAreaChanged()")
