@@ -1799,6 +1799,11 @@ class PostgresIntegration(unittest.TestCase):
             self.assertEqual(diagnostic()['code'], 'binding_changed')
             with psycopg.connect(self.dsn) as conn:
                 conn.execute("UPDATE campaigns SET payment_status='awaiting_payment' WHERE id=%s", (f['campaign'],))
+                # Бесплатную одобренную кампанию БД автоматически подтверждает.
+                self.assertEqual(conn.execute('SELECT payment_status FROM campaigns WHERE id=%s', (f['campaign'],)).fetchone()[0], 'verified')
+            self.assertEqual(diagnostic()['code'], 'binding_changed')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET price_kopecks_snapshot=30000,payment_status='awaiting_payment' WHERE id=%s", (f['campaign'],))
             self.assertEqual(diagnostic()['code'], 'payment_pending')
             with psycopg.connect(self.dsn) as conn:
                 conn.execute("UPDATE campaigns SET moderation_status='pending' WHERE id=%s", (f['campaign'],))
