@@ -121,9 +121,9 @@
   const steps=el('ol');[['channels','Добавьте канал'],['create','Выберите тариф и дату'],['campaigns','Дождитесь модерации'],['payments','Оплатите и следите за запуском']].forEach(([route,text])=>{const li=el('li');li.append(link(text,route));steps.append(li);});aside.append(steps,link('Подробнее в справке','help'));
   layout.append(body,aside);page.append(layout);pages[name]=page;content[name]=body;stage.append(page);
  });
- const updatePanel=$('software-updates');pages.profile.insertBefore(updatePanel,stats.profile);
+ const updatePanel=$('software-updates');
  const updateNotice=el('section',undefined,'update-notice');updateNotice.id='software-update-notice';updateNotice.hidden=true;updateNotice.setAttribute('aria-label','Обновление приложения');updateNotice.setAttribute('role','status');
- const updateNoticeText=el('span');updateNoticeText.id='software-update-notice-text';updateNotice.append(updateNoticeText,link('Открыть обновления','profile'));bar.after(updateNotice);
+ const updateNoticeText=el('span');updateNoticeText.id='software-update-notice-text';const updateNoticeLink=link('Открыть обновления','profile/updates');updateNoticeLink.addEventListener('click',event=>{event.preventDefault();go('profile/updates');});updateNotice.append(updateNoticeText,updateNoticeLink);bar.after(updateNotice);
  // Перемещаем существующие формы вместе с обработчиками. Все id остаются уникальными.
  const channelPanel=$('channel-form').closest('section');content.channels.append(channelPanel);
  const channelList=section('Ваши каналы'),channelRows=el('div');channelList.classList.add('flat-section');channelList.append(channelRows);content.channels.prepend(channelList);
@@ -270,7 +270,7 @@
   channelRows.classList.add('channel-manager');
   window.pushokViews.channelCards(channelRows,channels);
   window.pushokViews.campaigns(summaryRows,state.campaigns.slice(0,3));renderList();
-  window.pushokViews.profile(content.profile);
+  window.pushokViews.profile(content.profile,updatePanel);
   if(['admin','operator'].includes(me.role))window.pushokViews.sponsors(sponsorQueue,operatorCampaigns);
   onboarding.hidden=sessionStorage.getItem('pushok-onboarding-hidden')==='1';
   createNotice.hidden=Boolean(tariffs.length);createNotice.textContent='Нет доступных тарифов. Обратитесь к администратору.';
@@ -397,7 +397,7 @@
  function go(route){if(location.hash==='#/'+route){activate();return;}location.hash='/'+route;}
  function activate(){
   if(!me||!state.ready)return;
-  let [name]=routeParts();
+  let [name,section]=routeParts();
   if(!permitted(name)){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}
   if($('notice').dataset.route!==location.hash)$('notice').hidden=true;
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
@@ -412,13 +412,17 @@
   if(me.role==='admin'&&['profile','dashboard'].includes(name))refreshSoftware();
   if(name==='settings')run(loadAdminSettings);
   if(miniAppMode)window.pushokMiniApp.syncNavigation();
+  if(name==='profile'&&section==='updates'&&me.role==='admin'){
+   window.scrollTo({top:window.scrollY+updatePanel.getBoundingClientRect().top-bar.getBoundingClientRect().height-16,behavior:'instant'});
+   $('software-updates-title').focus({preventScroll:true});
+  }
  }
  window.cabinet={go,back,sync(own){state.campaigns=own;state.loaded=true;document.body.dataset.cabinetLoaded='true';render();},enter(){
   const url=new URL(location.href),returned=url.searchParams.get('sbp_campaign');
   if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);
   nav.querySelectorAll('a').forEach(a=>a.hidden=!permitted(a.dataset.route));if($('management-menu'))$('management-menu').hidden=!['admin','operator'].includes(me.role);activate();
- },logout(){clearSoftware();$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
+ },logout(){clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   [$('order-result'),detail,dashboardPayments,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
