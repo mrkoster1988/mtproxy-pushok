@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import hmac
+import json
 import os
 import sys
 import tempfile
@@ -1698,3 +1699,119 @@ class PostgresIntegration(unittest.TestCase):
             self.assertFalse(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
             self.assertEqual(handle(conn,request)['state'],'idle')
         self.request('DELETE','/admin/promotion-bindings/'+str(f['node'])+'/'+str(f['channel']))
+
+    def test_promotion_legacy_ip_lookup_and_ambiguous_identity(self):
+        from app.promotion_runtime import handle
+        from psycopg.rows import dict_row
+        f = self._management_fixture(ready=True)
+        domain = 'promotion-' + f['node'].hex + '.example.org'
+        address = '203.0.113.77'
+        main.app.dependency_overrides[main.get_current_user] = lambda: {'id': f['admin'], 'role': 'admin'}
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE proxy_nodes SET host=%s WHERE id=%s', (address, f['node']))
+        tag = uuid4().hex
+        self.request('PUT', '/admin/promotion-bindings', json=dict(
+            node_id=str(f['node']), channel_id=str(f['channel']), ad_tag=tag,
+            telegram_binding_confirmed=True))
+        request = dict(host=domain, port=8443, resolved_host=address)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s", (f['node'], f['campaign']))
+            self.assertEqual(handle(conn, dict(host=domain, port=8443))['state'], 'idle')
+            plan = handle(conn, request)
+            self.assertEqual(plan['state'], 'apply')
+            self.assertEqual(plan['tag'], tag)
+            self.assertEqual(plan['node_id'], str(f['node']))
+            self.assertTrue(handle(conn, dict(request, action='ack', revision=plan['revision']))['accepted'])
+            self.assertEqual(handle(conn, dict(request, port=8444))['state'], 'idle')
+            conn.execute("UPDATE proxy_nodes SET status='paused' WHERE id=%s", (f['node'],))
+            self.assertEqual(handle(conn, request)['state'], 'idle')
+            conn.execute("UPDATE proxy_nodes SET status='active' WHERE id=%s", (f['node'],))
+            conn.execute('UPDATE channel_promotion_bindings SET node_host=%s WHERE proxy_node_id=%s', ('changed.example.org', f['node']))
+            self.assertEqual(handle(conn, request)['state'], 'idle')
+            conn.execute('UPDATE channel_promotion_bindings SET node_host=%s WHERE proxy_node_id=%s', (address, f['node']))
+            conn.execute("INSERT INTO proxy_nodes(name,host,port,status) VALUES('Ambiguous',%s,8443,'active')", (domain,))
+            self.assertEqual(handle(conn, request)['state'], 'idle')
+            self.assertFalse(handle(conn, dict(request, action='ack', revision=plan['revision']))['accepted'])
+            conn.execute("UPDATE proxy_nodes SET status='paused' WHERE host=%s AND port=8443", (domain,))
+
+    def test_repair_registration_reuses_ip_and_preserves_domain(self):
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        import repair_proxy
+        def execute_registration(root, args, **kwargs):
+            # Те же SQL и значения, которые repair передаёт psql через stdin.
+            host, address, port = args[-3:]
+            statement = kwargs['input'].decode()
+            statement = statement.replace(":'pushok_host'", '%(host)s')
+            statement = statement.replace(":'pushok_ip'", '%(address)s')
+            statement = statement.replace(":'pushok_port'", '%(port)s')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute(statement, dict(host=host, address=address, port=port))
+        domain = 'repair-' + uuid4().hex + '.example.org'
+        address = '203.0.113.78'
+        with patch.object(repair_proxy, 'run', side_effect=execute_registration):
+            repair_proxy.register_proxy_node(ROOT, domain, address, 18443)
+            repair_proxy.register_proxy_node(ROOT, domain, address, 18443)
+        with psycopg.connect(self.dsn) as conn:
+            rows = conn.execute('SELECT host,status FROM proxy_nodes WHERE port=18443 AND host IN (%s,%s)', (domain,address)).fetchall()
+            self.assertEqual(rows, [(domain, 'paused')])
+        f = self._management_fixture(ready=True)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE proxy_nodes SET host=%s WHERE id=%s', (address, f['node']))
+            before = conn.execute('SELECT id,status FROM proxy_nodes WHERE host=%s AND port=8443', (address,)).fetchall()
+        with patch.object(repair_proxy, 'run', side_effect=execute_registration):
+            repair_proxy.register_proxy_node(ROOT, domain, address, 8443)
+        with psycopg.connect(self.dsn) as conn:
+            after = conn.execute('SELECT id,status FROM proxy_nodes WHERE port=8443 AND host IN (%s,%s)', (domain,address)).fetchall()
+            self.assertEqual(after, before)
+
+    def test_promotion_diagnostics_explains_readiness_without_claiming_runtime(self):
+        f = self._management_fixture(ready=True)
+        main.app.dependency_overrides[main.get_current_user] = lambda: {'id': f['admin'], 'role': 'admin'}
+        path = '/admin/promotion-diagnostics'
+        def diagnostic():
+            report = self.request('GET', path)
+            self.assertFalse(report['display_verified'])
+            self.assertEqual(report['agent']['status'], 'unknown')
+            return next(n for n in report['nodes'] if n['node_id'] == str(f['node']))
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'PUSHOK_CONTROL_DIR': directory}):
+            self.assertEqual(diagnostic()['code'], 'binding_missing')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE proxy_nodes SET status='paused' WHERE id=%s", (f['node'],))
+            self.assertEqual(diagnostic()['code'], 'node_paused')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE proxy_nodes SET status='active' WHERE id=%s", (f['node'],))
+            tag = uuid4().hex
+            self.request('PUT', '/admin/promotion-bindings', json=dict(node_id=str(f['node']), channel_id=str(f['channel']), ad_tag=tag, telegram_binding_confirmed=True))
+            self.assertEqual(diagnostic()['code'], 'no_current_campaign')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()+interval '1 hour',scheduled_end_at=now()+interval '2 hours' WHERE id=%s", (f['node'], f['campaign']))
+            future = diagnostic()
+            self.assertEqual(future['code'], 'waiting_start')
+            self.assertIn('next_start_at', future)
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s", (f['campaign'],))
+                before = conn.execute('SELECT count(*) FROM audit_events').fetchone()[0]
+            self.assertEqual(diagnostic()['code'], 'ready')
+            self.assertNotIn(tag, json.dumps(self.request('GET', path)))
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(before, conn.execute('SELECT count(*) FROM audit_events').fetchone()[0])
+                conn.execute('UPDATE channel_promotion_bindings SET node_host=%s WHERE proxy_node_id=%s', ('changed.example.org', f['node']))
+            self.assertEqual(diagnostic()['code'], 'binding_changed')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET payment_status='awaiting_payment' WHERE id=%s", (f['campaign'],))
+                # Бесплатную одобренную кампанию БД автоматически подтверждает.
+                self.assertEqual(conn.execute('SELECT payment_status FROM campaigns WHERE id=%s', (f['campaign'],)).fetchone()[0], 'verified')
+            self.assertEqual(diagnostic()['code'], 'binding_changed')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET price_kopecks_snapshot=30000,payment_status='awaiting_payment' WHERE id=%s", (f['campaign'],))
+            self.assertEqual(diagnostic()['code'], 'payment_pending')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET moderation_status='pending' WHERE id=%s", (f['campaign'],))
+            self.assertEqual(diagnostic()['code'], 'moderation_pending')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET moderation_status='approved',payment_status='verified',placement_status='active' WHERE id=%s", (f['campaign'],))
+            self.assertEqual(diagnostic()['code'], 'manual_placement_active')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '2 hours',scheduled_end_at=now()-interval '1 hour' WHERE id=%s", (f['campaign'],))
+            self.assertEqual(diagnostic()['code'], 'period_ended')
+

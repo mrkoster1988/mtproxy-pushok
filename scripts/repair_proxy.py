@@ -10,6 +10,21 @@ from pathlib import Path
 from staging_preflight import parse_env
 from installer_runtime import run
 
+
+def register_proxy_node(root, host, public, port):
+    # Сохраняем имя из env. Старую IP-запись с кампаниями и тегами оставляем.
+    # Значения передаются psql как переменные, а не вставляются в SQL/оболочку.
+    sql = """INSERT INTO proxy_nodes(name,host,port,status)
+        SELECT 'Основной MTProxy', :'pushok_host', :'pushok_port'::integer, 'paused'
+        WHERE NOT EXISTS (SELECT 1 FROM proxy_nodes
+            WHERE host IN (:'pushok_host', :'pushok_ip') AND port=:'pushok_port'::integer)
+        ON CONFLICT(host,port) DO NOTHING;"""
+    run(root, ['exec','-T','db','sh','-c',
+              'exec psql -X -v ON_ERROR_STOP=1 -v pushok_host="$1" -v pushok_ip="$2" -v pushok_port="$3" -U "$POSTGRES_USER" -d "$POSTGRES_DB"',
+              'pushok-register-node',host,public,str(port)],
+        input=sql.encode(), stdout=subprocess.DEVNULL)
+
+
 def main():
     env = Path('/etc/mtproxy-pushok/mtproxy.env')
     binary = Path('/opt/MTProxy/objs/bin/mtproto-proxy')
@@ -19,7 +34,7 @@ def main():
     cfg = parse_env(env.read_text())
     routes = json.loads(subprocess.check_output(['ip','-j','-4','route','get','1.1.1.1'], text=True))
     local = str(ipaddress.IPv4Address(routes[0]['prefsrc']))
-    host = cfg['MT_PROXY_HOST']
+    host = cfg['MT_PROXY_HOST'].strip().lower()
     public = str(ipaddress.IPv4Address(socket.gethostbyname(host)))
     if not ipaddress.ip_address(public).is_global:
         raise RuntimeError('Proxy host must resolve to a public IPv4')
@@ -53,11 +68,11 @@ def main():
         if not 1 <= port <= 65535:
             raise ValueError('Invalid proxy port')
         # Реестр не является подтверждением передачи сообщений. Новый узел на паузе.
-        sql = "INSERT INTO proxy_nodes(name,host,port,status) VALUES ('Основной MTProxy','%s',%d,'paused') ON CONFLICT(host,port) DO NOTHING;" % (public, port)
-        run(root, ['exec','-T','db','sh','-c','exec psql -X -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'], input=sql.encode(), stdout=subprocess.DEVNULL)
+        register_proxy_node(root,host,public,port)
     if root == Path('/opt/mtproxy-pushok') and (root / '.env').exists():
         subprocess.run(['bash', str(root / 'scripts/install_promotion_agent.sh')], check=True)
     print('MTProxy route configured; Telegram message delivery still requires a client check.')
 
 if __name__ == '__main__':
     main()
+

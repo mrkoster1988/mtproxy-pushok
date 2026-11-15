@@ -159,6 +159,35 @@
  const detail=el('div');content.campaign.append(link('← Все кампании','campaigns'),detail);
  content.moderation.append($('queue-filter'),$('queue-count'),$('queue'));
  const operatorNodes=el('div');content.sponsors.append($('node-admin'),operatorNodes);
+ const diagnosticsPanel=section('Диагностика спонсорского показа'),diagnosticsBody=el('div');
+ diagnosticsPanel.id='promotion-diagnostics';diagnosticsPanel.hidden=true;
+ diagnosticsBody.setAttribute('aria-live','polite');
+ diagnosticsPanel.append(el('p','Готовность по данным кабинета и последний ответ агента проверяются отдельно. Применение тега не подтверждает фактический показ канала.','muted'),button('Обновить диагностику',renderDiagnostics),diagnosticsBody);
+ content.sponsors.prepend(diagnosticsPanel);
+ let diagnosticsRevision=0;
+ async function renderDiagnostics(){
+  diagnosticsPanel.hidden=me?.role!=='admin';if(me?.role!=='admin')return;
+  const rev=++diagnosticsRevision,session=token;diagnosticsBody.replaceChildren(el('p','Проверяем состояние…'));
+  try{
+   const data=await api('/admin/promotion-diagnostics');
+   if(rev!==diagnosticsRevision||token!==session||me?.role!=='admin')return;
+   const agent=el('div',undefined,'card');agent.id='promotion-agent-report';agent.dataset.status=data.agent.status;
+   agent.append(el('h3','Последний ответ агента'),el('p',data.agent.title),el('p',data.agent.next_action,'muted'));
+   if(data.agent.checked_at)agent.append(el('p','Время ответа: '+date(data.agent.checked_at),'muted'));
+   if(data.agent.host)agent.append(el('p','Адрес агента: '+data.agent.host+(data.agent.port?':'+data.agent.port:''),'muted'));
+   if(data.agent.last_title)agent.append(el('p','Последний результат: '+data.agent.last_title,'muted'));
+   diagnosticsBody.replaceChildren(agent);
+   const plans=el('div',undefined,'cards');
+   for(const item of data.nodes){
+    const card=el('div',undefined,'card');card.dataset.diagnosticCode=item.code;
+    card.append(el('h3',item.name),el('p',item.host+':'+item.port,'muted'),el('p','По данным кабинета: '+item.title),el('p',item.next_action));
+    if(item.next_start_at)card.append(el('p','Начало: '+date(item.next_start_at),'muted'));
+    plans.append(card);
+   }
+   diagnosticsBody.append(plans);
+   if(!data.nodes.length)diagnosticsBody.append(el('p','В реестре нет узлов. Добавьте узел или восстановите его из архива.'));
+  }catch(e){if(rev===diagnosticsRevision&&token===session&&me?.role==='admin')diagnosticsBody.replaceChildren(el('p','Диагностика недоступна: '+e.message));}
+ }
  const sponsorForm=el('form'),sponsorPanel=section('Регистрация спонсорского тега');sponsorForm.id='sponsor-form';
  const sponsorNode=el('select');sponsorNode.required=true;sponsorNode.setAttribute('aria-label','Узел спонсорского тега');
  const sponsorEngine=el('select');sponsorEngine.setAttribute('aria-label','Движок спонсорского тега');Object.entries(engineTitles).forEach(([v,t])=>option(sponsorEngine,v,t));
@@ -177,6 +206,7 @@
  content.sponsors.append(automationPanel);
  let automationRevision=0;
  async function renderAutomation(){
+  void renderDiagnostics();
   automationPanel.hidden=me?.role!=='admin';if(me?.role!=='admin')return;
   const rev=++automationRevision,session=token;automationBody.replaceChildren(el('p','Загрузка…'));
   try{
@@ -379,7 +409,7 @@
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);
   nav.querySelectorAll('a').forEach(a=>a.hidden=!permitted(a.dataset.route));if($('management-menu'))$('management-menu').hidden=!['admin','operator'].includes(me.role);activate();
  },logout(){$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
-  [$('order-result'),detail,dashboardPayments,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list')].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());
+  [$('order-result'),detail,dashboardPayments,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['settings-stars-counts','settings-stars-status','settings-sbp-status','launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());

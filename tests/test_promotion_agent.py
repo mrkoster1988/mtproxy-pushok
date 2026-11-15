@@ -54,6 +54,49 @@ class AgentTests(unittest.TestCase):
         with patch.object(agent,'exchange',side_effect=[dict(state='idle',revision='c'*64),{'accepted':True}]),patch.object(agent,'apply') as apply:
             agent.tick();apply.assert_not_called()
 
+    def test_domain_tick_preserves_identity_for_plan_and_ack(self):
+        self.env.write_text(self.env.read_text().replace('45.90.57.136', 'MtProxy.Example.org'))
+        with patch.object(agent.socket, 'gethostbyname', return_value='203.0.113.77'), \
+             patch.object(agent, 'exchange', side_effect=[self.plan, {'accepted': True}]) as exchange, \
+             patch.object(agent, 'apply') as apply:
+            agent.tick()
+        request = exchange.call_args_list[0].args[0]
+        self.assertEqual(request, dict(host='mtproxy.example.org', port=8443, resolved_host='203.0.113.77'))
+        self.assertEqual(exchange.call_args_list[1].args[0], dict(request, action='ack', revision=self.plan['revision']))
+        apply.assert_called_once_with('b'*32)
+
+    def test_ip_identity_does_not_require_dns(self):
+        with patch.object(agent.socket, 'gethostbyname') as resolve:
+            self.assertEqual(agent.node_request(agent.parse_env(self.env.read_text())),
+                             dict(host='45.90.57.136', port=8443))
+        resolve.assert_not_called()
+
+    def test_dns_failure_keeps_exact_domain_lookup(self):
+        cfg = dict(MT_PROXY_HOST='mtproxy.example.org', MT_PROXY_PORT='8443')
+        with patch.object(agent.socket, 'gethostbyname', side_effect=OSError):
+            self.assertEqual(agent.node_request(cfg), dict(host='mtproxy.example.org', port=8443))
+
+    def test_full_tick_applies_and_restores_files_after_cancel(self):
+        process = {'tag': 'a'*32}
+        def systemctl(*args):
+            if args == ('systemctl', 'restart', agent.SERVICE):
+                process['tag'] = agent.parse_env(self.env.read_text())['MT_PROXY_TAG']
+            return ''
+        idle = dict(state='idle', revision='d'*64)
+        with patch.object(agent, 'exchange', side_effect=[self.plan, {'accepted': True}, idle, {'accepted': True}]), \
+             patch.object(agent, 'running_tag', side_effect=lambda: process['tag']), \
+             patch.object(agent, 'command', side_effect=systemctl), \
+             patch.object(agent.socket, 'create_connection'):
+            agent.tick()
+            self.assertEqual(process['tag'], 'b'*32)
+            self.assertEqual(agent.parse_env(self.env.read_text())['MT_PROXY_TAG'], 'b'*32)
+            self.assertEqual(json.loads(self.state.read_text())['baseline'], 'a'*32)
+            agent.tick()
+        self.assertEqual(process['tag'], 'a'*32)
+        self.assertEqual(agent.parse_env(self.env.read_text())['MT_PROXY_TAG'], 'a'*32)
+        self.assertIn('MT_PROXY_SECRET=keep-this', self.env.read_text())
+        self.assertFalse(self.state.exists())
+
     def test_expired_plan_rejected(self):
         for changes in [dict(expires_at=time.time()-1),dict(tag='0'*32),dict(revision='bad')]:
             with self.assertRaises(ValueError):agent.validate_plan(dict(self.plan,**changes))
@@ -95,3 +138,4 @@ class AgentTests(unittest.TestCase):
                 agent.apply('b'*32)
         self.assertEqual(self.env.read_text(),original)
         self.assertEqual(sum(c.args==('systemctl','restart',agent.SERVICE) for c in cmd.call_args_list),2)
+

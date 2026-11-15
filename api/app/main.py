@@ -41,6 +41,7 @@ from .report_export import render_campaign_csv
 from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness
 from . import sbp_checkout, sbp_admin, stars_checkout
+from .promotion_diagnostics import diagnostics as promotion_diagnostics
 from .miniapp_auth import validate_init_data
 from .sbp_webhook import router as sbp_webhook_router
 from .sbp_provider import SBPProviderError
@@ -2657,6 +2658,16 @@ def promotion_bindings(admin: dict = Depends(require_admin)):
             'runtime': conn.execute('''SELECT r.proxy_node_id,n.name,r.campaign_id,r.state,r.checked_at
                 FROM promotion_runtime r JOIN proxy_nodes n ON n.id=r.proxy_node_id''').fetchall(),
         }
+
+
+@app.get('/api/v1/admin/promotion-diagnostics', tags=['admin'])
+def read_promotion_diagnostics(admin: dict = Depends(require_admin)):
+    try:
+        with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row,
+                             options='-c statement_timeout=5000') as conn:
+            return promotion_diagnostics(conn)
+    except psycopg.Error as exc:
+        raise HTTPException(503, 'database_unavailable') from exc
 
 
 @app.put('/api/v1/admin/promotion-bindings', tags=['admin'])
