@@ -783,6 +783,8 @@ def main():
                 expect(admin.locator('.help-popup')).to_be_hidden()
                 admin.evaluate('window.scrollTo(0,0)')
                 go(advertiser,'channels')
+                for summary in advertiser.locator('.channel-tools:not([open]) summary').all():
+                    summary.click()
                 expect(advertiser.locator('.channel-manager').get_by_role('button',name='✏️ Изменить',exact=True)).to_have_count(3)
                 for width in (390,320):
                     advertiser.set_viewport_size({'width':width,'height':844})
