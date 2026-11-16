@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from typing import Literal
 from uuid import UUID
 import psycopg
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, Query, Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from . import wallet_ledger as ledger, wallet_topups as topups, wallet_controls as controls, wallet_history
 from .bot_stars import StarsPrecheckoutInput, StarsReceiptInput, authorize
@@ -78,7 +78,7 @@ def csv_cell(value):
 
 
 def router_for(dsn,current_user,require_admin):
-    from . import wallet_gifts as gifts
+    from . import wallet_gifts as gifts, gift_sharing
     router=APIRouter()
     @contextmanager
     def db():
@@ -162,6 +162,30 @@ def router_for(dsn,current_user,require_admin):
     def gift_report(gid:UUID,response:Response,page:int=Query(default=0,ge=0,le=100000),admin=Depends(require_admin)):
         response.headers['Cache-Control']='private, no-store'
         with db() as conn:return gifts.report(conn,gid,page=page)
+
+    @router.get('/api/v1/certificates/bonus/v1/{amount}.jpg')
+    def gift_image(amount:int=Path(ge=1,le=1000000)):
+        return Response(gift_sharing.certificate(amount),media_type='image/jpeg',
+                        headers={'Cache-Control':'public, max-age=86400','X-Content-Type-Options':'nosniff','X-Robots-Tag':'noindex, noarchive'})
+
+    @router.post('/api/v1/admin/wallet/gifts/{gid}/share')
+    def share_gift(gid:UUID,response:Response,prepare:bool=False,admin=Depends(require_admin)):
+        response.headers['Cache-Control']='private, no-store'
+        gift_sharing.throttle(admin['id'])
+        with db() as conn:
+            admin_lock(conn,admin)
+            controls.require_enabled(conn)
+            actor=conn.execute('SELECT telegram_user_id FROM users WHERE id=%s',(admin['id'],)).fetchone()
+            gift=conn.execute('SELECT g.*,(SELECT count(*) FROM wallet_gift_redemptions r WHERE r.gift_id=g.id) AS used FROM wallet_gifts g WHERE id=%s',(gid,)).fetchone()
+            if not gift:raise HTTPException(404,'wallet_gift_unavailable')
+            data=gift_sharing.share_data(gift)
+        # Внешний запрос не держит транзакцию/блокировки и ничего не отправляет в чат.
+        data['message_id']=None
+        if prepare:
+            try:data['message_id']=gift_sharing.prepare_message(actor['telegram_user_id'],gift,data)
+            except HTTPException as exc:
+                if exc.status_code!=503:raise
+        return data
 
     @router.get('/api/v1/admin/wallet/gifts/{gid}/export')
     def gift_export(gid:UUID,admin=Depends(require_admin)):
