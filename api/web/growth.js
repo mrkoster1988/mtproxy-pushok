@@ -1,6 +1,6 @@
 'use strict';
 window.pushokGrowth=(()=>{
- let epoch=0,target=null;
+ let epoch=0,target=null,overviewEpoch=0;
  Object.assign(errors,{
   growth_free_tariff:'Для бесплатного тарифа код не нужен. Выберите платный тариф или уберите код.',
   growth_code_unavailable:'Код недоступен: проверьте тариф, срок действия и лимит использований.',
@@ -9,7 +9,8 @@ window.pushokGrowth=(()=>{
   growth_tariff_locked:'В этой заявке уже использован бонус. Её тариф изменить нельзя; дату и канал можно исправить.',
   growth_referrals_disabled:'Реферальная программа сейчас выключена.',growth_invitation_unavailable:'Это приглашение недоступно.',
   growth_invitation_already_bound:'Для вашего аккаунта уже сохранено другое приглашение.',
-  growth_invitation_before_order:'Приглашение можно принять только до первой заявки.'
+  growth_invitation_before_order:'Приглашение можно принять только до первой заявки.',
+  growth_link_unavailable:'Не удалось подготовить ссылку. Повторите чуть позже.'
  });
  function field(form,label,type,value='',required=false){
   const box=el('label',label),input=el(type==='select'?'select':'input');
@@ -61,6 +62,26 @@ window.pushokGrowth=(()=>{
   else p.append(el('p','Последние 100 приглашений. Для каждого сохранены условия на момент принятия.','muted'));
   mine.invitations.forEach(r=>{const row=el('article',undefined,'card');row.append(el('h3',({waiting:'Ожидается оплаченное и завершённое размещение',rewarded:'Награда выдана',reversed:'Награда отменена после возврата'})[r.status]),el('p',rewardDescription(r)),el('p','Приглашение принято: '+date(r.created_at),'muted'));p.append(row);});root.append(p);
  }
+ function referralLink(root,mine){
+  if(!mine.referrals_enabled||!mine.link)return;
+  const row=el('div',undefined,'referral-link-row'),link=el('a',mine.link.replace(/^https:\/\//,''),'referral-link');
+  link.href=mine.link;link.target='_blank';link.rel='noopener noreferrer';link.setAttribute('aria-label','Ваша ссылка для друзей');
+  const actions=el('div',undefined,'referral-actions');
+  const copy=window.pushokViews.iconAction(button('',async()=>{await navigator.clipboard.writeText(mine.link);notice('Ссылка скопирована.',true);}), 'copy','Скопировать реферальную ссылку');
+  const share=el('a','','ui-button');share.href='https://t.me/share/url?url='+encodeURIComponent(mine.link)+'&text='+encodeURIComponent('Приглашаю в puShok — размещайте рекламу своего канала в Telegram.');share.target='_blank';share.rel='noopener noreferrer';
+  window.pushokViews.iconAction(share,'share','Поделиться реферальной ссылкой');
+  share.addEventListener('click',event=>{if(miniAppMode&&typeof window.Telegram?.WebApp?.openTelegramLink==='function'){event.preventDefault();window.Telegram.WebApp.openTelegramLink(share.href);}});
+  actions.append(copy,share);row.append(link,actions);root.append(row);
+ }
+ async function overview(node){
+  if(!node||!me)return;const version=++overviewEpoch,session=token,uid=me.id;node.replaceChildren(el('p','Загружаем приглашение…','muted'));
+  try{
+   const mine=await api('/growth/me');if(version!==overviewEpoch||session!==token||uid!==me?.id)return;
+   const card=el('section',undefined,'referral-overview'),head=el('div',undefined,'section-heading'),title=el('h2','Приглашайте друзей');title.prepend(window.pushokViews.icon('users'));head.append(title);card.append(head);
+   card.append(el('p',mine.referrals_enabled?'За первое оплаченное рублями и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены.','muted'));
+   referralLink(card,mine);const info=el('div',undefined,'referral-meta'),more=el('a','Бонусы и условия');more.href='#/growth';info.append(el('span','Приглашено: '+mine.invited),more);card.append(info);node.replaceChildren(card);
+  }catch(e){if(version===overviewEpoch&&session===token&&uid===me?.id)node.replaceChildren(el('p','Не удалось загрузить приглашение.','muted'),button('Повторить',()=>overview(node)));}
+ }
  async function load(node){
   if(!node||!me)return;target=node;const version=++epoch,session=token,uid=me.id;node.replaceChildren(el('p','Загружаем бонусы…'));
   try{
@@ -69,7 +90,7 @@ window.pushokGrowth=(()=>{
    root.append(window.pushokViews.mascot(mine.referrals_enabled?'Делитесь приглашением и получайте награду за первое оплаченное рублями и завершённое размещение друга.':'Здесь собраны ваши приглашения, купоны и подарочные размещения.'));
    p.append(el('p',mine.referrals_enabled?'Для новых приглашений: за первое оплаченное рублями и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены администратором.'),el('p','Приглашено: '+mine.invited));
    if(mine.reward_mode==='bonus')p.append(el('p','Бонусами можно оплатить рублёвое размещение на сайте. Они не обмениваются на Stars и не выводятся. Бесплатные, тестовые и полностью бонусные оплаты друга не дают награду. При возврате оплаты награда отменяется, даже если бонусы уже потрачены.','muted'));
-   if(mine.referrals_enabled&&mine.link){const input=field(p,'Ваша ссылка для друзей','text',mine.link);input.readOnly=true;input.addEventListener('click',()=>input.select());p.append(el('p','Друг должен открыть эту ссылку и нажать «Запустить» до создания первой заявки. Это приглашение в рекламный кабинет.','muted'));}
+   referralLink(p,mine);if(mine.referrals_enabled&&mine.link)p.append(el('p','Друг должен открыть эту ссылку и нажать «Запустить» до создания первой заявки. Это приглашение в рекламный кабинет.','muted'));
    if(!mine.bound&&mine.referrals_enabled){const form=el('form'),code=field(form,'Код пригласившего вас пользователя','text','',true);code.maxLength=48;save(form,'Принять приглашение');bind(form,()=>api('/growth/referral',{method:'POST',body:{code:code.value}}));p.append(form);}
    root.append(p);invitationList(root,mine);
    const rewards=panel('Мои купоны');if(!mine.coupons.length)rewards.append(el('p','Бонусных купонов пока нет.'));
@@ -80,5 +101,5 @@ window.pushokGrowth=(()=>{
    node.replaceChildren(root);
   }catch(e){if(version===epoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить',()=>load(node)));}
  }
- return {load,reset(){epoch++;if(target)target.replaceChildren();target=null;}};
+ return {load,overview,reset(){epoch++;overviewEpoch++;if(target)target.replaceChildren();target=null;}};
 })();

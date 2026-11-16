@@ -56,21 +56,20 @@ def miniapp_url():
 def keyboard():
     result = {"inline_keyboard": [
         [{"text": "📢 Разместить рекламу", "callback_data": "advertise"}],
-        [{"text": "📋 Мои кампании", "callback_data": "campaigns"},
-         {"text": "💎 Тарифы", "callback_data": "tariffs"}],
-        [{"text": "📣 Наш канал", "url": CHANNEL_URL}],
-        [{"text": "❓ Помощь", "callback_data": "help"}],
+        [{"text": "📋 Мои кампании", "callback_data": "campaigns"}],
+        [{"text": "📣 Наш канал", "url": CHANNEL_URL},
+         {"text": "❓ Помощь", "callback_data": "help"}],
     ]}
     url = miniapp_url()
     proxy = current_proxy_url()
     if url:
         result['inline_keyboard'][0] = [{'text': '📢 Разместить рекламу', 'web_app': {'url': url + '#/create'}}]
     if proxy:
-        result['inline_keyboard'].insert(0, [{'text': '🔗 Подключить прокси', 'url': proxy}])
+        result['inline_keyboard'].insert(0, [{'text': '🔗 Подключить прокси', 'url': proxy, 'style': 'danger'}])
     # Необязательные фирменные иконки; без реальных IDs структура кнопок не меняется.
     icons = configured_icons()
     # Один стиль на всё меню: неполный набор не смешиваем с обычными эмодзи.
-    required = {"advertise", "campaigns", "tariffs", "channels", "help"}
+    required = {"advertise", "campaigns", "channels", "help"}
     if proxy:
         required.add('miniapp')
     if not required.issubset(icons):
@@ -531,7 +530,7 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
     actor = (callback or message).get('from') or {}
     command = str(message.get('text') or '').split(maxsplit=1)
     command = command[0].lower() if command else ''
-    invite = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+ref_([A-Za-z0-9_-]{3,48})', str(message.get('text') or ''), re.IGNORECASE)
+    invite = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+(?:ref_|r_)([A-Za-z0-9_-]{3,48})', str(message.get('text') or ''), re.IGNORECASE)
     if invite and referral_handler and chat.get('type') == 'private' and type(actor.get('id')) is int and actor['id'] == chat.get('id'):
         try:
             referral_handler(actor['id'], invite[1])

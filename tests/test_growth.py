@@ -42,6 +42,10 @@ class GrowthPrices(unittest.TestCase):
         result=response_for(update,referral_handler=handler)
         handler.assert_called_once_with(123,'ABCDEF')
         self.assertIn('Приглашение сохранено',result[0]['text'])
+        handler.reset_mock();update['message']['text']='/start r_ABCDEFGH'
+        result=response_for(update,referral_handler=handler)
+        handler.assert_called_once_with(123,'ABCDEFGH')
+        self.assertIn('Приглашение сохранено',result[0]['text'])
         update['message']['chat']['type']='group'
         handler.reset_mock();response_for(update,referral_handler=handler);handler.assert_not_called()
 
@@ -63,6 +67,40 @@ class GrowthIntegration(unittest.TestCase):
         self.actor={'id':self.admin,'role':'admin'}
         main.app.dependency_overrides[main.get_current_user]=lambda:self.actor
         self.addCleanup(main.app.dependency_overrides.clear)
+
+    def test_short_link_is_stable_and_legacy_invitation_still_works(self):
+        self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':30})
+        self.actor={'id':self.owner,'role':'advertiser'}
+        mine=self.request('GET','/growth/me')
+        self.assertRegex(mine['code'],r'^[A-Z2-9]{8}$')
+        self.assertTrue(mine['link'].endswith('?start=r_'+mine['code']))
+        self.assertEqual(self.request('GET','/growth/me')['link'],mine['link'])
+        with psycopg.connect(self.dsn) as conn:
+            legacy=conn.execute('SELECT code FROM growth_profiles WHERE user_id=%s',(self.owner,)).fetchone()[0]
+        self.assertEqual(len(legacy),32)
+        self.request('POST','/growth/referral',409,json={'code':mine['code']})
+        self.actor={'id':self.friend,'role':'advertiser'}
+        self.request('POST','/growth/referral',json={'code':mine['code'].lower()})
+        self.request('POST','/growth/referral',json={'code':legacy})
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT inviter_user_id FROM growth_referrals WHERE referred_user_id=%s',(self.friend,)).fetchone()[0],self.owner)
+
+    def test_short_alias_collision_and_concurrent_creation(self):
+        from psycopg.rows import dict_row
+        from app.growth import short_referral_code
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            conn.execute('INSERT INTO growth_profiles(user_id) VALUES(%s)',(self.owner,))
+            conn.execute("INSERT INTO growth_profiles(user_id,code) VALUES(%s,'JKLMNPQR')",(self.friend,))
+            conn.execute("INSERT INTO growth_referral_links(user_id,code) VALUES(%s,'ABCDEFGH')",(self.friend,))
+            with patch('app.growth.secrets.choice',side_effect=list('ABCDEFGHJKLMNPQRSTUVWXY2')):
+                self.assertEqual(short_referral_code(conn,self.owner),'STUVWXY2')
+            conn.execute('INSERT INTO growth_profiles(user_id) VALUES(%s)',(self.admin,))
+        def create():
+            with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+                return short_referral_code(conn,self.admin)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            results=list(pool.map(lambda _:create(),range(4)))
+        self.assertEqual(len(set(results)),1)
 
     def offer(self,kind='promo',**kw):
         body={'kind':kind,'name':'Тестовый бонус','percent':20,'tariff_id':str(self.tariff),'code':'P'+uuid4().hex.upper(),'total_limit':1}

@@ -3,6 +3,7 @@ import hashlib
 import json
 import os
 import re
+import secrets
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID
@@ -132,13 +133,31 @@ def quote(conn, user, tariff, code=None, *, lock=False):
     return result
 
 
+def short_referral_code(conn, uid):
+    """Стабильный короткий псевдоним; коллизия и параллельный запрос не меняют владельца."""
+    row = conn.execute('SELECT code FROM growth_referral_links WHERE user_id=%s', (uid,)).fetchone()
+    if row:
+        return row['code']
+    for _ in range(10):
+        code = ''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZ23456789') for _ in range(8))
+        row = conn.execute('''INSERT INTO growth_referral_links(code,user_id)
+            SELECT %s,%s WHERE NOT EXISTS(SELECT 1 FROM growth_profiles WHERE code=%s)
+            ON CONFLICT DO NOTHING RETURNING code''', (code,uid,code)).fetchone()
+        if not row:
+            row = conn.execute('SELECT code FROM growth_referral_links WHERE user_id=%s', (uid,)).fetchone()
+        if row:
+            return row['code']
+    raise HTTPException(503, 'growth_link_unavailable')
+
+
 def claim_referral(conn, uid, code):
     conn.execute('SELECT pg_advisory_xact_lock(736102484)')
     conn.execute('SELECT id FROM users WHERE id=%s FOR UPDATE', (uid,))
     settings = conn.execute('SELECT * FROM growth_settings').fetchone()
     if not settings['referrals_enabled']:
         raise HTTPException(409, 'growth_referrals_disabled')
-    inviter = conn.execute('SELECT user_id FROM growth_profiles WHERE code=%s', (normalize_code(code),)).fetchone()
+    inviter = conn.execute('''SELECT user_id FROM growth_profiles WHERE code=%s
+        UNION SELECT user_id FROM growth_referral_links WHERE code=%s''', (normalize_code(code),normalize_code(code))).fetchone()
     if not inviter or inviter['user_id'] == uid:
         raise HTTPException(409, 'growth_invitation_unavailable')
     old = conn.execute('SELECT inviter_user_id FROM growth_referrals WHERE referred_user_id=%s', (uid,)).fetchone()
@@ -195,7 +214,7 @@ def router_for(get_dsn, get_user, require_admin):
         no_cache(response)
         def action(conn):
             conn.execute('INSERT INTO growth_profiles(user_id) VALUES(%s) ON CONFLICT DO NOTHING', (user['id'],))
-            profile = conn.execute('SELECT code FROM growth_profiles WHERE user_id=%s', (user['id'],)).fetchone()
+            code = short_referral_code(conn, user['id'])
             settings = conn.execute('SELECT * FROM growth_settings').fetchone()
             coupons = conn.execute('''SELECT o.id,o.name,o.code,o.percent,o.ends_at,o.active,
                 EXISTS(SELECT 1 FROM growth_redemptions d WHERE d.offer_id=o.id) AS used
@@ -213,8 +232,8 @@ def router_for(get_dsn, get_user, require_admin):
                 WHERE r.inviter_user_id=%s ORDER BY r.created_at DESC,r.referred_user_id LIMIT 100''', (user['id'],)).fetchall()
             bound = conn.execute('SELECT 1 FROM growth_referrals WHERE referred_user_id=%s', (user['id'],)).fetchone()
             bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
-            link = 'https://t.me/'+bot+'?start=ref_'+profile['code'] if re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot) else None
-            return {**settings, 'code':profile['code'], 'link':link, 'invited':count, 'bound':bool(bound),
+            link = 'https://t.me/'+bot+'?start=r_'+code if re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot) else None
+            return {**settings, 'code':code, 'link':link, 'invited':count, 'bound':bool(bound),
                     'coupons':coupons, 'bonus_rewards':bonus, 'invitations':invitations}
         return db(action)
 
