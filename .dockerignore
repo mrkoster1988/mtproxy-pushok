@@ -8,3 +8,8 @@ backups
 
 .build/
 .backups/
+**/*.session
+**/*.session-journal
+**/*.session-wal
+**/*.session-shm
+**/telegram-owner/
