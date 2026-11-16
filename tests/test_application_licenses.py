@@ -26,6 +26,20 @@ class LicenseCryptoTests(unittest.TestCase):
         with self.assertRaises(ValueError):crypto.check_request(signed)
         with self.assertRaises(ValueError):crypto.check_request(crypto.sign(key,{**payload,'issued_at':0}))
 
+    def test_bot_routes_license_payments_and_refunds(self):
+        from bot.main import process_stars_update
+        sent=[];routes=[]
+        def api(route,payload):
+            routes.append(route)
+            return {'ok':True,'status':'recorded' if route.endswith('/refund') else 'applied','test_mode':False}
+        def send(*args,**kw):sent.append(args)
+        data=dict(invoice_payload='license:'+str(uuid4()),currency='XTR',total_amount=100,telegram_payment_charge_id='license-fixture')
+        self.assertTrue(process_stars_update({'pre_checkout_query':{'id':'q','from':{'id':42},**data}},'fixture',internal_api=api,send=send))
+        self.assertTrue(process_stars_update({'message':{'from':{'id':42},'chat':{'id':42,'type':'private'},'successful_payment':data}},'fixture',internal_api=api,send=send))
+        self.assertIn('Лицензия приложения',sent[-1][2]['text'])
+        self.assertTrue(process_stars_update({'message':{'chat':{'id':42,'type':'private'},'refunded_payment':data}},'fixture',internal_api=api,send=send))
+        self.assertEqual(routes,['license/precheckout','license/settle','license/refund'])
+
     def test_plan_rejects_invalid_limits(self):
         for extra in ({'price_xtr':0},{'max_admins':0},{'days':False},{'max_nodes':-1},{'name':' '}):
             with self.assertRaises(ValueError):licensing.Plan(**{**dict(name='Установка',price_xtr=100,days=30),**extra})
@@ -76,6 +90,16 @@ class ApplicationLicenses(unittest.TestCase):
         with patch.dict(os.environ,{'PUSHOK_LICENSE_MODE':'client','PUSHOK_LICENSE_SERVER':'https://licenses.example.test','PUSHOK_LICENSE_PUBLIC_KEY':licensing.public_key()}),patch.object(crypto,'request',side_effect=self.envelope),patch.object(licensing,'build_opener') as opener:
             opener.return_value.open.side_effect=transport;licensing.sync(self.dsn)
         with psycopg.connect(self.dsn) as conn:conn.execute('UPDATE app_license_state SET required=true,installation_id=%s',(self.iid,))
+
+    def test_migration_is_repeatable_and_first_admin_can_buy(self):
+        from pathlib import Path
+        migration=Path(__file__).resolve().parents[1]/'database/044_application_licenses.sql'
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute(migration.read_text());conn.execute(migration.read_text())
+            conn.execute('UPDATE app_license_state SET required=true,envelope=NULL')
+            # Существующий администратор продолжает входить даже без лицензии.
+            conn.execute("UPDATE users SET role='admin' WHERE id=%s",(self.admin,))
+        self.request('GET','/admin/license')
 
     def test_seller_configuration_and_client_cannot_edit_tariffs(self):
         self.request('PUT','/admin/license/settings',409,json={'enabled':True})

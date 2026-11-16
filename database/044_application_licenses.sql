@@ -30,10 +30,14 @@ CREATE TABLE IF NOT EXISTS app_license_state(singleton BOOLEAN PRIMARY KEY DEFAU
  installation_id TEXT,envelope JSONB,checked_at TIMESTAMPTZ,last_error TEXT);
 INSERT INTO app_license_state DEFAULT VALUES ON CONFLICT DO NOTHING;
 CREATE OR REPLACE FUNCTION pushok_app_license_quota() RETURNS trigger AS $$
-DECLARE state app_license_state%ROWTYPE; grant JSONB; cap INTEGER; used INTEGER; kind TEXT;
+DECLARE state app_license_state%ROWTYPE; entitlement JSONB; cap INTEGER; used INTEGER; kind TEXT;
 BEGIN
  SELECT * INTO state FROM app_license_state WHERE singleton;
  IF NOT state.required THEN RETURN NEW; END IF;
+ -- Повтор того же бот-запроса не создаёт новую кампанию (ON CONFLICT).
+ IF TG_TABLE_NAME='campaigns' AND TG_OP='INSERT' THEN
+  IF NEW.bot_request_key IS NOT NULL AND EXISTS(SELECT 1 FROM campaigns WHERE bot_request_key=NEW.bot_request_key) THEN RETURN NEW; END IF;
+ END IF;
  IF TG_TABLE_NAME='users' THEN
   IF NEW.role<>'admin' THEN RETURN NEW; END IF;
   IF TG_OP='UPDATE' THEN IF OLD.role='admin' THEN RETURN NEW; END IF; END IF;
@@ -46,11 +50,11 @@ BEGIN
  -- Первому администратору нужен доступ для покупки лицензии при первоначальной установке.
  IF kind='max_admins' AND NOT EXISTS(SELECT 1 FROM users WHERE role='admin' AND id<>NEW.id) THEN RETURN NEW; END IF;
  IF state.envelope IS NULL OR (state.envelope->'payload'->>'lease_until')::BIGINT<=extract(epoch FROM now()) THEN RAISE EXCEPTION 'application_license_required'; END IF;
- SELECT g INTO grant FROM jsonb_array_elements(state.envelope->'payload'->'grants') g
+ SELECT g INTO entitlement FROM jsonb_array_elements(state.envelope->'payload'->'grants') g
   WHERE (g->>'starts_at')::BIGINT<=extract(epoch FROM now()) AND (g->>'ends_at')::BIGINT>extract(epoch FROM now())
   ORDER BY (g->>'starts_at')::BIGINT DESC LIMIT 1;
- IF grant IS NULL THEN RAISE EXCEPTION 'application_license_required'; END IF;
- cap:=(grant->'terms'->>kind)::INTEGER;
+ IF entitlement IS NULL THEN RAISE EXCEPTION 'application_license_required'; END IF;
+ cap:=(entitlement->'terms'->>kind)::INTEGER;
  IF cap IS NULL THEN RETURN NEW; END IF;
  IF kind='max_nodes' THEN SELECT count(*) INTO used FROM proxy_nodes WHERE archived_at IS NULL AND id<>NEW.id;
  ELSIF kind='max_admins' THEN SELECT count(*) INTO used FROM users WHERE role='admin' AND id<>NEW.id;
