@@ -33,7 +33,7 @@ def credentials():
 def create_invoice_link(token, prepared):
     body = {'title': prepared.title, 'description': prepared.description,
             'payload': prepared.invoice_payload, 'provider_token': '', 'currency': 'XTR',
-            'prices': [{'label': 'Спонсорство MTProxy', 'amount': prepared.stars_amount}]}
+            'prices': [{'label': getattr(prepared, 'price_label', 'Спонсорство MTProxy'), 'amount': prepared.stars_amount}]}
     request = Request(bot_api_url(token, 'createInvoiceLink'),
                       data=json.dumps(body).encode(), headers={'Content-Type': 'application/json'}, method='POST')
     try:

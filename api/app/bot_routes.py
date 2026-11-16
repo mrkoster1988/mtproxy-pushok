@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import re
 
 import psycopg
+from .license_errors import explain as explain_license_error
 from psycopg.errors import UniqueViolation
 from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
@@ -84,6 +85,7 @@ def list_bot_campaigns(
                 (payload.telegram_user_id,),
             ).fetchall()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [
         BotCampaignSummary(
@@ -132,6 +134,7 @@ def get_bot_tariff_quote(
                 (DAY_TARIFF_ID,),
             ).fetchone()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if row is None:
         raise HTTPException(status_code=409, detail="bot_tariff_not_available")
@@ -266,6 +269,7 @@ def create_bot_campaign_draft(
     except UniqueViolation as exc:
         raise HTTPException(status_code=409, detail="bot_draft_conflict") from exc
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return BotDraftResult(
         campaign_id=campaign_id,
@@ -323,6 +327,7 @@ def submit_bot_campaign_draft(
                 (payload.campaign_id, payload.telegram_user_id),
             ).fetchone()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
 
     if campaign is None:
@@ -420,5 +425,6 @@ def submit_bot_campaign_draft(
                 (payload.campaign_id,),
             )
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return BotSubmitResult(campaign_id=payload.campaign_id, moderation_status="pending", verified_now=True)

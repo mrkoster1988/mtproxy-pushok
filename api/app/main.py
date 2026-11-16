@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import psycopg
+from .license_errors import explain as explain_license_error
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -52,7 +53,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.36",
+    version="1.37",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -399,6 +400,7 @@ def get_current_user(
                 (user_id, session_id),
             ).fetchone()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if user is None:
         raise HTTPException(status_code=401, detail="session_revoked_or_expired")
@@ -442,6 +444,7 @@ def ready() -> dict[str, str]:
         with psycopg.connect(DATABASE_URL, connect_timeout=3) as connection:
             connection.execute("SELECT 1")
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return {"status": "ready", "database": "ok"}
 
@@ -516,6 +519,7 @@ def _start_telegram_session(payload: TelegramLoginPayload, *, surface="web") -> 
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
 
     return SessionResponse(
@@ -538,6 +542,7 @@ def logout(user: dict[str, Any] = Depends(get_current_user)) -> None:
                 (user["session_id"], user["id"]),
             )
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
 
 
@@ -553,6 +558,7 @@ def _available_tariffs(*, include_admin: bool = False) -> list[TariffResponse]:
                 """, (include_admin,),
             ).fetchall()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [
         TariffResponse(
@@ -605,6 +611,7 @@ def create_channel(
     except UniqueViolation as exc:
         raise HTTPException(status_code=409, detail="channel_already_added") from exc
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return ChannelResponse(**row)
 
@@ -643,6 +650,7 @@ def create_campaign(
             raise HTTPException(status_code=403, detail="admin_tariff_required") from None
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if row is None:
         raise HTTPException(status_code=404, detail="channel_or_active_tariff_not_found")
@@ -686,6 +694,7 @@ def list_campaigns(
                 (user["id"],),
             ).fetchall()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [_campaign_response(row) for row in rows]
 
@@ -743,6 +752,7 @@ def submit_campaign(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return _campaign_response(row)
 
@@ -796,6 +806,7 @@ def moderate_campaign(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return _campaign_response(row)
 
@@ -898,6 +909,7 @@ def upload_payment_proof(
             os.unlink(stored_path)
         raise HTTPException(status_code=503, detail="payment_proof_storage_unavailable") from exc
     except psycopg.Error as exc:
+        explain_license_error(exc)
         if stored_path and os.path.exists(stored_path):
             os.unlink(stored_path)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
@@ -917,6 +929,7 @@ def download_payment_proof(
                 (proof_id, campaign_id),
             ).fetchone()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if proof is None:
         raise HTTPException(status_code=404, detail="payment_proof_not_found")
@@ -993,6 +1006,7 @@ def review_payment(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return _campaign_response(row)
 
@@ -1070,6 +1084,7 @@ def create_slot_hold(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return {"id": hold["id"], "campaign_id": campaign_id, "proxy_node_id": payload.proxy_node_id,
             "starts_at": hold["starts_at"], "ends_at": hold["ends_at"],
@@ -1135,6 +1150,7 @@ def list_campaign_slot_options(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return {
         "campaign_id": campaign_id,
@@ -1167,6 +1183,7 @@ def get_slot_hold(
                 (campaign_id, user["id"]),
             ).fetchone()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if row is None:
         raise HTTPException(status_code=404, detail="active_slot_hold_not_found")
@@ -1201,6 +1218,7 @@ def cancel_slot_hold(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return Response(status_code=204)
 
@@ -1286,6 +1304,7 @@ def schedule_placement(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return _campaign_response(row)
 
@@ -1343,6 +1362,7 @@ def report_placement_observation(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return {
         "id": report["id"], "campaign_id": campaign_id,
@@ -1420,6 +1440,7 @@ def download_placement_evidence(
                 (campaign_id, observation_id),
             ).fetchone()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if row is None:
         raise HTTPException(status_code=404, detail="evidence_not_found")
@@ -1459,6 +1480,7 @@ def inspect_placement_evidence(
                 (limit,),
             ).fetchall()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     issues = []
     for row in rows:
@@ -1505,6 +1527,7 @@ def list_placement_observations(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [
         {**dict(row), "operator_report_only": True, "telegram_api_verified": False}
@@ -1559,6 +1582,7 @@ def get_campaign_report(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return build_campaign_report(campaign, observation or {}, timeline)
 
@@ -1602,6 +1626,7 @@ def get_campaign_placement_observation(
                 (campaign_id, user["id"]),
             ).fetchone()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if row is None:
         raise HTTPException(status_code=404, detail="campaign_not_found")
@@ -1658,6 +1683,7 @@ def activate_placement(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return _campaign_response(row)
 
@@ -1698,6 +1724,7 @@ def complete_placement(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return _campaign_response(row)
 
@@ -1765,6 +1792,7 @@ def list_operator_campaigns(
                 params,
             ).fetchall()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [OperatorCampaignResponse(**(row | _campaign_response(row).model_dump())) for row in rows]
 
@@ -1784,6 +1812,7 @@ def list_channels(user: dict[str, Any] = Depends(get_current_user)) -> list[Chan
                 (user["id"],),
             ).fetchall()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [ChannelResponse(**row) for row in rows]
 
@@ -1798,6 +1827,7 @@ def list_proxy_nodes(operator: dict[str, Any] = Depends(require_operator)) -> li
                    FROM proxy_nodes WHERE archived_at IS NULL ORDER BY name"""
             ).fetchall()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
 
 
@@ -1817,6 +1847,7 @@ def list_payment_proofs(
                 (campaign_id,),
             ).fetchall()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
 
 
@@ -1852,6 +1883,7 @@ def read_payment_settings(
                    AND status='pending' AND NOT sbp_requires_review) AS sbp_pending"""
             ).fetchone()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     safe = counts or {}
     return {
@@ -1892,6 +1924,7 @@ def list_admin_tariffs(
                    FROM tariffs WHERE archived_at IS NULL ORDER BY admin_only, duration_seconds, id"""
             ).fetchall()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return [TariffAdminResponse(**{**row, "currency": row["currency"].strip()}) for row in rows]
 
@@ -1944,6 +1977,7 @@ def create_admin_tariff(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail='database_unavailable') from exc
     return TariffAdminResponse(**{**row, 'currency': row['currency'].strip()})
 
@@ -1987,6 +2021,7 @@ def update_admin_tariff(
             raise HTTPException(status_code=422, detail="admin_tariff_must_be_free") from None
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return TariffAdminResponse(**{**row, "currency": row["currency"].strip()})
 
@@ -2075,6 +2110,7 @@ def record_launch_check(payload: LaunchCheckRequest, response: Response,
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail='database_unavailable') from exc
     response.headers['Cache-Control'] = 'private, no-store'
     return {'id': row['id'], 'recorded_at': row['created_at'], 'version': app.version,
@@ -2131,6 +2167,7 @@ def read_launch_readiness(response: Response, admin: dict[str, Any] = Depends(re
                    ORDER BY details_json->>'check_id', created_at DESC, id DESC"""
             ).fetchall()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     from .release_ci import lookup
     commit = _installed_commit()
@@ -2219,6 +2256,7 @@ def create_proxy_node(
     except UniqueViolation as exc:
         raise HTTPException(status_code=409, detail="proxy_node_already_exists") from exc
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return {**row, "provisioning_verified": False, "changes_applied": False}
 
@@ -2272,6 +2310,7 @@ def update_proxy_engine_plan(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return {**row, "provisioning_verified": False, "changes_applied": False}
 
@@ -2315,6 +2354,7 @@ def change_proxy_node_status(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return row
 
@@ -2380,6 +2420,7 @@ def correct_campaign_channel(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return ChannelResponse(**row)
 
@@ -2404,6 +2445,7 @@ def get_payment_instructions(
                 """, (campaign_id, user["id"]),
             ).fetchone()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if campaign is None:
         raise HTTPException(status_code=404, detail="campaign_not_found")
@@ -2442,6 +2484,7 @@ def _sbp_action(action, campaign_id, user, response):
     except (SBPReconcileError, SBPVerificationError) as exc:
         raise HTTPException(409, 'sbp_verification_requires_review') from exc
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(503, 'database_unavailable') from exc
 
 
@@ -2456,6 +2499,7 @@ def _sbp_admin_action(action, response):
     try:
         return action()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(503, 'database_unavailable') from exc
 
 
@@ -2568,6 +2612,7 @@ def get_availability(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     counts = {row["starts_at"]: row["available_nodes"] for row in rows}
     return {
@@ -2734,6 +2779,7 @@ def save_proxy_sponsor_registration(
     except HTTPException:
         raise
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return SponsorRegistrationResponse(
         proxy_node_id=node_id, engine=payload.engine, tag_ending=payload.ad_tag[-4:],
@@ -2761,6 +2807,7 @@ def preview_proxy_sponsor_config(
                 (node_id,),
             ).fetchone()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if row is None:
         raise HTTPException(status_code=404, detail="sponsor_registration_not_found")
@@ -2802,6 +2849,7 @@ def sponsor_placement_readiness(
                 (campaign_id,),
             ).fetchone()
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if row is None:
         raise HTTPException(status_code=404, detail="campaign_not_found")
@@ -2916,6 +2964,7 @@ def read_promotion_diagnostics(admin: dict = Depends(require_admin)):
                              options='-c statement_timeout=5000') as conn:
             return promotion_diagnostics(conn)
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(503, 'database_unavailable') from exc
 
 
@@ -3008,3 +3057,17 @@ app.include_router(user_profiles_router(lambda: DATABASE_URL, get_current_user))
 
 from .admin_users import router_for as admin_users_router
 app.include_router(admin_users_router(lambda: DATABASE_URL, require_operator))
+
+from .application_licenses import router_for as application_license_router, start_client as start_license_client
+app.include_router(application_license_router(lambda: DATABASE_URL, get_current_user, require_admin))
+_license_stop = None
+
+@app.on_event('startup')
+def application_license_startup():
+    global _license_stop
+    _license_stop = start_license_client(DATABASE_URL)
+
+@app.on_event('shutdown')
+def application_license_shutdown():
+    if _license_stop is not None:
+        _license_stop.set()

@@ -117,7 +117,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v1.36 — мастер настройки" >&2
+echo "MTProxy Pushok v1.37 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
 PROXY_ENGINE=""
@@ -324,6 +324,9 @@ PUSHOK_TELEGRAM_TEST_ENVIRONMENT=$TELEGRAM_TEST_ENVIRONMENT
 PUSHOK_MINIAPP_ENABLED=$MINIAPP_ENABLED
 PUSHOK_MINIAPP_URL=$MINIAPP_URL
 PUSHOK_STARS_PAYMENTS_ENABLED=$STARS_ENABLED
+PUSHOK_LICENSE_MODE=disabled
+PUSHOK_LICENSE_SERVER=
+PUSHOK_LICENSE_PUBLIC_KEY=
 PUSHOK_SBP_PAYMENTS_ENABLED=0
 PUSHOK_SBP_RECONCILIATION_ENABLED=0
 PUSHOK_SBP_WEBHOOK_ENABLED=0
@@ -418,6 +421,7 @@ EOF
     database/042_campaign_admin_pricing.sql
     database/043_users_bonus_management.sql
     database/044_user_access.sql
+    database/045_application_licenses.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"

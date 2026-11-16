@@ -1,6 +1,7 @@
 """Роли и блокировка: оператор управляет только неадминистративными аккаунтами."""
 from typing import Literal
 import psycopg
+from .license_errors import explain as explain_license_error
 from psycopg.rows import dict_row
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, ConfigDict
@@ -45,6 +46,7 @@ def router_for(get_dsn, require_admin, require_operator):
             with psycopg.connect(get_dsn(), row_factory=dict_row, connect_timeout=3) as conn:
                 return conn.execute("SELECT id,telegram_user_id,first_name,last_name,username,role,blocked_at FROM users WHERE role IN ('admin','operator') ORDER BY role,telegram_user_id").fetchall()
         except psycopg.Error as exc:
+            explain_license_error(exc)
             raise HTTPException(503, 'database_unavailable') from exc
 
     @router.put('')
@@ -68,6 +70,7 @@ def router_for(get_dsn, require_admin, require_operator):
                     conn.execute('DELETE FROM bot_operator_subscriptions WHERE operator_user_id=%s', (target['id'],))
                 return {'saved': True, 'telegram_user_id': payload.telegram_user_id, 'role': payload.role}
         except psycopg.Error as exc:
+            explain_license_error(exc)
             raise HTTPException(503, 'database_unavailable') from exc
 
     @router.put('/access')
