@@ -88,8 +88,14 @@ def read_checkout(dsn, campaign_id, user_id):
 
 from .sbp_connection import serialized_creation
 
-@serialized_creation
 def create_checkout(dsn, campaign_id, user_id):
+    if not settings()['enabled']:
+        raise HTTPException(409, 'sbp_checkout_disabled_until_acceptance')
+    return _create_checkout_locked(dsn, campaign_id, user_id)
+
+
+@serialized_creation
+def _create_checkout_locked(dsn, campaign_id, user_id):
     cfg = settings()
     if not cfg['enabled']:
         raise HTTPException(409, 'sbp_checkout_disabled_until_acceptance')
