@@ -30,7 +30,7 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def _read(request, limit):
-    with build_opener(ProxyHandler({}), NoRedirect()).open(request, timeout=2) as reply:
+    with build_opener(ProxyHandler({}), NoRedirect()).open(request, timeout=8) as reply:
         data = reply.read(limit + 1)
     if len(data) > limit:
         raise ValueError('logo_too_large')
