@@ -95,7 +95,7 @@ window.pushokViews=(()=>{
  }
  function progress(c){
   const rail=el('ol',undefined,'campaign-progress'),state=campaignState(c);rail.setAttribute('aria-label','Этапы кампании');
-  ['Черновик','Модерация','Оплата','В очереди','Активна','Завершена'].forEach((name,i)=>{const step=el('li',undefined,i<state[2]?'is-done':i===state[2]?'is-current':''),dot=el('span',undefined,'progress-dot');dot.append(i<state[2]?icon('check'):document.createTextNode(String(i+1)));step.append(dot,el('span',name));if(i===state[2])step.setAttribute('aria-current','step');rail.append(step);});return rail;
+  ['Черновик','Модерация','Оплата','Расписание','Активна','Завершена'].forEach((name,i)=>{const step=el('li',undefined,i<state[2]?'is-done':i===state[2]?'is-current':''),dot=el('span',undefined,'progress-dot');dot.append(i<state[2]?icon('check'):document.createTextNode(String(i+1)));step.append(dot,el('span',name));if(i===state[2])step.setAttribute('aria-current','step');rail.append(step);});return rail;
  }
  function facts(c){const list=el('dl',undefined,'campaign-facts');
   [['Размещение','Прокси-спонсорство'],['Тариф',c.tariff_name_snapshot],['Срок',duration(c)],['Стоимость',price(c)],...(c.requested_start_at?[['Желаемое начало',date(c.requested_start_at)]]:[]),['Начало',date(c.scheduled_start_at)],['Окончание',date(c.scheduled_end_at)]].forEach(([k,v])=>{list.append(el('dt',k),el('dd',v||'—'));});return list;
