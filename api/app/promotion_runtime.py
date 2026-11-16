@@ -14,6 +14,38 @@ from .campaign_notices import record_failure, FAILURE_CODES
 _UNREAD_REPORT = object()
 
 
+def campaign_automation_status(campaign, confirmed, node=None, *, now=None):
+    """Состояние автоматики по серверному времени; календарь не доказывает запуск."""
+    now = now or datetime.now(timezone.utc)
+    status = campaign['placement_status']
+    if status in ('completed', 'cancelled'):
+        return status
+    if campaign['moderation_status'] != 'approved':
+        return 'awaiting_moderation'
+    if campaign['payment_status'] != 'verified':
+        return 'awaiting_payment'
+    if status == 'not_scheduled' and campaign.get('auto_schedule_paused'):
+        return 'paused'
+    end = campaign.get('scheduled_end_at')
+    if end and end <= now:
+        return 'finishing' if status == 'active' else 'start_missed'
+    if node and (node['status'] != 'active' or node['archived_at']
+                 or node['target_engine'] not in (None, 'official_mtproxy')):
+        return 'node_unavailable'
+    if not campaign['prepared']:
+        return 'setup_required'
+    if status == 'not_scheduled':
+        return 'awaiting_slot'
+    start = campaign.get('scheduled_start_at')
+    if start and start > now:
+        return 'scheduled'
+    if confirmed['config_applied']:
+        return 'active'
+    if not confirmed['agent_recent']:
+        return 'agent_unavailable'
+    return 'awaiting_confirmation' if status == 'active' else 'starting'
+
+
 def desired(conn, host, port, resolved_host=None):
     hosts = [host]
     if resolved_host is not None:

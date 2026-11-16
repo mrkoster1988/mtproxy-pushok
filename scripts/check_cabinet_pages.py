@@ -396,6 +396,28 @@ def main():
                     draft_tag.fill('d' * 32)
                     admin.set_viewport_size({'width': 390, 'height': 844})
                     admin.screenshot(path=str(output / '31-promotion-confirmed-mobile.png'), full_page=True)
+                    refresh(advertiser)
+                    go(advertiser,'campaign/'+campaign_id)
+                    advertiser.get_by_role('button',name='Статус автоматического размещения',exact=True).click()
+                    expect(advertiser.locator('.automation-panel')).to_contain_text('Размещение запущено автоматически')
+                    advertiser.get_by_role('button',name='Отчёт по кампании',exact=True).click()
+                    expect(advertiser.locator('.campaign-report')).to_contain_text('История действий')
+                    expect(advertiser.locator('.report-observations')).not_to_have_attribute('open','')
+                    advertiser.evaluate("""() => {
+                        window.__openAutomation=document.querySelector('.automation-panel');
+                        window.__openReport=document.querySelector('.campaign-report');
+                    }""")
+                    advertiser.evaluate('() => refreshStatuses()')
+                    assert advertiser.evaluate("() => window.__openAutomation===document.querySelector('.automation-panel') && window.__openReport===document.querySelector('.campaign-report')")
+                    with psycopg.connect(PostgresIntegration.dsn) as connection:
+                        connection.execute("UPDATE campaigns SET moderator_comment='Одобрено для автоматического размещения',updated_at=now() WHERE id=%s",(campaign_id,))
+                    advertiser.evaluate('() => refreshStatuses()')
+                    expect(advertiser.locator('[data-page=campaign]')).to_contain_text('Одобрено для автоматического размещения')
+                    expect(advertiser.locator('.automation-panel')).to_contain_text('Размещение запущено автоматически')
+                    assert advertiser.evaluate("() => window.__openAutomation===document.querySelector('.automation-panel') && window.__openReport===document.querySelector('.campaign-report')")
+                    advertiser.screenshot(path=str(output/'46-campaign-automation-mobile.png'),full_page=True)
+                    advertiser.locator('.automation-panel').get_by_role('button',name='Закрыть',exact=True).click()
+                    advertiser.get_by_role('button',name='Закрыть отчёт',exact=True).click()
                     report_path.write_text(json.dumps(dict(report, code='apply_failed')))
                     admin.get_by_role('button', name='Обновить диагностику', exact=True).click()
                     expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=ready]')).to_contain_text('Подтверждения применения текущего плана пока нет')
@@ -1292,15 +1314,44 @@ def main():
                 go(advertiser,'dashboard')
                 expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_contain_text('220')
                 expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_have_attribute('data-currency','RUB')
+                # Регрессия видео: задержанный ответ не меняет геометрию и DOM карточек.
+                expect(advertiser.locator('#dashboard-wallet .wallet-overview')).to_have_attribute('aria-busy','false')
+                advertiser.evaluate("""() => {
+                    window.__originalFetch=window.fetch;
+                    window.__walletWaiting=false;
+                    window.fetch=(url,options)=>String(url)==='/api/v1/wallet'?new Promise(resolve=>{
+                        window.__walletWaiting=true;
+                        window.__releaseWallet=()=>window.__originalFetch(url,options).then(resolve);
+                    }):window.__originalFetch(url,options);
+                    const panel=document.querySelector('#dashboard-wallet .wallet-overview');
+                    const total=panel.querySelector('.wallet-total');
+                    const tile=document.querySelector('[data-page=dashboard] .campaign-tile');
+                    const y=tile.getBoundingClientRect().top,scroll=scrollY;
+                    window.__stable={panel,total,tile,y,scroll,samples:[],stop:false};
+                    const sample=()=>{const s=window.__stable;s.samples.push([s.tile.getBoundingClientRect().top,scrollY]);if(!s.stop)requestAnimationFrame(sample);};
+                    requestAnimationFrame(sample);void refreshStatuses();
+                }""")
+                advertiser.wait_for_function('window.__walletWaiting')
+                advertiser.wait_for_timeout(250)
+                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_contain_text('220')
+                advertiser.evaluate('() => window.__releaseWallet()')
+                expect(advertiser.locator('#dashboard-wallet .wallet-overview')).to_have_attribute('aria-busy','false')
+                assert advertiser.evaluate("""() => {
+                    const s=window.__stable;s.stop=true;window.fetch=window.__originalFetch;
+                    return s.panel===document.querySelector('#dashboard-wallet .wallet-overview') &&
+                      s.total===document.querySelector('#dashboard-wallet .wallet-total') &&
+                      s.tile===document.querySelector('[data-page=dashboard] .campaign-tile') &&
+                      s.samples.length>2 && s.samples.every(([y,scroll])=>Math.abs(y-s.y)<1&&Math.abs(scroll-s.scroll)<1);
+                }"""), 'Background refresh moved the dashboard or recreated its cards'
                 def unavailable_wallet(route):
                     route.fulfill(status=503,content_type='application/json',body='{"detail":"temporarily_unavailable"}')
                 advertiser.route('**/api/v1/wallet',unavailable_wallet)
-                go(advertiser,'dashboard')
-                expect(advertiser.locator('#dashboard-wallet')).to_contain_text('Не удалось получить остаток')
-                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_have_count(0)
-                advertiser.unroute('**/api/v1/wallet',unavailable_wallet)
-                advertiser.locator('#dashboard-wallet').get_by_role('button',name='Повторить',exact=True).click()
+                advertiser.evaluate('() => refreshStatuses()')
+                expect(advertiser.locator('#dashboard-wallet')).to_contain_text('не обновлён')
                 expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_contain_text('220')
+                advertiser.unroute('**/api/v1/wallet',unavailable_wallet)
+                advertiser.evaluate('() => refreshStatuses()')
+                expect(advertiser.locator('#dashboard-wallet h2')).to_have_text('Баланс Pushok')
                 for width in (320,390,1280):
                     advertiser.set_viewport_size({'width':width,'height':900})
                     assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')

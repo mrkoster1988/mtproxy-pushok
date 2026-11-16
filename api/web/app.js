@@ -168,7 +168,7 @@ const holdEligibility=c=>c.moderation_status==='approved' &&
  c.placement_status==='not_scheduled';
 
 async function renderHoldPanel(c,panel){
- panel.replaceChildren(el('h4','Резервирование слота'),el('p','Бронь действует 15 минут. Оплату проверяет оператор; размещение не начинается автоматически.','muted'));
+ panel.replaceChildren(el('h4','Резервирование слота'),el('p','Бронь удерживает слот на 15 минут. После подтверждения оплаты агент запускает размещение в назначенный период.','muted'));
  let hold=null;
  try{hold=await api('/campaigns/'+c.id+'/slot-hold');}
  catch(e){
@@ -250,14 +250,16 @@ async function downloadCampaignCsv(c){
  setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
-function showCampaignReport(c, box){
+function showCampaignReport(c, box,{refresh=false}={}){
  const old=box.querySelector('.campaign-report');
- if(old){old.remove();return;}
- const panel=el('section',undefined,'campaign-report');
+ if(old&&!refresh){old.remove();return;}
+ const panel=old||el('section',undefined,'campaign-report'),session=token,request=(panel.reportRequest||0)+1;panel.reportRequest=request;
+ const current=()=>panel.isConnected&&session===token&&request===panel.reportRequest;
  panel.setAttribute('aria-label','Отчёт о рекламной кампании');
- box.append(panel);
- panel.append(el('p','Загружаем подтверждённые сведения…','muted'));
+ if(!old){box.append(panel);panel.append(el('p','Загружаем подтверждённые сведения…','muted'));}
  return api('/campaigns/'+c.id+'/report').then(data=>{
+  if(!current())return;
+  const observationsOpen=panel.querySelector('.report-observations')?.open;
   panel.replaceChildren();
   const h=el('h4','Отчёт о размещении · '+data.channel.title);
   panel.append(h);
@@ -276,15 +278,18 @@ function showCampaignReport(c, box){
    grid.append(row);
   }
   panel.append(grid);
-  panel.append(el('h4','Проверки оператора'));
+  const observations=window.pushokViews.disclosure('Дополнительные наблюдения в Telegram',[],'report-observations');
+  observations.open=Boolean(observationsOpen);
   const checks=data.operator_observations;
-  panel.append(el('p','Показ виден: '+checks.visible+' · Показ не найден: '+checks.not_visible));
-  panel.append(el('p','Последний результат: '+
+  observations.append(el('p','Показ виден: '+checks.visible+' · Показ не найден: '+checks.not_visible));
+  observations.append(el('p','Последний результат: '+
    (checks.latest_result==='visible'?'оператор сообщил, что показ виден':checks.latest_result==='not_visible'?
     'оператор сообщил, что показ не найден':'нет отчёта оператора')+
    (checks.latest_observed_at?' · '+date(checks.latest_observed_at):'')));
-  panel.append(el('p','Приватных скриншотов в журнале: '+checks.private_screenshot_count+
+  observations.append(el('p','Приватных скриншотов в журнале: '+checks.private_screenshot_count+
    '. Файлы доступны только операторам.','muted'));
+  observations.append(el('p','Это необязательные наблюдения оператора. Автоматический запуск и завершение не требуют заполнения этого отчёта.','muted'));
+  panel.append(observations);
   panel.append(el('h4','История действий'));
   const eventNames={campaign_submitted:'Заявка отправлена',campaign_moderated:'Модерация',
    sbp_invoice_created:'Выставлен счёт СБП',sbp_payment_verified:'СБП подтверждена сервером',sbp_payment_canceled:'СБП отменена',
@@ -297,9 +302,9 @@ function showCampaignReport(c, box){
       ' · '+date(event.at)));
    panel.append(history);
   }else panel.append(el('p','История пока пуста.','muted'));
-  panel.append(el('p','Проверки выполнены вручную. Количество показов Telegram API не подтверждено.','muted'));
+  panel.append(el('p','Запуск и завершение отражены в истории событий. Количество просмотров здесь не измеряется.','muted'));
   panel.append(button('Закрыть отчёт',()=>panel.remove()));
- }).catch(error=>{panel.remove();throw error;});
+ }).catch(error=>{if(current()&&!old)panel.remove();throw error;});
 }
 
 function card(c,op,{compact=false}={}){
@@ -322,16 +327,11 @@ function card(c,op,{compact=false}={}){
   const reports=compact?el('details',undefined,'order-reports'):actions;if(compact){reports.append(el('summary','История и отчёт'));box.append(reports);}
   const reportButton=button('Отчёт',()=>showCampaignReport(c,box));reportButton.setAttribute('aria-label','Отчёт по кампании');reportButton.prepend(window.pushokViews.icon('chart'));reports.append(reportButton);
   if(['scheduled','active','completed'].includes(c.placement_status)){
-   const observationButton=button('Показ',async()=>{
-    const data=await api('/campaigns/'+c.id+'/display-observation');
-    const panel=el('section',undefined,'observation-panel');
-    const title=data.result==='visible'?'Оператор сообщил: показ виден':
-     data.result==='not_visible'?'Оператор сообщил: показ не найден':'Отчёт о показе ещё не получен';
-    panel.append(el('h4',title));
-    if(data.observed_at)panel.append(el('p','Время наблюдения: '+date(data.observed_at)));
-    panel.append(el('p','Это ручное наблюдение оператора, не подтверждение Telegram API.','muted'));
-    panel.append(button('Закрыть',()=>panel.remove()));box.append(panel);
-   });observationButton.setAttribute('aria-label','Статус проверки показа');observationButton.prepend(window.pushokViews.icon('status'));actions.append(observationButton);
+   const observationButton=button('Автоматика',async()=>{
+    let panel=box.querySelector('.automation-panel');if(panel){panel.remove();return;}
+    panel=el('section',undefined,'observation-panel automation-panel');panel.dataset.promotionCampaign=c.id;panel.setAttribute('aria-label','Статус автоматического размещения');box.append(panel);
+    await updatePromotionPanel(panel);
+   });observationButton.setAttribute('aria-label','Статус автоматического размещения');observationButton.prepend(window.pushokViews.icon('status'));actions.append(observationButton);
   }
   addHoldAction(c,box,actions);
   if(c.price_kopecks_snapshot>0&&!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected','proof_submitted','verified'].includes(c.payment_status)){
@@ -685,7 +685,7 @@ $('node-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
  if(data.engine_mode==='auto')delete data.preferred_engine;
  await api('/admin/proxy-nodes',{method:'POST',body:data});e.target.reset();await refresh();notice('Узел добавлен в реестр.',true);
 },e.submitter);});
-async function refresh(){
+async function refresh({background=false}={}){
  if(!token)return;
  const refreshSession=token,refreshUser=me?.id;
  const current=()=>token===refreshSession&&me?.id===refreshUser;
@@ -699,9 +699,9 @@ async function refresh(){
  $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,tariffLabel(t)));
  if(tariffs.some(t=>t.id===selectedTariff))$('tariff-select').value=selectedTariff;
  if(calendarChanged){try{await loadAvailability();}catch(e){notice(e.message);}}
- $('campaigns').replaceChildren(...own.map(c=>card(c,false)));$('campaign-count').textContent=own.length+' заявок';
+ if(!window.cabinet)$('campaigns').replaceChildren(...own.map(c=>card(c,false)));$('campaign-count').textContent=own.length+' заявок';
  ownCampaigns=own;
- if(!own.length)$('campaigns').append(el('div','Заявок пока нет. Добавьте канал и создайте первое размещение.','empty'));
+ if(!own.length&&!window.cabinet)$('campaigns').append(el('div','Заявок пока нет. Добавьте канал и создайте первое размещение.','empty'));
  if(me&&['operator','admin'].includes(me.role)){
   const currentNodes=await api('/operator/proxy-nodes');if(!current())return;nodes=currentNodes;renderNodes();
   if(me.role==='admin'&&!$('settings').hidden)await loadAdminSettings();
@@ -711,7 +711,7 @@ async function refresh(){
   else $('queue').replaceChildren(...working.map(c=>card(c,true)));
  }
  window.pushokOrder?.sync();
- if(window.cabinet)window.cabinet.sync(own);
+ if(window.cabinet)window.cabinet.sync(own,{background});
 }
 async function enter(){
  me=await api('/me');channels=await api('/channels');tariffs=await api('/me/tariffs');updatePublicPrice();
@@ -896,11 +896,46 @@ $('icons-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
  await api('/admin/icons',{method:'PUT',body:mapping});$('icons-status').textContent='Сохранено. Откройте меню бота для проверки.';
 });});
 
+const automationMessages={
+ scheduled:['Ожидается автоматический запуск',s=>'Начало '+date(s.scheduled_start_at)+'. Подтверждать показ вручную не нужно.'],
+ active:['Размещение запущено автоматически',()=> 'Агент подтвердил применение тега кампании на прокси.'],
+ starting:['Ожидаем подтверждение запуска',()=> 'Назначенное время наступило. Статус изменится после ответа агента.'],
+ awaiting_confirmation:['Проверяем состояние размещения',()=> 'Свежего подтверждения применения тега этой кампании пока нет.'],
+ finishing:['Завершаем размещение',()=> 'Период закончился. После подтверждения снятия или смены тега кампания перейдёт в архив.'],
+ completed:['Кампания завершена',()=> 'Отчёт и история размещения сохранены в архиве.'],
+ cancelled:['Размещение отменено',()=> 'Автоматический запуск этой кампании отменён.'],
+ start_missed:['Запуск не был подтверждён',()=> 'Назначенный период уже прошёл. После восстановления связи с агентом система подберёт новый период; он не считается отработанным.'],
+ agent_unavailable:['Нет свежего ответа агента',()=> 'Запуск сейчас не подтверждён. Администратору нужно проверить службу агента в разделе «Спонсоры и узлы».'],
+ setup_required:['Нужна настройка автозапуска',()=> 'Администратору нужно связать канал со спонсорским тегом доступного узла. После подготовки размещением управляет агент.'],
+ node_unavailable:['Узел недоступен для автозапуска',()=> 'Администратору нужно проверить состояние и настройки узла.'],
+ awaiting_slot:['Подбираем свободный период',()=> 'Оплата подтверждена. Система автоматически назначит доступный слот.'],
+ paused:['Автоподбор приостановлен',()=> 'Администратору нужно возобновить автоматическое назначение периода.'],
+ awaiting_payment:['Ожидается оплата',()=> 'После подтверждения оплаты система подберёт период размещения.'],
+ awaiting_moderation:['Ожидается модерация',()=> 'Автоматическое размещение станет доступно после одобрения канала и оплаты.']
+};
+async function updatePromotionPanel(panel){
+ const session=token,request=(panel.promotionRequest||0)+1;panel.promotionRequest=request;
+ if(!panel.hasChildNodes()){
+  if(panel.dataset.promotionSummary)panel.textContent='Получаем статус автоматики…';
+  else{panel.append(el('h4','Автоматическое размещение'),el('p','Получаем состояние…','automation-message'),el('p','','automation-agent muted'),el('p','','automation-error muted'),button('Закрыть',()=>panel.remove()));}
+ }
+ try{
+  const state=await api('/campaigns/'+panel.dataset.promotionCampaign+'/promotion-status');
+  if(!panel.isConnected||session!==token||request!==panel.promotionRequest)return;
+  const message=automationMessages[state.automation_status]||['Состояние уточняется',()=> 'Обновите данные. Подтверждения запуска пока нет.'];
+  panel.dataset.automationStatus=state.automation_status||'unknown';
+  if(panel.dataset.promotionSummary){panel.textContent=message[0]+'. '+message[1](state);return;}
+  panel.querySelector('h4').textContent=message[0];panel.querySelector('.automation-message').textContent=message[1](state);
+  panel.querySelector('.automation-agent').textContent=state.checked_at?'Последний ответ агента: '+date(state.checked_at):'Ответ агента ещё не получен.';
+  panel.querySelector('.automation-error').textContent='';
+ }catch(e){
+  if(!panel.isConnected||session!==token||request!==panel.promotionRequest)return;
+  const text='Не удалось обновить статус автоматики. Повторите обновление.';
+  if(panel.dataset.promotionSummary)panel.textContent=text;else panel.querySelector('.automation-error').textContent=text;
+ }
+}
 async function renderPromotionStatus(c,parent){
- const text=el('p','Проверяем применение тега…','muted');parent.append(text);const session=token;
- try{const state=await api('/campaigns/'+c.id+'/promotion-status');if(!text.isConnected||session!==token)return;
- text.textContent=state.config_applied?'Тег применён агентом. Фактический показ проверяется отдельно.':!state.prepared?'Автозапуск не настроен: администратору нужно связать канал с тегом в разделе «Узлы».':!state.agent_recent?'Связь подготовлена. Нет свежего подтверждения агента VPS.':'Есть недавний ответ агента. Применение текущего плана заявки не подтверждено; проверьте её статус и назначенный период.';
- }catch(e){if(text.isConnected&&session===token)text.textContent='Не удалось проверить применение тега: '+e.message;}
+ const text=el('p',undefined,'muted');text.dataset.promotionCampaign=c.id;text.dataset.promotionSummary='true';parent.append(text);await updatePromotionPanel(text);
 }
 
 Object.assign(errors,{schedule_before_requested_start:'Выберите время не раньше желаемого начала заявки.'});
@@ -912,7 +947,7 @@ async function refreshStatuses(){
  if(!me||!token||document.hidden||statusRefreshBusy||!['dashboard','campaigns','campaign','payments','moderation'].includes(route))return;
  if(document.querySelector('input:focus,textarea:focus,select:focus,details[open]'))return;
  statusRefreshBusy=true;
- try{await refresh();}catch{}finally{statusRefreshBusy=false;}
+ try{await refresh({background:true});}catch{}finally{statusRefreshBusy=false;}
 }
 setInterval(refreshStatuses,20000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshStatuses();});
