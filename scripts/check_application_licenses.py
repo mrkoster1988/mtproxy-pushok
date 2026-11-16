@@ -60,8 +60,12 @@ def check_application_licenses(browser,base,output,failures,dsn):
                 staff.reload();expect(staff.locator('body')).to_have_attribute('data-cabinet-loaded','true');area=go(staff)
                 expect(area).to_contain_text('Нужна покупка или продление')
                 expect(area.get_by_role('button',name='Добавить тариф',exact=True)).to_have_count(0)
-                area.get_by_role('button',name='Купить',exact=True).click()
-                expect(area).to_contain_text('История покупок')
+                staff.evaluate('window.open = url => { window.licenseInvoiceUrl = url; return null; }')
+                with staff.expect_response(lambda r:r.url.endswith('/api/v1/admin/license/checkout')) as invoice:
+                    area.get_by_role('button',name='Купить',exact=True).click()
+                assert invoice.value.status==200,invoice.value.text()
+                expect(area).to_contain_text('Ожидает оплаты · 100 Stars')
+                assert staff.evaluate('window.licenseInvoiceUrl')=='https://t.me/$app_license_browser'
                 with psycopg.connect(dsn) as conn:order=conn.execute('SELECT id FROM app_license_orders WHERE installation_id=%s ORDER BY created_at DESC',(iid,)).fetchone()[0]
                 data=dict(invoice_payload='license:'+str(order),telegram_user_id=tg,total_amount=100,currency='XTR')
                 with patch.dict(os.environ,{'PUSHOK_LICENSE_MODE':'seller'}):

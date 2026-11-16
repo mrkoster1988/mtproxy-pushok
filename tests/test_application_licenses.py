@@ -78,7 +78,7 @@ class ApplicationLicenses(unittest.TestCase):
     def invoice(self,p):return self.store('checkout',plan_id=p['id'],revision=p['revision'],payer_id=self.tg)
     def paydata(self,o,**changes):return {**dict(invoice_payload='license:'+o['order_id'],telegram_user_id=self.tg,total_amount=100,currency='XTR'),**changes}
     def approve(self,o,expected=True,**changes):self.assertEqual(self.request('POST','/internal/bot/license/precheckout',headers=self.headers,json=self.paydata(o,query_id='q-'+o['order_id'],**changes))['ok'],expected)
-    def settle(self,o,**changes):return self.request('POST','/internal/bot/license/settle',headers=self.headers,json=self.paydata(o,telegram_payment_charge_id='c-'+o['order_id'],**changes))
+    def settle(self,o,**changes):return self.request('POST','/internal/bot/license/settle',headers=self.headers,json=self.paydata(o,**{'telegram_payment_charge_id':'c-'+o['order_id'],**changes}))
     def purchase(self,**changes):
         p=self.plan(**changes);o=self.invoice(p);self.approve(o,total_amount=p['price_xtr']);self.assertEqual(self.settle(o,total_amount=p['price_xtr'])['status'],'applied');return p,o
     def install_cache(self):
