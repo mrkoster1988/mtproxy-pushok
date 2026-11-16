@@ -65,7 +65,8 @@ window.pushokGrowth=(()=>{
   if(!node||!me)return;target=node;const version=++epoch,session=token,uid=me.id;node.replaceChildren(el('p','Загружаем бонусы…'));
   try{
    const mine=await api('/growth/me');if(version!==epoch||session!==token||uid!==me?.id)return;
-   const root=el('div'),p=panel('Пригласить рекламодателя');
+   const root=el('div',undefined,'growth-page'),p=panel('Пригласить рекламодателя');
+   root.append(window.pushokViews.mascot(mine.referrals_enabled?'Делитесь приглашением и получайте награду за первое оплаченное и завершённое размещение друга.':'Здесь собраны ваши приглашения, купоны и подарочные размещения.'));
    p.append(el('p',mine.referrals_enabled?'Для новых приглашений: за первое оплаченное и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены администратором.'),el('p','Приглашено: '+mine.invited));
    if(mine.reward_mode==='bonus')p.append(el('p','Бонусами можно оплатить рублёвое размещение на сайте. Они не обмениваются на Stars и не выводятся. Бесплатные, тестовые и полностью бонусные оплаты друга не дают награду. При возврате оплаты награда отменяется, даже если бонусы уже потрачены.','muted'));
    if(mine.referrals_enabled&&mine.link){const input=field(p,'Ваша ссылка для друзей','text',mine.link);input.readOnly=true;input.addEventListener('click',()=>input.select());p.append(el('p','Друг должен открыть эту ссылку и нажать «Запустить» до создания первой заявки. Это приглашение в рекламный кабинет.','muted'));}
