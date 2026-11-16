@@ -93,17 +93,19 @@ def redeem(conn,uid,code):
     controls.require_enabled(conn)
     # Код сериализует весь лимит активаций; проводка и активация коммитятся вместе.
     gift=conn.execute('SELECT * FROM wallet_gifts WHERE code=%s FOR UPDATE',(code,)).fetchone()
-    if not gift:raise HTTPException(409,'wallet_gift_unavailable')
+    if not gift:raise HTTPException(409,'wallet_gift_not_found')
     if gift['recipient_telegram_id'] is not None:
         user=conn.execute('SELECT telegram_user_id FROM users WHERE id=%s',(uid,)).fetchone()
         if not user or user['telegram_user_id']!=gift['recipient_telegram_id']:
-            raise HTTPException(409,'wallet_gift_unavailable')
+            raise HTTPException(409,'wallet_gift_wrong_recipient')
     old=conn.execute('SELECT entry_id FROM wallet_gift_redemptions WHERE gift_id=%s AND user_id=%s',(gift['id'],uid)).fetchone()
     if old:return dict(entry_id=old['entry_id'],amount=gift['amount'],already_redeemed=True)
     used=conn.execute('SELECT count(*) AS n FROM wallet_gift_redemptions WHERE gift_id=%s',(gift['id'],)).fetchone()['n']
     now=conn.execute('SELECT clock_timestamp() AS now').fetchone()['now']
-    if gift['deleted_at'] or not gift['active'] or gift['expires_at']<=now or used>=gift['max_uses']:
-        raise HTTPException(409,'wallet_gift_unavailable')
+    if gift['deleted_at']:raise HTTPException(409,'wallet_gift_deleted')
+    if not gift['active']:raise HTTPException(409,'wallet_gift_disabled')
+    if gift['expires_at']<=now:raise HTTPException(409,'wallet_gift_expired_code')
+    if used>=gift['max_uses']:raise HTTPException(409,'wallet_gift_limit_reached')
     entry=ledger.post(conn,uid,'BONUS',gift['amount'],'gift_credit',
                       'gift:'+str(gift['id'])+':'+str(uid),'Подарок: '+gift['name'])
     conn.execute('INSERT INTO wallet_gift_redemptions(gift_id,user_id,entry_id) VALUES(%s,%s,%s)',(gift['id'],uid,entry['id']))

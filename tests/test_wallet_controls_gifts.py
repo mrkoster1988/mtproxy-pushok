@@ -125,7 +125,7 @@ class WalletControlsGiftsIntegration(unittest.TestCase):
             try:return self.redeem(gift['code'],uid)['entry_id']
             except HTTPException as exc:return exc.detail
         with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(attempt,[self.owner,self.other]))
-        self.assertEqual(results.count('wallet_gift_unavailable'),1)
+        self.assertEqual(results.count('wallet_gift_limit_reached'),1)
         with topups.connect(self.dsn) as conn:
             winner=conn.execute('SELECT user_id FROM wallet_gift_redemptions WHERE gift_id=%s',(gift['id'],)).fetchone()['user_id']
         with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(lambda _:self.redeem(gift['code'],winner),range(2)))

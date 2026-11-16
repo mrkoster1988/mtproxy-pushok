@@ -25,7 +25,17 @@ window.pushokLinks=(()=>{
     await window.pushokOrder.applyOffer(offer);if(!current())return;pending='';window.cabinet.go('create');
     setTimeout(()=>{if(current())notice('Предложение применено к форме заявки. Проверьте канал, тариф и итоговую цену.',true);},0);
    }
-  }catch(e){if(current()){notice(e.message);const retry=button('Повторить применение',apply);$('notice').append(retry);}}
+  }catch(e){if(current()){
+   const gift=payload.startsWith('wallet_');
+   let message=e.message;
+   if(e.code==='wallet_gift_wrong_recipient'){
+    const account=me.username?'@'+me.username:[me.first_name,me.last_name].filter(Boolean).join(' ')||'Без никнейма';
+    message='Подарок предназначен другому аккаунту Telegram. Сейчас вы вошли как '+account+' (ID '+me.telegram_user_id+'). Откройте ссылку из аккаунта получателя или попросите отправителя проверить получателя в карточке подарка.';
+   }
+   if(gift)message+=' Код: GIFT-…'+payload.slice(-8)+'.';
+   const retryable=!e.status||e.status>=500||e.status===429;
+   notice(message,false,{actions:retryable?[button('Повторить',apply)]:[],persistent:true});
+  }}
   finally{busy=false;}
  }
  return {capture,share,apply,reset(){pending='';}};

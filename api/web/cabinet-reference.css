@@ -241,3 +241,10 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .cabinet-mode .bonus-actions>:is(button,a){display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;width:100%;min-height:44px;padding:8px 6px;margin:0;border-radius:10px;font-size:12px;font-weight:550;line-height:1.3;text-align:center;text-decoration:none;white-space:normal}
 .bonus-actions .ui-icon{width:16px;height:16px;flex:0 0 16px}.cabinet-mode .bonus-actions>:is(button,a):has(use[href$='#pi-trash']){color:#f5a6a6}
 .gift-editor,.offer-editor{border-top:1px solid var(--line);padding-top:12px;margin-top:14px}.wallet-gift .growth-code{font-size:12px}.wallet-gift .wallet-gift-summary{font-size:13px}.wallet-gift .wallet-gift-status{font-size:12px}
+
+/* Текст и действие уведомления не конкурируют за одну строку. */
+.cabinet-mode #notice:not([hidden]){display:grid;grid-template-columns:minmax(0,1fr) 32px;gap:8px;align-items:start;box-sizing:border-box;width:min(440px,calc(100vw - 24px));max-height:calc(100dvh - 160px);overflow:auto;font-size:13px;line-height:1.5}
+.cabinet-mode #notice>.notice-message{min-width:0;overflow-wrap:anywhere}
+.cabinet-mode #notice>button{width:32px;height:32px;min-height:32px;min-width:0;padding:0;margin:0;font-size:23px;line-height:1;border-radius:8px}
+.cabinet-mode #notice>.notice-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
+.cabinet-mode #notice .notice-actions>button{font:inherit;font-weight:600;min-height:40px;padding:8px 14px;margin:0;white-space:normal;background:transparent;color:inherit;border:1px solid currentColor;border-radius:8px}

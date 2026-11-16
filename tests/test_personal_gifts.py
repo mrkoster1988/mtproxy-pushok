@@ -51,7 +51,7 @@ class PersonalGiftsIntegration(unittest.TestCase):
         gift=self.create(self.payload(recipient_telegram_id=self.tg))
         self.actor={'id':self.other,'role':'advertiser'}
         denied=self.request('POST','/wallet/gifts/redeem',409,json={'code':gift['code']})
-        self.assertEqual(denied,{'detail':'wallet_gift_unavailable'})
+        self.assertEqual(denied,{'detail':'wallet_gift_wrong_recipient'})
         with topups.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT count(*) AS n FROM wallet_gift_redemptions WHERE gift_id=%s',(gift['id'],)).fetchone()['n'],0)
             conn.execute('UPDATE users SET username=%s WHERE id=%s',('new_username',self.owner))
@@ -61,6 +61,31 @@ class PersonalGiftsIntegration(unittest.TestCase):
         report=self.admin_report(gift['id']);self.assertEqual(report['total'],1);self.assertEqual(report['credited'],12345)
         self.assertEqual(report['items'][0]['telegram_user_id'],self.tg)
         self.assertEqual(report['items'][0]['username'],'new_username')
+
+    def test_rejection_reasons_and_replay_preserve_balance(self):
+        gift=self.create()
+        with self.assertRaises(HTTPException) as missing:
+            self.redeem('GIFT-'+uuid4().hex[:24].upper())
+        self.assertEqual(missing.exception.detail,'wallet_gift_not_found')
+        for changes,reason in [
+            ("active=false",'wallet_gift_disabled'),
+            ("active=true,expires_at=now()-interval '1 second'",'wallet_gift_expired_code'),
+            ("expires_at=now()+interval '1 day',deleted_at=now()",'wallet_gift_deleted'),
+        ]:
+            with topups.connect(self.dsn) as conn:
+                conn.execute('UPDATE wallet_gifts SET '+changes+' WHERE id=%s',(gift['id'],))
+            with self.assertRaises(HTTPException) as denied:self.redeem(gift['code'])
+            self.assertEqual(denied.exception.detail,reason)
+            self.assertEqual(self.balances()['BONUS'],0)
+        with topups.connect(self.dsn) as conn:
+            conn.execute('UPDATE wallet_gifts SET deleted_at=NULL WHERE id=%s',(gift['id'],))
+        self.redeem(gift['code'])
+        with self.assertRaises(HTTPException) as used:self.redeem(gift['code'],self.other)
+        self.assertEqual(used.exception.detail,'wallet_gift_limit_reached')
+        with topups.connect(self.dsn) as conn:
+            conn.execute('UPDATE wallet_gifts SET active=false,deleted_at=now() WHERE id=%s',(gift['id'],))
+        self.assertTrue(self.redeem(gift['code'])['already_redeemed'])
+        self.assertEqual(self.balances()['BONUS'],12345)
 
     def test_personal_code_can_be_created_before_recipient_joins(self):
         tg=self.tg+500;gift=self.create(self.payload(recipient_telegram_id=tg))
