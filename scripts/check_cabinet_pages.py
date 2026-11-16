@@ -203,6 +203,9 @@ def main():
                 assert forbidden.status == 403
                 # Компактная стартовая раскладка: история доступна, формы открываются по запросу.
                 go(advertiser, 'wallet')
+                history=advertiser.locator('[data-wallet-section=history]')
+                expect(history).not_to_have_attribute('open','')
+                history.locator(':scope > summary').click()
                 expect(advertiser.locator('.wallet-journal')).to_be_visible()
                 expect(advertiser.locator('[data-wallet-section=topup]')).not_to_have_attribute('open', '')
                 expect(advertiser.get_by_label('Сумма пополнения, ₽',exact=True)).to_be_hidden()
