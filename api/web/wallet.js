@@ -216,7 +216,7 @@ window.pushokWallet=(()=>{
   node.replaceChildren(el('p','Загружаем настройки баланса…'));
   try{const data=await api('/admin/wallet/settings');if(seq!==settingsEpoch||session!==token||uid!==me?.id)return;
    const p=panel('Внутренний баланс'),f=el('form'),enabled=field(f,'Включить внутренний баланс','checkbox');enabled.checked=data.enabled;
-   p.append(el('p',data.enabled?'Баланс включён':'Баланс выключен','wallet-settings-state'));
+   const state=el('p',data.enabled?'Баланс включён':'Баланс выключен','wallet-settings-state');p.append(state);enabled.addEventListener('change',()=>{state.textContent=enabled.checked===data.enabled?(data.enabled?'Баланс включён':'Баланс выключен'):(enabled.checked?'Будет включён после сохранения':'Будет выключен после сохранения');});
    f.append(el('p','Выключение останавливает новые пополнения, оплату с баланса и активацию подарочных кодов. Остатки, история, возвраты и подтверждения уже выставленных счетов сохраняются. Автосписания выключатся у всех: после включения каждый пользователь разрешает их заново. Прямая оплата заявок продолжает работать.','muted'));
    submit(f,'Сохранить настройку баланса',async()=>{await api('/admin/wallet/settings',{method:'PUT',body:{enabled:enabled.checked}});notice('Настройка баланса сохранена.',true);await walletSettings();});p.append(f);node.replaceChildren(p);
   }catch(e){if(seq===settingsEpoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить настройку баланса',walletSettings));}

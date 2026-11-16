@@ -189,7 +189,7 @@
           <button id="settings-system-tab" type="button">Система</button>
         </nav>
         <section id="settings-payments" class="panel settings-panel">
-          <div class="eyebrow">ПЛАТЁЖНЫЕ КАНАЛЫ</div><h2>Telegram Stars и СБП</h2>
+          <div class="eyebrow">ПЛАТЁЖНЫЕ КАНАЛЫ</div><h2>Способы оплаты</h2>
           <p class="muted">Включите нужные способы и задайте цены во вкладке «Тарифы».</p>
           <div id="sbp-connection"></div>
           <form id="payment-switches">
@@ -197,7 +197,7 @@
 <label><input id="enable-sbp" type="checkbox">Принимать СБП</label>
 <p id="payment-config-note" role="status"></p>
 <button type="submit" class="primary">Сохранить способы оплаты</button>
-</form><div class="settings-payment-grid">
+</form><div id="wallet-settings"></div><details><summary>Диагностика оплаты</summary><div class="settings-payment-grid">
             <article class="settings-method">
               <h3>⭐ Telegram Stars · XTR</h3>
               <p id="settings-stars-status" role="status">Состояние запрашивается...</p>
@@ -211,7 +211,7 @@
             </article>
           </div>
           <p id="settings-payments-note" class="muted" role="status">Не сохраняйте реквизиты и секреты в комментариях или полях тарифов.</p>
-          <div id="wallet-settings"></div>
+          </details>
           <h3>СБП: ожидающие и спорные попытки</h3>
           <p class="muted">Повтор ставит счёт на серверную проверку. Деньги не зачисляются вручную, размещение не запускается. Не указывайте ключи и банковские данные в комментарии.</p>
           <div id="sbp-review-list" aria-live="polite"></div>
