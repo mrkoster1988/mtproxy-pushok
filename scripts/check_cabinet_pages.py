@@ -125,7 +125,7 @@ def main():
                                if node.tag.endswith('symbol')}
                     expect(page.locator('#cabinet-sidebar')).to_have_count(0)
                     expect(page.locator('.menu-toggle')).to_have_count(0)
-                    for route, icon in [('dashboard','home'),('campaigns','campaign'),('payments','wallet'),('profile','user')]:
+                    for route, icon in [('dashboard','home'),('campaigns','campaign'),('wallet','wallet'),('profile','user')]:
                         link = page.locator('.mobile-bottom-nav a[data-route="'+route+'"]')
                         expect(link).to_be_visible()
                         expect(link).to_have_attribute('href','#/'+route)
@@ -614,6 +614,7 @@ def main():
                     mini.get_by_role('link',name='Открыть @mtproxy_pushok_bot',exact=True).click()
                     assert mini.evaluate('window.__miniLink')=='https://t.me/mtproxy_pushok_bot'
                     go(mini,'create')
+                    expect(mini.locator('#tariff-select option:checked')).to_contain_text('200 XTR')
                     mini.locator('#order-channel-mode').click()
                     mini.locator('#order-channel-url').fill('@pushok_onepage')
                     mini.locator('#order-channel-title').fill('Канал из одной формы')
@@ -682,11 +683,18 @@ def main():
                     mini_screens = [('home','dashboard'),('campaigns','campaigns'),('channels','channels'),
                                     ('create','create'),('calendar','calendar'),('detail','campaign/'+stars_cid),
                                     ('payments','payments'),('stars','payments/'+stars_cid),
-                                    ('profile','profile'),('help','help')]
+                                    ('profile','profile'),('help','help'),('wallet','wallet'),('growth','growth'),('archive','archive')]
                     for width in (320,390):
                         mini.set_viewport_size({'width':width,'height':844})
                         for screen, route in mini_screens:
                             go(mini,route)
+                            if screen=='wallet':
+                                expect(mini.locator('.wallet-balances .wallet-primary')).to_have_attribute('data-currency','XTR')
+                                expect(mini.locator('.wallet-tools a')).to_have_attribute('href','#/payments')
+                            if screen=='growth':
+                                expect(mini.locator('.growth-page')).to_be_visible()
+                            if screen=='home':
+                                expect(mini.locator('#dashboard-wallet .wallet-total')).to_have_attribute('data-currency','XTR')
                             assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2'), (width,route)
                             if screen=='stars':
                                 expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата подтверждена сервером')
@@ -703,6 +711,7 @@ def main():
                                     mini.screenshot(path=str(output/'miniapp-home-320.png'),full_page=True)
                             if width==390:
                                 mini.screenshot(path=str(output/('miniapp-'+screen+'.png')),full_page=True)
+                                mini.screenshot(path=str(output/('viewport-'+screen+'.png')),full_page=False)
                     go(mini,'dashboard');mini.screenshot(path=str(output/'17-miniapp-light.png'),full_page=True)
                     check_navigation_icons(mini)
                     mini.screenshot(path=str(output/'21-miniapp-menu-light.png'),full_page=True)
@@ -1225,6 +1234,26 @@ def main():
                     advertiser.set_viewport_size({'width':width,'height':844})
                     assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
                 advertiser.screenshot(path=str(output/'39-wallet-user-mobile.png'),full_page=True)
+                # Главная показывает тот же серверный остаток; ошибка API не превращается в ноль.
+                go(advertiser,'dashboard')
+                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_contain_text('220')
+                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_have_attribute('data-currency','RUB')
+                def unavailable_wallet(route):
+                    route.fulfill(status=503,content_type='application/json',body='{"detail":"temporarily_unavailable"}')
+                advertiser.route('**/api/v1/wallet',unavailable_wallet)
+                go(advertiser,'dashboard')
+                expect(advertiser.locator('#dashboard-wallet')).to_contain_text('Не удалось получить остаток')
+                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_have_count(0)
+                advertiser.unroute('**/api/v1/wallet',unavailable_wallet)
+                advertiser.locator('#dashboard-wallet').get_by_role('button',name='Повторить',exact=True).click()
+                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_contain_text('220')
+                for width in (320,390,1280):
+                    advertiser.set_viewport_size({'width':width,'height':900})
+                    assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                    advertiser.screenshot(path=str(output/('dashboard-v119-'+str(width)+'.png')),full_page=False)
+                advertiser.set_viewport_size({'width':390,'height':844})
+                advertiser.locator('.mobile-bottom-nav a[data-route=wallet]').click()
+                expect(advertiser.locator('.wallet-balances')).to_be_visible()
                 go(admin,'wallet')
                 expect(admin.get_by_label('Основание возврата',exact=True)).to_be_visible()
                 admin.get_by_label('Основание возврата',exact=True).fill('Отмена тестового размещения')

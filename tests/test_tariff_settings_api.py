@@ -34,6 +34,21 @@ class TariffSettingsTests(unittest.TestCase):
             "id": ADMIN, "role": "admin"
         }
 
+    def test_catalog_exposes_configured_stars_price_without_admin_access(self):
+        main.app.dependency_overrides[main.get_current_user] = lambda: {
+            "id": ADMIN, "role": "advertiser"
+        }
+        with patch("app.main.psycopg.connect") as db:
+            db.return_value.__enter__.return_value.execute.return_value.fetchall.return_value = [
+                (TARIFF, "1 день", 86400, 30000, "RUB ", False, 150)
+            ]
+            for path in ("/api/v1/tariffs", "/api/v1/me/tariffs"):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json()[0]["stars_price_xtr"], 150)
+                self.assertEqual(response.json()[0]["price_kopecks"], 30000)
+
+
     def test_unauthenticated_cannot_read_or_write(self):
         with patch("app.main.psycopg.connect") as db:
             self.assertEqual(self.client.get("/api/v1/admin/tariffs").status_code, 401)

@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.18",
+    version="1.19",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -107,11 +107,11 @@ class TariffResponse(BaseModel):
     price_kopecks: int
     currency: str
     admin_only: bool = False
+    stars_price_xtr: int | None = None
 
 
 class TariffAdminResponse(TariffResponse):
     is_active: bool
-    stars_price_xtr: int | None = None
 
 
 class TariffSettingsUpdate(BaseModel):
@@ -539,7 +539,7 @@ def _available_tariffs(*, include_admin: bool = False) -> list[TariffResponse]:
         with psycopg.connect(DATABASE_URL, connect_timeout=3) as connection:
             rows = connection.execute(
                 """
-                SELECT id, name, duration_seconds, price_kopecks, currency, admin_only
+                SELECT id, name, duration_seconds, price_kopecks, currency, admin_only, stars_price_xtr
                 FROM tariffs
                 WHERE is_active = TRUE AND archived_at IS NULL AND (NOT admin_only OR %s)
                 ORDER BY admin_only, duration_seconds, price_kopecks, id
@@ -550,7 +550,7 @@ def _available_tariffs(*, include_admin: bool = False) -> list[TariffResponse]:
     return [
         TariffResponse(
             id=row[0], name=row[1], duration_seconds=row[2],
-            price_kopecks=row[3], currency=row[4].strip(), admin_only=row[5],
+            price_kopecks=row[3], currency=row[4].strip(), admin_only=row[5], stars_price_xtr=row[6],
         )
         for row in rows
     ]

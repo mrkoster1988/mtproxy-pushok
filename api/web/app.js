@@ -541,7 +541,7 @@ $('launch-evidence-integrity').addEventListener('click',()=>run(async()=>{
 let adminTariffs=[],tariffDraftId=null,tariffEditorDirty=false,previousTariffId='';
 Object.assign(errors,{tariff_request_conflict:'Тариф с этим запросом уже сохранён с другими условиями. Выберите его из списка или начните новый тариф.'});
 
-function tariffLabel(t){return t.name+' · '+(t.price_kopecks===0?'Бесплатно':money(t.price_kopecks));}
+function tariffLabel(t){return t.name+' · '+(t.price_kopecks===0?'Бесплатно':miniAppMode?(t.stars_price_xtr>0?t.stars_price_xtr+' XTR':'Цена Stars не задана'):money(t.price_kopecks));}
 function updatePublicPrice(){
  const publicTariffs=tariffs.filter(t=>!t.admin_only);
  const t=publicTariffs.find(x=>x.duration_seconds===86400)||publicTariffs[0];

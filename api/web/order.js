@@ -34,9 +34,11 @@ window.pushokOrder=(()=>{
   const q=quoteKey===currentKey()?priceQuote:null;
   const total=attempt?attempt.expected_price_kopecks:q?q.price_kopecks:tariff?.price_kopecks;
   $('order-date').querySelector('summary').textContent='3. Дата · '+(start?date(start):'согласовать с оператором');
-  const rows=[['Канал',channel],['Тариф',tariff?tariff.name+' · '+tariff.duration_seconds/3600+' ч':'Не выбран'],['Стоимость',tariff?(total===0?'Бесплатно':money(total)):'—'],['Начало',start?date(start):'По согласованию']];
+  const stars=q?q.stars_price_xtr:tariff?.stars_price_xtr;
+  const cost=total===0?'Бесплатно':miniAppMode?(attempt?'Уточняется после отправки':stars>0?stars+' XTR':'Цена Stars не задана'):money(total);
+  const rows=[['Канал',channel],['Тариф',tariff?tariff.name+' · '+tariff.duration_seconds/3600+' ч':'Не выбран'],['Стоимость',tariff?cost:'—'],['Начало',start?date(start):'По согласованию']];
   if(q?.offer_name)rows.push(['Скидка',q.offer_name+' · '+q.discount_percent+'%']);
-  if(q?.stars_price_xtr>0)rows.push(['В Telegram Stars',q.stars_price_xtr+' XTR']);
+  if(!miniAppMode&&q?.stars_price_xtr>0)rows.push(['В Telegram Stars',q.stars_price_xtr+' XTR']);
   $('order-summary').replaceChildren(...rows.flatMap(([key,value])=>[el('dt',key),el('dd',value)]));
  }
  function feedback(text){$('order-feedback').textContent=text;$('order-feedback').hidden=!text;}
