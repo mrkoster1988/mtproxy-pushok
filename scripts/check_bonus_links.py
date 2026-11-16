@@ -17,11 +17,14 @@ def check_bonus_links(browser,base,output,failures,dsn):
         conn.execute("INSERT INTO growth_offers(id,kind,name,code,percent,tariff_id,per_user_limit,created_by) VALUES(%s,'promo','Скидка по ссылке','LINK40',40,%s,1,%s)",(offer,tariff,admin))
         conn.execute("INSERT INTO wallet_gifts(id,created_by,request_id,code,name,amount,max_uses,expires_at,recipient_telegram_id) VALUES(%s,%s,%s,%s,'Подарок по ссылке',12345,1,now()+interval '1 day',%s)",(gift,admin,uuid4(),code,recipient))
 
-    def launch(tg,payload):
-        context=browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce')
+    def launch(tg,payload,page=None,before=None):
+        context=page.context if page else browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce')
         context.add_init_script("window.__nativeEvents=[];window.TelegramWebviewProxy={postEvent(name,data){__nativeEvents.push({name,data:JSON.parse(data||'{}')});}};")
-        page=context.new_page();page.on('pageerror',lambda e:failures.append(str(e)))
+        if page:page.goto('about:blank')
+        else:
+            page=context.new_page();page.on('pageerror',lambda e:failures.append(str(e)))
         page.route('**/*',lambda route:route.continue_() if route.request.url.startswith(base+'/') else route.abort())
+        if before:before(page)
         raw=signed_data(user=json.dumps({'id':tg,'first_name':'Получатель','username':'bonus_receiver'}),query_id=str(uuid4()),start_param=payload)
         fragment=urlencode({'tgWebAppData':raw,'tgWebAppVersion':'8.0','tgWebAppPlatform':'android','tgWebAppThemeParams':'{}'})
         page.goto(base+'/miniapp#'+fragment,wait_until='domcontentloaded')
@@ -30,11 +33,26 @@ def check_bonus_links(browser,base,output,failures,dsn):
 
     wrong=launch(recipient+1,'wallet_'+code)
     try:
-        expect(wrong.locator('#notice')).to_contain_text('Код недоступен')
+        notice=wrong.locator('#notice')
+        expect(notice).to_contain_text('Подарок предназначен другому аккаунту Telegram')
+        expect(notice).to_contain_text('ID '+str(recipient+1))
+        expect(notice).not_to_contain_text('ID '+str(recipient)+')')
+        expect(notice.get_by_role('button',name='Повторить',exact=True)).to_have_count(0)
+        for width in (320,390):
+            wrong.set_viewport_size({'width':width,'height':844})
+            assert wrong.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+            box=notice.bounding_box();message=notice.locator('.notice-message').bounding_box()
+            assert message['width']>=200 and box['x']>=0 and box['x']+box['width']<=width
+            wrong.screenshot(path=str(output/f'57-gift-wrong-account-{width}.png'))
         wrong.locator('.mobile-bottom-nav a[data-route=wallet]').click()
         expect(wrong.locator('[data-page=wallet] .wallet-page')).to_be_visible()
         with psycopg.connect(dsn) as conn:
             assert conn.execute('SELECT count(*) FROM wallet_gift_redemptions WHERE gift_id=%s',(gift,)).fetchone()[0]==0
+        # Новый подписанный запуск в том же WebView должен сменить аккаунт,
+        # даже если sessionStorage содержит сессию другого получателя.
+        correct=launch(recipient,'wallet_'+code,page=wrong)
+        expect(correct.locator('[data-page=wallet]')).to_be_visible()
+        expect(correct.locator('.wallet-entry').filter(has_text='Подарок по ссылке')).to_have_count(1)
     finally:wrong.context.close()
 
     page=launch(recipient,'wallet_'+code)
@@ -49,6 +67,30 @@ def check_bonus_links(browser,base,output,failures,dsn):
         page.get_by_role('link',name='Открыть мои Stars через бота ↗').click()
         assert page.evaluate("__nativeEvents.some(e=>e.name==='web_app_open_tg_link'&&e.data.path_full==='/mtproxy_pushok_bot?start=stars')")
         page.screenshot(path=str(output/'51-gift-deeplink-mobile.png'),full_page=True)
+    finally:page.context.close()
+
+    retry_code='GIFT-'+uuid4().hex[:24].upper()
+    with psycopg.connect(dsn) as conn:
+        conn.execute("INSERT INTO wallet_gifts(created_by,request_id,code,name,amount,max_uses,expires_at,recipient_telegram_id) VALUES(%s,%s,%s,'Подарок после повтора',100,1,now()+interval '1 day',%s)",(admin,uuid4(),retry_code,recipient))
+    def lost_response(page):
+        def intercept(route):
+            response=route.fetch();assert response.ok
+            route.fulfill(status=503,json={'detail':'database_unavailable'})
+        page.route('**/api/v1/wallet/gifts/redeem',intercept,times=1)
+    page=launch(recipient,'wallet_'+retry_code,before=lost_response)
+    try:
+        notice=page.locator('#notice');retry=notice.get_by_role('button',name='Повторить',exact=True)
+        expect(retry).to_be_visible()
+        for width in (320,390):
+            page.set_viewport_size({'width':width,'height':844})
+            message=notice.locator('.notice-message').bounding_box();action=retry.bounding_box()
+            assert message['width']>=200 and action['y']>=message['y']+message['height']
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+            page.screenshot(path=str(output/f'58-gift-retry-{width}.png'))
+        retry.click()
+        expect(page.locator('[data-page=wallet]')).to_be_visible()
+        expect(page.locator('.wallet-entry').filter(has_text='Подарок после повтора')).to_have_count(1)
+        expect(page.locator('#notice')).to_contain_text('уже на вашем балансе')
     finally:page.context.close()
 
     page=launch(recipient,'offer_'+offer.hex)
