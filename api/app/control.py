@@ -40,8 +40,10 @@ def locked():
 
 
 def flag(name, fallback):
-    return read('payments.json', {}).get(name, fallback) is True
+    values = read('payments.json', {})
+    return isinstance(values, dict) and values.get(name, fallback) is True
 
 
 def now():
     return datetime.now(timezone.utc).isoformat()
+

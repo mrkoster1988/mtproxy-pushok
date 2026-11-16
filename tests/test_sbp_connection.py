@@ -93,3 +93,9 @@ class SBPConnectionTests(unittest.TestCase):
         Path(self.temp.name,'sbp-private.json').write_text('broken')
         with patch.dict(os.environ,{'YOOKASSA_SHOP_ID':'999','YOOKASSA_SECRET_KEY':'secret_from_env'}):
             self.assertEqual(connection.current(),{})
+
+    def test_wrong_saved_types_fail_closed(self):
+        for values in (dict(host=None),dict(secret=[]),dict(test_mode='false')):
+            control.write('sbp-private.json',{**self.data,**values})
+            self.assertEqual(connection.current(),{})
+            self.assertFalse(sbp_checkout.settings()['configured'])

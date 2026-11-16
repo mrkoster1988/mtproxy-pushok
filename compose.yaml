@@ -38,7 +38,7 @@ services:
       - bot-api
       - payment-egress
 
-  # По умолчанию бездействует: отдельный серверный флаг сверки равен 0.
+  # Сверка СБП включается вместе с приёмом в кабинете; старые счета проверяются и после отключения новых оплат.
   sbp-worker:
     volumes:
       - ./.control:/var/lib/mtproxy-pushok/control:ro
@@ -102,3 +102,4 @@ networks:
   bot-egress:
   bot-api:
     internal: true
+

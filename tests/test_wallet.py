@@ -81,6 +81,24 @@ class WalletIntegration(unittest.TestCase):
     def charge(self,cid,currency='RUB',**kw):
         with topups.connect(self.dsn) as conn:return ledger.charge(conn,cid,self.owner,currency,**kw)
 
+    def test_legacy_stars_debt_repayment_retries_and_conflicts(self):
+        with topups.connect(self.dsn) as conn:
+            ledger.post(conn,self.owner,'XTR',-100,'provider_refund','debt:'+str(uuid4()),'Возврат прежней оплаты')
+        self.actor={'id':self.admin,'role':'admin'}
+        path='/admin/wallet/users/'+str(self.tg)+'/adjust'
+        body=dict(request_id=str(uuid4()),currency='XTR',amount=60,direction='credit',reason='Погашение прежней задолженности')
+        first=self.request('POST',path,201,json=body)
+        self.assertEqual(self.request('POST',path,201,json=body)['id'],first['id'])
+        self.assertEqual(self.balances()['XTR'],-40)
+        conflict=self.request('POST',path,409,json={**body,'amount':40})
+        self.assertEqual(conflict['detail'],'wallet_request_conflict')
+        self.request('POST',path,409,json={**body,'request_id':str(uuid4()),'amount':41})
+        final={**body,'request_id':str(uuid4()),'amount':40}
+        paid=self.request('POST',path,201,json=final)
+        self.assertEqual(self.request('POST',path,201,json=final)['id'],paid['id'])
+        self.assertEqual(self.balances()['XTR'],0)
+        self.request('POST',path,409,json={**body,'request_id':str(uuid4()),'amount':1})
+
     def test_manual_journal_retries_reversal_and_role(self):
         body=dict(request_id=str(uuid4()),currency='RUB',amount=12345,direction='credit',reason='Подтверждённое пополнение')
         path='/admin/wallet/users/'+str(self.tg)+'/adjust'
@@ -157,8 +175,9 @@ class WalletIntegration(unittest.TestCase):
         patcher=patch('app.wallet_topups.stars_checkout.credentials',return_value=('token',12345));patcher.start();self.addCleanup(patcher.stop)
         patcher=patch('app.wallet_topups.is_test_environment',return_value=test);patcher.start();self.addCleanup(patcher.stop)
         patcher=patch('app.wallet_topups.stars_invoices_enabled',return_value=True);patcher.start();self.addCleanup(patcher.stop)
-        with patch('app.wallet_topups.stars_checkout.create_invoice_link',return_value='https://t.me/$invoice'):
-            row=topups.create(self.dsn,self.actor,Topup(request_id=uuid4(),currency='XTR',amount=300))
+        with topups.connect(self.dsn) as conn:
+            row=conn.execute("""INSERT INTO wallet_topups(user_id,request_id,provider,currency,amount,provider_account,test_mode,status,invoice_url,expires_at)
+                VALUES(%s,%s,'telegram_stars','XTR',300,'12345',%s,'pending','https://t.me/$invoice',now()+interval '30 minutes') RETURNING *""",(self.owner,uuid4(),test)).fetchone()
         pre=StarsPrecheckoutInput(query_id=str(uuid4()),telegram_user_id=self.tg,invoice_payload='wallet:'+str(row['id']),currency='XTR',total_amount=300)
         receipt=StarsReceiptInput(telegram_user_id=self.tg,invoice_payload=pre.invoice_payload,currency='XTR',total_amount=300,telegram_payment_charge_id='charge-'+str(uuid4()))
         return row,pre,receipt

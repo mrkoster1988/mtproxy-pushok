@@ -31,7 +31,7 @@ def service_once(dsn,limit=20):
         if not controls.settings(conn)['enabled']:return report
         # Все подходящие кампании, без голодания из-за первых заявок без средств.
         rows=conn.execute('''SELECT c.id,c.advertiser_user_id,p.currency FROM campaigns c JOIN wallet_preferences p ON p.user_id=c.advertiser_user_id
-            JOIN tariffs t ON t.id=c.tariff_id WHERE p.auto_pay AND c.wallet_checked_at<now()-interval '1 minute' AND c.archived_at IS NULL AND c.moderation_status='approved'
+            JOIN tariffs t ON t.id=c.tariff_id WHERE p.auto_pay AND p.currency='RUB' AND c.wallet_checked_at<now()-interval '1 minute' AND c.archived_at IS NULL AND c.moderation_status='approved'
             AND c.payment_status='awaiting_payment' AND c.placement_status='not_scheduled' AND c.price_kopecks_snapshot>0
             AND (p.currency='XTR' OR c.purchase_surface<>'telegram')
             ORDER BY c.wallet_checked_at,c.id LIMIT %s''',(limit,)).fetchall()

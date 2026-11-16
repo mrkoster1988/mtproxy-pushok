@@ -1,3 +1,4 @@
+from .payment_gate import sbp_reconciliation_enabled
 import binascii
 import hashlib
 import hmac
@@ -51,7 +52,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.23",
+    version="1.24",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1861,7 +1862,7 @@ def read_payment_settings(
             "checkout_enabled": sbp_checkout.settings()['enabled'],
             "test_mode": sbp_checkout.settings()['test_mode'],
             "recorded_successes": int(safe.get("recorded_sbp_payments") or 0),
-            "background_enabled": os.getenv('PUSHOK_SBP_RECONCILIATION_ENABLED', '0') == '1',
+            "background_enabled": sbp_reconciliation_enabled(),
             "pending_checks": int(safe.get('sbp_pending') or 0),
             "needs_manual_review": int(safe.get('sbp_review') or 0),
             "provider_verified": False,
@@ -2826,6 +2827,7 @@ def control_payments(payload: PaymentSwitches, admin=Depends(require_admin)):
         raise HTTPException(409, 'sbp_credentials_required')
     with control.locked():
         control.write('payments.json', {'stars': payload.stars, 'sbp': payload.sbp,
+                      'sbp_reconciliation': payload.sbp or sbp_reconciliation_enabled(),
                       'actor': str(admin['id']), 'changed_at': control.now()})
     return {'saved': True}
 
@@ -2977,3 +2979,6 @@ app.include_router(wallet_router_for(lambda: DATABASE_URL, get_current_user, req
 
 from .sbp_connection import router_for as sbp_connection_router
 app.include_router(sbp_connection_router(lambda: DATABASE_URL, require_admin))
+
+from .channel_logos import router_for as channel_logos_router
+app.include_router(channel_logos_router(lambda: DATABASE_URL, get_current_user))

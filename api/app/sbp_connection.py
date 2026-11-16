@@ -8,7 +8,7 @@ from . import control
 def current():
     saved = control.read('sbp-private.json')
     if saved is not None or (control.root() / 'sbp-private.json').exists():
-        return saved if isinstance(saved, dict) else {}
+        return saved if isinstance(saved, dict) and valid(saved) else {}
     return dict(shop=os.getenv('YOOKASSA_SHOP_ID', ''), secret=os.getenv('YOOKASSA_SECRET_KEY', ''),
                 host=os.getenv('PUSHOK_PUBLIC_PAYMENT_HOST', '').strip().lower(),
                 test_mode=os.getenv('PUSHOK_SBP_TEST_MODE', '1') != '0')
@@ -21,6 +21,8 @@ def public(cfg=None):
 
 
 def valid(cfg):
+    if not isinstance(cfg,dict) or any(not isinstance(cfg.get(k),str) for k in ('shop','secret','host')):
+        return False
     return bool(re.fullmatch(r'[0-9]{1,32}', cfg.get('shop', '')) and
                 re.fullmatch(r'[A-Za-z0-9_\-]{8,256}', cfg.get('secret', '')) and
                 re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', cfg.get('host', '')) and
@@ -75,7 +77,7 @@ def router_for(dsn, require_admin):
                 except provider.SBPProviderError:
                     raise HTTPException(502, 'sbp_connection_check_failed') from None
                 if (str(result.get('account_id')) != cfg['shop'] or result.get('test') is not cfg['test_mode']
-                        or 'sbp' not in result.get('payment_methods', []) or result.get('status') != 'enabled'):
+                        or not isinstance(result.get('payment_methods'),list) or 'sbp' not in result['payment_methods'] or result.get('status') != 'enabled'):
                     raise HTTPException(409, 'sbp_connection_shop_not_ready')
                 control.write('sbp-private.json', cfg)
                 conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'sbp_connection_saved',jsonb_build_object('test_mode',%s::boolean))", (admin['id'],cfg['test_mode']))

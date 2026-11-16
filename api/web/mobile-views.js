@@ -14,6 +14,22 @@ window.pushokViews=(()=>{
  function badge(value,text){return el('span',text||labels[value]||value,'badge badge--'+value);}
  function title(c){return c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||'Кампания';}
  function handle(value){try{return '@'+new URL(value).pathname.replace(/^\//,'').replace(/\/$/,'');}catch{return '';}}
+ const logos=new Map(),logoQueue=[];let logoSession='',logoEpoch=0,logoActive=0;
+ function fetchLogo(url,options){return new Promise(resolve=>{logoQueue.push({url,options,resolve});pumpLogos();});}
+ function pumpLogos(){while(logoActive<4&&logoQueue.length){const task=logoQueue.shift();logoActive++;fetch(task.url,task.options).then(task.resolve,()=>task.resolve(null)).finally(()=>{logoActive--;pumpLogos();});}}
+ function clearLogos(){logoEpoch++;for(const task of logoQueue.splice(0))task.resolve(null);for(const entry of logos.values())if(entry.url)URL.revokeObjectURL(entry.url);logos.clear();logoSession='';}
+ function channelAvatar(id,label,url=''){
+  const fallback=avatar();fallback.classList.add('channel-avatar');fallback.title=label||'Канал';
+  if(!id||!token)return fallback;if(logoSession!==token){clearLogos();logoSession=token;}
+  const key=id+':'+url,epoch=logoEpoch,session=token;
+  if(!logos.has(key)){
+   if(logos.size>=128)return fallback;
+   const entry={url:null};logos.set(key,entry);
+   entry.promise=fetchLogo('/api/v1/channels/'+encodeURIComponent(id)+'/logo',{headers:{Authorization:'Bearer '+session},cache:'no-store'})
+    .then(async r=>{if(!r||r.status!==200||r.headers.get('Content-Type')?.split(';')[0]!=='image/jpeg')return null;const blob=await r.blob();if(blob.size>1048576||epoch!==logoEpoch||session!==token)return null;entry.url=URL.createObjectURL(blob);return entry.url;}).catch(()=>null);
+  }
+  logos.get(key).promise.then(src=>{if(!src||epoch!==logoEpoch||session!==token)return;const img=el('img');img.alt='Логотип канала '+(label||'');img.width=48;img.height=48;img.decoding='async';img.addEventListener('error',()=>fallback.replaceChildren(icon('channel')),{once:true});img.src=src;fallback.replaceChildren(img);});return fallback;
+ }
  function avatar(kind='channel'){const a=el('span',undefined,'ui-avatar');a.append(icon(kind));return a;}
  // Фото из Telegram используется только для отображения, не для авторизации.
  function profileAvatar(){
@@ -53,7 +69,7 @@ window.pushokViews=(()=>{
   const item=el('article',undefined,'campaign-tile'),head=el('div',undefined,'tile-heading'),copy=el('div');
   item.dataset.placement=c.placement_status;
   const a=el('a',title(c),'tile-title');a.href='#/'+(mode==='sponsors'?'moderation/':'campaign/')+c.id;copy.append(a,el('small','#'+c.id.slice(0,8)+(c.channel_url?' · '+handle(c.channel_url):'')));
-  const open=link('',(mode==='sponsors'?'moderation/':'campaign/')+c.id);iconAction(open,'chevron','Открыть кампанию '+title(c));head.append(avatar('megaphone'),copy,open);item.append(head);
+  const open=link('',(mode==='sponsors'?'moderation/':'campaign/')+c.id);iconAction(open,'chevron','Открыть кампанию '+title(c));head.append(channelAvatar(c.channel_id,title(c),c.channel_url),copy,open);item.append(head);
   item.append(el('p',c.placement_status==='active'&&c.scheduled_end_at?'До '+date(c.scheduled_end_at):c.scheduled_start_at?'Начало: '+date(c.scheduled_start_at):c.requested_start_at?'Желаемое начало: '+date(c.requested_start_at):'Дата — по согласованию','tile-period'));
   item.append(statusSteps(c,true));
   const meta=el('div',undefined,'tile-meta');meta.append(el('span',c.tariff_name_snapshot||'Тариф'),el('strong',price(c)));item.append(meta);
@@ -74,7 +90,7 @@ window.pushokViews=(()=>{
   target.replaceChildren();target.classList.add('mobile-card-list');
   if(!list.length){target.append(mascot('Добавьте публичный канал, который хотите продвигать.'));return;}
   list.forEach(c=>{
-   const item=el('article',undefined,'channel-tile'),head=el('div',undefined,'tile-heading'),copy=el('div');copy.append(el('h3',c.title),el('p',handle(c.telegram_url),'muted'));head.append(avatar(),copy);item.append(head);
+   const item=el('article',undefined,'channel-tile'),head=el('div',undefined,'tile-heading'),copy=el('div');copy.append(el('h3',c.title),el('p',handle(c.telegram_url),'muted'));head.append(channelAvatar(c.id,c.title,c.telegram_url),copy);item.append(head);
    const count=ownCampaigns.filter(x=>x.channel_id===c.id).length;item.append(el('p','Кампаний: '+count,'muted'));
    const create=link('Создать кампанию','create',true);create.addEventListener('click',()=>{$('channel-select').value=c.id;window.pushokOrder.selectChannel();});item.append(create);
    const more=el('details',undefined,'channel-tools');more.append(el('summary','Управление каналом'),window.pushokManagement.channelActions(c));item.append(more);target.append(item);
@@ -113,5 +129,5 @@ window.pushokViews=(()=>{
   target.append(el('h2','Очередь размещений'));if(!queued.length)target.append(el('p','Нет оплаченных кампаний в очереди.','empty'));
   queued.sort((a,b)=>(a.scheduled_start_at||'9999').localeCompare(b.scheduled_start_at||'9999')).forEach(c=>target.append(campaignSummary(c,'sponsors')));
  }
- return {icon,iconAction,disclosure,brand,mascot,profileAvatar,statusSteps,facts,campaigns,channelCards,paymentOverview,profile,sponsors};
+ return {clearLogos,channelAvatar,icon,iconAction,disclosure,brand,mascot,profileAvatar,statusSteps,facts,campaigns,channelCards,paymentOverview,profile,sponsors};
 })();
