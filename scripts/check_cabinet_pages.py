@@ -229,14 +229,14 @@ def main():
                 expect(advertiser.locator('#channel-form [name=title]')).to_be_focused()
                 advertiser.locator('#channel-form [name=title]').fill('Тестовый канал')
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://example.org/not-telegram')
-                advertiser.locator('#channel-form button').click()
+                advertiser.locator('#channel-form button[type=submit]').click()
                 expect(advertiser.locator('#notice')).to_contain_text('https://t.me/channel')
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://t.me/pushok_browser_test')
-                advertiser.locator('#channel-form button').click()
+                advertiser.locator('#channel-form button[type=submit]').click()
                 expect(advertiser.locator('[data-page=channels] .channel-manager')).to_contain_text('Тестовый канал')
                 advertiser.locator('#channel-form [name=title]').fill('Дубликат')
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://t.me/pushok_browser_test')
-                advertiser.locator('#channel-form button').click()
+                advertiser.locator('#channel-form button[type=submit]').click()
                 expect(advertiser.locator('#notice')).to_contain_text('уже добавлен')
 
                 go(advertiser, "create")
@@ -943,15 +943,13 @@ def main():
                 expect(row.locator('.channel-avatar img')).to_be_visible()
                 assert row.locator('.channel-avatar img').evaluate('(img)=>img.complete && img.naturalWidth===160')
                 advertiser.screenshot(path=str(output/'47-channel-logo-mobile.png'),full_page=True)
-                row.locator('.channel-tools summary').click()
-                row.get_by_role('button',name='✏️ Изменить',exact=True).click()
+                row.get_by_role('button',name='Изменить канал',exact=True).click()
                 row.get_by_label('Название канала',exact=True).fill('Изменённый канал управления')
                 row.get_by_role('button',name='Сохранить изменения',exact=True).click()
                 expect(advertiser.locator('[data-page=channels]')).to_contain_text('Изменённый канал управления')
                 row=advertiser.locator('[data-page=channels] .channel-tile').filter(has_text='Изменённый канал управления')
                 advertiser.once('dialog',lambda dialog:dialog.accept())
-                row.locator('.channel-tools summary').click()
-                row.get_by_role('button',name='🗑️ Удалить',exact=True).click()
+                row.get_by_role('button',name='Удалить канал',exact=True).click()
                 expect(advertiser.locator('[data-page=channels]')).not_to_contain_text('Изменённый канал управления')
                 go(advertiser,'archive')
                 advertiser.get_by_role('button',name='Восстановить',exact=True).click()
@@ -1224,11 +1222,8 @@ def main():
                 expect(admin.locator('.help-popup')).to_be_hidden()
                 admin.evaluate('window.scrollTo(0,0)')
                 go(advertiser,'channels')
-                for channel_tools in advertiser.locator('.channel-tools').all():
-                    if channel_tools.get_attribute('open') is None:
-                        channel_tools.locator('summary').click()
                 # Четвёртый канал добавлен сценарием удаления неоплаченной заявки.
-                expect(advertiser.locator('.channel-manager').get_by_role('button',name='✏️ Изменить',exact=True)).to_have_count(4)
+                expect(advertiser.locator('.channel-manager').get_by_role('button',name='Изменить канал',exact=True)).to_have_count(4)
                 for width in (390,320):
                     advertiser.set_viewport_size({'width':width,'height':844})
                     for channel_tools in advertiser.locator('.channel-tools').all():
@@ -1466,7 +1461,7 @@ def main():
                 admin.screenshot(path=str(output/'42-wallet-gifts-admin-mobile.png'),full_page=True)
                 go(advertiser,'wallet')
                 open_wallet_tools(advertiser)
-                expect(advertiser.get_by_role('link',name='Открыть мои Stars в Telegram ↗')).to_have_attribute('href','tg://stars')
+                expect(advertiser.get_by_role('link',name='Открыть мои Stars в Telegram ↗')).to_have_attribute('href','tg://settings/stars')
                 expect(advertiser.get_by_label('Валюта пополнения',exact=True)).to_have_count(0)
                 expect(advertiser.get_by_role('button',name='Пополнить через СБП',exact=True)).to_be_visible()
                 for _ in range(2):
@@ -1560,6 +1555,8 @@ def main():
                 check_user_access(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_automatic_schedule import check_automatic_schedule
                 check_automatic_schedule(browser, base, output, failures, PostgresIntegration.dsn)
+                from check_mobile_polish import check_mobile_polish
+                check_mobile_polish(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_application_licenses import check_application_licenses
                 check_application_licenses(browser,base,output,failures,PostgresIntegration.dsn)
                 assert not failures, failures

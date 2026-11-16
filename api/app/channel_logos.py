@@ -46,9 +46,15 @@ def _call(token, method, payload):
     return reply['result']
 
 
+def matches_channel(chat, username):
+    aliases = chat.get('active_usernames') or []
+    return chat.get('type') == 'channel' and username in [str(chat.get('username', '')).lower(),
+        *[str(alias).lower() for alias in aliases if isinstance(alias, str)]]
+
+
 def _download(token, username):
     chat = _call(token, 'getChat', {'chat_id': '@' + username})
-    if chat.get('type') != 'channel' or str(chat.get('username', '')).lower() != username:
+    if not matches_channel(chat, username):
         return None
     photo = chat.get('photo')
     if not isinstance(photo, dict) or not isinstance(photo.get('small_file_id'), str):

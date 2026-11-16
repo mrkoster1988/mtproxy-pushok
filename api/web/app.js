@@ -689,6 +689,7 @@ $('node-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
 },e.submitter);});
 async function refresh({background=false}={}){
  if(!token)return;
+ if(!background)window.pushokViews?.clearLogos();
  const refreshSession=token,refreshUser=me?.id;
  const current=()=>token===refreshSession&&me?.id===refreshUser;
  const selectedChannel=$('channel-select').value,selectedTariff=$('tariff-select').value;
@@ -756,7 +757,7 @@ $('calendar-clear').addEventListener('click',clearRequestedDate);
 for(const id of ['calendar-from','calendar-time','tariff-select'])$(id).addEventListener('change',()=>run(loadAvailability));
 
 window.onTelegramAuth=data=>run(async()=>{const session=await api('/auth/telegram',{method:'POST',body:data});token=session.access_token;sessionStorage.setItem(sessionKey,token);await enter();notice('Вход выполнен.',true);});
-$('channel-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{await api('/channels',{method:'POST',body:Object.fromEntries(new FormData(e.target))});e.target.reset();await enter();notice('Канал добавлен.',true);},e.submitter);});
+$('channel-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{const data=Object.fromEntries(new FormData(e.target)),match=data.telegram_url.trim().match(/^(?:@|https:\/\/(?:t\.me|telegram\.me)\/)?([a-z][a-z0-9_]{3,31})\/?$/i);if(!match)throw Error('Укажите публичный @username или ссылку https://t.me/channel.');data.telegram_url='https://t.me/'+match[1].toLowerCase();await api('/channels',{method:'POST',body:data});e.target.reset();await enter();notice('Канал добавлен.',true);},e.submitter);});
 
 $('logout').addEventListener('click',()=>run(async()=>{await api('/auth/logout',{method:'POST'});window.pushokSBP?.reset();sessionStorage.removeItem(sessionKey);if(miniAppMode)window.pushokMiniApp.signedOut();else location.reload();}));
 $('refresh').addEventListener('click',()=>run(async()=>{await refresh();await loadAvailability();},$('refresh')));
@@ -875,20 +876,21 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&me?.role=
 function showIcons(data){
  const names={miniapp:'Mini App',advertise:'Разместить рекламу',campaigns:'Мои кампании',tariffs:'Тарифы',channels:'Наш канал',help:'Помощь'};
  const target=$('icons-mapping');target.replaceChildren();
+ const captions=['Защита','Календарь','Реклама','Оплата','Новости','Telegram','Проверка','Отчёты','Доступ','Помощь','Подарки','Настройки'];
  const gallery=el('div',undefined,'emoji-gallery');
  data.items.forEach((item,i)=>{
   const tile=el('figure'),image=el('img');image.alt='PushokIcons '+(i+1);
   if(item.image?.startsWith('data:image/png;base64,'))image.src=item.image;
   else image.alt='Миниатюра недоступна';
-  tile.append(image,el('figcaption',String(i+1)));gallery.append(tile);
- });target.append(gallery);
+  tile.append(image,el('figcaption',captions[i]||'Значок '+(i+1)));gallery.append(tile);
+ });target.append(window.pushokViews.disclosure('Все значки набора · '+data.items.length,[gallery],'emoji-catalog'));
  for(const [key,name] of Object.entries(names)){
-  const label=el('label',name),select=el('select');select.name=key;option(select,'','Не выбрана');
-  data.items.forEach((item,i)=>option(select,item.id,(item.emoji||'Иконка')+' · '+(i+1)+' · '+item.id));
+  const label=el('label',name,'emoji-mapping'),select=el('select');select.name=key;option(select,'','Не выбрана');
+  data.items.forEach((item,i)=>option(select,item.id,captions[i]||'Значок '+(i+1)));
   const thumb=el('img');thumb.className='emoji-selection';thumb.alt='Выбранная иконка';
   const update=()=>{const item=data.items.find(x=>x.id===select.value);thumb.hidden=!item?.image;if(item?.image?.startsWith('data:image/png;base64,'))thumb.src=item.image;};
   select.value=data.mapping[key]||'';select.addEventListener('change',update);update();
-  label.append(thumb,select);target.append(label);
+  const row=el('span',undefined,'emoji-mapping-row');row.append(thumb,select);label.append(row);target.append(label);
  }
  $('icons-status').textContent=data.items.length?'Получено иконок: '+data.items.length+'. Фирменное меню включается только при выборе иконок всех кнопок главного меню. Иначе используются обычные эмодзи.':'Набор ещё не загружен.';
 }

@@ -8,7 +8,7 @@ from uuid import UUID
 import psycopg
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from . import wallet_ledger as ledger, wallet_topups as topups, wallet_controls as controls
+from . import wallet_ledger as ledger, wallet_topups as topups, wallet_controls as controls, wallet_history
 from .bot_stars import StarsPrecheckoutInput, StarsReceiptInput, authorize
 from .sbp_provider import SBPProviderError
 from .sbp_verification import SBPVerificationError
@@ -117,11 +117,11 @@ def router_for(dsn,current_user,require_admin):
         return {'entries':rows,'page':page,'total':count,'page_size':limit}
 
     @router.get('/api/v1/wallet')
-    def own(response:Response,user=Depends(current_user)):
+    def own(response:Response,deleted_topups:bool=False,user=Depends(current_user)):
         response.headers['Cache-Control']='private, no-store'
         with db() as conn:
             result=summary(conn,user['id'])
-            result['topups']=[topups.view(r) for r in conn.execute('SELECT * FROM wallet_topups WHERE user_id=%s ORDER BY created_at DESC LIMIT 30',(user['id'],)).fetchall()]
+            result['topups']=[dict(topups.view(r),hidden_at=r['hidden_at']) for r in conn.execute('SELECT * FROM wallet_topups WHERE user_id=%s AND (hidden_at IS NOT NULL)=%s ORDER BY created_at DESC,id DESC LIMIT 30',(user['id'],deleted_topups)).fetchall()]
         try:topups.stars_checkout.credentials();stars_configured=True
         except HTTPException:stars_configured=False
         cfg=topups.sbp_settings()
@@ -215,7 +215,26 @@ def router_for(dsn,current_user,require_admin):
 
     @router.get('/api/v1/wallet/entries')
     def entries(page:int=Query(default=0,ge=0,le=100000),user=Depends(current_user)):
-        with db() as conn:return journal(conn,user['id'],page)
+        with db() as conn:return wallet_history.history(conn,user['id'],page)
+
+    @router.delete('/api/v1/wallet/topups/{tid}')
+    def hide_topup(tid:UUID,user=Depends(current_user)):
+        with db() as conn:
+            row=conn.execute('SELECT status,hidden_at FROM wallet_topups WHERE id=%s AND user_id=%s FOR UPDATE',(tid,user['id'])).fetchone()
+            if not row:raise HTTPException(404,'wallet_topup_not_found')
+            if row['status'] not in ('failed','succeeded','refunded'):
+                raise HTTPException(409,'wallet_topup_not_closed')
+            if row['hidden_at'] is None:
+                conn.execute('UPDATE wallet_topups SET hidden_at=now() WHERE id=%s',(tid,))
+                conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'wallet_invoice_hidden',jsonb_build_object('topup_id',%s::uuid))",(user['id'],tid))
+            return {'saved':True}
+
+    @router.post('/api/v1/wallet/topups/{tid}/restore')
+    def restore_topup(tid:UUID,user=Depends(current_user)):
+        with db() as conn:
+            row=conn.execute('UPDATE wallet_topups SET hidden_at=NULL WHERE id=%s AND user_id=%s RETURNING id',(tid,user['id'])).fetchone()
+            if not row:raise HTTPException(404,'wallet_topup_not_found')
+            return {'saved':True}
 
     @router.put('/api/v1/wallet/preferences')
     def preferences(data:Preferences,user=Depends(current_user)):

@@ -88,7 +88,10 @@ class ReferralBalanceIntegration(unittest.TestCase):
         entries=self.request('GET','/wallet/entries')['entries']
         self.assertEqual(len(entries),1);self.assertEqual(entries[0]['kind'],'referral_reward')
         self.actor={'id':self.friend,'role':'advertiser'}
-        self.assertEqual(self.request('GET','/wallet/entries')['entries'],[])
+        friend_entries=self.request('GET','/wallet/entries')['entries']
+        self.assertEqual(len(friend_entries),1)
+        self.assertEqual(friend_entries[0]['source'],'direct')
+        self.assertEqual(friend_entries[0]['campaign_id'],str(cid))
 
     def test_concurrent_first_completions_only_one_reward(self):
         self.bind();cids=[self.order(),self.order()]

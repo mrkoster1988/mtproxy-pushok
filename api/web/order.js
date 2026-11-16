@@ -30,6 +30,7 @@ window.pushokOrder=(()=>{
  function summary(){
   const tariff=tariffs.find(t=>t.id===$('tariff-select').value);
   const channel=newChannel?($('order-channel-title').value.trim()||$('order-channel-url').value.trim()||'Укажите канал'):channels.find(c=>c.id===$('channel-select').value)?.title||'Выберите канал';
+  const preview=$('order-selected-preview');if(preview&&window.pushokViews){const selected=channels.find(c=>c.id===$('channel-select').value);preview.hidden=newChannel||!selected;preview.replaceChildren(...(!newChannel&&selected?[window.pushokViews.channelPreview(selected)]:[]));}
   const start=$('requested-start').value;
   const q=quoteKey===currentKey()?priceQuote:null;
   const total=attempt?attempt.expected_price_kopecks:q?q.price_kopecks:tariff?.price_kopecks;
@@ -62,7 +63,7 @@ window.pushokOrder=(()=>{
   const data={request_id:crypto.randomUUID(),tariff_id:t.id,expected_price_kopecks:priceQuote.price_kopecks,promo_code:$('order-promo').value.trim()||null,quote_revision:priceQuote.revision,expected_duration_seconds:t.duration_seconds,requested_start_at:$('requested-start').value||null};
   if(newChannel){
    const value=$('order-channel-url').value.trim();
-   const match=value.match(/^(?:@|https:\/\/(?:t\.me|telegram\.me)\/)([a-z][a-z0-9_]{3,31})\/?$/i);
+   const match=value.match(/^(?:@|https:\/\/(?:t\.me|telegram\.me)\/)?([a-z][a-z0-9_]{3,31})\/?$/i);
    if(!match)throw Error('Укажите публичный @username или ссылку https://t.me/channel.');
    data.channel={telegram_url:'https://t.me/'+match[1].toLowerCase(),title:$('order-channel-title').value.trim()||'@'+match[1]};
   }else data.channel_id=$('channel-select').value;

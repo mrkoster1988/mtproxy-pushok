@@ -122,7 +122,13 @@
  // Перемещаем существующие формы вместе с обработчиками. Все id остаются уникальными.
  const channelPanel=$('channel-form').closest('section');const channelAdd=window.pushokViews.disclosure('Добавить канал',[channelPanel],'channel-add disclosure-panel');content.channels.append(channelAdd);
  const channelList=section('Ваши каналы'),channelRows=el('div');channelList.classList.add('flat-section');channelList.querySelector('h2').remove();channelList.append(channelRows);content.channels.prepend(channelList);
+ const channelSearch=el('input',undefined,'channel-search');channelSearch.type='search';channelSearch.placeholder='Название или @username';channelSearch.setAttribute('aria-label','Поиск каналов');channelList.prepend(channelSearch);
+ function renderChannels(){const query=channelSearch.value.trim().replace(/^@/,'').toLocaleLowerCase('ru');const list=channels.filter(c=>!query||(c.title+' '+c.telegram_url).toLocaleLowerCase('ru').includes(query));window.pushokViews.channelCards(channelRows,list);if(query&&!list.length)channelRows.replaceChildren(el('p','Каналы не найдены. Измените запрос.','empty'));}
+ channelSearch.addEventListener('input',renderChannels);
+
  content.create.append($('campaign-form').closest('section'));
+ window.pushokViews.channelSearch($('order-channel-url'),$('order-channel-title'));
+ window.pushokViews.channelSearch($('channel-form').elements.telegram_url,$('channel-form').elements.title);
  content.payments.prepend(link('Баланс · пополнить или посмотреть операции →','wallet'));
  const createNotice=el('p',undefined,'muted');content.create.prepend(createNotice);
  const calendar=$('availability-days').closest('.calendar');const calendarOrigin=$('order-calendar-home');
@@ -289,7 +295,7 @@
   renderQuote();metrics('calendar',[]);
   metrics('reports',[['Текущих кампаний',state.campaigns.length,'Завершённые — в архиве'],['В эфире',state.campaigns.filter(c=>c.placement_status==='active').length,'По данным запуска']]);
   channelRows.classList.add('channel-manager');
-  window.pushokViews.channelCards(channelRows,channels);
+  renderChannels();
   window.pushokViews.campaigns(summaryRows,[...state.campaigns].sort((a,b)=>({changes_requested:0}[a.moderation_status]??{awaiting_payment:1}[a.payment_status]??{active:2}[a.placement_status]??3)-({changes_requested:0}[b.moderation_status]??{awaiting_payment:1}[b.payment_status]??{active:2}[b.placement_status]??3)).slice(0,2));renderList();
   window.pushokViews.profile(content.profile,updatePanel);
   if(['admin','operator'].includes(me.role))window.pushokViews.sponsors(sponsorQueue,operatorCampaigns);
@@ -464,6 +470,7 @@
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);activate();
  },logout(){window.pushokAppLicense?.reset();window.pushokLinks?.reset();window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   bottomNav.querySelector('[data-route=moderation]').hidden=true;bottomNav.style.setProperty('--nav-count',4);
+  channelSearch.value='';
   [$('order-result'),detail,dashboardReferral,dashboardWallet,profileShortcut,paymentOverview,paymentRows,content.profile,content.user,content.users,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';

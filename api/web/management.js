@@ -27,13 +27,26 @@ window.pushokManagement=(()=>{
   const b=button('🗑️ Удалить',async()=>{
    if(!confirm(text+' Объект попадёт в «Удалённые»; историю можно будет восстановить.'))return;
    const from=location.hash;await api(path,{method:'DELETE'});window.pushokApproval?.resetSelection();await refresh();if(route&&location.hash===from){window.pushokApproval?.resetSelection();window.cabinet.go(route);}notice('Объект перемещён в «Удалённые». История сохранена.',true);
-  });parent.append(b);
+  });parent.append(b);return b;
  }
- function channelActions(c){
-  const box=el('div',undefined,'management-actions');box.append(button('✏️ Изменить',()=>editor(box,'Изменить канал',[
+ function channelActions(c,host=null){
+  const box=el('div',undefined,host?'card-tools':'management-actions'),parent=host||box;
+  const edit=button('Изменить канал',()=>editor(parent,'Изменить канал',[
    {name:'title',label:'Название канала',value:c.title},{name:'url',label:'Ссылка на канал',value:c.telegram_url,type:'url'}
-  ],v=>api('/channels/'+c.id,{method:'PATCH',body:{title:v.title.value.trim(),telegram_url:v.url.value.trim()}}))));
-  archive(box,'/channels/'+c.id,'Удалить канал из рабочего списка?','channels');return box;
+  ],v=>api('/channels/'+c.id,{method:'PATCH',body:{title:v.title.value.trim(),telegram_url:v.url.value.trim()}})));
+  const report=button('Отчёт по каналу',async()=>{
+   const existing=parent.querySelector('.channel-report');if(existing){existing.remove();return;}
+   const panel=el('section',undefined,'channel-report'),session=token;panel.append(el('p','Загрузка отчёта…'));parent.append(panel);
+   try{const data=await api('/channels/'+c.id+'/report');if(session!==token||!panel.isConnected)return;
+    panel.replaceChildren(el('h4','Отчёт по каналу'),el('p','Кампаний: '+data.totals.total+' · Активных: '+data.totals.active+' · Завершённых: '+data.totals.completed));
+    if(!data.campaigns.length)panel.append(el('p','Кампаний пока нет.','empty'));
+    if(data.totals.total>30)panel.append(el('p','Последние 30 кампаний','muted'));
+    for(const campaign of data.campaigns){const a=el('a',campaign.tariff_name_snapshot+' · '+(labels[campaign.placement_status]||campaign.placement_status));a.href='#/'+(campaign.archived_at?'archive/':'campaign/')+campaign.id;panel.append(a);}
+   }catch(error){if(session===token&&panel.isConnected)panel.replaceChildren(el('p',error.message));}
+  });box.append(edit,report);
+  const remove=archive(box,'/channels/'+c.id,'Удалить канал из рабочего списка?','channels');
+  if(host){window.pushokViews.iconAction(edit,'edit','Изменить канал');window.pushokViews.iconAction(report,'chart','Отчёт по каналу');window.pushokViews.iconAction(remove,'close','Удалить канал');remove.classList.add('danger-text');}
+  return box;
  }
  function campaignActions(c,operator=false){
   const box=el('details',undefined,'management-actions');box.append(el('summary','Изменить или удалить заявку'));
@@ -68,7 +81,7 @@ window.pushokManagement=(()=>{
  function local(value){if(!value)return '';const d=new Date(value);return localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
  async function renderArchive(target,selectedId=''){
   const session=token;target.replaceChildren(el('p','Загрузка архива…'));
-  try{const data=await api('/management/archive');if(session!==token||!me||!target.isConnected)return;target.replaceChildren();
+  try{const data=await api('/management/archive');if(session!==token||!me||!target.isConnected)return;target.replaceChildren();target.classList.add('archive-list');
    const completed=data.items.filter(x=>x.kind==='campaigns'&&x.placement_status==='completed');
    const deleted=data.items.filter(x=>!completed.includes(x));
    const kinds={channels:'Канал',campaigns:'Заявка',nodes:'Узел',tariffs:'Тариф'};
@@ -77,11 +90,11 @@ window.pushokManagement=(()=>{
     if(!items.length)target.append(el('p',title==='Удалённые'?'Удалённых объектов нет.':'Завершённых кампаний пока нет.','empty'));
     for(const item of items){
      const done=completed.includes(item),row=el('article',undefined,'card');row.dataset.archiveKind=item.kind;row.dataset.archiveId=item.id;
-     row.append(el('h3',kinds[item.kind]+' · '+item.title),el('p',(done?'В архиве: ':'Удалено: ')+date(item.archived_at)));
+     const tools=el('div',undefined,'card-tools'),head=el('div',undefined,'tile-heading');if(item.channel_id)head.append(window.pushokViews.channelAvatar(item.channel_id,item.title,item.channel_url));head.append(el('h3',kinds[item.kind]+' · '+item.title));row.append(tools,head,el('p',(done?'В архиве: ':'Удалено: ')+date(item.archived_at)));
      if(item.kind==='campaigns'){
       if(done)row.append(el('p','Завершено · '+(labels[item.payment_status]||item.payment_status)),el('p','Период: '+date(item.scheduled_start_at)+' — '+date(item.scheduled_end_at)));
-      row.append(button('Отчёт по кампании',()=>showCampaignReport({id:item.id},row)));
-      if(!miniAppMode)row.append(button('Скачать CSV',()=>downloadCampaignCsv({id:item.id})));
+      tools.append(window.pushokViews.iconAction(button('',()=>showCampaignReport({id:item.id},row)),'chart','Отчёт по кампании'));
+      if(!miniAppMode)tools.append(window.pushokViews.iconAction(button('',()=>downloadCampaignCsv({id:item.id})),'download','Скачать CSV'));
      }
      if(!done)row.append(button('Восстановить',async()=>{await api('/management/archive/'+item.kind+'/'+item.id+'/restore',{method:'POST'});await refresh();await renderArchive(target);notice('Объект восстановлен. Проверьте настройки перед использованием.',true);}));
      if(item.kind==='campaigns'&&['admin','operator'].includes(me.role)&&operatorCampaigns.some(c=>c.id===item.id&&c.archived_at))row.append(button('Незавершённые действия',()=>window.cabinet.go('moderation/'+item.id)));
