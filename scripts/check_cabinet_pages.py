@@ -1516,7 +1516,7 @@ def main():
                 admin.get_by_label('Действует до (ваше время)',exact=True).fill((datetime.now(timezone.utc)+timedelta(days=30)).strftime('%Y-%m-%dT%H:%M'))
                 admin.get_by_role('button',name='Создать подарочный код',exact=True).click()
                 personal_row=admin.locator('.wallet-gift').filter(has=admin.get_by_role('heading',name='Персональный подарок',exact=True))
-                expect(personal_row).to_contain_text('Только Telegram ID 99116003')
+                expect(personal_row).to_contain_text('Получатель: Telegram ID 99116003')
                 personal_code=personal_row.locator('.growth-code').inner_text()
                 personal_row.get_by_role('button',name='История активаций',exact=True).click()
                 expect(personal_row.locator('.wallet-gift-report')).to_contain_text('Этот код ещё никто не активировал.')
