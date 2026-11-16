@@ -364,3 +364,17 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 
 /* Главная: два действия под баннером, приглашение внизу. */
 .dashboard-intro{grid-template-columns:1fr}.dashboard-hero-actions{display:grid;gap:8px}.dashboard-hero-actions>a.dashboard-connect-proxy{background:#d94750;color:#fff!important}.dashboard-connect-proxy[aria-disabled=true]{opacity:.65;cursor:default}
+
+/* Пользователи: компактная идентичность слева, роль справа сверху. */
+.user-directory{gap:8px}
+.cabinet-mode .directory-user{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 8px;padding:10px 12px}
+.directory-user>.user-summary{grid-column:1;grid-row:1;gap:8px;align-self:start}
+.directory-user .user-avatar{width:34px;height:34px;min-width:34px;font-size:13px}
+.directory-user .person-name{font-size:13px}.directory-user .person-handle{font-size:12px}.directory-user .person-copy>small{font-size:10px;font-weight:400}
+.cabinet-mode .directory-user>.person-role{grid-column:2;grid-row:1;align-self:start;max-width:120px;margin:0;padding:4px 6px;font-size:10px;line-height:1.3;box-sizing:border-box;min-height:32px}
+.directory-user>.person-role .ui-icon{width:12px;height:12px;flex:none}
+.cabinet-mode .directory-user>.person-role[data-role=admin]{color:#ff8c98;background:#e44d6114;border-color:#e44d6155}
+.cabinet-mode .directory-user>.person-role[data-role=operator]{color:#72e5a5;background:#29b86d14;border-color:#29b86d55}
+.cabinet-mode .directory-user>.person-role[data-role=advertiser]{color:var(--muted)}
+.directory-user>p{grid-column:1/-1;grid-row:2;margin:0;font-size:10px;line-height:1.4}
+.directory-user>.role-editor{grid-column:1/-1;grid-row:3;min-width:0}

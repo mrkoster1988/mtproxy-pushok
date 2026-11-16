@@ -41,6 +41,18 @@ def check_admin_users(browser,base,output,failures,dsn):
         admin.get_by_role('button',name='Назад',exact=True).click();expect(admin.locator('[data-page=users]')).to_be_visible()
         for width in (320,390):
             admin.set_viewport_size({'width':width,'height':844});assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+        for width in (320,390):
+            admin.set_viewport_size({'width':width,'height':844})
+            for card in admin.locator('.directory-user').all():
+                identity=card.locator('.user-summary').bounding_box();badge=card.locator(':scope > .person-role').bounding_box()
+                assert badge['x']>=identity['x']+identity['width']+6
+                assert abs(badge['y']-identity['y'])<2
+                assert card.bounding_box()['height']<160
+            assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+        for role,color in (('admin','rgb(255, 140, 152)'),('operator','rgb(114, 229, 165)')):
+            badge=admin.locator('.directory-user>.person-role[data-role='+role+']').first
+            expect(badge).to_be_visible()
+            assert badge.evaluate('e=>getComputedStyle(e).color')==color
         admin.screenshot(path=str(output/'54-user-directory.png'),full_page=True)
         operator=launch('operator');go(operator,'user/'+str(ids['advertiser']));expect(operator.locator('[data-page=user] .profile-identity')).to_contain_text('@directory_advertiser');expect(operator.locator('.profile-wallet')).to_have_count(0)
         go(admin,'settings');admin.locator('#settings-system-tab').click();expect(admin.locator('#team-fields')).to_be_enabled()
