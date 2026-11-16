@@ -5,7 +5,7 @@
  Object.assign(errors,{sbp_test_mode_mismatch:'Режим провайдера не совпадает с настройками сервера. Счёт не открыт; нужна проверка владельца.'});
  Object.assign(errors,{sbp_checkout_disabled_until_acceptance:'СБП выключена до настройки и приёмки.',another_payment_in_progress:'У заявки уже открыт другой платёж. Сначала проверьте его результат.',sbp_provider_unavailable:'Провайдер временно недоступен. Не оплачивайте повторно; повторный выпуск использует тот же ключ.',sbp_verification_requires_review:'Платёж не прошёл сверку. Не платите повторно; обратитесь к оператору.',sbp_creation_requires_review:'Результат выпуска счёта неизвестен слишком долго. Нужна проверка оператора.',sbp_configuration_changed:'Платёжные настройки изменились. Нужна проверка оператора.',sbp_invoice_not_created:'Счёт ещё не выпущен.',campaign_not_payable:'Заявка сейчас не ожидает новую оплату.'});
  Object.assign(errors,{sponsor_engine_mismatch:'Движок тега не совпадает с планом узла.',sponsor_tag_already_registered:'Этот тег уже зарегистрирован на другом узле.',sponsor_registration_not_found:'Сначала сохраните регистрацию спонсорского тега.',proxy_node_not_found:'Узел не найден. Обновите список.'});
- const state={campaigns:[],search:'',filter:'',route:'',bot:null,ready:false,loaded:false,renderKey:'',selectedKey:''};
+ const state={campaigns:[],search:'',filter:'',scope:'all',route:'',bot:null,ready:false,loaded:false,renderKey:'',selectedKey:''};
  function dataKey(){return JSON.stringify([state.campaigns,channels,tariffs,nodes,operatorCampaigns,me]);}
  function refreshLivePanels(){
   if(state.route==='dashboard'){void window.pushokWallet.overview(dashboardWallet);void window.pushokGrowth.overview(dashboardReferral);}
@@ -21,6 +21,7 @@
   campaign:['Кампания','Модерация, оплата и размещение — отдельные этапы'],
   payments:['Мои оплаты','Оплата и история ваших кампаний'],
   profile:['Профиль','Ваш аккаунт и разделы кабинета'],
+  users:['Пользователи','Люди, роли и входы в приложение'],
   user:['Профиль пользователя','Каналы и кампании рекламодателя'],
   calendar:['Календарь размещений','Доступность на полную длительность тарифа'],
   reports:['Отчёты и история','Подтверждённые события ваших кампаний'],
@@ -82,13 +83,15 @@
   date(c.scheduled_start_at),link('Открыть','create/'+c.id)
  ]);}
  const campaignHeaders=['Канал','Статусы','Цена заявки','Начало','Действие'];
- function filtered(){return state.campaigns.filter(c=>
+ function staffCampaigns(){return ['admin','operator'].includes(me?.role)&&state.scope==='all';}
+ function campaignSource(){return staffCampaigns()?operatorCampaigns.filter(c=>!c.archived_at):state.campaigns;}
+ function filtered(){return campaignSource().filter(c=>
   (!state.filter||[c.moderation_status,c.payment_status,c.placement_status].includes(state.filter))&&
-  [c.channel_title,c.channel_url,c.id,channels.find(x=>x.id===c.channel_id)?.title].some(v=>String(v||'').toLocaleLowerCase('ru').includes(state.search.toLocaleLowerCase('ru'))));}
+  [c.channel_title,c.channel_url,c.id,c.advertiser_username,c.advertiser_first_name,c.advertiser_last_name,channels.find(x=>x.id===c.channel_id)?.title].some(v=>String(v||'').toLocaleLowerCase('ru').includes(state.search.replace(/^@/,'').toLocaleLowerCase('ru'))));}
  const shell=el('div',undefined,'cabinet-shell');
  const stage=el('div',undefined,'cabinet-stage'),bar=el('div',undefined,'cabinet-topbar');
  const searchForm=el('form'),search=el('input');search.type='search';search.placeholder='Поиск кампаний по каналу или номеру';search.setAttribute('aria-label','Поиск кампаний');
- searchForm.append(search);searchForm.addEventListener('submit',e=>{e.preventDefault();state.search=search.value.trim();go('campaigns');renderList();});
+ searchForm.append(search);searchForm.addEventListener('submit',e=>{e.preventDefault();state.search=search.value.trim();go(state.scope==='mine'?'campaigns/mine':'campaigns');renderList();});
  const account=el('span',undefined,'cabinet-account');account.id='cabinet-account';
  const topHelp=el('details',undefined,'top-help'),helpSummary=el('summary','?'),helpText=el('p');helpSummary.setAttribute('aria-label','Подсказка по разделу');helpSummary.title='Подсказка по разделу';helpSummary.replaceChildren(window.pushokViews.icon('info'));topHelp.append(helpSummary);const helpPopup=el('div',undefined,'help-popup');helpPopup.append(helpText,link('Подсказки и инструкции','help'));topHelp.append(helpPopup);
  window.addEventListener('keydown',e=>{if(e.key==='Escape')topHelp.open=false;});document.addEventListener('click',e=>{if(!topHelp.contains(e.target))topHelp.open=false;});
@@ -130,6 +133,8 @@
  window.pushokViews.iconAction(reset,'close','Сбросить поиск и фильтр');
  search.addEventListener('input',()=>{state.search=search.value.trim();renderList();});
  filter.addEventListener('change',()=>{state.filter=filter.value;renderList();});listTools.append(searchForm,filter,reset);content.campaigns.append(listTools,$('campaigns'));
+ const campaignScope=el('nav',undefined,'campaign-scope');campaignScope.setAttribute('aria-label','Чьи кампании');
+ for(const [value,title] of [['all','Все кампании'],['mine','Мои кампании']]){const b=button(title,()=>go(value==='mine'?'campaigns/mine':'campaigns'));b.dataset.scope=value;campaignScope.append(b);}listTools.before(campaignScope);
  // Архив всегда виден рядом с текущими кампаниями, без поиска в настройках.
  for(const name of ['campaigns','archive','channels','calendar']){
   const tabs=el('nav',undefined,'campaign-tabs');tabs.setAttribute('aria-label','Разделы кампаний');
@@ -262,9 +267,11 @@
   return safeChannel('https://t.me/'+state.bot,'Открыть @'+state.bot);
  }
  function renderList(){
-  const list=filtered();reset.hidden=!state.search&&!state.filter;window.pushokViews.campaigns($('campaigns'),list);
+  const staff=['admin','operator'].includes(me?.role);campaignScope.hidden=!staff;campaignScope.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scope===state.scope)));
+  search.placeholder=staffCampaigns()?'Канал, номер заявки или @рекламодатель':'Поиск кампаний по каналу или номеру';
+  const list=filtered();reset.hidden=!state.search&&!state.filter;window.pushokViews.campaigns($('campaigns'),list,staffCampaigns()?'sponsors':'campaign');
   $('campaign-count').textContent=list.length+' заявок';
-  if(!list.length)empty($('campaigns'),state.search||state.filter?'Поиск не дал результатов. Измените запрос или сбросьте фильтр.':'Заявок пока нет. Создайте первую кампанию.');
+  if(!list.length){empty($('campaigns'),state.search||state.filter?'Поиск не дал результатов. Измените запрос или сбросьте фильтр.':staffCampaigns()?'Текущих кампаний нет. Завершённые и удалённые доступны в архиве.':'У вас нет текущих личных кампаний. Завершённые доступны в архиве.');$('campaigns').append(link('Открыть архив','archive'));}
  }
  function renderQuote(){window.pushokOrder?.summary();}
  $('channel-select').addEventListener('change',renderQuote);$('tariff-select').addEventListener('change',renderQuote);
@@ -367,9 +374,10 @@
   panel.append(el('p','Загрузка состояния СБП…'));
   try{await paint(await api(base));}catch(e){if(panel.isConnected){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку СБП',()=>renderSbp(c,panel)));}}
  }
- function permitted(name){return !(['moderation','sponsors','user'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(name==='settings'&&me?.role!=='admin');}
+ function permitted(name){return !(['moderation','sponsors','user'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(['settings','users'].includes(name)&&me?.role!=='admin');}
  function renderSelected({background=false}={}){
   const [name,id]=routeParts();
+  if(name==='users')window.pushokUsers.directory(content.users);
   if(name==='user')window.pushokProfiles.show(content.user,id);
   helpText.textContent=hints[name]||'Удалённые объекты можно восстановить. Для заявки сначала восстановите её канал и тариф.';
   const selected=state.campaigns.find(c=>c.id===id),key=JSON.stringify([name,id,selected]);
@@ -425,6 +433,7 @@
  function activate(){
   if(!me||!state.ready)return;
   let [name,section]=routeParts();
+  if(name==='campaigns')state.scope=section==='mine'?'mine':'all';
   if(name!=='sponsors')automationFocusRoute='';
   if(!permitted(name)){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}
   if($('notice').dataset.route!==location.hash)$('notice').hidden=true;
@@ -452,7 +461,7 @@
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);activate();
  },logout(){window.pushokLinks?.reset();window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   bottomNav.querySelector('[data-route=moderation]').hidden=true;bottomNav.style.setProperty('--nav-count',4);
-  [$('order-result'),detail,dashboardReferral,dashboardWallet,profileShortcut,paymentOverview,paymentRows,content.profile,content.user,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
+  [$('order-result'),detail,dashboardReferral,dashboardWallet,profileShortcut,paymentOverview,paymentRows,content.profile,content.user,content.users,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['settings-stars-counts','settings-stars-status','settings-sbp-status','launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());

@@ -149,11 +149,13 @@ def router_for(dsn,current_user,require_admin):
         with db() as conn:return gifts.redeem(conn,user['id'],data.code)
 
     @router.get('/api/v1/admin/wallet/gifts')
-    def list_gifts(page:int=Query(default=0,ge=0,le=100000),admin=Depends(require_admin)):
+    def list_gifts(page:int=Query(default=0,ge=0,le=100000),deleted:bool=False,admin=Depends(require_admin)):
         with db() as conn:
             rows=conn.execute("""SELECT g.*, (SELECT count(*) FROM wallet_gift_redemptions r WHERE r.gift_id=g.id) AS used,
-                g.expires_at<=now() AS expired FROM wallet_gifts g ORDER BY g.created_at DESC,g.id LIMIT 30 OFFSET %s""",(page*30,)).fetchall()
-            total=conn.execute('SELECT count(*) AS n FROM wallet_gifts').fetchone()['n']
+                g.expires_at<=now() AS expired,u.username AS recipient_username FROM wallet_gifts g
+                LEFT JOIN users u ON u.telegram_user_id=g.recipient_telegram_id WHERE (g.deleted_at IS NOT NULL)=%s
+                ORDER BY g.created_at DESC,g.id LIMIT 30 OFFSET %s""",(deleted,page*30)).fetchall()
+            total=conn.execute('SELECT count(*) AS n FROM wallet_gifts WHERE (deleted_at IS NOT NULL)=%s',(deleted,)).fetchone()['n']
             return dict(items=rows,total=total,page=page,page_size=30)
 
     @router.get('/api/v1/admin/wallet/gifts/{gid}/redemptions')
@@ -182,10 +184,34 @@ def router_for(dsn,current_user,require_admin):
     def set_gift(gid:UUID,data:gifts.GiftActive,admin=Depends(require_admin)):
         with db() as conn:
             admin_lock(conn,admin)
-            row=conn.execute('UPDATE wallet_gifts SET active=%s WHERE id=%s RETURNING id,active',(data.active,gid)).fetchone()
+            row=conn.execute('UPDATE wallet_gifts SET active=%s WHERE id=%s AND deleted_at IS NULL RETURNING id,active',(data.active,gid)).fetchone()
             if not row:raise HTTPException(404,'wallet_gift_unavailable')
             conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'wallet_gift_enabled_changed',jsonb_build_object('gift_id',%s::text,'active',%s::boolean))",(admin['id'],str(gid),data.active))
             return row
+
+    @router.patch('/api/v1/admin/wallet/gifts/{gid}')
+    def edit_gift(gid:UUID,data:gifts.GiftDetails,admin=Depends(require_admin)):
+        with db() as conn:
+            admin_lock(conn,admin)
+            return gifts.edit(conn,admin['id'],gid,data)
+
+    @router.delete('/api/v1/admin/wallet/gifts/{gid}')
+    def delete_gift(gid:UUID,admin=Depends(require_admin)):
+        with db() as conn:
+            admin_lock(conn,admin)
+            row=conn.execute('UPDATE wallet_gifts SET active=false,deleted_at=coalesce(deleted_at,now()) WHERE id=%s RETURNING id',(gid,)).fetchone()
+            if not row:raise HTTPException(404,'wallet_gift_unavailable')
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'wallet_gift_deleted',jsonb_build_object('gift_id',%s::uuid))",(admin['id'],gid))
+            return {'saved':True}
+
+    @router.post('/api/v1/admin/wallet/gifts/{gid}/restore')
+    def restore_gift(gid:UUID,admin=Depends(require_admin)):
+        with db() as conn:
+            admin_lock(conn,admin)
+            row=conn.execute('UPDATE wallet_gifts SET active=false,deleted_at=NULL WHERE id=%s AND deleted_at IS NOT NULL RETURNING id',(gid,)).fetchone()
+            if not row:raise HTTPException(404,'wallet_gift_unavailable')
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'wallet_gift_restored',jsonb_build_object('gift_id',%s::uuid))",(admin['id'],gid))
+            return {'saved':True}
 
     @router.get('/api/v1/wallet/entries')
     def entries(page:int=Query(default=0,ge=0,le=100000),user=Depends(current_user)):

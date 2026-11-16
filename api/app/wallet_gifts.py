@@ -8,8 +8,7 @@ from .wallet import Input
 from . import wallet_ledger as ledger, wallet_controls as controls
 
 
-class GiftCreate(Input):
-    request_id: UUID
+class GiftDetails(Input):
     name: str=Field(min_length=3,max_length=100)
     amount: int=Field(ge=1,le=1000000,strict=True)
     max_uses: int=Field(ge=1,le=10000,strict=True)
@@ -34,6 +33,27 @@ class GiftCreate(Input):
     def aware(cls,value):
         if value.tzinfo is None:raise ValueError('Нужен часовой пояс')
         return value.astimezone(timezone.utc)
+
+
+class GiftCreate(GiftDetails):
+    request_id: UUID
+
+
+def edit(conn, admin, gid, data):
+    gift=conn.execute('SELECT * FROM wallet_gifts WHERE id=%s AND deleted_at IS NULL FOR UPDATE',(gid,)).fetchone()
+    if not gift:raise HTTPException(404,'wallet_gift_unavailable')
+    used=conn.execute('SELECT count(*) AS n FROM wallet_gift_redemptions WHERE gift_id=%s',(gid,)).fetchone()['n']
+    if used and (data.amount!=gift['amount'] or data.recipient_telegram_id!=gift['recipient_telegram_id']):
+        raise HTTPException(409,'wallet_gift_terms_used')
+    if data.max_uses<used:raise HTTPException(409,'wallet_gift_limit_used')
+    if data.expires_at!=gift['expires_at'] and data.expires_at<=datetime.now(timezone.utc):
+        raise HTTPException(422,'wallet_gift_expired')
+    row=conn.execute('''UPDATE wallet_gifts SET name=%s,amount=%s,max_uses=%s,expires_at=%s,
+        recipient_telegram_id=%s WHERE id=%s RETURNING *''',
+        (data.name,data.amount,data.max_uses,data.expires_at,data.recipient_telegram_id,gid)).fetchone()
+    conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'wallet_gift_edited',jsonb_build_object('gift_id',%s::uuid,'before',%s::jsonb,'after',%s::jsonb))",
+        (admin,gid,GiftDetails(**{key:gift[key] for key in GiftDetails.model_fields}).model_dump_json(),data.model_dump_json()))
+    return row
 
 
 class GiftRedeem(Input):
@@ -82,7 +102,7 @@ def redeem(conn,uid,code):
     if old:return dict(entry_id=old['entry_id'],amount=gift['amount'],already_redeemed=True)
     used=conn.execute('SELECT count(*) AS n FROM wallet_gift_redemptions WHERE gift_id=%s',(gift['id'],)).fetchone()['n']
     now=conn.execute('SELECT clock_timestamp() AS now').fetchone()['now']
-    if not gift['active'] or gift['expires_at']<=now or used>=gift['max_uses']:
+    if gift['deleted_at'] or not gift['active'] or gift['expires_at']<=now or used>=gift['max_uses']:
         raise HTTPException(409,'wallet_gift_unavailable')
     entry=ledger.post(conn,uid,'BONUS',gift['amount'],'gift_credit',
                       'gift:'+str(gift['id'])+':'+str(uid),'Подарок: '+gift['name'])

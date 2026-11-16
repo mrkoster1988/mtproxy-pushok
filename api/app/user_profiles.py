@@ -59,7 +59,13 @@ def router_for(dsn, current_user):
                 FROM campaigns c JOIN sponsor_channels ch ON ch.id=c.channel_id JOIN tariffs t ON t.id=c.tariff_id
                 WHERE c.advertiser_user_id=%s AND {ARCHIVED}=%s ORDER BY c.created_at DESC,c.id DESC
                 LIMIT %s OFFSET %s''', (uid, archived, PAGE_SIZE, campaign_page * PAGE_SIZE)).fetchall()
-            return dict(user=user, counts=counts, channels=channels, campaigns=campaigns,
+            private = {}
+            if viewer['role'] == 'admin':
+                balances = {currency: 0 for currency in ('RUB', 'BONUS', 'XTR')}
+                balances.update({row['currency']: row['balance'] for row in conn.execute(
+                    'SELECT currency,balance FROM wallet_accounts WHERE user_id=%s', (uid,)).fetchall()})
+                private['wallet'] = balances
+            return dict(user=user, counts=counts, channels=channels, campaigns=campaigns, **private,
                 channel_page=channel_page, campaign_page=campaign_page, archived=archived,
                 more_channels=(channel_page+1)*PAGE_SIZE < counts['channels'],
                 more_campaigns=(campaign_page+1)*PAGE_SIZE < counts['archived' if archived else 'current'])

@@ -30,6 +30,7 @@ class OfferInput(Input):
     code: str | None = Field(default=None, max_length=48)
     percent: int = Field(ge=1, le=100, strict=True)
     tariff_id: UUID | None = None
+    recipient_user_id: UUID | None = None
     min_duration_seconds: int = Field(default=0, ge=0, le=31536000, strict=True)
     starts_at: datetime | None = None
     ends_at: datetime | None = None
@@ -58,6 +59,10 @@ class OfferInput(Input):
         if self.ends_at and self.ends_at <= (self.starts_at or datetime.now(timezone.utc)):
             raise ValueError('Дата окончания должна быть позже начала')
         return self
+
+
+class OfferEdit(OfferInput):
+    kind: Literal['discount', 'promo', 'gift', 'referral']
 
 
 class ReferralSettings(Input):
@@ -100,7 +105,7 @@ def quote(conn, user, tariff, code=None, *, lock=False):
         raise HTTPException(409, 'growth_free_tariff')
     # Один и тот же порядок блокировок для параллельных покупок разных кодов.
     offers = conn.execute("""SELECT * FROM growth_offers
-        WHERE (kind='discount' OR code=%s) AND active
+        WHERE (kind='discount' OR code=%s) AND active AND deleted_at IS NULL
           AND starts_at<=now() AND (ends_at IS NULL OR ends_at>now())
           AND (tariff_id IS NULL OR tariff_id=%s)
           AND min_duration_seconds<=%s
@@ -211,7 +216,7 @@ def router_for(get_dsn, get_user, require_admin):
         no_cache(response)
         def action(conn):
             # Публичная ссылка не отменяет получателя, сроки или лимит купона.
-            offer=conn.execute("""SELECT * FROM growth_offers WHERE id=%s AND active
+            offer=conn.execute("""SELECT * FROM growth_offers WHERE id=%s AND active AND deleted_at IS NULL
                 AND starts_at<=now() AND (ends_at IS NULL OR ends_at>now())
                 AND (recipient_user_id IS NULL OR recipient_user_id=%s)""",(offer_id,user['id'])).fetchone()
             if not offer:raise HTTPException(409,'growth_code_unavailable')
@@ -239,7 +244,7 @@ def router_for(get_dsn, get_user, require_admin):
             settings = conn.execute('SELECT * FROM growth_settings').fetchone()
             coupons = conn.execute('''SELECT o.id,o.name,o.code,o.percent,o.ends_at,o.active,
                 EXISTS(SELECT 1 FROM growth_redemptions d WHERE d.offer_id=o.id) AS used
-                FROM growth_offers o WHERE recipient_user_id=%s ORDER BY created_at DESC LIMIT 100''', (user['id'],)).fetchall()
+                FROM growth_offers o WHERE recipient_user_id=%s AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100''', (user['id'],)).fetchall()
             count = conn.execute('SELECT count(*) AS n FROM growth_referrals WHERE inviter_user_id=%s', (user['id'],)).fetchone()['n']
             bonus = conn.execute('''SELECT coalesce(sum(amount),0)::bigint AS credited,
                 coalesce(sum(amount) FILTER(WHERE reversal_id IS NOT NULL),0)::bigint AS reversed
@@ -274,14 +279,14 @@ def router_for(get_dsn, get_user, require_admin):
         return db(action)
 
     @router.get('/admin/growth')
-    def admin_data(response: Response, admin=Depends(require_admin)):
+    def admin_data(response: Response, deleted: bool = False, admin=Depends(require_admin)):
         no_cache(response)
         def action(conn):
             return {'settings':conn.execute('SELECT * FROM growth_settings').fetchone(),
-                'offers':conn.execute('''SELECT o.*,t.name AS tariff_name,
+                'offers':conn.execute('''SELECT o.*,t.name AS tariff_name,u.username AS recipient_username,u.telegram_user_id AS recipient_telegram_id,
                     (SELECT count(*) FROM growth_redemptions d WHERE d.offer_id=o.id) AS uses
-                    FROM growth_offers o LEFT JOIN tariffs t ON t.id=o.tariff_id
-                    ORDER BY o.created_at DESC LIMIT 200''').fetchall()}
+                    FROM growth_offers o LEFT JOIN tariffs t ON t.id=o.tariff_id LEFT JOIN users u ON u.id=o.recipient_user_id
+                    WHERE (o.deleted_at IS NOT NULL)=%s ORDER BY o.created_at DESC LIMIT 200''',(deleted,)).fetchall()}
         return db(action)
 
     @router.put('/admin/growth/settings')
@@ -302,6 +307,8 @@ def router_for(get_dsn, get_user, require_admin):
         no_cache(response)
         def action(conn):
             admin_lock(conn, admin)
+            if payload.recipient_user_id and not conn.execute('SELECT 1 FROM users WHERE id=%s',(payload.recipient_user_id,)).fetchone():
+                raise HTTPException(404,'user_profile_not_found')
             if payload.tariff_id:
                 tariff = conn.execute('SELECT price_kopecks FROM tariffs WHERE id=%s AND NOT admin_only AND archived_at IS NULL', (payload.tariff_id,)).fetchone()
                 if not tariff:
@@ -311,11 +318,11 @@ def router_for(get_dsn, get_user, require_admin):
             import secrets
             code = secrets.token_hex(12).upper() if payload.kind == 'gift' else payload.code
             offer = conn.execute('''INSERT INTO growth_offers(kind,name,code,percent,tariff_id,min_duration_seconds,
-                starts_at,ends_at,total_limit,per_user_limit,created_by)
-                VALUES(%s,%s,%s,%s,%s,%s,coalesce(%s,now()),%s,%s,%s,%s) RETURNING *''',
+                starts_at,ends_at,total_limit,per_user_limit,created_by,recipient_user_id)
+                VALUES(%s,%s,%s,%s,%s,%s,coalesce(%s,now()),%s,%s,%s,%s,%s) RETURNING *''',
                 (payload.kind,payload.name,code,payload.percent,payload.tariff_id,payload.min_duration_seconds,
                  payload.starts_at,payload.ends_at,1 if payload.kind=='gift' else payload.total_limit,
-                 payload.per_user_limit,admin['id'])).fetchone()
+                 payload.per_user_limit,admin['id'],payload.recipient_user_id)).fetchone()
             conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'growth_offer_created',jsonb_build_object('offer_id',%s::uuid))", (admin['id'],offer['id']))
             return offer
         return db(action)
@@ -325,10 +332,62 @@ def router_for(get_dsn, get_user, require_admin):
         no_cache(response)
         def action(conn):
             admin_lock(conn, admin)
-            row = conn.execute("UPDATE growth_offers SET active=%s WHERE id=%s AND kind<>'referral' RETURNING id", (payload.active,offer_id)).fetchone()
+            row = conn.execute("UPDATE growth_offers SET active=%s WHERE id=%s AND deleted_at IS NULL AND (kind<>'referral' OR NOT %s) RETURNING id", (payload.active,offer_id,payload.active)).fetchone()
             if not row:
                 raise HTTPException(404, 'growth_offer_not_found')
             conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'growth_offer_toggled',jsonb_build_object('offer_id',%s::uuid,'active',%s::boolean))", (admin['id'],offer_id,payload.active))
+            return {'saved':True}
+        return db(action)
+    @router.put('/admin/growth/offers/{offer_id}')
+    def edit(offer_id: UUID, payload: OfferEdit, response: Response, admin=Depends(require_admin)):
+        no_cache(response)
+        def action(conn):
+            admin_lock(conn, admin)
+            old=conn.execute('SELECT * FROM growth_offers WHERE id=%s AND deleted_at IS NULL FOR UPDATE',(offer_id,)).fetchone()
+            if not old:raise HTTPException(404,'growth_offer_not_found')
+            data=payload.model_dump()
+            data['starts_at']=data['starts_at'] or old['starts_at']
+            if old['kind'] in ('gift','referral'):data['code']=old['code']
+            if data['kind']!=old['kind']:raise HTTPException(409,'growth_kind_locked')
+            used=conn.execute('SELECT count(*) AS total,coalesce(max(n),0) AS per_user FROM (SELECT count(*) AS n FROM growth_redemptions WHERE offer_id=%s GROUP BY user_id) q',(offer_id,)).fetchone()
+            total=conn.execute('SELECT count(*) AS n FROM growth_redemptions WHERE offer_id=%s',(offer_id,)).fetchone()['n']
+            if total and any(data[key]!=old[key] for key in ('code','recipient_user_id')):
+                raise HTTPException(409,'growth_used_identity_locked')
+            if (data['total_limit'] is not None and data['total_limit']<total) or data['per_user_limit']<used['per_user']:
+                raise HTTPException(409,'growth_limit_used')
+            if old['kind']=='referral' and any(data[key]!=old[key] for key in data if key not in ('name','ends_at')):
+                raise HTTPException(409,'growth_referral_terms_locked')
+            if data['recipient_user_id'] and not conn.execute('SELECT 1 FROM users WHERE id=%s',(data['recipient_user_id'],)).fetchone():
+                raise HTTPException(404,'user_profile_not_found')
+            if data['tariff_id']!=old['tariff_id'] and data['tariff_id'] and not conn.execute('SELECT 1 FROM tariffs WHERE id=%s AND is_active AND NOT admin_only AND archived_at IS NULL',(data['tariff_id'],)).fetchone():
+                raise HTTPException(404,'active_tariff_not_found')
+            row=conn.execute("""UPDATE growth_offers SET name=%s,code=%s,percent=%s,tariff_id=%s,
+                min_duration_seconds=%s,starts_at=%s,ends_at=%s,total_limit=%s,per_user_limit=%s,
+                recipient_user_id=%s WHERE id=%s RETURNING *""",
+                tuple(data[key] for key in ('name','code','percent','tariff_id','min_duration_seconds','starts_at','ends_at','total_limit','per_user_limit','recipient_user_id'))+(offer_id,)).fetchone()
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'growth_offer_edited',jsonb_build_object('offer_id',%s::uuid,'changes',%s::jsonb))",(admin['id'],offer_id,payload.model_dump_json()))
+            return row
+        return db(action)
+
+    @router.delete('/admin/growth/offers/{offer_id}')
+    def delete(offer_id: UUID, response: Response, admin=Depends(require_admin)):
+        no_cache(response)
+        def action(conn):
+            admin_lock(conn, admin)
+            row=conn.execute('UPDATE growth_offers SET active=false,deleted_at=coalesce(deleted_at,now()) WHERE id=%s RETURNING id',(offer_id,)).fetchone()
+            if not row:raise HTTPException(404,'growth_offer_not_found')
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'growth_offer_deleted',jsonb_build_object('offer_id',%s::uuid))",(admin['id'],offer_id))
+            return {'saved':True}
+        return db(action)
+
+    @router.post('/admin/growth/offers/{offer_id}/restore')
+    def restore(offer_id: UUID, response: Response, admin=Depends(require_admin)):
+        no_cache(response)
+        def action(conn):
+            admin_lock(conn, admin)
+            row=conn.execute('UPDATE growth_offers SET active=false,deleted_at=NULL WHERE id=%s AND deleted_at IS NOT NULL RETURNING id',(offer_id,)).fetchone()
+            if not row:raise HTTPException(404,'growth_offer_not_found')
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'growth_offer_restored',jsonb_build_object('offer_id',%s::uuid))",(admin['id'],offer_id))
             return {'saved':True}
         return db(action)
     return router
