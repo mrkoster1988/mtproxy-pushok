@@ -1291,7 +1291,9 @@ def main():
                 expect(advertiser.get_by_label('Валюта пополнения',exact=True)).to_have_value('XTR')
                 for _ in range(2):
                     advertiser.get_by_label('Подарочный код на баланс',exact=True).fill(gift_code)
+                    advertiser.evaluate("window.previousGiftPage=document.querySelector('[data-page=wallet] .wallet-page')")
                     advertiser.get_by_role('button',name='Получить подарок',exact=True).click()
+                    advertiser.wait_for_function("document.querySelector('[data-page=wallet] .wallet-page') && document.querySelector('[data-page=wallet] .wallet-page') !== window.previousGiftPage")
                     expect(advertiser.locator('.wallet-entry').filter(has_text='Подарок: Подарок для проверки')).to_have_count(1)
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     assert connection.execute("SELECT count(*) FROM wallet_entries WHERE kind='gift_credit'").fetchone()[0]==1
