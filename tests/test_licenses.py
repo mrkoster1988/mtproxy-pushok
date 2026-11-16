@@ -23,6 +23,19 @@ class LicenseUnitTests(unittest.TestCase):
             with self.assertRaises(ValueError):licenses.Plan(**{**dict(name='Тариф',days=30,price_xtr=10),**changes})
         self.assertIsNone(licenses.Plan(name='Тариф',days=30,price_xtr=10).max_channels)
 
+    def test_bot_license_limit_is_not_reported_as_temporary_failure(self):
+        from io import BytesIO
+        from urllib.error import HTTPError
+        from bot.wizard import DraftWizard
+        from test_bot_wizard import message,callback
+        def creator(*args):
+            raise HTTPError('https://example.invalid',409,'Conflict',None,BytesIO(b'{"detail":"license_required"}'))
+        wizard=DraftWizard(creator)
+        wizard.handle(message(42,'/advertise'));wizard.handle(message(42,'@MyChannel'))
+        answer=wizard.handle(callback(42,'draft:confirm'))
+        self.assertIn('Профиль → Лицензия',answer[0]['text'])
+        self.assertNotIn('ещё раз',answer[0]['text'])
+
     def test_bot_dispatches_license_events_and_reports_correct_purchase(self):
         calls=[];sent=[];payload='license:'+str(uuid4())
         def api(route,data):
@@ -164,7 +177,7 @@ class LicensePostgresTests(unittest.TestCase):
         p=self.plan(price_xtr=0,max_channels=None,max_open_campaigns=None,max_campaigns_per_period=None)
         with patch.object(licenses.stars_checkout,'credentials',side_effect=AssertionError('free needs no credentials')):
             self.assertEqual(self.checkout(p)['status'],'paid')
-        self.assertEqual(len(self.grants()),1);self.channel_new();self.channel_new()
+        self.assertEqual(len(self.grants()),1);self.assertIn(p['id'],self.request('GET','/licenses')['used_free_plan_ids']);self.channel_new();self.channel_new()
         self.request('POST','/licenses/checkout',409,json={'plan_id':p['id'],'revision':p['revision']})
         self.actor={'id':self.other,'role':'advertiser'}
         with patch.dict(os.environ,{'PUSHOK_TELEGRAM_TEST_ENVIRONMENT':'1'}):

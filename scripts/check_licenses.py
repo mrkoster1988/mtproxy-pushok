@@ -38,6 +38,7 @@ def check_licenses(browser,base,output,failures,dsn):
         expect(admin.locator('.license-plans')).to_contain_text('Пробный кабинет')
         for width in (320,390):
             admin.set_viewport_size({'width':width,'height':844});assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+        admin.evaluate("document.getElementById('notice').hidden=true")
         admin.screenshot(path=str(output/'57-license-admin.png'),full_page=True)
         client=launch('advertiser');go(client,'profile');client.get_by_role('link',name='Лицензия',exact=True).click()
         expect(client.locator('.licenses-page')).to_contain_text('Нет действующей лицензии')
@@ -45,6 +46,7 @@ def check_licenses(browser,base,output,failures,dsn):
         client.get_by_role('button',name='Получить период',exact=True).click()
         expect(client.locator('.licenses-page > section').first).to_contain_text('Пробный кабинет')
         expect(client.locator('.licenses-page > section').first).to_contain_text('До ')
+        expect(client.get_by_role('button',name='Уже использован',exact=True)).to_be_disabled()
         headers={'Authorization':'Bearer '+tokens['advertiser']}
         for i,expected in ((1,201),(2,409)):
             r=client.request.post(base+'/api/v1/channels',headers=headers,data={'title':'Канал лицензии','telegram_url':'https://t.me/license_ui_'+str(i)})
@@ -54,6 +56,7 @@ def check_licenses(browser,base,output,failures,dsn):
         expect(client.locator('.licenses-page')).to_contain_text('Каналы · использовано')
         for width in (320,390):
             client.set_viewport_size({'width':width,'height':844});assert client.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+        client.evaluate("document.getElementById('notice').hidden=true")
         client.screenshot(path=str(output/'58-license-client.png'),full_page=True)
         admin.get_by_role('button',name='Изменить тариф Пробный кабинет',exact=True).click()
         editor=admin.locator('.licenses-page > section').filter(has=admin.get_by_role('heading',name='Изменить тариф',exact=True))

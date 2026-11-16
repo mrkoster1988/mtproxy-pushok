@@ -107,7 +107,8 @@ def router_for(get_dsn,current_user,require_admin):
                 (SELECT count(*) FROM license_campaign_usage WHERE grant_id=%s) AS campaigns_per_period""",(user['id'],user['id'],current['id'] if current else None)).fetchone()
             plans=conn.execute('SELECT * FROM license_plans WHERE active ORDER BY price_xtr,days,id').fetchall() if enabled or user['role']=='admin' else []
             orders=conn.execute('SELECT id,plan_id,terms,amount,status,test_mode,created_at,expires_at FROM license_orders WHERE user_id=%s ORDER BY created_at DESC,id DESC LIMIT 20',(user['id'],)).fetchall()
-            return dict(enabled=enabled,grants=grants,usage=usage,plans=plans,orders=orders,stars_available=stars_invoices_enabled(),staff_exempt=user['role'] in ('admin','operator'))
+            used_free=[r['plan_id'] for r in conn.execute("SELECT DISTINCT plan_id FROM license_orders WHERE user_id=%s AND amount=0 AND status='paid' AND test_mode=%s",(user['id'],is_test_environment())).fetchall()]
+            return dict(enabled=enabled,grants=grants,usage=usage,plans=plans,orders=orders,used_free_plan_ids=used_free,stars_available=stars_invoices_enabled(),staff_exempt=user['role'] in ('admin','operator'))
 
     @router.get('/api/v1/admin/licenses')
     def admin_read(admin=Depends(require_admin)):

@@ -4,6 +4,7 @@
 10 минут. Подтверждение защищено устойчивым UUID в PostgreSQL.
 """
 import logging
+import json
 import re
 import time
 from urllib.error import HTTPError, URLError
@@ -126,6 +127,21 @@ class DraftWizard:
                 result = self.creator(telegram_id, state["username"], state["request_key"])
             except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
                 LOG.warning("Ошибка создания черновика: %s", type(exc).__name__)
+                if isinstance(exc, HTTPError) and exc.code == 409:
+                    try:
+                        reason = json.loads(exc.read(4096)).get('detail')
+                    except (ValueError, OSError, AttributeError):
+                        reason = None
+                    explanations = {
+                        'license_required': 'Для новой заявки нужна лицензия кабинета.',
+                        'license_channels_limit': 'Достигнут лимит каналов вашей лицензии.',
+                        'license_open_campaigns_limit': 'Достигнут лимит незавершённых кампаний вашей лицензии.',
+                        'license_period_limit': 'Использован лимит новых кампаний за срок лицензии.',
+                    }
+                    if reason in explanations:
+                        return _answer(chat_id, explanations[reason] + ' Откройте кабинет: Профиль → Лицензия.', callback_id,
+                                       [[{'text': 'Главное меню', 'callback_data': 'start'}],
+                                        [{'text': 'Отмена', 'callback_data': 'draft:cancel'}]])
                 return _answer(chat_id,
                                "Не получилось сохранить черновик. Попробуйте нажать «Создать черновик» ещё раз.",
                                callback_id,

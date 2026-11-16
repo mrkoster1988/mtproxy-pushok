@@ -249,3 +249,5 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .cabinet-mode #notice>.notice-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
 .cabinet-mode #notice .notice-actions>button{font:inherit;font-weight:600;min-height:40px;padding:8px 14px;margin:0;white-space:normal;background:transparent;color:inherit;border:1px solid currentColor;border-radius:8px}
 .licenses-page{max-width:760px;margin:auto}.license-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:12px}.license-plan-admin{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}.license-plan-admin small{display:block}.license-plan-admin>div{min-width:0;overflow-wrap:anywhere}
+
+.license-plan-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
