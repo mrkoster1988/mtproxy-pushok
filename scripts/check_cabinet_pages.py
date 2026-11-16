@@ -226,7 +226,7 @@ def main():
                 advertiser.locator('#order-channel-url').fill('@unsaved_order_channel')
                 go(advertiser, "channels")
                 advertiser.locator('[data-page=channels] .page-heading a').click()
-                expect(advertiser.locator('#channel-form [name=title]')).to_be_focused()
+                expect(advertiser.locator('#channel-form [name=telegram_url]')).to_be_focused()
                 advertiser.locator('#channel-form [name=title]').fill('Тестовый канал')
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://example.org/not-telegram')
                 advertiser.locator('#channel-form button[type=submit]').click()
@@ -234,6 +234,7 @@ def main():
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://t.me/pushok_browser_test')
                 advertiser.locator('#channel-form button[type=submit]').click()
                 expect(advertiser.locator('[data-page=channels] .channel-manager')).to_contain_text('Тестовый канал')
+                advertiser.locator('[data-page=channels] .page-heading a').click()
                 advertiser.locator('#channel-form [name=title]').fill('Дубликат')
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://t.me/pushok_browser_test')
                 advertiser.locator('#channel-form button[type=submit]').click()
@@ -1555,6 +1556,8 @@ def main():
                 check_user_access(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_automatic_schedule import check_automatic_schedule
                 check_automatic_schedule(browser, base, output, failures, PostgresIntegration.dsn)
+                from check_channel_layout import check_channel_layout
+                check_channel_layout(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_mobile_polish import check_mobile_polish
                 check_mobile_polish(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_gift_sharing import check_gift_sharing

@@ -4,7 +4,7 @@ window.pushokViews=(()=>{
  function icon(name){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.classList.add('ui-icon');
-  const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg?v=139#pi-'+name);svg.append(use);return svg;
+  const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg?v=140#pi-'+name);svg.append(use);return svg;
  }
  // Иконка всегда имеет доступное имя и подпись при наведении.
  function iconAction(node,name,label){node.replaceChildren(icon(name));node.classList.add('icon-action');node.setAttribute('aria-label',label);node.title=label;return node;}
@@ -113,9 +113,12 @@ window.pushokViews=(()=>{
   target.replaceChildren();target.classList.add('mobile-card-list');
   if(!list.length){target.append(mascot('Добавьте публичный канал, который хотите продвигать.'));return;}
   list.forEach(c=>{
-   const item=el('article',undefined,'channel-tile'),head=el('div',undefined,'tile-heading'),copy=el('div');copy.append(el('h3',c.title),el('p',handle(c.telegram_url),'muted'));head.append(channelAvatar(c.id,c.title,c.telegram_url),copy);item.append(window.pushokManagement.channelActions(c,item),head);
-   const count=ownCampaigns.filter(x=>x.channel_id===c.id).length;item.append(el('p','Кампаний: '+count,'muted'));
-   const create=link('Создать кампанию','create',true);create.addEventListener('click',()=>{$('channel-select').value=c.id;window.pushokOrder.selectChannel();});item.append(create);
+   const item=el('article',undefined,'channel-tile'),head=el('div',undefined,'channel-heading'),copy=el('div',undefined,'channel-identity');
+   const name=el('h3',c.title),username=el('p',handle(c.telegram_url),'muted');name.title=c.title;username.title=handle(c.telegram_url);copy.append(name,username);
+   head.append(channelAvatar(c.id,c.title,c.telegram_url),copy,window.pushokManagement.channelActions(c,item));item.append(head);
+   const count=ownCampaigns.filter(x=>x.channel_id===c.id).length,footer=el('div',undefined,'channel-footer'),counter=el('span',undefined,'channel-count');
+   const word=count%100>=11&&count%100<=14?'кампаний':count%10===1?'кампания':[2,3,4].includes(count%10)?'кампании':'кампаний';counter.append(el('strong',String(count)),document.createTextNode(' '+word));counter.title='Текущие кампании';
+   const create=link('Создать кампанию','create',true);create.addEventListener('click',()=>{$('channel-select').value=c.id;window.pushokOrder.selectChannel();});footer.append(counter,create);item.append(footer);
    target.append(item);
   });
  }
