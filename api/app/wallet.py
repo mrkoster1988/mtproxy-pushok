@@ -155,6 +155,23 @@ def router_for(dsn,current_user,require_admin):
             total=conn.execute('SELECT count(*) AS n FROM wallet_gifts').fetchone()['n']
             return dict(items=rows,total=total,page=page,page_size=30)
 
+    @router.get('/api/v1/admin/wallet/gifts/{gid}/redemptions')
+    def gift_report(gid:UUID,response:Response,page:int=Query(default=0,ge=0,le=100000),admin=Depends(require_admin)):
+        response.headers['Cache-Control']='private, no-store'
+        with db() as conn:return gifts.report(conn,gid,page=page)
+
+    @router.get('/api/v1/admin/wallet/gifts/{gid}/export')
+    def gift_export(gid:UUID,admin=Depends(require_admin)):
+        with db() as conn:data=gifts.report(conn,gid,limit=10000)
+        output=io.StringIO();writer=csv.writer(output,delimiter=';')
+        writer.writerow(['Подарок','Проводка','ID проводки','Дата UTC','Telegram ID','Username','Имя',
+                         'Начислено (бонусные копейки)','Остаток после операции (бонусные копейки)'])
+        for e in data['items']:
+            writer.writerow([csv_cell(data['gift']['name']),e['entry_number'],e['entry_id'],e['created_at'].isoformat(),
+                e['telegram_user_id'],csv_cell(e['username']),csv_cell(e['first_name']),e['amount'],e['balance_after']])
+        return Response('\ufeff'+output.getvalue(),media_type='text/csv; charset=utf-8',
+                        headers={'Content-Disposition':f'attachment; filename="gift-{gid}.csv"','Cache-Control':'private, no-store'})
+
     @router.post('/api/v1/admin/wallet/gifts',status_code=201)
     def create_gift(data:gifts.GiftCreate,admin=Depends(require_admin)):
         with db() as conn:
