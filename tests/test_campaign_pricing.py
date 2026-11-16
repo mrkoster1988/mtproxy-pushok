@@ -110,6 +110,67 @@ class PricingIntegration(unittest.TestCase):
         self.assertEqual(result['payment_status'], 'verified')
         self.change(409, cid=pending, discount_percent=10)
 
+    def test_advertiser_tariff_change_resets_discount_before_next_invoice(self):
+        for moderation, previous_percent in (('draft', 0), ('pending', 20), ('changes_requested', 100)):
+            with self.subTest(moderation=moderation, previous_percent=previous_percent):
+                self.actor = {'id': self.admin, 'role': 'admin'}
+                cid = self.campaign(moderation)
+                old = self.change(cid=cid, discount_percent=previous_percent)
+                self.actor = {'id': self.owner, 'role': 'advertiser'}
+                if moderation == 'pending':
+                    self.request('POST', f'/campaigns/{cid}/recall')
+                self.request('PATCH', f'/campaigns/{cid}', json={'tariff_id': str(self.next_tariff)})
+                self.actor = {'id': self.admin, 'role': 'admin'}
+                current = self.state(cid)['current']
+                self.assertEqual((current['base_price_kopecks'], current['price_kopecks'],
+                                  current['base_stars_price_xtr'], current['stars_price_xtr']),
+                                 (90000, 90000, 451, 451))
+                self.assertIsNone(current['admin_discount_percent'])
+                self.assertEqual(current['discount_percent'], 0)
+                self.assertIsNone(current['offer_name'])
+                self.change(409, cid=cid, revision=old['revision'], discount_percent=10)
+                # Повтор прежнего процента не должен стать пустой операцией.
+                if previous_percent == 20:
+                    current = self.change(cid=cid, discount_percent=20)['current']
+                    self.assertEqual((current['price_kopecks'], current['stars_price_xtr']), (72000, 361))
+                current = self.change(cid=cid, discount_percent=10)['current']
+                self.assertEqual((current['price_kopecks'], current['stars_price_xtr']), (81000, 406))
+                self.actor = {'id': self.owner, 'role': 'advertiser'}
+                self.request('POST', f'/campaigns/{cid}/submit')
+                self.actor = {'id': self.admin, 'role': 'admin'}
+                self.request('POST', f'/operator/campaigns/{cid}/moderation', json={'decision': 'approved'})
+                with patch('app.bot_stars.stars_invoices_enabled', return_value=True):
+                    invoice = prepare_for_user(self.dsn, StarsPrepareInput(campaign_id=cid, telegram_user_id=self.telegram))
+                self.assertEqual(invoice.stars_amount, 406)
+
+    def test_advertiser_replaces_admin_tariff_and_snapshots_missing_stars(self):
+        for stars in (151, None):
+            with self.subTest(stars=stars):
+                self.actor = {'id': self.admin, 'role': 'admin'}
+                cid = self.campaign('draft')
+                self.change(cid=cid, tariff_id=str(self.next_tariff))
+                with psycopg.connect(self.dsn) as conn:
+                    conn.execute('UPDATE tariffs SET stars_price_xtr=%s WHERE id=%s', (stars, self.tariff))
+                self.actor = {'id': self.owner, 'role': 'advertiser'}
+                self.request('PATCH', f'/campaigns/{cid}/date', json={'tariff_id': str(self.tariff)})
+                # Последующее изменение каталога не меняет согласованную цену.
+                with psycopg.connect(self.dsn) as conn:
+                    conn.execute('UPDATE tariffs SET stars_price_xtr=999 WHERE id=%s', (self.tariff,))
+                self.actor = {'id': self.admin, 'role': 'admin'}
+                current = self.change(cid=cid, discount_percent=10)['current']
+                self.assertEqual(current['base_stars_price_xtr'], stars)
+                self.assertEqual(current['stars_price_xtr'], 136 if stars == 151 else stars)
+                self.assertEqual(current['price_kopecks'], 27000)
+
+    def test_advertiser_date_or_same_tariff_keeps_individual_discount(self):
+        cid = self.campaign('draft')
+        original = self.change(cid=cid, discount_percent=20)['current']
+        for body in ({'requested_start_at': None}, {'tariff_id': str(self.tariff)}):
+            self.actor = {'id': self.owner, 'role': 'advertiser'}
+            self.request('PATCH', f'/campaigns/{cid}', json=body)
+            self.actor = {'id': self.admin, 'role': 'admin'}
+            self.assertEqual(self.state(cid)['current'], original)
+
     def test_stale_revision_tariff_change_and_role_demotion(self):
         revision = self.state()['revision']
         self.change(discount_percent=10)
