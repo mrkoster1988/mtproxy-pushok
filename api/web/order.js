@@ -13,7 +13,7 @@ window.pushokOrder=(()=>{
   $('order-quote-status').textContent='Рассчитываем стоимость…';
   try{const data=await api('/growth/quote',{method:'POST',body:{tariff_id:tid,code:$('order-promo').value.trim()||null}});
    if(version!==quoteEpoch||key!==currentKey()||session!==token)return null;
-   priceQuote=data;quoteKey=key;$('order-quote-status').textContent=data.offer_name?'Для оплаты в рублях: '+data.offer_name+' · '+data.discount_percent+'%. Скидки не суммируются.':'';summary();return data;
+   priceQuote=data;quoteKey=key;$('order-quote-status').textContent=data.offer_name?data.offer_name+' · '+data.discount_percent+'%. Скидки не суммируются.':'';summary();return data;
   }catch(e){if(version===quoteEpoch&&session===token){priceQuote=null;quoteKey=null;$('order-quote-status').textContent=e.message;summary();}throw e;}
  }
  function invalidate(){priceQuote=null;quoteKey=null;quoteEpoch++;$('order-quote-status').textContent='Нажмите «Рассчитать скидку», чтобы увидеть итог.';summary();}
@@ -44,7 +44,7 @@ window.pushokOrder=(()=>{
  function feedback(text){$('order-feedback').textContent=text;$('order-feedback').hidden=!text;}
  function sync(){
   if(!me)return;
-  $('order-promo-section').hidden=miniAppMode;if(miniAppMode&&!attempt)$('order-promo').value='';
+  $('order-promo-section').hidden=false;
   if(owner!==me.id){owner=me.id;initialized=false;attempt=null;priceQuote=null;quoteKey=null;quoteEpoch++;try{attempt=JSON.parse(sessionStorage.getItem(storageKey())||'null');}catch{}}
   if(!initialized){initialized=true;mode(!channels.length);if(channels.length===1)$('channel-select').value=channels[0].id;}
   if(!attempt&&newChannel&&channels.length&&!$('order-channel-url').value.trim())mode(false);
@@ -94,5 +94,11 @@ window.pushokOrder=(()=>{
  });
  // API мог завершить загрузку раньше этого отложенного скрипта.
  if(me)sync();
- return {sync,summary,selectChannel(){mode(false);summary();},reset(){priceQuote=null;quoteKey=null;quoteEpoch++;owner=null;initialized=false;attempt=null;busy=false;fields.disabled=false;feedback('');}};
+ async function applyOffer(offer){
+  sync();if(attempt)throw Error('Сначала проверьте предыдущую отправку заявки. Затем откройте ссылку на бонус ещё раз.');
+  if(!tariffs.some(t=>t.id===offer.tariff_id))throw Error('Тариф предложения больше недоступен.');
+  $('tariff-select').value=offer.tariff_id;$('order-promo').value=offer.code||'';$('order-promo-section').open=true;
+  invalidate();await calculate();
+ }
+ return {sync,summary,applyOffer,selectChannel(){mode(false);summary();},reset(){priceQuote=null;quoteKey=null;quoteEpoch++;owner=null;initialized=false;attempt=null;busy=false;fields.disabled=false;feedback('');}};
 })();

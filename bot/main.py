@@ -530,6 +530,9 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
     actor = (callback or message).get('from') or {}
     command = str(message.get('text') or '').split(maxsplit=1)
     command = command[0].lower() if command else ''
+    stars = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+stars', str(message.get('text') or ''), re.IGNORECASE)
+    if stars and chat.get('type') == 'private' and type(actor.get('id')) is int and actor['id'] == chat.get('id'):
+        return ({'chat_id':chat['id'], 'text':'⭐ <a href="tg://stars">Открыть мои Stars</a>\n\nЕсли Telegram не открывает ссылку: Настройки → Мои звёзды. Это личный баланс Telegram.', 'parse_mode':'HTML', 'reply_markup':keyboard()}, None)
     invite = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+(?:ref_|r_)([A-Za-z0-9_-]{3,48})', str(message.get('text') or ''), re.IGNORECASE)
     if invite and referral_handler and chat.get('type') == 'private' and type(actor.get('id')) is int and actor['id'] == chat.get('id'):
         try:

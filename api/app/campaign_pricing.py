@@ -41,7 +41,7 @@ def _current(c):
         stars_price_xtr=stars, base_price_kopecks=c['base_price_kopecks_snapshot']
         if c['base_price_kopecks_snapshot'] is not None else c['price_kopecks_snapshot'],
         base_stars_price_xtr=c['base_stars_price_snapshot']
-        if c['admin_discount_percent_snapshot'] is not None else stars,
+        if c['admin_discount_percent_snapshot'] is not None or c['base_stars_price_snapshot'] is not None else stars,
         admin_discount_percent=c['admin_discount_percent_snapshot'],
         discount_percent=c['discount_percent_snapshot'] or 0, offer_name=c['growth_offer_name'])
 

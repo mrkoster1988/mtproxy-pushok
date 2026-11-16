@@ -114,14 +114,14 @@ def waiting_reason(conn, node):
             return dict(result, reason='moderation_pending')
         if row['payment_status'] != 'verified':
             return dict(result, reason='payment_pending')
+        if row['future']:
+            return dict(result, reason='waiting_start', next_start_at=row['scheduled_start_at'].isoformat())
         if not row['bound_channel']:
             return dict(result, reason='binding_missing')
         if not row['binding_current']:
             return dict(result, reason='binding_changed')
-        if row['future']:
-            return dict(result, reason='waiting_start', next_start_at=row['scheduled_start_at'].isoformat())
-    binding = conn.execute('SELECT 1 FROM channel_promotion_bindings WHERE proxy_node_id=%s LIMIT 1', (node['id'],)).fetchone()
-    return {'reason': 'no_current_campaign' if binding else 'binding_missing'}
+
+    return {'reason': 'no_current_campaign'}
 
 
 def revision(plan):

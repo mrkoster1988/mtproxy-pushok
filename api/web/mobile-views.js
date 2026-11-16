@@ -48,6 +48,15 @@ window.pushokViews=(()=>{
   }catch{}
   return fallback;
  }
+ function userSummary(user){
+  const row=el('div',undefined,'user-summary'),pic=avatar('user'),copy=el('div');
+  const name=[user.first_name,user.last_name].filter(Boolean).join(' ').trim();
+  const title=name||(user.username?'@'+user.username:'Пользователь');
+  if(name)pic.textContent=name.split(/\s+/).map(s=>s[0]).slice(0,2).join('').toUpperCase();
+  copy.append(el('strong',title));
+  if(user.username&&name){const link=el('a','@'+user.username);link.href='https://t.me/'+encodeURIComponent(user.username);copy.append(link);}
+  copy.append(el('small','ID '+user.telegram_user_id,'muted'));row.append(pic,copy);return row;
+ }
  function brand(target){
   const img=el('img');img.src='/assets/pushok-pencil.png';img.alt='';img.width=44;img.height=44;
   const copy=el('span',undefined,'brand-copy');copy.append(el('strong','puShok'),el('small','MTProxy'));
@@ -129,5 +138,5 @@ window.pushokViews=(()=>{
   target.append(el('h2','Очередь размещений'));if(!queued.length)target.append(el('p','Нет оплаченных кампаний в очереди.','empty'));
   queued.sort((a,b)=>(a.scheduled_start_at||'9999').localeCompare(b.scheduled_start_at||'9999')).forEach(c=>target.append(campaignSummary(c,'sponsors')));
  }
- return {clearLogos,channelAvatar,icon,iconAction,disclosure,brand,mascot,profileAvatar,statusSteps,facts,campaigns,channelCards,paymentOverview,profile,sponsors};
+ return {userSummary,clearLogos,channelAvatar,icon,iconAction,disclosure,brand,mascot,profileAvatar,statusSteps,facts,campaigns,channelCards,paymentOverview,profile,sponsors};
 })();

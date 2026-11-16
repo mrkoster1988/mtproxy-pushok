@@ -69,14 +69,14 @@ def create_order(dsn, payload, user):
                 INSERT INTO campaigns(advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,
                     duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,requested_start_at,
                     moderation_status,pricing_version,base_price_kopecks_snapshot,stars_price_snapshot,
-                    growth_offer_id,growth_offer_name,discount_percent_snapshot,purchase_surface)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,'pending',%s,%s,%s,%s,%s,%s,%s) RETURNING *
+                    growth_offer_id,growth_offer_name,discount_percent_snapshot,purchase_surface,base_stars_price_snapshot)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,'pending',%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *
                 """, (user["id"], channel["id"], tariff["id"], tariff["name"], tariff["duration_seconds"],
                       final_price, tariff["currency"], payload.requested_start_at,
                       1 if pricing else None, tariff['price_kopecks'] if pricing else None,
                       pricing['stars_price_xtr'] if pricing else None,
                       pricing['offer_id'] if pricing else None, pricing['offer_name'] if pricing else None,
-                      (pricing['discount_percent'] or None) if pricing else None, user.get('login_surface','web'))).fetchone()
+                      (pricing['discount_percent'] or None) if pricing else None, user.get('login_surface','web'),tariff['stars_price_xtr'] if pricing else None)).fetchone()
             if pricing and pricing['offer_id']:
                 conn.execute('INSERT INTO growth_redemptions(campaign_id,offer_id,user_id) VALUES(%s,%s,%s)',
                              (campaign['id'],pricing['offer_id'],user['id']))

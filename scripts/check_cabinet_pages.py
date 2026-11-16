@@ -1288,19 +1288,28 @@ def main():
                 expect(advertiser.locator('#order-quote-status')).to_contain_text('Браузерный промокод')
                 expect(advertiser.locator('#order-summary')).to_contain_text('20%')
                 expect(advertiser.locator('#order-summary')).to_contain_text('80')
-                expect(advertiser.locator('#order-summary')).to_contain_text('100 XTR')
+                expect(advertiser.locator('#order-summary')).to_contain_text('80 XTR')
                 advertiser.screenshot(path=str(output/'37-growth-quote-mobile.png'),full_page=True)
                 assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
                 advertiser.locator('#order-submit').click()
                 expect(advertiser.locator('#order-result')).to_contain_text('Заявка на проверке')
                 growth_cid=advertiser.evaluate("location.hash.split('/')[2]")
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
-                    assert connection.execute('SELECT price_kopecks_snapshot,stars_price_snapshot FROM campaigns WHERE id=%s',(growth_cid,)).fetchone()==(8000,100)
+                    assert connection.execute('SELECT price_kopecks_snapshot,stars_price_snapshot FROM campaigns WHERE id=%s',(growth_cid,)).fetchone()==(8000,80)
                     assert connection.execute('SELECT count(*) FROM growth_redemptions WHERE campaign_id=%s',(growth_cid,)).fetchone()[0]==1
                 # Баланс: реальная запись администратора, оплата владельца и возврат.
                 go(admin,'wallet')
                 open_wallet_tools(admin)
                 expect(admin.locator('[data-page=wallet]')).to_contain_text('Управление балансами')
+                admin.get_by_label('Telegram ID пользователя',exact=True).fill('7909549877')
+                admin.get_by_role('button',name='Найти пользователя',exact=True).click()
+                expect(admin.locator('.wallet-lookup-error')).to_contain_text('Пользователь не найден')
+                go(admin,'campaigns');go(admin,'wallet');open_wallet_tools(admin)
+                expect(admin.locator('.wallet-lookup-error')).to_be_visible()
+                expect(admin.get_by_role('button',name='Найти пользователя',exact=True)).to_be_visible()
+                admin.get_by_role('button',name='К моему балансу',exact=True).click()
+                expect(admin.locator('.wallet-lookup-error')).to_have_count(0)
+                open_wallet_tools(admin)
                 admin.get_by_label('Telegram ID пользователя',exact=True).fill('99116000')
                 admin.get_by_role('button',name='Найти пользователя',exact=True).click()
                 expect(admin.get_by_role('heading',name='Ручная операция',exact=True)).to_be_visible()
@@ -1542,6 +1551,9 @@ def main():
                 personal_row.screenshot(path=str(output/'45-personal-gift-report-mobile.png'))
                 from check_campaign_pricing import check_campaign_pricing
                 check_campaign_pricing(browser, base, output, failures, PostgresIntegration.dsn)
+                from check_bonus_links import check_bonus_links
+                with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'1','TELEGRAM_BOT_USERNAME':'mtproxy_pushok_bot'}),patch.object(api,'TELEGRAM_BOT_TOKEN','fixture-token'):
+                    check_bonus_links(browser,base,output,failures,PostgresIntegration.dsn)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))

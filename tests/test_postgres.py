@@ -2299,7 +2299,7 @@ class PostgresIntegration(unittest.TestCase):
             self.assertEqual(report['agent']['status'], 'unknown')
             return next(n for n in report['nodes'] if n['node_id'] == str(f['node']))
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'PUSHOK_CONTROL_DIR': directory}):
-            self.assertEqual(diagnostic()['code'], 'binding_missing')
+            self.assertEqual(diagnostic()['code'], 'no_current_campaign')
             with psycopg.connect(self.dsn) as conn:
                 conn.execute("UPDATE proxy_nodes SET status='paused' WHERE id=%s", (f['node'],))
             self.assertEqual(diagnostic()['code'], 'node_paused')

@@ -18,11 +18,16 @@ def render_lifecycle_notice(item):
     event=item.get('event_type')
     if event not in TEXTS:
         raise ValueError('invalid_lifecycle_event')
-    lines=['🐱 MTProxy Pushok',TEXTS[event]]
+    setup=item.get('reason') in ('binding_missing','binding_changed','default_binding_missing')
+    text=TEXTS[event]
+    if event=='failed' and setup:
+        text='⚙️ Нужна настройка автозапуска: спонсорский тег канала не подготовлен для этого узла. После сохранения привязки агент продолжит работу автоматически.'
+    lines=['🐱 MTProxy Pushok',text]
     title=item.get('channel_title')
     if isinstance(title,str):lines.append('Канал: '+' '.join(title.split())[:160])
     if item.get('campaign_id'):lines.append('Заявка: '+str(UUID(str(item['campaign_id'])))[:8])
     if item.get('audience')=='staff' and item.get('reason') in REASONS:lines.append('Причина: '+REASONS[item['reason']])
+    if setup and item.get('audience')=='staff':lines.append('Откройте «Узлы и спонсорство» → подготовку тега: выберите канал и узел, затем сохраните тег из @MTProxybot.')
     return '\n\n'.join(lines)
 
 

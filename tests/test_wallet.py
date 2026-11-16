@@ -81,6 +81,21 @@ class WalletIntegration(unittest.TestCase):
     def charge(self,cid,currency='RUB',**kw):
         with topups.connect(self.dsn) as conn:return ledger.charge(conn,cid,self.owner,currency,**kw)
 
+    def test_admin_lookup_search_and_topup_identity(self):
+        self.request('GET','/admin/wallet/users?query=alex',403)
+        self.actor={'id':self.admin,'role':'admin'}
+        with topups.connect(self.dsn) as conn:
+            conn.execute("UPDATE users SET first_name='Алексей',last_name='Тест',username=%s WHERE id=%s",('alex_'+self.owner.hex,self.owner))
+            conn.execute("INSERT INTO wallet_topups(user_id,request_id,provider,currency,amount,provider_account,test_mode) VALUES(%s,%s,'telegram_stars','XTR',100,'test-only',false)",(self.owner,uuid4()))
+        result=self.request('GET','/admin/wallet/users?query=@alex_'+self.owner.hex)
+        self.assertEqual([x['telegram_user_id'] for x in result],[self.tg])
+        self.request('GET','/admin/wallet/users/4503599627370495',404)
+        self.assertEqual(self.request('GET','/admin/wallet/users/'+str(self.tg))['user']['last_name'],'Тест')
+        topup=next(t for t in self.request('GET','/admin/wallet/topups') if t['telegram_user_id']==self.tg)
+        self.assertEqual(topup['first_name'],'Алексей')
+        self.assertEqual(topup['username'],'alex_'+self.owner.hex)
+        self.request('GET','/wallet')
+
     def test_legacy_stars_debt_repayment_retries_and_conflicts(self):
         with topups.connect(self.dsn) as conn:
             ledger.post(conn,self.owner,'XTR',-100,'provider_refund','debt:'+str(uuid4()),'Возврат прежней оплаты')

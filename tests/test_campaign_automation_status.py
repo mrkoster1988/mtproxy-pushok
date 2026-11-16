@@ -51,3 +51,16 @@ class CampaignAutomationTests(unittest.TestCase):
             with self.subTest(node=changes):
                 self.node.update(changes)
                 self.assertEqual(self.state(), 'node_unavailable')
+
+
+class WaitingReasonTests(unittest.TestCase):
+    def test_empty_node_is_idle_and_future_missing_binding_waits(self):
+        from unittest.mock import MagicMock
+        from app.promotion_runtime import waiting_reason
+        conn=MagicMock();conn.execute.return_value.fetchone.return_value=None
+        self.assertEqual(waiting_reason(conn,{'id':'node'}),{'reason':'no_current_campaign'})
+        row=dict(id='campaign',ended=False,channel_archived=None,moderation_status='approved',payment_status='verified',future=True,scheduled_start_at=datetime.now(timezone.utc),bound_channel=None,binding_current=False)
+        conn.execute.return_value.fetchone.return_value=row
+        self.assertEqual(waiting_reason(conn,{'id':'node'})['reason'],'waiting_start')
+        row['future']=False
+        self.assertEqual(waiting_reason(conn,{'id':'node'})['reason'],'binding_missing')
