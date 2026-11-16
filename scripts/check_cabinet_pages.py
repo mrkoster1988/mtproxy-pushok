@@ -264,6 +264,8 @@ def main():
                 go(advertiser, 'campaigns')
                 first_tile = advertiser.locator('#campaigns .campaign-tile')
                 expect(first_tile.locator('.campaign-steps dt')).to_have_text(['Модерация', 'Оплата', 'Размещение'])
+                expect(first_tile.locator('.campaign-tile-facts dt')).to_have_text(['Тариф','Срок','Стоимость'])
+                expect(first_tile.locator('.campaign-current')).to_be_visible()
                 expect(first_tile.locator('.tile-period')).to_contain_text('Желаемое начало:')
                 expect(first_tile.locator('.badge--active')).to_have_count(0)
                 advertiser.set_viewport_size({'width':390,'height':844})
@@ -280,6 +282,7 @@ def main():
                 expect(advertiser.locator('[data-page=campaign]')).to_be_visible()
                 go(advertiser, 'campaign/'+campaign_id)
                 expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На модерации')
+                expect(advertiser.locator('[data-page=campaign] .campaign-progress [aria-current=step]')).to_contain_text('Модерация')
 
                 operator = new_page('operator')
                 go(operator, 'moderation')
