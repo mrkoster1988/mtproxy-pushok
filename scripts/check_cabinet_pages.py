@@ -181,7 +181,8 @@ def main():
                 advertiser = new_page("advertiser")
                 expect(advertiser.locator('[data-page=dashboard] .empty-state')).to_contain_text('Здесь появятся кампании')
                 expect(advertiser.locator('[data-page=dashboard] .campaign-tile')).to_have_count(0)
-                expect(advertiser.locator('[data-page=dashboard] .payment-counts strong')).to_have_text(['0', '0'])
+                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_contain_text('0')
+                expect(advertiser.locator('[data-page=dashboard] .payment-counts')).to_have_count(0)
                 go(advertiser, "settings", expected_page="dashboard")
                 expect(advertiser.locator('[data-page=dashboard]')).to_be_visible()
                 assert advertiser.locator('nav a[data-route=settings]').is_hidden()
@@ -238,9 +239,9 @@ def main():
                 advertiser.set_viewport_size({'width':390,'height':844})
                 assert first_tile.bounding_box()['height'] < 270, first_tile.bounding_box()
                 assert float(first_tile.locator('.tile-title').evaluate('(e)=>getComputedStyle(e).fontSize').replace('px','')) <= 16
-                expect(advertiser.locator('.campaign-tabs a[href="#/archive"]')).to_be_visible()
-                expect(advertiser.locator('.campaign-tabs a[href="#/channels"]')).to_be_visible()
-                advertiser.locator('.campaign-tabs a[href="#/channels"]').click()
+                expect(advertiser.locator('[data-page=campaigns] .campaign-tabs a[href="#/archive"]')).to_be_visible()
+                expect(advertiser.locator('[data-page=campaigns] .campaign-tabs a[href="#/channels"]')).to_be_visible()
+                advertiser.locator('[data-page=campaigns] .campaign-tabs a[href="#/channels"]').click()
                 advertiser.locator('.screen-back').click()
                 expect(advertiser.locator('[data-page=campaigns]')).to_be_visible()
 

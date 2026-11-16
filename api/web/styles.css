@@ -460,7 +460,7 @@ body.miniapp-loading #workspace{visibility:hidden}
 @keyframes pushok-edge-glow{from{filter:drop-shadow(0 0 4px #32d3bc66)}to{filter:drop-shadow(0 0 20px #32d3bcbb) drop-shadow(0 0 5px #ffa34e)}}
 .load-failed .pushok-runner{animation:none}
 @media(max-width:760px){
- .cabinet-topbar{display:flex!important;flex-wrap:wrap!important;padding:8px 0!important;gap:8px!important}
+
  .cabinet-topbar .cabinet-account{flex:1;font-size:12px;line-height:1.4;min-width:0}
  .cabinet-topbar form{flex-basis:100%}
  .cabinet-topbar .menu-toggle{font-size:14px;padding:8px 12px}
