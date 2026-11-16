@@ -1,5 +1,7 @@
 import os
 import sys
+import tempfile
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -28,7 +30,19 @@ class CabinetTests(unittest.TestCase):
         self.assertEqual(self.client.get("/health/live").json(), {"status": "ok"})
 
     def test_public_config_has_no_secrets(self):
-        self.assertEqual(set(self.client.get("/api/v1/public-config").json()), {"telegram_bot_username"})
+        self.assertEqual(set(self.client.get("/api/v1/public-config").json()), {"telegram_bot_username", "proxy_url"})
+
+    def test_public_proxy_link_is_validated_and_reread(self):
+        from app import proxy_link
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'proxy-link.json'
+            with patch.object(proxy_link,'LINK_FILE',path):
+                self.assertEqual(self.client.get('/api/v1/public-config').json()['proxy_url'],'')
+                path.write_text(json.dumps({'url':'https://t.me/proxy?server=proxy.example.org&port=443&secret='+'a'*32}))
+                url=self.client.get('/api/v1/public-config').json()['proxy_url']
+                self.assertIn('secret=dd'+'a'*32,url)
+                path.write_text(json.dumps({'url':'https://evil.test/'}))
+                self.assertEqual(self.client.get('/api/v1/public-config').json()['proxy_url'],'')
 
     def test_anonymous_cannot_create_node(self):
         self.assertEqual(self.client.post("/api/v1/admin/proxy-nodes", json={"name": "Node", "host": "node.example.org", "port": 8443}).status_code, 401)
