@@ -111,8 +111,13 @@ def check_mobile_polish(browser,base,output,failures,dsn):
         narrow(admin);admin.locator('#team-list').screenshot(path=str(output/'66-team-cards-390.png'))
         png=io.BytesIO();Image.new('RGB',(48,48),'turquoise').save(png,format='PNG');catalog=[dict(id=str(123456700+i),emoji='⭐',image='data:image/png;base64,'+base64.b64encode(png.getvalue()).decode()) for i in range(12)]
         with patch.object(api.emoji_settings,'fetch',return_value=catalog):
-            admin.locator('#icons-import').click();expect(admin.locator('#icons-mapping select')).to_have_count(6)
+            with admin.expect_response(lambda response: response.url.endswith('/api/v1/admin/icons/import') and response.request.method=='POST') as imported:
+                admin.locator('#icons-import').click()
+            assert imported.value.ok
+            expect(admin.locator('#icons-import')).to_be_enabled()
+            expect(admin.locator('#icons-mapping select')).to_have_count(6)
             for select in admin.locator('#icons-mapping select').all():
+                expect(select).to_be_visible()
                 assert '1234567' not in select.inner_text()
                 assert select.bounding_box()['width']>150
             admin.locator('.emoji-catalog > summary').click();expect(admin.locator('.emoji-gallery img')).to_have_count(12)
