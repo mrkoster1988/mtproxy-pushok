@@ -87,7 +87,7 @@ window.pushokViews=(()=>{
  }
  function profile(target,updatePanel){
   target.replaceChildren();const identity=el('section',undefined,'profile-identity');
-  const info=el('div');info.append(el('h2',[me.first_name,me.last_name].filter(Boolean).join(' ')||'Пользователь'),el('p',me.username?'@'+me.username:'Вход через Telegram','muted'),badge('approved',({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'})[me.role]||'Пользователь'));identity.append(profileAvatar(),info);target.append(identity);
+  const info=el('div');info.append(el('h2',[me.first_name,me.last_name].filter(Boolean).join(' ')||'Пользователь'),el('p',me.username?'@'+me.username:'Вход через Telegram','muted'),badge('approved',({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'})[me.role]||'Пользователь'));info.append(el('p','Telegram ID: '+me.telegram_user_id,'muted'),button('Скопировать ID',async()=>{await navigator.clipboard.writeText(String(me.telegram_user_id));notice('Telegram ID скопирован.',true);}));identity.append(profileAvatar(),info);target.append(identity);
   const menu=el('nav',undefined,'profile-menu');menu.setAttribute('aria-label','Разделы профиля');
   const items=[['wallet','wallet','Баланс'],['payments','wallet','Мои оплаты'],['growth','gift','Бонусы и приглашения'],['create','megaphone','Разместить рекламу'],['bot','channel','Telegram-бот'],['channels','channel','Мои каналы'],['calendar','calendar','Календарь размещений'],['reports','chart','Отчёты'],['help','support','Помощь'],['archive','campaign','Архив']];
   if(['admin','operator'].includes(me.role))items.push(['moderation','moderation','Модерация'],['sponsors','server','Узлы и спонсоры']);
