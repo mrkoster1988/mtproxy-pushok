@@ -81,6 +81,24 @@ class WalletIntegration(unittest.TestCase):
     def charge(self,cid,currency='RUB',**kw):
         with topups.connect(self.dsn) as conn:return ledger.charge(conn,cid,self.owner,currency,**kw)
 
+    def test_legacy_stars_debt_repayment_retries_and_conflicts(self):
+        with topups.connect(self.dsn) as conn:
+            ledger.post(conn,self.owner,'XTR',-100,'provider_refund','debt:'+str(uuid4()),'Возврат прежней оплаты')
+        self.actor={'id':self.admin,'role':'admin'}
+        path='/admin/wallet/users/'+str(self.tg)+'/adjust'
+        body=dict(request_id=str(uuid4()),currency='XTR',amount=60,direction='credit',reason='Погашение прежней задолженности')
+        first=self.request('POST',path,201,json=body)
+        self.assertEqual(self.request('POST',path,201,json=body)['id'],first['id'])
+        self.assertEqual(self.balances()['XTR'],-40)
+        conflict=self.request('POST',path,409,json={**body,'amount':40})
+        self.assertEqual(conflict['detail'],'wallet_request_conflict')
+        self.request('POST',path,409,json={**body,'request_id':str(uuid4()),'amount':41})
+        final={**body,'request_id':str(uuid4()),'amount':40}
+        paid=self.request('POST',path,201,json=final)
+        self.assertEqual(self.request('POST',path,201,json=final)['id'],paid['id'])
+        self.assertEqual(self.balances()['XTR'],0)
+        self.request('POST',path,409,json={**body,'request_id':str(uuid4()),'amount':1})
+
     def test_manual_journal_retries_reversal_and_role(self):
         body=dict(request_id=str(uuid4()),currency='RUB',amount=12345,direction='credit',reason='Подтверждённое пополнение')
         path='/admin/wallet/users/'+str(self.tg)+'/adjust'

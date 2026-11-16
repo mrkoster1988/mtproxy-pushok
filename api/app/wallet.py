@@ -250,12 +250,14 @@ def router_for(dsn,current_user,require_admin):
     def adjust(tg:int,data:Adjustment,admin=Depends(require_admin)):
         with db() as conn:
             admin_lock(conn,admin);uid=target(conn,tg)['id']
+            key='manual:'+str(admin['id'])+':'+str(data.request_id)
             if data.currency=='XTR':
                 balance=ledger.accounts(conn,uid,lock=True)['XTR']
-                if data.direction!='credit' or balance>=0 or data.amount>-balance:
+                existing=conn.execute('SELECT 1 FROM wallet_entries WHERE operation_key=%s',(key,)).fetchone()
+                if not existing and (data.direction!='credit' or balance>=0 or data.amount>-balance):
                     raise HTTPException(409,'wallet_stars_topup_retired')
             return ledger.post(conn,uid,data.currency,data.amount*(1 if data.direction=='credit' else -1),
-                'manual_'+data.direction,'manual:'+str(admin['id'])+':'+str(data.request_id),data.reason,actor=admin['id'])
+                'manual_'+data.direction,key,data.reason,actor=admin['id'])
 
     @router.post('/api/v1/admin/wallet/entries/{eid}/reverse')
     def reverse(eid:UUID,data:Reason,admin=Depends(require_admin)):
