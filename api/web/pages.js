@@ -148,7 +148,7 @@
  for(const [route,icon,title,note] of [['growth','gift','Бонусы и приглашения','Промокоды, подарки и награды'],['calendar','calendar','Календарь размещений','Выберите даты рекламы']]){
   const a=link('',route),copy=el('span');a.className='dashboard-shortcut';copy.append(el('strong',title),el('small',note));a.append(window.pushokViews.icon(icon),copy,el('span','›','menu-chevron'));shortcutsGrid.append(a);
  }
- content.dashboard.prepend(shortcutsGrid);content.dashboard.append(dashboardPayments);
+ content.dashboard.append(shortcutsGrid,dashboardPayments);
  const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);content.dashboard.append(dashboardHelp);
  const onboarding=section('С чего начать');onboarding.id='onboarding';onboarding.append(el('p','Заполните одну форму: канал, тариф и желаемая дата. После проверки канала оплатите размещение.'));
  onboarding.append(button('Скрыть инструкцию',async()=>{sessionStorage.setItem('pushok-onboarding-hidden','1');onboarding.hidden=true;}),link('Разместить рекламу','create'));content.dashboard.append(onboarding);
@@ -258,7 +258,7 @@
  function render(){
   if(!state.ready||!state.loaded||!me)return;
   profileShortcut.replaceChildren(window.pushokViews.profileAvatar());
-  metrics('dashboard',[['Активны',state.campaigns.filter(c=>c.placement_status==='active').length,'Размещения сейчас'],['Запланированы',state.campaigns.filter(c=>c.placement_status==='scheduled').length,'Ожидают своего времени'],['На модерации',state.campaigns.filter(c=>c.moderation_status==='pending').length,'Проверяем канал']]);
+  metrics('dashboard',[]);
   if(state.route==='dashboard')void window.pushokWallet.overview(dashboardWallet);
   window.pushokViews.paymentOverview(dashboardPayments,state.campaigns.filter(c=>c.moderation_status==='approved'),{compact:true});
   metrics('channels',[]);
