@@ -50,7 +50,7 @@ window.pushokProfiles=(()=>{
  async function ownOverview(target){
   const session=token,uid=me?.id;target.replaceChildren(el('p','Загрузка обзора…','muted'));
   try{const data=await api('/users/'+uid+'/profile');if(session!==token||uid!==me?.id||!target.isConnected)return;
-   target.replaceChildren(stats(data.counts,key=>window.cabinet.go(key==='current'?'campaigns':key)));
+   target.replaceChildren(stats(data.counts,key=>window.cabinet.go({current:'campaigns',channels:'channels',archived:'archive'}[key])));
    const details=target.previousElementSibling?.querySelector('.profile-details');
    if(details&&data.user.created_at)details.append(el('p','В кабинете с '+new Date(data.user.created_at).toLocaleDateString('ru-RU'),'muted'));
   }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p','Обзор не обновлён. '+e.message,'muted'),button('Повторить',()=>ownOverview(target)));}

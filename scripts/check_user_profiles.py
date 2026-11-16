@@ -69,6 +69,10 @@ def check_user_profiles(browser, base, output, failures, dsn):
             expect(own.locator('.profile-details')).to_contain_text('В кабинете с')
             own.get_by_text('Сведения об аккаунте',exact=True).click()
             client.screenshot(path=str(output/'51-own-profile.png'))
+            for label,route in (('Каналы: 1','channels'),('Кампании: 11','campaigns'),('Архив: 1','archive')):
+                own.get_by_role('button',name=label,exact=True).click()
+                expect(client).to_have_url(base+'/#/'+route)
+                go(client,'profile')
             forbidden=client.request.get(base+f'/api/v1/users/{staff}/profile',headers={'Authorization':'Bearer '+tokens['advertiser']})
             assert forbidden.status==404
             # Нет фотографии и имя совпадает с ником — без дубля и сломанного <img>.
