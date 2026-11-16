@@ -106,8 +106,7 @@
   const page=name==='settings'?$('settings'):el('section');page.dataset.page=name;page.hidden=true;page.classList.add('cabinet-page');
   const heading=el('header',undefined,'page-heading'),titles=el('div');const h=el('h1',title);h.tabIndex=-1;titles.append(h);heading.append(titles);
   if(['campaigns','channels'].includes(name)){
-   const action=link(name==='channels'?'+ Добавить канал':'+ Создать кампанию',name==='channels'?'channels':'create');
-   if(name==='channels')action.addEventListener('click',event=>{event.preventDefault();channelAdd.open=true;const input=$('channel-form').elements.title;input.focus({preventScroll:true});input.scrollIntoView({block:'center'});});
+   const action=link(name==='channels'?'+ Добавить канал':'+ Создать кампанию',name==='channels'?'channels/new':'create');
    window.pushokViews.iconAction(action,'plus',name==='channels'?'Добавить канал':'Создать кампанию');heading.append(action);
   }
   page.prepend(heading);const grid=el('div',undefined,'metrics');page.insertBefore(grid,heading.nextSibling);stats[name]=grid;
@@ -120,10 +119,12 @@
  const updateNotice=el('section',undefined,'update-notice');updateNotice.id='software-update-notice';updateNotice.hidden=true;updateNotice.setAttribute('aria-label','Обновление приложения');updateNotice.setAttribute('role','status');
  const updateNoticeText=el('span');updateNoticeText.id='software-update-notice-text';const updateNoticeLink=link('Открыть обновления','profile/updates');updateNoticeLink.addEventListener('click',event=>{event.preventDefault();go('profile/updates');});updateNotice.append(updateNoticeText,updateNoticeLink);bar.after(updateNotice);
  // Перемещаем существующие формы вместе с обработчиками. Все id остаются уникальными.
- const channelPanel=$('channel-form').closest('section');const channelAdd=window.pushokViews.disclosure('Добавить канал',[channelPanel],'channel-add disclosure-panel');content.channels.append(channelAdd);
+ const channelAdd=$('channel-form').closest('section');channelAdd.classList.add('channel-add');channelAdd.hidden=true;channelAdd.querySelector('h2').remove();content.channels.append(channelAdd);
+ const channelFormActions=el('div',undefined,'channel-form-actions'),channelCancel=button('Отмена',()=>{go('channels');});channelFormActions.append($('channel-form').querySelector('button[type=submit]'),channelCancel);$('channel-form').append(channelFormActions);
  const channelList=section('Ваши каналы'),channelRows=el('div');channelList.classList.add('flat-section');channelList.querySelector('h2').remove();channelList.append(channelRows);content.channels.prepend(channelList);
- const channelSearch=el('input',undefined,'channel-search');channelSearch.type='search';channelSearch.placeholder='Название или @username';channelSearch.setAttribute('aria-label','Поиск каналов');channelList.prepend(channelSearch);
- function renderChannels(){const query=channelSearch.value.trim().replace(/^@/,'').toLocaleLowerCase('ru');const list=channels.filter(c=>!query||(c.title+' '+c.telegram_url).toLocaleLowerCase('ru').includes(query));window.pushokViews.channelCards(channelRows,list);if(query&&!list.length)channelRows.replaceChildren(el('p','Каналы не найдены. Измените запрос.','empty'));}
+ const channelSearch=el('input',undefined,'channel-search');channelSearch.type='search';channelSearch.placeholder='Название или @username';channelSearch.setAttribute('aria-label','Поиск каналов');channelSearch.autocomplete='off';channelSearch.autocapitalize='none';channelSearch.spellcheck=false;
+ const channelSearchBar=el('div',undefined,'channel-search-bar'),channelSearchClear=window.pushokViews.iconAction(button('',()=>{channelSearch.value='';renderChannels();channelSearch.focus();}),'close','Очистить поиск каналов');channelSearchClear.hidden=true;channelSearchBar.append(window.pushokViews.icon('search'),channelSearch,channelSearchClear);channelList.prepend(channelSearchBar);
+ function renderChannels(){const query=channelSearch.value.trim().replace(/^@/,'').toLocaleLowerCase('ru');channelSearchClear.hidden=!channelSearch.value;const list=channels.filter(c=>!query||(c.title+' '+c.telegram_url).toLocaleLowerCase('ru').includes(query));window.pushokViews.channelCards(channelRows,list);if(query&&!list.length)channelRows.replaceChildren(el('p','Каналы не найдены. Измените запрос.','empty'));}
  channelSearch.addEventListener('input',renderChannels);
 
  content.create.append($('campaign-form').closest('section'));
@@ -385,6 +386,12 @@
  function permitted(name){return !(['moderation','sponsors','user','users'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(['settings','license'].includes(name)&&me?.role!=='admin');}
  function renderSelected({background=false}={}){
   const [name,id]=routeParts();
+  if(name==='channels'){
+   const adding=id==='new';channelAdd.hidden=!adding;channelList.hidden=adding;
+   pages.channels.querySelector('h1').textContent=adding?'Добавить канал':'Мои каналы';
+   pages.channels.querySelector('.page-heading>.icon-action').hidden=adding;
+   pages.channels.querySelector('.campaign-tabs').hidden=adding;
+  }
   if(name==='users')window.pushokUsers.directory(content.users);
   if(name==='user')window.pushokProfiles.show(content.user,id);
   helpText.textContent=hints[name]||'Удалённые объекты можно восстановить. Для заявки сначала восстановите её канал и тариф.';
@@ -453,6 +460,7 @@
   bottomNav.querySelectorAll('a').forEach(a=>{a.hidden=a.dataset.route==='moderation'&&!canModerate;const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':name==='user'?'moderation':['dashboard','moderation','campaigns','wallet'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   backButton.hidden=['dashboard','campaigns','wallet','profile'].includes(name)||(name==='moderation'&&!section);profileShortcut.hidden=name!=='dashboard';
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
+  if(name==='channels'&&section==='new'){$('channel-form').elements.telegram_url.focus({preventScroll:true});document.title='Добавить канал · MTProxy Pushok';}
   searchForm.hidden=name!=='campaigns';
   updatePanel.hidden=me.role!=='admin';
   if(me.role==='admin'&&['profile','dashboard'].includes(name))refreshSoftware();
