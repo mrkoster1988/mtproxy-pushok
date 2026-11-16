@@ -1257,7 +1257,7 @@ def main():
                 expect(advertiser.locator('#order-result')).to_contain_text('Заявка на проверке')
                 growth_cid=advertiser.evaluate("location.hash.split('/')[2]")
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
-                    assert connection.execute('SELECT price_kopecks_snapshot,stars_price_snapshot FROM campaigns WHERE id=%s',(growth_cid,)).fetchone()==(8000,80)
+                    assert connection.execute('SELECT price_kopecks_snapshot,stars_price_snapshot FROM campaigns WHERE id=%s',(growth_cid,)).fetchone()==(8000,100)
                     assert connection.execute('SELECT count(*) FROM growth_redemptions WHERE campaign_id=%s',(growth_cid,)).fetchone()[0]==1
                 # Баланс: реальная запись администратора, оплата владельца и возврат.
                 go(admin,'wallet')

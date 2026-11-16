@@ -1,5 +1,6 @@
 """Очередь администратора: только постановка GET-сверки, без ручного зачёта."""
 import os
+from .payment_gate import sbp_reconciliation_enabled
 
 import psycopg
 from fastapi import HTTPException
@@ -18,7 +19,7 @@ def list_attempts(dsn, *, offset=0, limit=50):
                FROM payment_attempts WHERE provider='sbp' AND status IN ('created','pending')
                ORDER BY created_at DESC,id DESC LIMIT %s OFFSET %s""", (limit + 1, offset)).fetchall()
     items = []
-    enabled = os.getenv('PUSHOK_SBP_RECONCILIATION_ENABLED', '0') == '1'
+    enabled = sbp_reconciliation_enabled()
     for row in rows[:limit]:
         matches = cfg['configured'] and _same_config(row, cfg)
         reason = ('creation_unknown' if not row['provider_payment_id'] else
@@ -36,7 +37,7 @@ def list_attempts(dsn, *, offset=0, limit=50):
 
 
 def request_recheck(dsn, attempt_id, admin_id, revision, note):
-    if os.getenv('PUSHOK_SBP_RECONCILIATION_ENABLED', '0') != '1':
+    if not sbp_reconciliation_enabled():
         raise HTTPException(409, 'sbp_reconciliation_disabled')
     note = note.strip()
     if not 12 <= len(note) <= 300:
@@ -64,3 +65,4 @@ def request_recheck(dsn, attempt_id, admin_id, revision, note):
                             'attempt_id',%s::text,'note',%s::text))""",
                      (admin_id, row['campaign_id'], str(attempt_id), note))
     return {'status': 'queued', 'attempt_id': str(attempt_id)}
+

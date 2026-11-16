@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+from .payment_gate import sbp_reconciliation_enabled
 import signal
 import threading
 
@@ -30,7 +31,7 @@ def service_once(dsn, *, apply=False, limit=20):
     if not 1 <= limit <= 100:
         raise ValueError('limit_out_of_range')
     result = dict(checked=0, pending=0, settled=0, retry=0, review=0, superseded=0)
-    if apply and os.getenv('PUSHOK_SBP_RECONCILIATION_ENABLED', '0') != '1':
+    if apply and not sbp_reconciliation_enabled():
         return {**result, 'status': 'disabled'}
     with psycopg.connect(dsn, connect_timeout=3, autocommit=True, row_factory=dict_row,
                          options='-c statement_timeout=5000') as conn:
