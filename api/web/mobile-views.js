@@ -104,7 +104,7 @@ window.pushokViews=(()=>{
   target.replaceChildren(window.pushokProfiles.identity(me));
   const overview=el('div',undefined,'profile-overview');target.append(overview);
   if(location.hash.startsWith('#/profile'))void window.pushokProfiles.ownOverview(overview);
-  const groups=[['Мой кабинет',[['channels','channel','Мои каналы'],['reports','chart','Отчёты'],['growth','gift','Бонусы и подарки']]]];
+  const groups=[['Мой кабинет',[['licenses','moderation','Лицензия'],['channels','channel','Мои каналы'],['reports','chart','Отчёты'],['growth','gift','Бонусы и подарки']]]];
   if(['admin','operator'].includes(me.role)){
    const admin=[['moderation','moderation','Модерация'],['sponsors','server','Узлы и спонсоры']];
    if(me.role==='admin')admin.unshift(['users','users','Пользователи']);

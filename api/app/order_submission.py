@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone
 
 import psycopg
+from .license_errors import explain as explain_license_error
 from fastapi import HTTPException
 from psycopg.rows import dict_row
 from .growth import quote
@@ -27,7 +28,7 @@ def create_order(dsn, payload, user):
                 return conn.execute("SELECT * FROM campaigns WHERE id=%s AND advertiser_user_id=%s",
                                     (saved["campaign_id"], user["id"])).fetchone()
             # Перечитываем роль под блокировкой: она могла измениться после проверки сессии.
-            actor = conn.execute("SELECT role FROM users WHERE id=%s FOR SHARE", (user["id"],)).fetchone()
+            actor = conn.execute("SELECT role FROM users WHERE id=%s FOR UPDATE", (user["id"],)).fetchone()
             tariff = conn.execute("SELECT * FROM tariffs WHERE id=%s AND is_active AND archived_at IS NULL FOR SHARE",
                                   (payload.tariff_id,)).fetchone()
             if not actor or not tariff or (tariff["admin_only"] and actor["role"] != "admin"):
@@ -86,4 +87,5 @@ def create_order(dsn, payload, user):
                          (user["id"], payload.request_id, fingerprint, campaign["id"]))
             return campaign
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(503, "database_unavailable") from exc

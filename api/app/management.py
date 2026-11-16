@@ -5,6 +5,7 @@ from uuid import UUID
 import json
 
 import psycopg
+from .license_errors import explain as explain_license_error
 from psycopg.rows import dict_row
 from psycopg.errors import ExclusionViolation, UniqueViolation
 from fastapi import APIRouter, Depends, HTTPException
@@ -49,6 +50,7 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
         except UniqueViolation as exc:
             raise HTTPException(409, 'management_object_already_exists') from exc
         except psycopg.Error as exc:
+            explain_license_error(exc)
             raise HTTPException(503, 'database_unavailable') from exc
 
     def event(conn, user, kind, obj, campaign=None):

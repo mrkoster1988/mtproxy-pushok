@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import re
 
 import psycopg
+from .license_errors import explain as explain_license_error
 from psycopg.errors import UniqueViolation
 from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
@@ -265,6 +266,7 @@ def create_bot_campaign_draft(
     except UniqueViolation as exc:
         raise HTTPException(status_code=409, detail="bot_draft_conflict") from exc
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return BotDraftResult(
         campaign_id=campaign_id,

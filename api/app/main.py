@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4
 
 import psycopg
+from .license_errors import explain as explain_license_error
 from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
@@ -52,7 +53,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.35",
+    version="1.36",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -601,6 +602,7 @@ def create_channel(
     except UniqueViolation as exc:
         raise HTTPException(status_code=409, detail="channel_already_added") from exc
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return ChannelResponse(**row)
 
@@ -639,6 +641,7 @@ def create_campaign(
             raise HTTPException(status_code=403, detail="admin_tariff_required") from None
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if row is None:
         raise HTTPException(status_code=404, detail="channel_or_active_tariff_not_found")
@@ -3004,3 +3007,6 @@ app.include_router(user_profiles_router(lambda: DATABASE_URL, get_current_user))
 
 from .admin_users import router_for as admin_users_router
 app.include_router(admin_users_router(lambda: DATABASE_URL, require_admin))
+
+from .licenses import router_for as licenses_router
+app.include_router(licenses_router(lambda: DATABASE_URL, get_current_user, require_admin))

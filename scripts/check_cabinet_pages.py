@@ -1558,6 +1558,8 @@ def main():
                 check_admin_users(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_automatic_schedule import check_automatic_schedule
                 check_automatic_schedule(browser, base, output, failures, PostgresIntegration.dsn)
+                from check_licenses import check_licenses
+                check_licenses(browser, base, output, failures, PostgresIntegration.dsn)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))
