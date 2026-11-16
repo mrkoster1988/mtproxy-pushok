@@ -378,3 +378,15 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .cabinet-mode .directory-user>.person-role[data-role=advertiser]{color:var(--muted)}
 .directory-user>p{grid-column:1/-1;grid-row:2;margin:0;font-size:10px;line-height:1.4}
 .directory-user>.role-editor{grid-column:1/-1;grid-row:3;min-width:0}
+
+/* Кампании: канал и статус в шапке, основные условия в коротких колонках. */
+.cabinet-mode .campaign-tile{border-color:#31596b;background:linear-gradient(125deg,#102d3e,var(--surface));border-radius:14px;padding:12px}
+.campaign-tile .tile-heading{gap:8px}.campaign-tile .tile-heading>.campaign-current{flex:none;max-width:90px;font-size:10px;padding:4px 6px;text-align:center}.campaign-tile .tile-heading .tile-title{font-size:14px}.campaign-tile .tile-heading>.icon-action{width:26px;min-width:26px;padding:3px}
+.campaign-tile-facts{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.7fr) minmax(0,1fr);gap:8px;margin:10px 0 0;padding:0}
+.campaign-tile-facts>div{min-width:0;border-right:1px solid var(--line-soft);padding-right:6px}.campaign-tile-facts>div:last-child{border:0;padding:0}.campaign-tile-facts dt{color:var(--muted);font-size:10px;margin-bottom:4px}.campaign-tile-facts dd{margin:0;font-size:12px;font-weight:650;overflow-wrap:anywhere}.campaign-tile-facts>div:last-child dd{color:var(--mint)}
+.campaign-progress{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));list-style:none;margin:14px 0;padding:12px 0;border-block:1px solid var(--line-soft)}
+.campaign-progress li{position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;font-size:9px;text-align:center;color:var(--muted)}
+.progress-dot{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border:1px solid var(--line);border-radius:50%;background:var(--surface);z-index:1;font-size:11px}.progress-dot .ui-icon{width:14px;height:14px}
+.campaign-progress li:not(:last-child):after{content:'';position:absolute;top:12px;left:50%;width:100%;height:2px;background:var(--line)}
+.campaign-progress .is-done:after{background:var(--mint)}.campaign-progress .is-done .progress-dot{color:var(--mint);border-color:#2b847c}.campaign-progress .is-current{color:var(--mint);font-weight:650}.campaign-progress .is-current .progress-dot{background:var(--mint);color:#052b33;border-color:var(--mint);box-shadow:0 0 10px #35d4c433}
+@media(max-width:359px){.campaign-tile .tile-heading>.campaign-current{max-width:70px;font-size:9px}.campaign-tile .tile-heading .tile-title{font-size:13px}.campaign-progress li{font-size:8px}}
