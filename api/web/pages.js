@@ -8,7 +8,7 @@
  const state={campaigns:[],search:'',filter:'',route:'',bot:null,ready:false,loaded:false,renderKey:'',selectedKey:''};
  function dataKey(){return JSON.stringify([state.campaigns,channels,tariffs,nodes,operatorCampaigns,me]);}
  function refreshLivePanels(){
-  if(state.route==='dashboard')void window.pushokWallet.overview(dashboardWallet);
+  if(state.route==='dashboard'){void window.pushokWallet.overview(dashboardWallet);void window.pushokGrowth.overview(dashboardReferral);}
   pages[state.route]?.querySelectorAll('[data-promotion-campaign]').forEach(panel=>void updatePromotionPanel(panel));
  }
  const routes={
@@ -140,10 +140,10 @@
  const heroActions=el('div',undefined,'dashboard-hero-actions');heroActions.append(link('Создать кампанию','create'));
  const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
  dashboardHero.append(heroCopy,dashboardMascot,heroActions);
- const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardWallet=el('div');dashboardWallet.id='dashboard-wallet';dashboardIntro.append(dashboardHero,dashboardWallet);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
+ const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardWallet=el('div'),dashboardReferral=el('div'),dashboardAccount=el('div',undefined,'dashboard-account');dashboardWallet.id='dashboard-wallet';dashboardReferral.id='dashboard-referral';dashboardAccount.append(dashboardReferral,dashboardWallet);dashboardIntro.append(dashboardHero,dashboardAccount);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
  const bottomNav=el('nav',undefined,'mobile-bottom-nav');bottomNav.setAttribute('aria-label','Основные разделы');
- [['dashboard','home','Главная'],['campaigns','campaign','Кампании'],['wallet','wallet','Баланс'],['profile','user','Профиль']].forEach(([route,icon,title])=>{
-  const a=link(title,route);a.dataset.route=route;
+ [['dashboard','home','Главная'],['moderation','moderation','Модерация'],['campaigns','campaign','Кампании'],['wallet','wallet','Баланс'],['profile','user','Профиль']].forEach(([route,icon,title])=>{
+  const a=link(title,route);a.dataset.route=route;a.hidden=route==='moderation';
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);bottomNav.append(a);
  });
@@ -261,7 +261,7 @@
   state.renderKey=dataKey();
   profileShortcut.replaceChildren(window.pushokViews.profileAvatar());
   metrics('dashboard',[]);
-  if(state.route==='dashboard')void window.pushokWallet.overview(dashboardWallet);
+  if(state.route==='dashboard'){void window.pushokWallet.overview(dashboardWallet);void window.pushokGrowth.overview(dashboardReferral);}
 
   metrics('channels',[]);
   metrics('campaigns',[]);
@@ -416,8 +416,9 @@
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
-  bottomNav.querySelectorAll('a').forEach(a=>{const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':['dashboard','campaigns','wallet'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
-  backButton.hidden=['dashboard','campaigns','wallet','profile'].includes(name);profileShortcut.hidden=name!=='dashboard';
+  const canModerate=['admin','operator'].includes(me.role);bottomNav.style.setProperty('--nav-count',canModerate?5:4);
+  bottomNav.querySelectorAll('a').forEach(a=>{a.hidden=a.dataset.route==='moderation'&&!canModerate;const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':['dashboard','moderation','campaigns','wallet'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  backButton.hidden=['dashboard','campaigns','wallet','profile'].includes(name)||(name==='moderation'&&!section);profileShortcut.hidden=name!=='dashboard';
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
   searchForm.hidden=name!=='campaigns';
   updatePanel.hidden=me.role!=='admin';
@@ -435,7 +436,8 @@
   if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);activate();
  },logout(){window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
-  [$('order-result'),detail,dashboardWallet,profileShortcut,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
+  bottomNav.querySelector('[data-route=moderation]').hidden=true;bottomNav.style.setProperty('--nav-count',4);
+  [$('order-result'),detail,dashboardReferral,dashboardWallet,profileShortcut,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['settings-stars-counts','settings-stars-status','settings-sbp-status','launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());

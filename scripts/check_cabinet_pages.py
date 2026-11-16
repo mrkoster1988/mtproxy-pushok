@@ -140,6 +140,15 @@ def main():
                         expect(link).to_have_attribute('href','#/'+route)
                         assert 'pi-'+icon in symbols
                         expect(link.locator('use')).to_have_attribute('href','/assets/pushok-icons.svg#pi-'+icon)
+                    privileged=page.evaluate("['admin','operator'].includes(me.role)")
+                    routes=page.locator('.mobile-bottom-nav a:visible').evaluate_all('(items)=>items.map(a=>a.dataset.route)')
+                    assert routes==(['dashboard','moderation','campaigns','wallet','profile'] if privileged else ['dashboard','campaigns','wallet','profile'])
+                    if privileged:
+                        previous=page.evaluate('location.hash.slice(2)') or 'dashboard'
+                        page.locator('.mobile-bottom-nav [data-route=moderation]').click()
+                        expect(page.locator('[data-page=moderation]')).to_be_visible()
+                        expect(page.locator('.mobile-bottom-nav [data-route=moderation]')).to_have_attribute('aria-current','page')
+                        go(page,previous)
 
                 def refresh(page):
                     with page.expect_response(lambda r: r.url.endswith('/campaigns') and r.request.method == 'GET'):
@@ -654,7 +663,8 @@ def main():
                     assert mini.evaluate('window.__miniReady&&window.__miniExpanded')
                     assert not mini.evaluate('window.__miniBackVisible')
                     expect(mini.locator('[data-page=dashboard]')).to_be_visible()
-                    expect(mini.locator('.mobile-bottom-nav a')).to_have_count(4)
+                    expect(mini.locator('.mobile-bottom-nav a:visible')).to_have_count(4)
+                    expect(mini.locator('.mobile-bottom-nav [data-route=moderation]')).to_be_hidden()
                     mini.locator('.mobile-bottom-nav a[data-route=profile]').click()
                     expect(mini.locator('[data-page=profile]')).to_be_visible()
                     expect(mini.locator('.profile-menu a[href="#/settings"]')).to_have_count(0)
@@ -1316,30 +1326,33 @@ def main():
                 expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_have_attribute('data-currency','RUB')
                 # Регрессия видео: задержанный ответ не меняет геометрию и DOM карточек.
                 expect(advertiser.locator('#dashboard-wallet .wallet-overview')).to_have_attribute('aria-busy','false')
+                expect(advertiser.locator('#dashboard-referral .referral-overview')).to_have_attribute('aria-busy','false')
                 advertiser.evaluate("""() => {
                     window.__originalFetch=window.fetch;
-                    window.__walletWaiting=false;
-                    window.fetch=(url,options)=>String(url)==='/api/v1/wallet'?new Promise(resolve=>{
-                        window.__walletWaiting=true;
-                        window.__releaseWallet=()=>window.__originalFetch(url,options).then(resolve);
+                    window.__pendingRefresh=[];
+                    window.fetch=(url,options)=>['/api/v1/wallet','/api/v1/growth/me'].includes(String(url))?new Promise(resolve=>{
+                        window.__pendingRefresh.push(()=>window.__originalFetch(url,options).then(resolve));
                     }):window.__originalFetch(url,options);
                     const panel=document.querySelector('#dashboard-wallet .wallet-overview');
                     const total=panel.querySelector('.wallet-total');
                     const tile=document.querySelector('[data-page=dashboard] .campaign-tile');
                     const y=tile.getBoundingClientRect().top,scroll=scrollY;
-                    window.__stable={panel,total,tile,y,scroll,samples:[],stop:false};
+                    const referral=document.querySelector('#dashboard-referral .referral-overview'),invite=referral.querySelector('.referral-link');
+                    window.__stable={panel,total,tile,referral,invite,y,scroll,samples:[],stop:false};
                     const sample=()=>{const s=window.__stable;s.samples.push([s.tile.getBoundingClientRect().top,scrollY]);if(!s.stop)requestAnimationFrame(sample);};
                     requestAnimationFrame(sample);void refreshStatuses();
                 }""")
-                advertiser.wait_for_function('window.__walletWaiting')
+                advertiser.wait_for_function('window.__pendingRefresh.length===2')
                 advertiser.wait_for_timeout(250)
                 expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_contain_text('220')
-                advertiser.evaluate('() => window.__releaseWallet()')
+                advertiser.evaluate('() => Promise.all(window.__pendingRefresh.map(release=>release()))')
                 expect(advertiser.locator('#dashboard-wallet .wallet-overview')).to_have_attribute('aria-busy','false')
                 assert advertiser.evaluate("""() => {
                     const s=window.__stable;s.stop=true;window.fetch=window.__originalFetch;
                     return s.panel===document.querySelector('#dashboard-wallet .wallet-overview') &&
                       s.total===document.querySelector('#dashboard-wallet .wallet-total') &&
+                      s.referral===document.querySelector('#dashboard-referral .referral-overview') &&
+                      s.invite===document.querySelector('#dashboard-referral .referral-link') &&
                       s.tile===document.querySelector('[data-page=dashboard] .campaign-tile') &&
                       s.samples.length>2 && s.samples.every(([y,scroll])=>Math.abs(y-s.y)<1&&Math.abs(scroll-s.scroll)<1);
                 }"""), 'Background refresh moved the dashboard or recreated its cards'
@@ -1379,9 +1392,26 @@ def main():
                 expect(admin.get_by_label('Награда за приглашённого',exact=True)).to_have_value('bonus')
                 expect(admin.get_by_label('Награда на бонусный баланс, ₽',exact=True)).to_have_value('125.50')
                 go(advertiser,'growth')
-                invite_link=advertiser.get_by_label('Ваша ссылка для друзей',exact=True).input_value()
+                invite_link=advertiser.locator('[data-page=growth]').get_by_label('Ваша ссылка для друзей',exact=True).get_attribute('href')
+                assert len(invite_link.split('r_')[1])==8
+                go(advertiser,'dashboard')
+                expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
+                expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
+                assert advertiser.evaluate("document.querySelector('#dashboard-referral').getBoundingClientRect().bottom <= document.querySelector('#dashboard-wallet').getBoundingClientRect().top")
+                share=advertiser.locator('#dashboard-referral').get_by_role('link',name='Поделиться реферальной ссылкой',exact=True)
+                expect(share).to_be_visible()
+                from urllib.parse import urlparse,parse_qs
+                assert parse_qs(urlparse(share.get_attribute('href')).query)['url']==[invite_link]
+                advertiser.evaluate("window.__copied='';Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{window.__copied=value}}})")
+                advertiser.locator('#dashboard-referral').get_by_role('button',name='Скопировать реферальную ссылку',exact=True).click()
+                assert advertiser.evaluate('window.__copied')==invite_link
+                for width in (320,390):
+                    advertiser.set_viewport_size({'width':width,'height':844})
+                    assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                    advertiser.screenshot(path=str(output/f'48-home-referral-{width}.png'),full_page=True)
+                check_navigation_icons(operator)
                 go(outsider,'growth')
-                outsider.get_by_label('Код пригласившего вас пользователя',exact=True).fill(invite_link.split('ref_')[1])
+                outsider.get_by_label('Код пригласившего вас пользователя',exact=True).fill(invite_link.split('r_')[1])
                 outsider.get_by_role('button',name='Принять приглашение',exact=True).click()
                 expect(outsider.get_by_label('Код пригласившего вас пользователя',exact=True)).to_have_count(0)
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
