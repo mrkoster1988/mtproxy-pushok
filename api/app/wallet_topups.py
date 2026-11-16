@@ -32,7 +32,16 @@ def parse_payload(value):
         return None
 
 
+from . import control
+
 def create(dsn,user,data):
+    if data.currency=='RUB':
+        with control.locked():
+            return _create(dsn,user,data)
+    return _create(dsn,user,data)
+
+
+def _create(dsn,user,data):
     currency=data.currency
     if currency=='RUB' and user.get('login_surface')=='telegram':
         raise HTTPException(409,'wallet_stars_only_in_telegram')

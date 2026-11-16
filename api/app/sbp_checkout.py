@@ -19,15 +19,17 @@ from .sbp_verification import validate_sbp_identity, SBPVerificationError
 
 
 def settings() -> dict:
-    host = os.getenv('PUSHOK_PUBLIC_PAYMENT_HOST', '').strip().lower()
-    shop = os.getenv('YOOKASSA_SHOP_ID', '')
+    from .sbp_connection import current
+    cfg = current()
+    host = cfg.get('host', '').strip().lower()
+    shop = cfg.get('shop', '')
     configured = bool(re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', host)
                       and '..' not in host and shop and ':' not in shop
                       and not any(c.isspace() for c in shop)
-                      and os.getenv('YOOKASSA_SECRET_KEY', ''))
+                      and cfg.get('secret', ''))
     return {'enabled': provider.sbp_enabled() and configured,
             'configured': configured, 'host': host, 'shop': shop,
-            'test_mode': os.getenv('PUSHOK_SBP_TEST_MODE', '1') != '0'}
+            'test_mode': cfg.get('test_mode', True)}
 
 
 def _campaign(conn, campaign_id: UUID, user_id: UUID):
@@ -84,7 +86,16 @@ def read_checkout(dsn, campaign_id, user_id):
         return _view(campaign, _attempt(conn, campaign_id), settings())
 
 
+from .sbp_connection import serialized_creation
+
 def create_checkout(dsn, campaign_id, user_id):
+    if not settings()['enabled']:
+        raise HTTPException(409, 'sbp_checkout_disabled_until_acceptance')
+    return _create_checkout_locked(dsn, campaign_id, user_id)
+
+
+@serialized_creation
+def _create_checkout_locked(dsn, campaign_id, user_id):
     cfg = settings()
     if not cfg['enabled']:
         raise HTTPException(409, 'sbp_checkout_disabled_until_acceptance')

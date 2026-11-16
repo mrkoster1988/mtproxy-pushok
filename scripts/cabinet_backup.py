@@ -29,7 +29,7 @@ from installer_runtime import sync_directory
 WRITERS = {'api', 'bot', 'sbp-worker'}
 CONFIG = {'.env': 'config.env', 'compose.yaml': 'compose.yaml',
           'compose.override.yaml': 'compose.override.yaml', 'Caddyfile': 'Caddyfile',
-          '.control/payments.json':'payments.json', '.control/emoji-map.json':'emoji-map.json'}
+          '.control/sbp-private.json':'sbp-private.json', '.control/payments.json':'payments.json', '.control/emoji-map.json':'emoji-map.json'}
 REQUIRED = {'database.dump', 'proofs.tar', 'config.env', 'compose.yaml'}
 ALLOWED = REQUIRED | set(CONFIG.values())
 LIMIT = 20 * 1024**3
