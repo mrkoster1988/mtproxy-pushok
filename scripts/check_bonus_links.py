@@ -64,8 +64,8 @@ def check_bonus_links(browser,base,output,failures,dsn):
         with psycopg.connect(dsn) as conn:
             assert conn.execute('SELECT count(*) FROM wallet_gift_redemptions WHERE gift_id=%s',(gift,)).fetchone()[0]==1
         page.locator('[data-wallet-section=telegram] > summary').click()
-        page.get_by_role('link',name='Открыть мои Stars через бота ↗').click()
-        assert page.evaluate("__nativeEvents.some(e=>e.name==='web_app_open_tg_link'&&e.data.path_full==='/mtproxy_pushok_bot?start=stars')")
+        expect(page.get_by_role('link',name='Открыть мои Stars в Telegram ↗')).to_have_attribute('href','tg://settings/stars')
+        expect(page.locator('[data-wallet-section=telegram] a[href^="https://t.me/"]')).to_have_count(0)
         page.screenshot(path=str(output/'51-gift-deeplink-mobile.png'),full_page=True)
     finally:page.context.close()
 

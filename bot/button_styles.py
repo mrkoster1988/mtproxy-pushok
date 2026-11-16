@@ -3,7 +3,7 @@
 _ACTIONS = {
     "advertise": "success", "draft:confirm": "success",
     "start": "primary", "campaigns": "primary", "tariffs": "primary",
-    "moderation": "primary", "delivery:refresh": "primary",
+    "moderation": "primary", "delivery:refresh": "primary", "help": "primary",
     "draft:cancel": "danger", "review:cancel": "danger",
 }
 _PREFIXES = (
@@ -22,13 +22,15 @@ def _style(button):
         for prefix, style in _PREFIXES:
             if action.startswith(prefix):
                 return style
-    if "web_app" in button or button.get("url") == "https://t.me/pushok_proxy":
+    if "web_app" in button:
+        return "success" if button['web_app'].get('url','').endswith('#/create') else "primary"
+    if button.get("url") == "https://t.me/pushok_proxy":
         return "primary"
     return None
 
 
 def with_button_styles(payload):
-    """Копия сообщения с нативными цветами. Помощь и неизвестные действия нейтральны."""
+    """Копия сообщения с нативными цветами; неизвестные действия нейтральны."""
     markup = payload.get("reply_markup")
     if not isinstance(markup, dict) or not isinstance(markup.get("inline_keyboard"), list):
         return payload
