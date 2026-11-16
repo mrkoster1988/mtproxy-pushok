@@ -219,6 +219,7 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .profile-campaign-heading{display:flex;align-items:center;gap:8px}.profile-campaign-heading>div{flex:1;min-width:0;overflow-wrap:anywhere}
 .profile-campaign-heading strong{display:block;font-size:14px}.profile-campaign-heading small{display:block;font-size:11px;color:var(--muted);margin-top:3px}
 .profile-statuses{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.profile-statuses .badge{font-size:10px;padding:3px 6px}
+.cabinet-mode .campaign-detail>.cardhead>.badge{max-width:100%;overflow-wrap:normal}
 .profile-campaign-row>p{font-size:11px;margin:0;line-height:1.5}
 .profile-tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
 .cabinet-mode .profile-tabs button{font-size:12px;min-height:40px;padding:8px 12px}

@@ -200,7 +200,7 @@
  const sponsorNode=el('select');sponsorNode.required=true;sponsorNode.setAttribute('aria-label','Узел спонсорского тега');
  const sponsorEngine=el('select');sponsorEngine.setAttribute('aria-label','Движок спонсорского тега');Object.entries(engineTitles).forEach(([v,t])=>option(sponsorEngine,v,t));
  const sponsorTag=el('input');sponsorTag.type='password';sponsorTag.required=true;sponsorTag.minLength=32;sponsorTag.maxLength=32;sponsorTag.pattern='[0-9a-fA-F]{32}';sponsorTag.autocomplete='off';sponsorTag.setAttribute('aria-label','ad_tag из MTProxyBot');
- function field(title,input){const label=el('label',title);input.setAttribute('aria-label',title);label.append(input);return label;}
+ function field(title,input){const label=el('label',title);if(!input.hasAttribute('aria-label'))input.setAttribute('aria-label',title);label.append(input);return label;}
  const sponsorSave=el('button','Сохранить регистрацию');sponsorSave.type='submit';
  const sponsorResult=el('p',undefined,'muted');sponsorResult.setAttribute('role','status');
  sponsorForm.append(field('Узел',sponsorNode),field('Движок',sponsorEngine),field('ad_tag из @MTProxyBot · 32 шестнадцатеричных символа',sponsorTag),sponsorSave);
@@ -213,7 +213,7 @@
  automationPanel.id='promotion-automation';automationRuntime.id='promotion-automation-runtime';automationRuntime.setAttribute('aria-live','polite');
  automationPanel.append(el('p','Один раз подготовьте тег для канала через @MTProxyBot → Set promotion. Агент на VPS применит его в назначенное время и вернёт исходный после окончания. Применение тега не подтверждает фактический показ.','muted'),automationBody,automationRuntime);
  content.sponsors.append(automationPanel);
- let automationRevision=0;
+ let automationRevision=0,automationFocusRoute='';
  async function renderAutomation(){
   void renderDiagnostics();
   automationPanel.hidden=me?.role!=='admin';if(me?.role!=='admin')return;
@@ -228,6 +228,11 @@
    form.append(field('Узел',node),field('Канал',channel),field('Тег этого канала из @MTProxyBot',tag),field('Я проверил: этот тег связан именно с выбранным каналом в Telegram',confirmed),submit);
    form.addEventListener('submit',e=>{e.preventDefault();run(async()=>{await api('/admin/promotion-bindings',{method:'PUT',body:{node_id:node.value,channel_id:channel.value,ad_tag:tag.value,telegram_binding_confirmed:confirmed.checked}});tag.value='';await renderAutomation();notice('Связь сохранена. Агент применит тег в пределах назначенного слота.',true);},submit);});
    automationBody.replaceChildren(form);
+   if(routeParts()[0]==='sponsors'&&selectedChannel&&automationFocusRoute!==location.hash){
+    automationFocusRoute=location.hash;
+    window.scrollTo({top:window.scrollY+automationPanel.getBoundingClientRect().top-bar.getBoundingClientRect().height-12,behavior:'instant'});
+    node.focus({preventScroll:true});
+   }
    if(!nodes.length)automationBody.prepend(el('p','Нет узлов. Добавьте узел выше или восстановите его в разделе «Удалённые».'));
    for(const b of data.bindings){const row=el('div',undefined,'card');row.append(el('p',b.name+' → '+b.title+' · тег …'+b.tag_ending),button('Отключить',async()=>{await api('/admin/promotion-bindings/'+b.proxy_node_id+'/'+b.channel_id,{method:'DELETE'});await renderAutomation();notice('Связь отключена. При следующей проверке агент вернёт исходный тег.',true);}));automationBody.append(row);}
   }catch(e){if(rev===automationRevision&&token===session)automationBody.replaceChildren(el('p',e.message));}
@@ -416,6 +421,7 @@
  function activate(){
   if(!me||!state.ready)return;
   let [name,section]=routeParts();
+  if(name!=='sponsors')automationFocusRoute='';
   if(!permitted(name)){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}
   if($('notice').dataset.route!==location.hash)$('notice').hidden=true;
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
