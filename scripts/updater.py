@@ -79,7 +79,17 @@ def read_control(name):
 def main():
     CONTROL.mkdir(mode=0o700, exist_ok=True)
     with lock_file('host-lock') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if '--finalize' in sys.argv:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                # Другой обновлятор ещё работает: его статус менять нельзя.
+                return
+        else:
+            # Ожидаем владельца, сохраняя запрос. systemd ограничивает общее время.
+            # После освобождения блокировки запрос проверяется заново.
+            print('Waiting for updater lock', flush=True)
+            fcntl.flock(lock, fcntl.LOCK_EX)
         if '--finalize' in sys.argv:
             with queue_lock():
                 try:
@@ -93,6 +103,9 @@ def main():
             request = CONTROL / 'request.json'
             if '--bootstrap' not in sys.argv:
                 if not request.exists():
+                    previous = read_control('status.json')
+                    if previous.get('state') == 'running':
+                        status('failed', code='worker_interrupted', stage=previous.get('stage'))
                     return
                 try:
                     data = read_control('request.json')
@@ -126,6 +139,7 @@ def main():
             status('running', stage=stage)
             if target != old:
                 run('git', 'merge', '--ff-only', target)
+            run('bash', 'scripts/install_updater.sh', '--install-only')
             stage = "build"
             status('running', stage=stage)
             run('python3', 'scripts/installer_runtime.py', 'compose', *profile, 'build')
