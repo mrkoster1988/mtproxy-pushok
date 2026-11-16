@@ -7,3 +7,8 @@ __pycache__/
 .env.install-*
 
 .control/
+*.session
+*.session-journal
+*.session-wal
+*.session-shm
+telegram-owner/
