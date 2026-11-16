@@ -660,6 +660,8 @@ def main():
                     page.route('**/*',lambda route:route.continue_() if route.request.url.startswith(base+'/') else route.abort())
                     page.goto(base+'/miniapp');return page
                 with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'1','TELEGRAM_BOT_USERNAME':'mtproxy_pushok_bot'}),patch.object(api,'TELEGRAM_BOT_TOKEN','fixture-token'):
+                    from check_miniapp_sdk import check_miniapp_sdk
+                    check_miniapp_sdk(browser, base, output, failures)
                     raw=signed_data(user=json.dumps({'id':99116000,'first_name':'Mini App тест'}),query_id='mini-client-first')
                     mini=mini_page(raw)
                     expect(mini.locator('body')).to_have_class('miniapp-mode cabinet-mode')

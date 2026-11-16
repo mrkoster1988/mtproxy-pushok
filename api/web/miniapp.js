@@ -43,9 +43,10 @@ window.pushokMiniApp=(()=>{
  async function sdk(){
   if(window.Telegram?.WebApp)return window.Telegram.WebApp;
   await new Promise((resolve,reject)=>{
-   const script=document.createElement('script');script.src='https://telegram.org/js/telegram-web-app.js';
+   const script=document.createElement('script');script.src='/assets/vendor/telegram-web-app.baa788a6f686.js';
+   // Та же поставка и домен: внешний telegram.org не блокирует вход клиента.
    const timer=setTimeout(()=>{script.remove();reject(Error('sdk_unavailable'));},8000);
-   script.onload=()=>{clearTimeout(timer);resolve();};script.onerror=()=>{clearTimeout(timer);script.remove();reject(Error('sdk_unavailable'));};
+   script.onload=()=>{clearTimeout(timer);if(window.Telegram?.WebApp)resolve();else{script.remove();reject(Error('sdk_unavailable'));}};script.onerror=()=>{clearTimeout(timer);script.remove();reject(Error('sdk_unavailable'));};
    document.head.append(script);
   });
   return window.Telegram?.WebApp;
@@ -80,7 +81,7 @@ window.pushokMiniApp=(()=>{
    }
    await enter();panel.hidden=true;document.body.classList.remove('miniapp-loading');syncNavigation();
   }catch(e){
-   if(!token)message(e.message==='sdk_unavailable'?'Не удалось загрузить Telegram. Проверьте соединение и повторите.':
+   if(!token)message(e.message==='sdk_unavailable'?'Не удалось загрузить компонент приложения. Проверьте соединение и повторите.':
     'Вход не завершён. Закройте Mini App и откройте заново. Если ошибка повторяется, обратитесь к владельцу.',e.message==='sdk_unavailable'||!e.status||e.status>=500);
    else message('Не удалось загрузить кабинет. Проверьте соединение и повторите.',true);
   }finally{busy=false;retry.disabled=false;}
