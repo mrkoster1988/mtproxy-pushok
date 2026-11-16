@@ -202,6 +202,15 @@ def main():
                 expect(advertiser.locator('.profile-group')).to_have_count(2)
                 expect(advertiser.locator('.profile-menu a[href="#/wallet"]')).to_have_count(0)
                 go(advertiser, 'create')
+                tariff_help=advertiser.locator('#tariff-select').locator('xpath=../..').locator('.field-hint')
+                expect(tariff_help.locator('.field-help')).to_be_hidden()
+                tariff_help.locator('summary').click()
+                expect(tariff_help.locator('.field-help')).to_be_visible()
+                advertiser.locator('#order-channel-url').click()
+                expect(tariff_help.locator('.field-help')).to_be_hidden()
+                tariff_help.locator('summary').click()
+                advertiser.keyboard.press('Escape')
+                expect(tariff_help.locator('.field-help')).to_be_hidden()
                 advertiser.locator('#order-channel-url').fill('@unsaved_order_channel')
                 go(advertiser, "channels")
                 advertiser.locator('[data-page=channels] .page-heading a').click()
@@ -753,7 +762,7 @@ def main():
                     mini.screenshot(path=str(output/'22-miniapp-menu-dark.png'),full_page=True)
                     mini.keyboard.press('Escape')
                     # Полноэкранный Telegram: системная строка + собственные кнопки клиента.
-                    go(mini,'profile')
+                    go(mini,'channels')
                     mini.evaluate("""() => {
                         const app=window.Telegram.WebApp;app.isFullscreen=true;
                         app.safeAreaInset.top=24;app.contentSafeAreaInset.top=56;

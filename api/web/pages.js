@@ -13,7 +13,7 @@
   channels:['Мои каналы','Управление рекламируемыми Telegram-каналами'],
   create:['Новая кампания','Канал, тариф и дата — в одной заявке'],
   campaigns:['Кампании','Статусы ваших рекламных заявок'],
-  campaign:['Карточка кампании','Модерация, оплата и размещение — отдельные этапы'],
+  campaign:['Кампания','Модерация, оплата и размещение — отдельные этапы'],
   payments:['Мои оплаты','Оплата и история ваших кампаний'],
   profile:['Профиль','Ваш аккаунт и разделы кабинета'],
   calendar:['Календарь размещений','Доступность на полную длительность тарифа'],
@@ -107,12 +107,12 @@
  const updateNoticeText=el('span');updateNoticeText.id='software-update-notice-text';const updateNoticeLink=link('Открыть обновления','profile/updates');updateNoticeLink.addEventListener('click',event=>{event.preventDefault();go('profile/updates');});updateNotice.append(updateNoticeText,updateNoticeLink);bar.after(updateNotice);
  // Перемещаем существующие формы вместе с обработчиками. Все id остаются уникальными.
  const channelPanel=$('channel-form').closest('section');const channelAdd=window.pushokViews.disclosure('Добавить канал',[channelPanel],'channel-add disclosure-panel');content.channels.append(channelAdd);
- const channelList=section('Ваши каналы'),channelRows=el('div');channelList.classList.add('flat-section');channelList.append(channelRows);content.channels.prepend(channelList);
+ const channelList=section('Ваши каналы'),channelRows=el('div');channelList.classList.add('flat-section');channelList.querySelector('h2').remove();channelList.append(channelRows);content.channels.prepend(channelList);
  content.create.append($('campaign-form').closest('section'));
  content.payments.prepend(link('Баланс · пополнить или посмотреть операции →','wallet'));
  const createNotice=el('p',undefined,'muted');content.create.prepend(createNotice);
  const calendar=$('availability-days').closest('.calendar');const calendarOrigin=$('order-calendar-home');
- const calendarPanel=section('Выбор даты'),calendarTariff=el('select');calendarTariff.setAttribute('aria-label','Тариф календаря');calendarPanel.append(calendarTariff);content.calendar.append(calendarPanel);
+ const calendarPanel=section('Выбор даты'),calendarTariff=el('select');calendarTariff.setAttribute('aria-label','Тариф календаря');calendarPanel.querySelector('h2').remove();calendarPanel.append(calendarTariff);content.calendar.append(calendarPanel);
  calendarTariff.addEventListener('change',()=>run(async()=>{$('tariff-select').value=calendarTariff.value;await loadAvailability();}));
  content.calendar.append(link('Перейти к созданию кампании','create'));
  const listTools=el('div',undefined,'list-tools'),filter=el('select');filter.setAttribute('aria-label','Статус кампаний');
@@ -431,6 +431,8 @@
   [$('tariff-admin-stars'),'Целое число XTR. Пустое поле отключает цену Stars для этого тарифа.']
  ];
  fieldHelp.forEach(([input,text],i)=>{const note=el('p',text,'field-help');note.id='field-help-'+i;input.setAttribute('aria-describedby',note.id);const help=window.pushokViews.disclosure('',[note],'field-hint'),summary=help.querySelector('summary'),label=input.closest('label'),wrap=el('div',undefined,'field-with-help');summary.append(window.pushokViews.icon('info'));summary.setAttribute('aria-label','Подсказка: '+label.childNodes[0].textContent.trim());summary.title='Подробнее';label.before(wrap);wrap.append(label,help);});
+ document.addEventListener('click',e=>document.querySelectorAll('.field-hint[open]').forEach(h=>{if(!h.contains(e.target))h.open=false;}));
+ window.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('.field-hint[open]').forEach(h=>h.open=false);});
  window.addEventListener('hashchange',activate);
  if(window.cabinetBotConfig)window.cabinet.config(window.cabinetBotConfig);
  if(window.cabinetBootReady&&me){window.cabinet.sync(ownCampaigns);window.cabinet.enter();}
