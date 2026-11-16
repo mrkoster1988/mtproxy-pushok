@@ -79,8 +79,8 @@ CREATE OR REPLACE FUNCTION pushok_license_usage() RETURNS trigger AS $$
 BEGIN
  IF (SELECT enabled FROM license_settings WHERE singleton) THEN
   INSERT INTO license_campaign_usage(campaign_id,grant_id)
-   SELECT NEW.id,id FROM license_grants WHERE user_id=NEW.advertiser_user_id AND revoked_at IS NULL
-    AND starts_at<=now() AND ends_at>now() ORDER BY starts_at DESC,id LIMIT 1 ON CONFLICT DO NOTHING;
+   SELECT NEW.id,g.id FROM license_grants g WHERE g.user_id=NEW.advertiser_user_id AND g.revoked_at IS NULL
+    AND g.starts_at<=now() AND g.ends_at>now() ORDER BY g.starts_at DESC,g.id LIMIT 1 ON CONFLICT DO NOTHING;
  END IF;
  RETURN NEW;
 END; $$ LANGUAGE plpgsql;

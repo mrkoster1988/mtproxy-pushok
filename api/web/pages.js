@@ -386,7 +386,7 @@
   if(background&&id&&['campaign','payments','create'].includes(name)&&state.selectedKey===key){refreshLivePanels();return;}
   const openPanels=background&&selected?[...pages[name].querySelectorAll('.campaign-report,.automation-panel')]:[];
   state.selectedKey=key;
-  if(name==='licenses')void window.pushokLicenses?.load(content.licenses);
+  if(name==='licenses'&&!background)void window.pushokLicenses?.load(content.licenses);
   if(name==='wallet')void window.pushokWallet?.load(content.wallet);
   if(name==='growth')void window.pushokGrowth?.load(content.growth);
   if(name==='archive')void window.pushokManagement.renderArchive(archiveRows,id);

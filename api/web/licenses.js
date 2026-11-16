@@ -34,7 +34,7 @@ window.pushokLicenses=(()=>{
    if(!data.enabled)current.append(el('p','Лицензирование отключено. Кабинет работает без ограничений лицензии.'));
    else if(data.staff_exempt)current.append(el('p','Доступ администратора или оператора — без ограничений лицензии.'));
    else if(!g)current.append(el('p','Нет действующей лицензии. Выберите тариф для новых каналов и кампаний.'));
-   if(g){current.append(el('h3',g.terms.name),el('p','До '+date(g.ends_at),'muted'));terms(current,g.terms);const usage=el('dl',undefined,'campaign-facts');for(const [key,label] of limits)usage.append(el('dt',label+' · использовано'),el('dd',String(data.usage[key.slice(4)])));current.append(usage);}
+   if(g){current.append(el('h3',g.terms.name),el('p','До '+date(g.ends_at),'muted'));const usage=el('dl',undefined,'campaign-facts');for(const [key,label] of limits)usage.append(el('dt',label+' · использовано'),el('dd',String(data.usage[key.slice(4)])+' / '+(g.terms[key]===null?'∞':g.terms[key])));current.append(usage);}
    for(const future of data.grants.filter(g=>new Date(g.starts_at)>now))current.append(el('p',future.terms.name+' · с '+date(future.starts_at)+' до '+date(future.ends_at),'muted'));
    current.append(button('Обновить статус',()=>load(root)));
    if(data.enabled){root.append(el('p','Лицензия открывает возможности кабинета. Размещения оплачиваются отдельно. Продление добавляется после текущего срока.','muted'));const grid=el('div',undefined,'license-plans');data.plans.forEach(p=>renderPlan(grid,p,data.stars_available));root.append(grid);}
@@ -42,5 +42,5 @@ window.pushokLicenses=(()=>{
    if(me.role==='admin')await admin(root,version,session);
   }catch(e){if(version===epoch&&session===token){root.replaceChildren(el('p',e.message));root.append(button('Повторить',()=>load(root)));}}
  }
- return {load,reset(){epoch++;target=null;}};
+ return {load,reset(){epoch++;target?.replaceChildren();target=null;}};
 })();

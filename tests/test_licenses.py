@@ -116,7 +116,7 @@ class LicensePostgresTests(unittest.TestCase):
     def test_invalid_receipts_foreign_invoice_and_secret(self):
         p=self.plan();o=self.checkout(p)
         data=self.payment(o,query_id='unauthorized')
-        self.request('POST','/internal/bot/license/precheckout',403,json=data)
+        self.request('POST','/internal/bot/license/precheckout',401,json=data)
         self.precheck(o,telegram_user_id=self.tg+2,expected=False)
         self.assertEqual(self.settle(o,charge='before-check-'+o['order_id'])['status'],'requires_review');self.assertEqual(self.grants(),[])
         self.actor={'id':self.other,'role':'advertiser'}
