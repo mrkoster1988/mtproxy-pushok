@@ -65,6 +65,7 @@ window.pushokMiniApp=(()=>{
     app.onEvent?.('themeChanged',theme);app.onEvent?.('safeAreaChanged',theme);app.onEvent?.('contentSafeAreaChanged',theme);app.onEvent?.('fullscreenChanged',theme);
     app.BackButton?.onClick(back);
    }
+   window.pushokLinks.capture(new URLSearchParams(app.initData).get('start_param'));
    const clean=new URL(location.href);
    for(const key of [...clean.searchParams.keys()])if(key.startsWith('tgWebApp')||key==='sbp_campaign')clean.searchParams.delete(key);
    if(!clean.hash.startsWith('#/'))clean.hash='/dashboard';
@@ -79,7 +80,7 @@ window.pushokMiniApp=(()=>{
     const session=await api('/auth/telegram/miniapp',{method:'POST',body:{init_data:app.initData}});
     token=session.access_token;sessionStorage.setItem(sessionKey,token);sessionStorage.setItem(cacheKey,fingerprint);sessionStorage.removeItem(exitKey);
    }
-   await enter();panel.hidden=true;document.body.classList.remove('miniapp-loading');syncNavigation();
+   await enter();panel.hidden=true;document.body.classList.remove('miniapp-loading');syncNavigation();await window.pushokLinks.apply();
   }catch(e){
    if(!token)message(e.message==='sdk_unavailable'?'Не удалось загрузить компонент приложения. Проверьте соединение и повторите.':
     'Вход не завершён. Закройте Mini App и откройте заново. Если ошибка повторяется, обратитесь к владельцу.',e.message==='sdk_unavailable'||!e.status||e.status>=500);

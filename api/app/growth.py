@@ -96,9 +96,6 @@ def discounted(amount, percent, *, rub=False):
 
 def quote(conn, user, tariff, code=None, *, lock=False):
     code = normalize_code(code)
-    telegram = user.get('login_surface') == 'telegram'
-    if telegram and code:
-        raise HTTPException(409, 'growth_rub_only')
     if code and tariff['price_kopecks'] == 0:
         raise HTTPException(409, 'growth_free_tariff')
     # Один и тот же порядок блокировок для параллельных покупок разных кодов.
@@ -111,7 +108,7 @@ def quote(conn, user, tariff, code=None, *, lock=False):
         ORDER BY id""" + (' FOR UPDATE' if lock else ''),
         (code, tariff['id'], tariff['duration_seconds'], user['id'])).fetchall()
     eligible = []
-    if tariff['price_kopecks'] == 0 or telegram:
+    if tariff['price_kopecks'] == 0:
         offers = []
     for offer in offers:
         counts = conn.execute("""SELECT count(*) AS total,count(*) FILTER(WHERE user_id=%s) AS own
@@ -126,7 +123,7 @@ def quote(conn, user, tariff, code=None, *, lock=False):
     result = dict(tariff_id=str(tariff['id']), duration_seconds=tariff['duration_seconds'],
         base_price_kopecks=tariff['price_kopecks'],
         price_kopecks=discounted(tariff['price_kopecks'], percent, rub=True),
-        stars_price_xtr=tariff['stars_price_xtr'],
+        stars_price_xtr=discounted(tariff['stars_price_xtr'], percent),
         discount_percent=percent, offer_id=str(offer['id']) if offer else None,
         offer_name=offer['name'] if offer else None)
     result['revision'] = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()
@@ -207,6 +204,30 @@ def router_for(get_dsn, get_user, require_admin):
             if not tariff or (tariff['admin_only'] and user['role'] != 'admin'):
                 raise HTTPException(404, 'active_tariff_not_found')
             return quote(conn, user, tariff, payload.code)
+        return db(action)
+
+    @router.get('/growth/shared/{offer_id}')
+    def shared(offer_id: UUID, response: Response, user=Depends(get_user)):
+        no_cache(response)
+        def action(conn):
+            # Публичная ссылка не отменяет получателя, сроки или лимит купона.
+            offer=conn.execute("""SELECT * FROM growth_offers WHERE id=%s AND active
+                AND starts_at<=now() AND (ends_at IS NULL OR ends_at>now())
+                AND (recipient_user_id IS NULL OR recipient_user_id=%s)""",(offer_id,user['id'])).fetchone()
+            if not offer:raise HTTPException(409,'growth_code_unavailable')
+            counts=conn.execute('SELECT count(*) AS total,count(*) FILTER(WHERE user_id=%s) AS own FROM growth_redemptions WHERE offer_id=%s',(user['id'],offer_id)).fetchone()
+            if (offer['total_limit'] is not None and counts['total']>=offer['total_limit']) or counts['own']>=offer['per_user_limit']:
+                raise HTTPException(409,'growth_code_unavailable')
+            tariffs=conn.execute("""SELECT * FROM tariffs WHERE is_active AND archived_at IS NULL AND price_kopecks>0
+                AND (NOT admin_only OR %s='admin') AND (%s::uuid IS NULL OR id=%s)
+                AND duration_seconds>=%s ORDER BY price_kopecks,id""",(user['role'],offer['tariff_id'],offer['tariff_id'],offer['min_duration_seconds'])).fetchall()
+            for tariff in tariffs:
+                if user.get('login_surface')=='telegram' and offer['percent']<100 and not tariff['stars_price_xtr']:
+                    continue
+                try:pricing=quote(conn,user,tariff,offer['code'])
+                except HTTPException:continue
+                return dict(id=str(offer['id']),name=offer['name'],code=offer['code'],tariff_id=str(tariff['id']),quote=pricing)
+            raise HTTPException(409,'growth_code_unavailable')
         return db(action)
 
     @router.get('/growth/me')

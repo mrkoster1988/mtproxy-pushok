@@ -1,4 +1,4 @@
-"""Ruble-only promotions and legacy Stars accounting compatibility."""
+"""Bonus rubles and legacy Stars accounting stay separate from tariff discounts."""
 import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -12,16 +12,16 @@ class RublePolicy(unittest.TestCase):
         with patch.object(wallet_topups,'connect') as db,patch.object(wallet_topups.stars_checkout,'create_invoice_link') as provider:
             with self.assertRaises(HTTPException) as error:wallet_topups.create('dsn',{'id':uuid4()},SimpleNamespace(currency='XTR',amount=10))
             self.assertEqual(error.exception.detail,'wallet_stars_topup_retired');db.assert_not_called();provider.assert_not_called()
-    def test_discounts_do_not_change_stars_and_telegram_ignores_automatic_discounts(self):
+    def test_percent_discounts_apply_to_each_independent_price(self):
         conn=MagicMock();offer=dict(id=uuid4(),code=None,percent=20,total_limit=None,per_user_limit=1,name='Discount')
         conn.execute.return_value.fetchall.return_value=[offer];conn.execute.return_value.fetchone.return_value={'total':0,'own':0}
         tariff=dict(id=uuid4(),price_kopecks=30000,stars_price_xtr=151,duration_seconds=3600)
         user={'id':uuid4()};q=growth.quote(conn,user,tariff)
-        self.assertEqual((q['price_kopecks'],q['stars_price_xtr']),(24000,151))
+        self.assertEqual((q['price_kopecks'],q['stars_price_xtr']),(24000,121))
         q=growth.quote(conn,{**user,'login_surface':'telegram'},tariff)
-        self.assertEqual((q['price_kopecks'],q['stars_price_xtr'],q['offer_id']),(30000,151,None))
+        self.assertEqual((q['price_kopecks'],q['stars_price_xtr'],q['offer_id']),(24000,121,str(offer['id'])))
         with self.assertRaises(HTTPException) as error:growth.quote(conn,{**user,'login_surface':'telegram'},tariff,'GIFT')
-        self.assertEqual(error.exception.detail,'growth_rub_only')
+        self.assertEqual(error.exception.detail,'growth_code_unavailable')
 
 @unittest.skipUnless(fixture._approved_test_postgres(),'Нужен отдельный тестовый PostgreSQL')
 class RubleReferral(unittest.TestCase):

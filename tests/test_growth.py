@@ -115,9 +115,49 @@ class GrowthIntegration(unittest.TestCase):
     def payload(self,q,code=None):
         return {'request_id':str(uuid4()),'channel':{'title':'Тестовый канал','telegram_url':'https://t.me/test_'+uuid4().hex[:12]},'tariff_id':str(self.tariff),'expected_duration_seconds':86400,'expected_price_kopecks':q['price_kopecks'],'quote_revision':q['revision'],'promo_code':code}
 
+    def test_shared_offer_authorization_expiry_and_no_redemption_on_open(self):
+        offer=self.offer()
+        self.actor={'id':self.owner,'role':'advertiser','login_surface':'telegram'}
+        path='/growth/shared/'+offer['id']
+        shared=self.request('GET',path)
+        self.assertEqual(shared['code'],offer['code'])
+        self.assertEqual(shared['quote']['stars_price_xtr'],121)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT count(*) FROM growth_redemptions WHERE offer_id=%s',(offer['id'],)).fetchone()[0],0)
+            conn.execute('UPDATE growth_offers SET recipient_user_id=%s WHERE id=%s',(self.owner,offer['id']))
+        self.actor={'id':self.friend,'role':'advertiser'}
+        self.request('GET',path,409)
+        self.actor={'id':self.owner,'role':'advertiser','login_surface':'telegram'}
+        shared=self.request('GET',path)
+        order=self.request('POST','/orders',201,json=self.payload(shared['quote'],shared['code']))
+        self.assertEqual(order['stars_price_snapshot'],121)
+        self.request('GET',path,409)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE growth_offers SET active=false WHERE id=%s',(offer['id'],))
+        self.request('GET',path,409)
+
+    def test_admin_discount_replaces_shared_promo_without_stacking(self):
+        offer=self.offer();self.actor={'id':self.owner,'role':'advertiser','login_surface':'telegram'}
+        campaign=self.request('POST','/orders',201,json=self.payload(self.quote(offer['code']),offer['code']))
+        self.actor={'id':self.admin,'role':'admin'}
+        path='/admin/campaigns/'+campaign['id']+'/pricing'
+        before=self.request('GET',path)
+        self.assertEqual(before['current']['stars_price_xtr'],121)
+        self.assertEqual(before['current']['base_stars_price_xtr'],151)
+        after=self.request('PATCH',path,json=dict(revision=before['revision'],discount_percent=10,reason='Согласованная скидка'))
+        self.assertEqual(after['current']['stars_price_xtr'],136)
+
+    def test_shared_automatic_offer_selects_eligible_tariff(self):
+        offer=self.offer('discount',percent=30,tariff_id=str(self.tariff))
+        self.actor={'id':self.owner,'role':'advertiser','login_surface':'telegram'}
+        result=self.request('GET','/growth/shared/'+offer['id'])
+        self.assertIsNone(result['code'])
+        self.assertEqual(result['tariff_id'],str(self.tariff))
+        self.assertEqual(result['quote']['stars_price_xtr'],106)
+
     def test_price_snapshot_retry_and_stars_invoice(self):
         offer=self.offer();self.actor={'id':self.owner,'role':'advertiser'}
-        q=self.quote(offer['code']);self.assertEqual(q['price_kopecks'],24000);self.assertEqual(q['stars_price_xtr'],151)
+        q=self.quote(offer['code']);self.assertEqual(q['price_kopecks'],24000);self.assertEqual(q['stars_price_xtr'],121)
         body=self.payload(q,offer['code']);c=self.request('POST','/orders',201,json=body)
         retry=self.request('POST','/orders',201,json=body);self.assertEqual(c['id'],retry['id'])
         self.quote(offer['code'],409)
@@ -127,7 +167,7 @@ class GrowthIntegration(unittest.TestCase):
             conn.execute("UPDATE campaigns SET moderation_status='approved',payment_status='awaiting_payment' WHERE id=%s",(c['id'],))
         with patch('app.bot_stars.stars_invoices_enabled',return_value=True):
             prepared=prepare_for_user(self.dsn,StarsPrepareInput(campaign_id=c['id'],telegram_user_id=self.telegram))
-        self.assertEqual(prepared.stars_amount,151)
+        self.assertEqual(prepared.stars_amount,121)
         self.assertEqual(self.request('GET','/campaigns')[0]['price_kopecks_snapshot'],24000)
 
     def test_gift_zero_cost_moderated_once_concurrent(self):
@@ -156,7 +196,7 @@ class GrowthIntegration(unittest.TestCase):
             conn.execute('UPDATE tariffs SET price_kopecks=90000 WHERE id=%s',(self.tariff,))
         self.request('PATCH','/campaigns/'+c['id'],json={'tariff_id':str(self.tariff),'requested_start_at':(datetime.now(timezone.utc)+timedelta(days=2)).isoformat()})
         with psycopg.connect(self.dsn) as conn:
-            self.assertEqual(conn.execute('SELECT price_kopecks_snapshot,stars_price_snapshot FROM campaigns WHERE id=%s',(c['id'],)).fetchone(),(24000,151))
+            self.assertEqual(conn.execute('SELECT price_kopecks_snapshot,stars_price_snapshot FROM campaigns WHERE id=%s',(c['id'],)).fetchone(),(24000,121))
         self.request('PATCH','/campaigns/'+c['id'],409,json={'tariff_id':str(uuid4())})
 
     def test_best_discount_no_stack_and_changed_quote(self):

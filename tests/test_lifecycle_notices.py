@@ -46,3 +46,14 @@ class LifecycleNoticeTests(unittest.TestCase):
         def api(route,payload):calls.append(route);return [item]
         deliver_lifecycle_notices(api,sent.append)
         self.assertFalse(sent);self.assertEqual(calls,['lifecycle/outbox/claim'])
+
+
+class StarsLinkTests(unittest.TestCase):
+    def test_native_stars_link_is_sent_only_to_same_private_actor(self):
+        from bot.main import response_for
+        update={'message':{'text':'/start stars','from':{'id':123},'chat':{'id':123,'type':'private'}}}
+        result=response_for(update)[0]
+        self.assertEqual(result['parse_mode'],'HTML')
+        self.assertIn('href="tg://stars"',result['text'])
+        update['message']['chat']['type']='group'
+        self.assertIsNone(response_for(update))

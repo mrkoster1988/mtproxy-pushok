@@ -97,7 +97,7 @@ def router_for(dsn,current_user,require_admin):
         if not row or row['role']!='admin':raise HTTPException(403,'admin_role_required')
 
     def target(conn,tg):
-        user=conn.execute('SELECT id,telegram_user_id,first_name,username FROM users WHERE telegram_user_id=%s',(tg,)).fetchone()
+        user=conn.execute('SELECT id,telegram_user_id,first_name,last_name,username FROM users WHERE telegram_user_id=%s',(tg,)).fetchone()
         if not user:raise HTTPException(404,'wallet_user_not_found')
         return user
 
@@ -232,6 +232,16 @@ def router_for(dsn,current_user,require_admin):
     def verify(tid:UUID,user=Depends(current_user)):
         return provider_call(topups.verify,tid,user['id'])
 
+    @router.get('/api/v1/admin/wallet/users')
+    def search_users(query:str=Query(default='',max_length=100),admin=Depends(require_admin)):
+        value=query.strip().lstrip('@')
+        with db() as conn:
+            return conn.execute("""SELECT id,telegram_user_id,first_name,last_name,username FROM users
+                WHERE telegram_user_id>0 AND (%s='' OR telegram_user_id::text=%s
+                  OR position(lower(%s) in lower(coalesce(username,'')))>0
+                  OR position(lower(%s) in lower(concat_ws(' ',first_name,last_name)))>0)
+                ORDER BY created_at DESC,id LIMIT 20""",(value,value,value,value)).fetchall()
+
     @router.get('/api/v1/admin/wallet/users/{tg}')
     def admin_user(tg:int,page:int=Query(default=0,ge=0,le=100000),admin=Depends(require_admin)):
         with db() as conn:
@@ -278,7 +288,7 @@ def router_for(dsn,current_user,require_admin):
     @router.get('/api/v1/admin/wallet/topups')
     def review(page:int=Query(default=0,ge=0,le=100000),admin=Depends(require_admin)):
         with db() as conn:
-            return conn.execute('''SELECT t.id,t.user_id,u.telegram_user_id,t.currency,t.amount,t.status,t.test_mode,
+            return conn.execute('''SELECT t.id,t.user_id,u.telegram_user_id,u.first_name,u.last_name,u.username,t.currency,t.amount,t.status,t.test_mode,
                 t.created_at,t.settled_at,t.review_reason,t.refunded_amount FROM wallet_topups t JOIN users u ON u.id=t.user_id
                 ORDER BY t.created_at DESC,t.id DESC LIMIT 30 OFFSET %s''',(page*30,)).fetchall()
 

@@ -27,6 +27,12 @@ window.pushokProfiles=(()=>{
   row.append(views().userAvatar(user.id,person(user).name||person(user).username),names(user));
   if(user.id)row.append(views().icon('chevron'));section.append(row);return section;
  }
+ function compact(user){
+  const id=user.user_id||user.id,row=el(id?'a':'div',undefined,'user-summary person-line'),copy=names(user);
+  if(id){row.href='#/user/'+id;row.setAttribute('aria-label','Открыть профиль пользователя');row.addEventListener('click',()=>{returnRoute='wallet';});}
+  copy.append(el('small','ID '+user.telegram_user_id,'muted'));
+  row.append(views().userAvatar(id,person(user).name||person(user).username),copy);return row;
+ }
  function identity(user){
   const section=el('section',undefined,'profile-identity user-identity'),row=el('div',undefined,'person-line'),copy=names(user,true);
   copy.append(el('span',roles[user.role]||'Пользователь','person-role'));
@@ -117,5 +123,5 @@ window.pushokProfiles=(()=>{
   }
   void load();
  }
- return {identity,advertiser,ownOverview,show,backRoute:()=>returnRoute};
+ return {compact,identity,advertiser,ownOverview,show,backRoute:()=>returnRoute};
 })();

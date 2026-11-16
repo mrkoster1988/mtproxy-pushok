@@ -166,7 +166,7 @@ def main():
                 expect(admin.locator('#nodes-list')).to_contain_text('Тестовый узел')
                 expect(admin.locator('#promotion-diagnostics')).to_be_visible()
                 expect(admin.locator('#promotion-agent-report')).to_have_attribute('data-status', 'unknown')
-                expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=binding_missing]')).to_contain_text('Не подготовлена связь канала с тегом')
+                expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=no_current_campaign]')).to_be_visible()
                 admin.get_by_role('button', name='Поставить на паузу', exact=True).click()
                 expect(admin.get_by_role('button', name='Возобновить', exact=True)).to_be_visible()
                 expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=node_paused]')).to_be_visible()
@@ -186,7 +186,7 @@ def main():
                 draft_tag = admin.get_by_label('Тег этого канала из @MTProxyBot', exact=True)
                 draft_tag.fill('b' * 32)
                 admin.get_by_role('button', name='Обновить диагностику', exact=True).click()
-                expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=binding_missing]')).to_be_visible()
+                expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=no_current_campaign]')).to_be_visible()
                 expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Подтверждения от агента пока нет')
                 expect(draft_tag).to_have_value('b' * 32)
 
@@ -968,6 +968,8 @@ def main():
                 refresh(advertiser)
                 go(advertiser,'create/'+edited['id'])
                 advertiser.locator('summary').filter(has_text='Изменить или удалить заявку').click()
+                # Keep the real pointer above the fixed mobile navigation during focus scroll.
+                advertiser.get_by_role('button',name='Изменить тариф и дату',exact=True).evaluate("node=>node.scrollIntoView({block:'center',behavior:'instant'})")
                 advertiser.get_by_role('button',name='Изменить тариф и дату',exact=True).click()
                 advertiser.get_by_label('Желаемое начало',exact=True).fill(tomorrow+'T16:00')
                 advertiser.get_by_role('button',name='Сохранить изменения',exact=True).click()
@@ -1289,19 +1291,28 @@ def main():
                 expect(advertiser.locator('#order-quote-status')).to_contain_text('Браузерный промокод')
                 expect(advertiser.locator('#order-summary')).to_contain_text('20%')
                 expect(advertiser.locator('#order-summary')).to_contain_text('80')
-                expect(advertiser.locator('#order-summary')).to_contain_text('100 XTR')
+                expect(advertiser.locator('#order-summary')).to_contain_text('80 XTR')
                 advertiser.screenshot(path=str(output/'37-growth-quote-mobile.png'),full_page=True)
                 assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
                 advertiser.locator('#order-submit').click()
                 expect(advertiser.locator('#order-result')).to_contain_text('Заявка на проверке')
                 growth_cid=advertiser.evaluate("location.hash.split('/')[2]")
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
-                    assert connection.execute('SELECT price_kopecks_snapshot,stars_price_snapshot FROM campaigns WHERE id=%s',(growth_cid,)).fetchone()==(8000,100)
+                    assert connection.execute('SELECT price_kopecks_snapshot,stars_price_snapshot FROM campaigns WHERE id=%s',(growth_cid,)).fetchone()==(8000,80)
                     assert connection.execute('SELECT count(*) FROM growth_redemptions WHERE campaign_id=%s',(growth_cid,)).fetchone()[0]==1
                 # Баланс: реальная запись администратора, оплата владельца и возврат.
                 go(admin,'wallet')
                 open_wallet_tools(admin)
                 expect(admin.locator('[data-page=wallet]')).to_contain_text('Управление балансами')
+                admin.get_by_label('Telegram ID пользователя',exact=True).fill('7909549877')
+                admin.get_by_role('button',name='Найти пользователя',exact=True).click()
+                expect(admin.locator('.wallet-lookup-error')).to_contain_text('Пользователь не найден')
+                go(admin,'campaigns');go(admin,'wallet');open_wallet_tools(admin)
+                expect(admin.locator('.wallet-lookup-error')).to_be_visible()
+                expect(admin.get_by_role('button',name='Найти пользователя',exact=True)).to_be_visible()
+                admin.get_by_role('button',name='К моему балансу',exact=True).click()
+                expect(admin.locator('.wallet-lookup-error')).to_have_count(0)
+                open_wallet_tools(admin)
                 admin.get_by_label('Telegram ID пользователя',exact=True).fill('99116000')
                 admin.get_by_role('button',name='Найти пользователя',exact=True).click()
                 expect(admin.get_by_role('heading',name='Ручная операция',exact=True)).to_be_visible()
@@ -1544,6 +1555,10 @@ def main():
                 personal_row.screenshot(path=str(output/'45-personal-gift-report-mobile.png'))
                 from check_campaign_pricing import check_campaign_pricing
                 check_campaign_pricing(browser, base, output, failures, PostgresIntegration.dsn)
+                from check_bonus_links import check_bonus_links
+                with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'1','TELEGRAM_BOT_USERNAME':'mtproxy_pushok_bot'}),patch.object(api,'TELEGRAM_BOT_TOKEN','fixture-token'):
+                    check_bonus_links(browser,base,output,failures,PostgresIntegration.dsn)
+
                 from check_user_profiles import check_user_profiles
                 check_user_profiles(browser, base, output, failures, PostgresIntegration.dsn)
                 assert not failures, failures
