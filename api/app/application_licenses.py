@@ -227,6 +227,13 @@ def router_for(get_dsn,current_user,require_admin):
             except HTTPException as exc:data['error']=exc.detail
         return data
 
+    @router.get('/api/v1/admin/license/status')
+    def cached_status(response:Response,admin=Depends(require_admin)):
+        response.headers['Cache-Control']='no-store'
+        with db(get_dsn()) as conn:
+            row=conn.execute('SELECT envelope,checked_at,last_error FROM app_license_state WHERE singleton').fetchone()
+        return row
+
     @router.put('/api/v1/admin/license/settings')
     def settings(data:Settings,admin=Depends(require_admin)):
         seller()

@@ -104,7 +104,7 @@ class ApplicationLicenses(unittest.TestCase):
     def test_seller_configuration_and_client_cannot_edit_tariffs(self):
         self.request('PUT','/admin/license/settings',409,json={'enabled':True})
         p=self.plan();self.request('PUT','/admin/license/plans/'+p['id'],409,json={**self.plan_body,'active':False})
-        self.actor={'id':self.user,'role':'advertiser'};self.request('GET','/admin/license',403)
+        self.actor={'id':self.user,'role':'advertiser'};self.request('GET','/admin/license',403);self.request('GET','/admin/license/status',403)
         self.request('POST','/admin/license/checkout',403,json={'plan_id':p['id'],'revision':p['revision']})
         self.actor={'id':self.admin,'role':'admin'}
         with patch.dict(os.environ,{'PUSHOK_LICENSE_MODE':'client'}):self.request('POST','/admin/license/plans',404,json=self.plan_body)

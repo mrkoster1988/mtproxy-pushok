@@ -72,8 +72,9 @@ def check_application_licenses(browser,base,output,failures,dsn):
                     headers={'X-Pushok-Bot-Secret':'e'*64}
                     r=api.post('/api/v1/internal/bot/license/precheckout',headers=headers,json=dict(data,query_id='browser-'+str(order)));assert r.status_code==200 and r.json()['ok'],r.text
                     r=api.post('/api/v1/internal/bot/license/settle',headers=headers,json=dict(data,telegram_payment_charge_id='browser-'+str(order)));assert r.status_code==200 and r.json()['status']=='applied',r.text
-                area.get_by_role('button',name='Проверить лицензию',exact=True).click()
-                expect(area).not_to_contain_text('Нужна покупка или продление')
+                # Имитируем один проход фонового клиента; интерфейс замечает оплату сам.
+                lic.sync(dsn)
+                expect(area).not_to_contain_text('Нужна покупка или продление',timeout=12000)
                 expect(area).to_contain_text('Лицензия этой установки')
                 for width in (320,390):
                     staff.set_viewport_size({'width':width,'height':844})
