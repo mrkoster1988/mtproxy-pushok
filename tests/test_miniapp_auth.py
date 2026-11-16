@@ -39,6 +39,18 @@ class MiniAppAuthTests(unittest.TestCase):
             with patch.dict(os.environ, {'PUSHOK_MINIAPP_ENABLED': '1'}):
                 self.assertEqual(client.get('/api/v1/miniapp/config').json(), {'enabled': True, 'loading_title': main.DEFAULT_LOADING_TITLE})
 
+    def test_bundled_sdk_is_available_without_auth_and_matches_upstream_digest(self):
+        asset = '/assets/vendor/telegram-web-app.baa788a6f686.js'
+        with TestClient(main.app) as client:
+            response = client.get(asset)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('javascript', response.headers['content-type'])
+            self.assertEqual(hashlib.sha256(response.content).hexdigest(),
+                'baa788a6f686f4238db1b82ce8e76470930af7411b18b521ebb95a2c1480a267')
+            self.assertIn(asset, client.get('/assets/miniapp.js').text)
+            self.assertIn('Copyright (c) 2022 Telegram Messenger',
+                client.get('/assets/vendor/TELEGRAM-LICENSE').text)
+
     def test_correct_signature_and_reordered_replay_identity(self):
         raw = signed_data()
         result = validate_init_data(raw, 'fixture-token')
