@@ -424,6 +424,10 @@ def main():
                     expect(advertiser.locator('[data-page=campaign]')).to_contain_text('Одобрено для автоматического размещения')
                     expect(advertiser.locator('.automation-panel')).to_contain_text('Размещение запущено автоматически')
                     assert advertiser.evaluate("() => window.__openAutomation===document.querySelector('.automation-panel') && window.__openReport===document.querySelector('.campaign-report')")
+                    for width in (320,390):
+                        advertiser.set_viewport_size({'width':width,'height':844})
+                        assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                        assert advertiser.locator('.campaign-detail > .actions > *').evaluate_all('(actions)=>actions.every(action=>action.getBoundingClientRect().height<=52)'), 'Campaign actions squeezed into vertical text'
                     advertiser.screenshot(path=str(output/'46-campaign-automation-mobile.png'),full_page=True)
                     advertiser.locator('.automation-panel').get_by_role('button',name='Закрыть',exact=True).click()
                     advertiser.get_by_role('button',name='Закрыть отчёт',exact=True).click()
