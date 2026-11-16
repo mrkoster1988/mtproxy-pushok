@@ -52,7 +52,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.30",
+    version="1.31",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -240,6 +240,7 @@ class CampaignResponse(BaseModel):
 
 
 class OperatorCampaignResponse(CampaignResponse):
+    advertiser_user_id: UUID | None = None
     advertiser_first_name: str | None = None
     advertiser_last_name: str | None = None
     advertiser_username: str | None = None
@@ -658,6 +659,7 @@ def list_campaigns(
             rows = connection.execute(
                 """
                 SELECT sc.title AS channel_title, sc.telegram_url AS channel_url,
+                       c.advertiser_user_id,
                        c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
                        c.duration_seconds_snapshot, c.price_kopecks_snapshot, c.base_price_kopecks_snapshot, c.stars_price_snapshot,
                        c.growth_offer_name, c.discount_percent_snapshot,
@@ -2995,3 +2997,6 @@ app.include_router(channel_logos_router(lambda: DATABASE_URL, get_current_user))
 
 from .campaign_pricing import router_for as campaign_pricing_router
 app.include_router(campaign_pricing_router(lambda: DATABASE_URL, require_admin))
+
+from .user_profiles import router_for as user_profiles_router
+app.include_router(user_profiles_router(lambda: DATABASE_URL, get_current_user))
