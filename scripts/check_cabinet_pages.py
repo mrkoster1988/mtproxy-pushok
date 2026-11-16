@@ -48,6 +48,7 @@ def main():
     release_fixture = release_patcher.start()
     logo_image=io.BytesIO();Image.new('RGB',(160,160),(38,198,184)).save(logo_image,format='JPEG')
     logo_patcher=patch('app.channel_logos.logo',return_value=logo_image.getvalue());logo_patcher.start()
+    avatar_patcher=patch('app.user_profiles.user_avatar',return_value=logo_image.getvalue());avatar_patcher.start()
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=True)
     # These values belong only to the local disposable test server.
@@ -1498,6 +1499,7 @@ def main():
                 # Персональный подарок и реальная выгрузка журнала активаций.
                 go(outsider,'profile')
                 expect(outsider.locator('.profile-identity')).to_contain_text('Telegram ID: 99116003')
+                outsider.get_by_text('Сведения об аккаунте',exact=True).click()
                 expect(outsider.get_by_role('button',name='Скопировать ID',exact=True)).to_be_visible()
                 go(admin,'wallet')
                 open_wallet_tools(admin)
@@ -1542,6 +1544,8 @@ def main():
                 personal_row.screenshot(path=str(output/'45-personal-gift-report-mobile.png'))
                 from check_campaign_pricing import check_campaign_pricing
                 check_campaign_pricing(browser, base, output, failures, PostgresIntegration.dsn)
+                from check_user_profiles import check_user_profiles
+                check_user_profiles(browser, base, output, failures, PostgresIntegration.dsn)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))
@@ -1568,6 +1572,7 @@ def main():
             sock.close()
         release_patcher.stop()
         logo_patcher.stop()
+        avatar_patcher.stop()
         PostgresIntegration.tearDownClass()
 
 

@@ -26,16 +26,7 @@ window.pushokApproval=(()=>{
   }
  }
  function advertiser(c){
-  const section=el('section',undefined,'approval-advertiser');
-  section.append(el('h3','Рекламодатель'));
-  const name=[c.advertiser_first_name,c.advertiser_last_name].filter(Boolean).join(' ');
-  section.append(el('p',name||'Имя не указано'));
-  const username=c.advertiser_username;
-  if(typeof username==='string'&&/^[A-Za-z0-9_]{1,32}$/.test(username)){
-   const a=el('a','@'+username);a.href='https://t.me/'+username;a.target='_blank';a.rel='noopener noreferrer';section.append(a);
-  }else section.append(el('p','Без @username','muted'));
-  if(c.advertiser_telegram_user_id)section.append(el('p','Telegram ID: '+c.advertiser_telegram_user_id,'muted'));
-  return section;
+  return window.pushokProfiles.advertiser(c);
  }
  function render(){
   if(!me||!['admin','operator'].includes(me.role))return;
