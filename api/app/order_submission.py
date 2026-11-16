@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timezone
 
 import psycopg
+from .license_errors import explain as explain_license_error
 from fastapi import HTTPException
 from psycopg.rows import dict_row
 from .growth import quote
@@ -86,4 +87,5 @@ def create_order(dsn, payload, user):
                          (user["id"], payload.request_id, fingerprint, campaign["id"]))
             return campaign
     except psycopg.Error as exc:
+        explain_license_error(exc)
         raise HTTPException(503, "database_unavailable") from exc

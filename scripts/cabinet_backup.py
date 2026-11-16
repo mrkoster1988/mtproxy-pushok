@@ -27,7 +27,7 @@ from staging_preflight import command_environment, compose_command, read_env
 from installer_runtime import sync_directory
 
 WRITERS = {'api', 'bot', 'sbp-worker'}
-CONFIG = {'.env': 'config.env', 'compose.yaml': 'compose.yaml',
+CONFIG = {'.control/license-seller-key.json':'license-seller-key.json', '.control/license-installation-key.json':'license-installation-key.json', '.env': 'config.env', 'compose.yaml': 'compose.yaml',
           'compose.override.yaml': 'compose.override.yaml', 'Caddyfile': 'Caddyfile',
           '.control/sbp-private.json':'sbp-private.json', '.control/payments.json':'payments.json', '.control/emoji-map.json':'emoji-map.json'}
 REQUIRED = {'database.dump', 'proofs.tar', 'config.env', 'compose.yaml'}

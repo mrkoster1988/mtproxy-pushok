@@ -108,7 +108,7 @@ window.pushokViews=(()=>{
   if(['admin','operator'].includes(me.role)){
    const admin=[['moderation','moderation','Модерация'],['sponsors','server','Узлы и спонсоры']];
    if(me.role==='admin')admin.unshift(['users','users','Пользователи']);
-   if(me.role==='admin')admin.push(['settings','settings','Настройки']);
+   if(me.role==='admin')admin.push(['license','moderation','Лицензия приложения'],['settings','settings','Настройки']);
    groups.push(['Управление',admin]);
   }
   groups.push(['Поддержка',[['help','support','Помощь'],['bot','channel','Telegram-бот']]]);
