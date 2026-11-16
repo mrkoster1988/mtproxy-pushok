@@ -113,8 +113,15 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
                 tariff=conn.execute('SELECT * FROM tariffs WHERE id=%s AND is_active AND archived_at IS NULL FOR SHARE',(payload.tariff_id,)).fetchone()
                 if not tariff or (tariff['admin_only'] and actor['role']!='admin'):
                     raise HTTPException(404,'active_tariff_not_found')
-                conn.execute('UPDATE campaigns SET tariff_id=%s,tariff_name_snapshot=%s,duration_seconds_snapshot=%s,price_kopecks_snapshot=%s,currency_snapshot=%s,pricing_version=1,base_price_kopecks_snapshot=%s,stars_price_snapshot=%s,updated_at=now() WHERE id=%s',
-                             (tariff['id'],tariff['name'],tariff['duration_seconds'],tariff['price_kopecks'],tariff['currency'],tariff['price_kopecks'],tariff['stars_price_xtr'],campaign_id))
+                # Новый тариф заменяет индивидуальные условия и их исходные цены.
+                conn.execute('''UPDATE campaigns SET tariff_id=%s,tariff_name_snapshot=%s,
+                    duration_seconds_snapshot=%s,price_kopecks_snapshot=%s,currency_snapshot=%s,
+                    pricing_version=1,base_price_kopecks_snapshot=%s,stars_price_snapshot=%s,
+                    base_stars_price_snapshot=%s,admin_discount_percent_snapshot=NULL,
+                    growth_offer_name=NULL,discount_percent_snapshot=NULL,updated_at=now() WHERE id=%s''',
+                    (tariff['id'],tariff['name'],tariff['duration_seconds'],tariff['price_kopecks'],
+                     tariff['currency'],tariff['price_kopecks'],tariff['stars_price_xtr'],
+                     tariff['stars_price_xtr'],campaign_id))
             event(conn, user, 'campaign_date_updated', {'requested_start_at': start}, campaign_id)
         return {'updated': True}
 
