@@ -1,6 +1,7 @@
 """Внутренний баланс: API кабинета, администратор и закрытые callbacks бота."""
 import csv
 import io
+from datetime import timezone
 from contextlib import contextmanager
 from typing import Literal
 from uuid import UUID
@@ -167,7 +168,7 @@ def router_for(dsn,current_user,require_admin):
         writer.writerow(['Подарок','Проводка','ID проводки','Дата UTC','Telegram ID','Username','Имя',
                          'Начислено (бонусные копейки)','Остаток после операции (бонусные копейки)'])
         for e in data['items']:
-            writer.writerow([csv_cell(data['gift']['name']),e['entry_number'],e['entry_id'],e['created_at'].isoformat(),
+            writer.writerow([csv_cell(data['gift']['name']),e['entry_number'],e['entry_id'],e['created_at'].astimezone(timezone.utc).isoformat(),
                 e['telegram_user_id'],csv_cell(e['username']),csv_cell(e['first_name']),e['amount'],e['balance_after']])
         return Response('\ufeff'+output.getvalue(),media_type='text/csv; charset=utf-8',
                         headers={'Content-Disposition':f'attachment; filename="gift-{gid}.csv"','Cache-Control':'private, no-store'})

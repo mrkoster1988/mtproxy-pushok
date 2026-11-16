@@ -1,6 +1,5 @@
 """Персональные коды и журнал выдачи: получатель, права, CSV и миграции."""
 import csv
-import hashlib
 import io
 import unittest
 from concurrent.futures import ThreadPoolExecutor
@@ -109,6 +108,7 @@ class PersonalGiftsIntegration(unittest.TestCase):
         self.assertEqual(response.status_code,200,response.text);self.assertIn('no-store',response.headers['Cache-Control'])
         rows=list(csv.reader(io.StringIO(response.content.decode('utf-8-sig')),delimiter=';'))
         self.assertEqual(len(rows),33)
+        self.assertTrue(all(r[3].endswith('+00:00') for r in rows[1:]))
         self.assertTrue(all(r[0].startswith("'=") for r in rows[1:]))
         owner=next(r for r in rows[1:] if r[4]==str(self.tg));self.assertEqual(owner[5],"'@danger");self.assertEqual(owner[6],"'=1+1");self.assertEqual(owner[7],'12345')
 
