@@ -1373,6 +1373,8 @@ def main():
                 expect(outsider.locator('.wallet-entry').filter(has_text='Подарок: Персональный подарок')).to_have_count(1)
                 personal_row.get_by_role('button',name='Обновить активации',exact=True).click()
                 expect(personal_row.locator('.wallet-gift-report')).to_contain_text('Получателей: 1')
+                expect(personal_row.locator('.wallet-gift-summary')).to_contain_text('активаций 1 из 1')
+                expect(personal_row.locator('.wallet-gift-status')).to_contain_text('Лимит исчерпан')
                 expect(personal_row.locator('.wallet-gift-report')).to_contain_text('Telegram ID 99116003')
                 with admin.expect_download() as download_info:
                     personal_row.get_by_role('button',name='Скачать активации CSV',exact=True).click()

@@ -92,7 +92,7 @@ def redeem(conn,uid,code):
 
 def report(conn,gid,*,page=0,limit=30):
     # Активации берут FOR UPDATE на код: все части отчёта читаются согласованно.
-    gift=conn.execute('SELECT * FROM wallet_gifts WHERE id=%s FOR SHARE',(gid,)).fetchone()
+    gift=conn.execute('SELECT *,expires_at<=clock_timestamp() AS expired FROM wallet_gifts WHERE id=%s FOR SHARE',(gid,)).fetchone()
     if not gift:raise HTTPException(404,'wallet_gift_unavailable')
     totals=conn.execute("""SELECT count(*) AS total,coalesce(sum(e.delta),0)::bigint AS credited
         FROM wallet_gift_redemptions r JOIN wallet_entries e ON e.id=r.entry_id WHERE r.gift_id=%s""",(gid,)).fetchone()

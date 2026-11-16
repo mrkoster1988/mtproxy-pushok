@@ -157,6 +157,7 @@ window.pushokWallet=(()=>{
   p.append(el('p','Код начисляет бонусные рубли один раз на пользователя. Ими можно оплатить рублёвую заявку в веб-кабинете; в Mini App оплата проходит Stars. Обмена бонусов на Stars или деньги нет.','muted'));
   submit(f,'Получить подарок',async()=>{const result=await api('/wallet/gifts/redeem',{method:'POST',body:{code:code.value.trim().toUpperCase()}});notice(result.already_redeemed?'Этот подарок уже зачислен. Повторного начисления нет.':'Начислено '+amount(result.amount,'BONUS'),true);await load(target);});p.append(f);root.append(p);
  }
+ function giftStatus(g){return 'До '+date(g.expires_at)+' · '+(!g.active?'Выключен':g.expired?'Срок истёк':g.used>=g.max_uses?'Лимит исчерпан':'Действует');}
  function adminGifts(root,data){
   const p=panel('Подарочные коды на баланс'),f=el('form');
   p.append(el('p','Создайте код и передайте получателю. Каждый пользователь активирует его один раз в пределах общего лимита. Подарок начисляется бонусными рублями; отключение кода останавливает новые активации и сохраняет уже выданные подарки.','muted'));
@@ -171,9 +172,10 @@ window.pushokWallet=(()=>{
   const expires=field(f,'Действует до (ваше время)','datetime-local');expires.required=true;
   submit(f,'Создать подарочный код',async()=>{await remembered('/admin/wallet/gifts',{name:name.value,amount:minor(a.value,'BONUS'),max_uses:Number(limit.value),expires_at:new Date(expires.value).toISOString(),recipient_telegram_id:personal.checked?Number(recipient.value):null});notice('Код создан. Скопируйте его из списка ниже.',true);});p.append(f);
   if(!data.items.length)p.append(el('p','Подарочных кодов пока нет.'));
-  for(const g of data.items){const row=el('article',undefined,'card wallet-gift');row.append(el('h3',g.name),el('p',g.code,'growth-code'),el('p',amount(g.amount,'BONUS')+' · активаций '+g.used+' из '+g.max_uses),el('p','До '+date(g.expires_at)+' · '+(!g.active?'Выключен':g.expired?'Срок истёк':g.used>=g.max_uses?'Лимит исчерпан':'Действует'),'muted'));
+  for(const g of data.items){const row=el('article',undefined,'card wallet-gift');row.append(el('h3',g.name),el('p',g.code,'growth-code'),el('p',amount(g.amount,'BONUS')+' · активаций '+g.used+' из '+g.max_uses,'wallet-gift-summary'),el('p',giftStatus(g),'wallet-gift-status muted'));
    row.append(el('p',g.recipient_telegram_id?'Только Telegram ID '+g.recipient_telegram_id:'Любой получатель кода','muted'));
-   row.append(button('Скопировать код',async()=>{await navigator.clipboard.writeText(g.code);notice('Код скопирован.',true);}),button(g.active?'Выключить код':'Включить код',async()=>{await api('/admin/wallet/gifts/'+g.id,{method:'PUT',body:{active:!g.active}});await load(target);}));giftReportControls(row,g);p.append(row);}
+   const toggle=button(g.active?'Выключить код':'Включить код',async()=>{await api('/admin/wallet/gifts/'+g.id,{method:'PUT',body:{active:!g.active}});await load(target);});toggle.classList.add('wallet-gift-toggle');
+   row.append(button('Скопировать код',async()=>{await navigator.clipboard.writeText(g.code);notice('Код скопирован.',true);}),toggle);giftReportControls(row,g);p.append(row);}
   const nav=el('div',undefined,'inline-actions');if(data.page>0)nav.append(button('Предыдущие коды',async()=>{giftPage--;await load(target);}));if((data.page+1)*data.page_size<data.total)nav.append(button('Следующие коды',async()=>{giftPage++;await load(target);}));p.append(nav);root.append(p);
  }
  function giftReportControls(row,g){
@@ -182,6 +184,7 @@ window.pushokWallet=(()=>{
    const current=++seq,session=token,uid=me?.id;box.hidden=false;box.replaceChildren(el('p','Загружаем активации…'));
    const valid=()=>current===seq&&session===token&&uid===me?.id&&box.isConnected&&!box.hidden;
    try{const data=await api('/admin/wallet/gifts/'+g.id+'/redemptions?page='+page);if(!valid())return;
+    Object.assign(g,data.gift,{used:data.total});row.querySelector('.wallet-gift-summary').textContent=amount(g.amount,'BONUS')+' · активаций '+g.used+' из '+g.max_uses;row.querySelector('.wallet-gift-status').textContent=giftStatus(g);row.querySelector('.wallet-gift-toggle').textContent=g.active?'Выключить код':'Включить код';
     box.replaceChildren(el('h4','Активации подарка'),el('p','Получателей: '+data.total+' · начислено '+amount(data.credited,'BONUS')),
      el('p','Это начисления по коду. Последующие расходы и корректировки смотрите в журнале пользователя.','muted'));
     if(!data.items.length)box.append(el('p','Этот код ещё никто не активировал.'));
