@@ -75,7 +75,10 @@ def check_mobile_polish(browser,base,output,failures,dsn):
         expect(rows.nth(0).locator('.channel-avatar img')).to_be_visible();narrow(client);client.screenshot(path=str(output/'62-archive-spacing-390.png'),full_page=True)
         go(client,'wallet');expect(client.locator('.wallet-entry')).to_have_count(3)
         expect(client.locator('.wallet-entry').filter(has_text='Telegram Stars')).to_contain_text('5 Stars')
-        expect(client.locator('.wallet-entry').filter(has_text='Telegram Stars').get_by_role('link',name='Открыть заявку →')).to_have_attribute('href','#/archive/'+str(campaigns[0]))
+        direct=client.locator('.wallet-entry').filter(has_text='Telegram Stars');direct.locator('summary').click()
+        link=direct.get_by_role('link',name='Открыть заявку →');expect(link).to_have_attribute('href','#/archive/'+str(campaigns[0]))
+        link.click();expect(client.locator('[data-page=archive] .campaign-report')).to_be_visible()
+        go(client,'wallet');expect(client.locator('.wallet-entry')).to_have_count(3)
         for width in (320,390):
             client.set_viewport_size({'width':width,'height':844})
             left=client.locator('.wallet-balances [data-currency=RUB]').bounding_box();right=client.locator('.wallet-balances [data-currency=BONUS]').bounding_box()
