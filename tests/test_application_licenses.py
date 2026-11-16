@@ -93,7 +93,7 @@ class ApplicationLicenses(unittest.TestCase):
 
     def test_migration_is_repeatable_and_first_admin_can_buy(self):
         from pathlib import Path
-        migration=Path(__file__).resolve().parents[1]/'database/044_application_licenses.sql'
+        migration=Path(__file__).resolve().parents[1]/'database/045_application_licenses.sql'
         with psycopg.connect(self.dsn) as conn:
             conn.execute(migration.read_text());conn.execute(migration.read_text())
             conn.execute('UPDATE app_license_state SET required=true,envelope=NULL')

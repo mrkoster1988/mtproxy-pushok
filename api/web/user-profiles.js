@@ -35,8 +35,8 @@ window.pushokProfiles=(()=>{
  }
  function identity(user){
   const section=el('section',undefined,'profile-identity user-identity'),row=el('div',undefined,'person-line'),copy=names(user,true);
-  copy.append(el('span',roles[user.role]||'Пользователь','person-role'));
-  row.append(views().userAvatar(user.id,person(user).name||person(user).username),copy);section.append(row);
+  const access=window.pushokTeam.roleControl(user);copy.append(access.badge);
+  row.append(views().userAvatar(user.id,person(user).name||person(user).username),copy);section.append(row,access.editor);
   const details=el('details',undefined,'profile-details');details.append(el('summary','Сведения об аккаунте'));
   const id=el('div',undefined,'profile-id');id.append(el('span','Telegram ID: '+user.telegram_user_id));
   const copyId=views().iconAction(button('',async()=>{

@@ -125,7 +125,7 @@ class DraftSubmissionTests(unittest.TestCase):
 
     def test_success_updates_status_and_writes_audit(self):
         first = connection_with_rows(campaign_row())
-        second = connection_with_rows({"id": UUID(CHID)}, {"id": UUID(CID)}, None, None)
+        second = connection_with_rows({"blocked_at": None}, {"id": UUID(CHID)}, {"id": UUID(CID)}, None, None)
         with patch("app.bot_routes.psycopg.connect", side_effect=[first, second]), \
              patch("app.bot_routes.verify_channel_admin",
                    return_value=CHANNEL_TELEGRAM_ID) as tg:
@@ -138,7 +138,7 @@ class DraftSubmissionTests(unittest.TestCase):
         first_sql = first.__enter__.return_value.execute.call_args_list[0]
         self.assertIn("u.telegram_user_id = %s", first_sql.args[0])
         self.assertEqual(first_sql.args[1], (UUID(CID), 321))
-        changes = second.__enter__.return_value.execute.call_args_list
+        changes = second.__enter__.return_value.execute.call_args_list[1:]
         self.assertIn("owner_user_id = %s", changes[0].args[0])
         self.assertIn("moderation_status = 'draft'", changes[1].args[0])
         self.assertIn("campaign_submitted_from_bot", changes[2].args[0])
@@ -146,13 +146,23 @@ class DraftSubmissionTests(unittest.TestCase):
 
     def test_changed_campaign_rolls_back_and_does_not_audit(self):
         first = connection_with_rows(campaign_row())
-        second = connection_with_rows({"id": UUID(CHID)}, None)
+        second = connection_with_rows({"blocked_at": None}, {"id": UUID(CHID)}, None)
         with patch("app.bot_routes.psycopg.connect", side_effect=[first, second]), \
              patch("app.bot_routes.verify_channel_admin", return_value=CHANNEL_TELEGRAM_ID):
             response = self.submit()
         self.assertEqual(response.status_code, 409)
-        self.assertEqual(second.__enter__.return_value.execute.call_count, 2)
+        self.assertEqual(second.__enter__.return_value.execute.call_count, 3)
         self.assertIsNotNone(second.__exit__.call_args.args[0])
+
+    def test_block_during_telegram_verification_prevents_submission(self):
+        first = connection_with_rows(campaign_row())
+        second = connection_with_rows({"blocked_at": "blocked"})
+        with patch("app.bot_routes.psycopg.connect", side_effect=[first, second]), \
+             patch("app.bot_routes.verify_channel_admin", return_value=CHANNEL_TELEGRAM_ID):
+            response = self.submit()
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "user_blocked")
+        self.assertEqual(second.__enter__.return_value.execute.call_count, 1)
 
 
 if __name__ == "__main__":

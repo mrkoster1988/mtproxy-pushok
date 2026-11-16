@@ -78,7 +78,7 @@ def list_bot_campaigns(
                 JOIN campaigns AS c ON c.advertiser_user_id = u.id
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
                 JOIN tariffs AS t ON t.id = c.tariff_id
-                WHERE u.telegram_user_id = %s AND c.archived_at IS NULL
+                WHERE u.telegram_user_id = %s AND u.blocked_at IS NULL AND c.archived_at IS NULL
                 ORDER BY c.created_at DESC
                 LIMIT 10
                 """,
@@ -207,9 +207,10 @@ def create_bot_campaign_draft(
                 (payload.telegram_user_id,),
             )
             user = connection.execute(
-                "SELECT id FROM users WHERE telegram_user_id = %s",
+                "SELECT id,blocked_at FROM users WHERE telegram_user_id = %s FOR SHARE",
                 (payload.telegram_user_id,),
             ).fetchone()
+            if user['blocked_at'] is not None:raise HTTPException(403,'user_blocked')
             connection.execute(
                 """
                 INSERT INTO sponsor_channels (owner_user_id, telegram_url, title)
@@ -321,7 +322,7 @@ def submit_bot_campaign_draft(
                 JOIN users AS u ON u.id = c.advertiser_user_id
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
                                             AND sc.owner_user_id = u.id
-                WHERE c.id = %s AND u.telegram_user_id = %s AND c.archived_at IS NULL AND sc.archived_at IS NULL
+                WHERE c.id = %s AND u.telegram_user_id = %s AND u.blocked_at IS NULL AND c.archived_at IS NULL AND sc.archived_at IS NULL
                 """,
                 (payload.campaign_id, payload.telegram_user_id),
             ).fetchone()
@@ -362,6 +363,14 @@ def submit_bot_campaign_draft(
         with psycopg.connect(
             os.environ["DATABASE_URL"], connect_timeout=3, row_factory=dict_row
         ) as connection:
+            # Telegram проверялся вне транзакции: повторно проверяем блокировку
+            # перед записью и удерживаем её до завершения отправки черновика.
+            actor = connection.execute(
+                "SELECT blocked_at FROM users WHERE id=%s FOR SHARE",
+                (campaign["advertiser_user_id"],),
+            ).fetchone()
+            if actor is None or actor["blocked_at"] is not None:
+                raise HTTPException(status_code=403, detail="user_blocked")
             updated_channel = connection.execute(
                 """
                 UPDATE sponsor_channels
@@ -408,7 +417,7 @@ def submit_bot_campaign_draft(
                 SELECT %s, s.operator_user_id
                 FROM bot_operator_subscriptions AS s
                 JOIN users AS u ON u.id = s.operator_user_id
-                WHERE u.role IN ('admin', 'operator')
+                WHERE u.role IN ('admin', 'operator') AND u.blocked_at IS NULL
                 ORDER BY s.subscribed_at
                 LIMIT 5
                 ON CONFLICT (campaign_id, operator_user_id) DO NOTHING

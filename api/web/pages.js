@@ -376,7 +376,7 @@
   panel.append(el('p','Загрузка состояния СБП…'));
   try{await paint(await api(base));}catch(e){if(panel.isConnected){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку СБП',()=>renderSbp(c,panel)));}}
  }
- function permitted(name){return !(['moderation','sponsors','user'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(['settings','users','license'].includes(name)&&me?.role!=='admin');}
+ function permitted(name){return !(['moderation','sponsors','user','users'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(['settings','license'].includes(name)&&me?.role!=='admin');}
  function renderSelected({background=false}={}){
   const [name,id]=routeParts();
   if(name==='users')window.pushokUsers.directory(content.users);
