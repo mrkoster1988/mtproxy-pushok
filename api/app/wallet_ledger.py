@@ -1,6 +1,7 @@
 """Неизменяемый журнал. Все операции — в транзакции владельца вызывающего кода."""
 from datetime import datetime, timezone
 from fastapi import HTTPException
+from . import wallet_controls as controls
 
 CURRENCIES = ('BONUS', 'RUB', 'XTR')
 
@@ -47,6 +48,7 @@ def payable(conn,c):
 
 
 def charge(conn,cid,uid,currency,*,use_bonus=True,expected=None,automatic=False,surface='web'):
+    controls.require_enabled(conn)
     c=campaign(conn,cid,uid,lock=True)
     old=conn.execute('SELECT * FROM wallet_payments WHERE campaign_id=%s',(cid,)).fetchone()
     if old:

@@ -209,7 +209,7 @@ body.cabinet-mode{min-width:0}
 .cabinet-mode .mobile-bottom-nav a[aria-current=page]{color:var(--mint)}
 .cabinet-mode .team-member{padding:14px 0;border-bottom:1px solid var(--line)}
 
-/* v1.18: общий интерфейс размещений, внутреннего баланса и бонусов. */
+/* v1.19: общий интерфейс размещений, внутреннего баланса и бонусов. */
 .cabinet-mode .cabinet-topbar{gap:12px;padding-block:14px}
 .cabinet-mode .mobile-brand{margin-right:auto;font-size:25px;font-weight:800;letter-spacing:-.7px}
 .cabinet-mode .cabinet-account{display:none}

@@ -7,7 +7,7 @@ from uuid import UUID
 import psycopg
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from . import wallet_ledger as ledger, wallet_topups as topups
+from . import wallet_ledger as ledger, wallet_topups as topups, wallet_controls as controls
 from .bot_stars import StarsPrecheckoutInput, StarsReceiptInput, authorize
 from .sbp_provider import SBPProviderError
 from .sbp_verification import SBPVerificationError
@@ -22,6 +22,10 @@ class Topup(Input):
     request_id: UUID
     currency: Literal['RUB','XTR']
     amount: int=Field(gt=0,le=100000000,strict=True)
+
+
+class WalletSettings(Input):
+    enabled: bool=Field(strict=True)
 
 
 class Preferences(Input):
@@ -73,6 +77,7 @@ def csv_cell(value):
 
 
 def router_for(dsn,current_user,require_admin):
+    from . import wallet_gifts as gifts
     router=APIRouter()
     @contextmanager
     def db():
@@ -98,7 +103,7 @@ def router_for(dsn,current_user,require_admin):
     def summary(conn,uid):
         balances=ledger.accounts(conn,uid)
         prefs=conn.execute('SELECT auto_pay,currency,per_campaign_limit,use_bonus FROM wallet_preferences WHERE user_id=%s',(uid,)).fetchone()
-        return {'balances':balances,'has_debt':any(v<0 for v in balances.values()),'preferences':prefs or
+        return {'enabled':controls.settings(conn)['enabled'],'balances':balances,'has_debt':any(v<0 for v in balances.values()),'preferences':prefs or
             dict(auto_pay=False,currency='XTR',per_campaign_limit=0,use_bonus=True)}
 
     def journal(conn,uid,page,limit=30):
@@ -124,6 +129,46 @@ def router_for(dsn,current_user,require_admin):
             sbp_available=cfg['enabled'] and user.get('login_surface')!='telegram')
         return result
 
+    @router.get('/api/v1/admin/wallet/settings')
+    def wallet_settings(admin=Depends(require_admin)):
+        with db() as conn:return controls.settings(conn)
+
+    @router.put('/api/v1/admin/wallet/settings')
+    def set_wallet_settings(data:WalletSettings,admin=Depends(require_admin)):
+        with db() as conn:
+            conn.execute('SELECT singleton FROM wallet_settings WHERE singleton FOR UPDATE')
+            admin_lock(conn,admin)
+            conn.execute('UPDATE wallet_settings SET enabled=%s,updated_at=now(),updated_by=%s WHERE singleton',(data.enabled,admin['id']))
+            if not data.enabled:conn.execute('UPDATE wallet_preferences SET auto_pay=false WHERE auto_pay')
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'wallet_enabled_changed',jsonb_build_object('enabled',%s::boolean))",(admin['id'],data.enabled))
+            return controls.settings(conn)
+
+    @router.post('/api/v1/wallet/gifts/redeem')
+    def redeem_gift(data:gifts.GiftRedeem,user=Depends(current_user)):
+        with db() as conn:return gifts.redeem(conn,user['id'],data.code)
+
+    @router.get('/api/v1/admin/wallet/gifts')
+    def list_gifts(page:int=Query(default=0,ge=0,le=100000),admin=Depends(require_admin)):
+        with db() as conn:
+            rows=conn.execute("""SELECT g.*, (SELECT count(*) FROM wallet_gift_redemptions r WHERE r.gift_id=g.id) AS used,
+                g.expires_at<=now() AS expired FROM wallet_gifts g ORDER BY g.created_at DESC,g.id LIMIT 30 OFFSET %s""",(page*30,)).fetchall()
+            total=conn.execute('SELECT count(*) AS n FROM wallet_gifts').fetchone()['n']
+            return dict(items=rows,total=total,page=page,page_size=30)
+
+    @router.post('/api/v1/admin/wallet/gifts',status_code=201)
+    def create_gift(data:gifts.GiftCreate,admin=Depends(require_admin)):
+        with db() as conn:
+            return gifts.create(conn,admin['id'],data)
+
+    @router.put('/api/v1/admin/wallet/gifts/{gid}')
+    def set_gift(gid:UUID,data:gifts.GiftActive,admin=Depends(require_admin)):
+        with db() as conn:
+            admin_lock(conn,admin)
+            row=conn.execute('UPDATE wallet_gifts SET active=%s WHERE id=%s RETURNING id,active',(data.active,gid)).fetchone()
+            if not row:raise HTTPException(404,'wallet_gift_unavailable')
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'wallet_gift_enabled_changed',jsonb_build_object('gift_id',%s::text,'active',%s::boolean))",(admin['id'],str(gid),data.active))
+            return row
+
     @router.get('/api/v1/wallet/entries')
     def entries(page:int=Query(default=0,ge=0,le=100000),user=Depends(current_user)):
         with db() as conn:return journal(conn,user['id'],page)
@@ -133,6 +178,7 @@ def router_for(dsn,current_user,require_admin):
         if data.auto_pay and data.currency=='RUB' and user.get('login_surface')=='telegram':
             raise HTTPException(409,'wallet_stars_only_in_telegram')
         with db() as conn:
+            if data.auto_pay:controls.require_enabled(conn)
             conn.execute('''INSERT INTO wallet_preferences(user_id,auto_pay,currency,per_campaign_limit,use_bonus)
                 VALUES(%s,%s,%s,%s,%s) ON CONFLICT(user_id) DO UPDATE SET auto_pay=EXCLUDED.auto_pay,currency=EXCLUDED.currency,
                 per_campaign_limit=EXCLUDED.per_campaign_limit,use_bonus=EXCLUDED.use_bonus''',
@@ -147,7 +193,7 @@ def router_for(dsn,current_user,require_admin):
             paid=conn.execute('SELECT * FROM wallet_payments WHERE campaign_id=%s',(cid,)).fetchone()
             return dict(campaign_id=cid,amount_rub=c['price_kopecks_snapshot'],amount_xtr=c['wallet_xtr'],
                 stars_only=user.get('login_surface')=='telegram' or c['purchase_surface']=='telegram',
-                payable=ledger.payable(conn,c),payment=paid,**summary(conn,user['id']))
+                payable=controls.settings(conn)['enabled'] and ledger.payable(conn,c),payment=paid,**summary(conn,user['id']))
 
     @router.post('/api/v1/wallet/campaigns/{cid}/pay')
     def pay(cid:UUID,data:Pay,user=Depends(current_user)):
