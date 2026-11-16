@@ -71,7 +71,7 @@ def read_checkout(dsn, cid, uid):
                                   WHERE campaign_id=%s AND provider='telegram_stars'
                                   ORDER BY created_at DESC,id DESC LIMIT 1""", (cid,)).fetchone()
     return {'payment_status': campaign['payment_status'], 'attempt_status': attempt['status'] if attempt else 'not_created',
-            'amount_xtr': attempt['amount'] if attempt else campaign['stars_price_xtr'],
+            'amount_xtr': attempt['amount'] if attempt and attempt['status'] != 'failed' else campaign['stars_price_xtr'],
             'available': stars_invoices_enabled() and os.getenv('PUSHOK_MINIAPP_ENABLED', '0') == '1',
             'test_environment': is_test_environment(),
             'processing': bool(attempt and attempt['status'] == 'pending' and attempt['precheckout_approved_at'])}

@@ -70,7 +70,7 @@ def _view(campaign, attempt, cfg):
                         and _payable(campaign) and attempt['status'] == 'pending')
     return {'campaign_id': str(campaign['id']),
             'available': cfg['enabled'], 'test_mode': attempt['sbp_test_mode'] if attempt else cfg['test_mode'],
-            'amount_kopecks': attempt['amount'] if attempt else campaign['price_kopecks_snapshot'],
+            'amount_kopecks': attempt['amount'] if attempt and attempt['status'] != 'failed' else campaign['price_kopecks_snapshot'],
             'currency': 'RUB', 'status': attempt['status'] if attempt else 'not_created',
             'attempt_id': str(attempt['id']) if attempt else None,
             'can_create': cfg['enabled'] and _payable(campaign),

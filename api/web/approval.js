@@ -66,6 +66,7 @@ window.pushokApproval=(()=>{
   }
   if(c.channel_url){try{const url=new URL(c.channel_url);if(url.protocol==='https:'&&['t.me','telegram.me'].includes(url.hostname)){const a=el('a','Открыть канал в Telegram');a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';box.append(a);}}catch{}}
   box.append(el('p',c.tariff_name_snapshot+' · '+(c.price_kopecks_snapshot===0?'Бесплатно':money(c.price_kopecks_snapshot)),'approval-price'));
+  if(me.role==='admin'&&window.pushokCampaignPricing)box.append(window.pushokCampaignPricing.create(c));
   const index=stage(c),progress=el('ol',undefined,'approval-progress');progress.setAttribute('aria-label','Этапы рекламной заявки');
   stages.forEach((title,i)=>{const li=el('li',(i<index?'✓ ':String(i+1)+'. ')+title);if(i===index)li.setAttribute('aria-current','step');if(i<index)li.className='done';progress.append(li);});box.append(progress);
   const status=el('p',(labels[c.moderation_status]||c.moderation_status)+' · '+(c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status])+' · '+(labels[c.placement_status]||c.placement_status),'approval-status');box.append(status);

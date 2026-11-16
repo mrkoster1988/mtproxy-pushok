@@ -291,7 +291,7 @@ function showCampaignReport(c, box,{refresh=false}={}){
   observations.append(el('p','Это необязательные наблюдения оператора. Автоматический запуск и завершение не требуют заполнения этого отчёта.','muted'));
   panel.append(observations);
   panel.append(el('h4','История действий'));
-  const eventNames={campaign_submitted:'Заявка отправлена',campaign_moderated:'Модерация',
+  const eventNames={campaign_submitted:'Заявка отправлена',campaign_moderated:'Модерация',campaign_pricing_changed:'Тариф или скидка изменены администратором',
    sbp_invoice_created:'Выставлен счёт СБП',sbp_payment_verified:'СБП подтверждена сервером',sbp_payment_canceled:'СБП отменена',
    payment_proof_submitted:'Чек отправлен',payment_reviewed:'Проверка оплаты',
    placement_auto_scheduled:'Автоматически назначено',placement_activated_by_agent:'Агент подтвердил запуск',placement_completed_by_agent:'Агент подтвердил завершение',placement_scheduled:'Время назначено',placement_activated_manually:'Оператор активировал',
@@ -316,7 +316,7 @@ function card(c,op,{compact=false}={}){
  const meta=el('div',undefined,'meta');
  [labels[c.moderation_status],(c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status]),c.tariff_name_snapshot+' · '+money(c.price_kopecks_snapshot),'Желаемое начало: '+date(c.requested_start_at),'Назначено: '+date(c.scheduled_start_at)].forEach(t=>meta.append(el('span',t)));box.append(meta);
  }
- if(c.growth_offer_name)box.append(el('p','Бонус: '+c.growth_offer_name+' · '+c.discount_percent_snapshot+'%. Цена до скидки: '+money(c.base_price_kopecks_snapshot)+'.','muted'));
+ if(c.growth_offer_name)box.append(el('p','Скидка: '+c.growth_offer_name+' · '+c.discount_percent_snapshot+'%.'+(miniAppMode?'':' Цена до скидки: '+money(c.base_price_kopecks_snapshot)+'.'),'muted'));
  if(c.moderator_comment)box.append(el('p','Модерация: '+c.moderator_comment));
  if(c.payment_review_comment)box.append(el('p','Проверка оплаты: '+c.payment_review_comment));
  const actions=el('div',undefined,'actions');box.append(actions);

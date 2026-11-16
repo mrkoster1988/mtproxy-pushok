@@ -1540,6 +1540,8 @@ def main():
                 admin.set_viewport_size({'width':390,'height':1500})
                 personal_row.evaluate('(node) => scrollTo(0, node.getBoundingClientRect().top + scrollY - 140)')
                 personal_row.screenshot(path=str(output/'45-personal-gift-report-mobile.png'))
+                from check_campaign_pricing import check_campaign_pricing
+                check_campaign_pricing(browser, base, output, failures, PostgresIntegration.dsn)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))
