@@ -134,11 +134,24 @@ class BotStarsAPITests(unittest.TestCase):
                       db.__enter__.return_value.execute.call_args_list[2].args[0])
         self.assertIn("RETURNING id", db.__enter__.return_value.execute.call_args_list[2].args[0])
 
+    def test_blocked_payer_cannot_approve_new_payment(self):
+        db = fake_db({**row(), "blocked_at": "blocked"})
+        with patch("app.bot_stars.psycopg.connect", return_value=db):
+            response = self.client.post("/api/v1/internal/bot/stars/precheckout",
+                json={"query_id": "pc-1", "telegram_user_id": 42,
+                      "invoice_payload": "stars:" + str(ATT),
+                      "currency": "XTR", "total_amount": 180}, headers=H)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["ok"])
+        self.assertEqual(db.__enter__.return_value.execute.call_count, 1)
+
     def test_successful_receipt_updates_campaign(self):
         receipt = {"id": 9, "handling_status": "received", "total_amount": 180,
                    "currency": "XTR", "payer_telegram_user_id": 42,
                    "attempt_id": None}
-        db = fake_db(None, receipt, row(), {"id": ATT}, {"id": CID}, None, None)
+        # Уже поступивший платёж учитываем, даже если после precheckout
+        # пользователя заблокировали; деньги не должны потеряться.
+        db = fake_db(None, receipt, {**row(), "blocked_at": "blocked"}, {"id": ATT}, {"id": CID}, None, None)
         with patch("app.bot_stars.psycopg.connect", return_value=db):
             r = self.client.post("/api/v1/internal/bot/stars/settle",
                  json={"telegram_user_id": 42, "invoice_payload": "stars:" + str(ATT),

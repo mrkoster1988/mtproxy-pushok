@@ -15,7 +15,7 @@ PRIVATE_HEADERS = {'Cache-Control': 'private, no-store', 'X-Content-Type-Options
 def _user(conn, uid, viewer):
     if viewer['id'] != uid and viewer['role'] not in ('admin', 'operator'):
         raise HTTPException(404, 'user_profile_not_found')
-    row = conn.execute('''SELECT id,telegram_user_id,first_name,last_name,username,role,created_at
+    row = conn.execute('''SELECT id,telegram_user_id,first_name,last_name,username,role,created_at,blocked_at
         FROM users WHERE id=%s''', (uid,)).fetchone()
     if not row:
         raise HTTPException(404, 'user_profile_not_found')

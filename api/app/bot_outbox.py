@@ -57,7 +57,7 @@ def claim_notifications(
                 JOIN users AS advertiser ON advertiser.id = c.advertiser_user_id
                 WHERE n.delivered_at IS NULL
                   AND c.moderation_status = 'pending' AND c.archived_at IS NULL
-                  AND u.role IN ('admin', 'operator')
+                  AND u.role IN ('admin', 'operator') AND u.blocked_at IS NULL
                   AND u.telegram_user_id > 0
                   AND (n.last_attempt_at IS NULL
                     OR n.last_attempt_at < now() - interval '2 minutes')

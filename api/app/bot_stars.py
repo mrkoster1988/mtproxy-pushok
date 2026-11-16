@@ -87,7 +87,7 @@ def locked_attempt(conn, attempt_id: UUID):
                   a.provider_payment_id, a.payer_telegram_user_id, a.expires_at,
                   a.precheckout_query_id, a.precheckout_approved_at, a.telegram_test_environment,
                   c.advertiser_user_id, c.moderation_status, c.payment_status,
-                  c.placement_status, u.telegram_user_id,
+                  c.placement_status, u.telegram_user_id, u.blocked_at,
                   t.is_active AS tariff_is_active
            FROM payment_attempts AS a
            JOIN campaigns AS c ON c.id=a.campaign_id
@@ -139,7 +139,7 @@ def prepare_for_user(dsn, payload: StarsPrepareInput) -> StarsPrepareOutput:
                    FROM campaigns AS c
                    JOIN users AS u ON u.id=c.advertiser_user_id
                    JOIN tariffs AS t ON t.id=c.tariff_id
-                   WHERE c.id=%s AND u.telegram_user_id=%s
+                   WHERE c.id=%s AND u.telegram_user_id=%s AND u.blocked_at IS NULL
                    FOR UPDATE OF c""",
                 (payload.campaign_id, payload.telegram_user_id),
             ).fetchone()
@@ -226,6 +226,7 @@ def precheckout(
             a = locked_attempt(conn, attempt)
             if (not eligible(a, payload.telegram_user_id,
                              payload.currency, payload.total_amount)
+                or a.get("blocked_at") is not None
                 or a["status"] != "pending" or not a["tariff_is_active"]
                 or a["expires_at"] is None):
                 return StarsPrecheckoutOutput(ok=False, error_message=CHECKOUT_ERROR)

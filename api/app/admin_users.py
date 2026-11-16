@@ -1,16 +1,16 @@
-"""Каталог и поиск существующих пользователей; доступ только администратору."""
+"""Каталог и поиск существующих пользователей; доступ сотрудникам."""
 import psycopg
 from psycopg.rows import dict_row
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 
-def router_for(dsn, require_admin):
+def router_for(dsn, require_operator):
     router = APIRouter(prefix='/api/v1/admin/users', tags=['admin'])
 
     @router.get('')
     def users(response: Response, query: str = Query(default='', max_length=100),
               role: str = '', visited: bool = False,
-              page: int = Query(default=0, ge=0, le=100000), admin=Depends(require_admin)):
+              page: int = Query(default=0, ge=0, le=100000), admin=Depends(require_operator)):
         response.headers['Cache-Control'] = 'private, no-store'
         if role not in ('', 'admin', 'operator', 'advertiser'):
             raise HTTPException(422, 'invalid_user_role')
@@ -25,7 +25,7 @@ def router_for(dsn, require_admin):
                 conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
                 total = conn.execute('SELECT count(*) AS n FROM users WHERE '+where, params).fetchone()['n']
                 rows = conn.execute('''SELECT id,telegram_user_id,first_name,last_name,username,role,
-                    created_at,last_login_at FROM users WHERE '''+where+'''
+                    created_at,last_login_at,blocked_at FROM users WHERE '''+where+'''
                     ORDER BY (telegram_user_id::text=%s OR lower(username)=lower(%s)) DESC NULLS LAST,
                     last_login_at DESC NULLS LAST,created_at DESC,id LIMIT 20 OFFSET %s''',
                     (*params, value, value, page*20)).fetchall()

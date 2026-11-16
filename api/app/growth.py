@@ -274,7 +274,9 @@ def router_for(get_dsn, get_user, require_admin):
         no_cache(response)
         def action(conn):
             conn.execute('INSERT INTO users(telegram_user_id) VALUES(%s) ON CONFLICT DO NOTHING', (payload.telegram_user_id,))
-            uid = conn.execute('SELECT id FROM users WHERE telegram_user_id=%s', (payload.telegram_user_id,)).fetchone()['id']
+            user = conn.execute('SELECT id,blocked_at FROM users WHERE telegram_user_id=%s FOR SHARE', (payload.telegram_user_id,)).fetchone()
+            if user['blocked_at'] is not None:raise HTTPException(403,'user_blocked')
+            uid=user['id']
             return claim_referral(conn, uid, payload.code)
         return db(action)
 

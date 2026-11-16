@@ -41,7 +41,7 @@ class AdminUsersBonuses(unittest.TestCase):
         self.assertEqual(self.request('GET',f'/users/{self.owner}/profile')['wallet'],{'RUB':0,'BONUS':12345,'XTR':0})
         for uid,role in [(self.operator,'operator'),(self.owner,'advertiser')]:
             self.actor={'id':uid,'role':role}
-            self.request('GET','/admin/users',403)
+            self.request('GET','/admin/users',200 if role=='operator' else 403)
             self.assertNotIn('wallet',self.request('GET',f'/users/{self.owner}/profile'))
 
     def test_gift_edit_delete_preserves_credit_and_blocks_new_activation(self):

@@ -170,7 +170,7 @@ def stars_identity(row,payload):
 
 
 def locked_star(conn,tid):
-    return conn.execute('''SELECT t.*,u.telegram_user_id FROM wallet_topups t JOIN users u ON u.id=t.user_id
+    return conn.execute('''SELECT t.*,u.telegram_user_id,u.blocked_at FROM wallet_topups t JOIN users u ON u.id=t.user_id
         WHERE t.id=%s FOR UPDATE OF t''',(tid,)).fetchone() if tid else None
 
 
@@ -179,7 +179,7 @@ def precheckout(dsn,payload):
     if not stars_invoices_enabled():return denied
     with connect(dsn) as conn:
         row=locked_star(conn,parse_payload(payload.invoice_payload))
-        if (not stars_identity(row,payload) or row['status']!='pending' or not row['expires_at']
+        if (not stars_identity(row,payload) or row.get('blocked_at') is not None or row['status']!='pending' or not row['expires_at']
             or row['expires_at']<=datetime.now(timezone.utc) or row['precheckout_query_id'] not in (None,payload.query_id)):
             return denied
         conn.execute('UPDATE wallet_topups SET precheckout_query_id=%s,precheckout_approved_at=coalesce(precheckout_approved_at,now()) WHERE id=%s',(payload.query_id,row['id']))

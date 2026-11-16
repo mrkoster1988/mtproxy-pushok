@@ -56,7 +56,7 @@ def fake_db(created=True, owner=USER_ID, channel=CHANNEL_ID):
     }
     return FakeDB([
         tariff,
-        None, {"id": USER_ID},
+        None, {"id": USER_ID, "blocked_at": None},
         None, {"id": CHANNEL_ID},
         {"id": CAMPAIGN_ID} if created else None,
         *([] if created else [{
