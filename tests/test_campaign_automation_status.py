@@ -45,6 +45,7 @@ class CampaignAutomationTests(unittest.TestCase):
             (dict(placement_status='not_scheduled'), 'awaiting_slot'),
             (dict(placement_status='not_scheduled',prepared=False), 'awaiting_slot'),
             (dict(prepared=False), 'setup_required'),
+            (dict(prepared=False,binding_selection_pending=True), 'selecting_tag'),
         ]:
             with self.subTest(changes=changes):
                 self.assertEqual(self.state(**changes), expected)

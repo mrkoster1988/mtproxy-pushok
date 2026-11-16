@@ -162,3 +162,102 @@ class AutomaticPlacementTests(unittest.TestCase):
         self.assertEqual({one['scheduled_start_at'],two['scheduled_start_at']},{self.start,self.start+HOUR})
         with psycopg.connect(self.dsn) as c:
             self.assertEqual(c.execute("SELECT count(*) FROM audit_events WHERE campaign_id=ANY(%s) AND event_type='placement_auto_scheduled'",([self.f['campaign'],other],)).fetchone()[0],2)
+
+    def test_waiting_forecast_moves_to_next_prepared_node_and_keeps_payment(self):
+        self.paid();auto_schedule.service_once(self.dsn);before=self.row()
+        second=self._management_fixture()['node'];self.bind(second)
+        self.other(second,self.start,2*HOUR)
+        pending=self.request('GET',f"/campaigns/{self.f['campaign']}/promotion-status")
+        self.assertEqual(pending['automation_status'],'selecting_tag')
+        auto_schedule.service_once(self.dsn);row=self.row()
+        self.assertEqual((row['proxy_node_id'],row['scheduled_start_at'],row['scheduled_end_at']),
+                         (second,self.start+2*HOUR,self.start+3*HOUR))
+        self.assertEqual((row['payment_status'],row['price_kopecks_snapshot']),('verified',100))
+        auto_schedule.service_once(self.dsn);self.assertEqual(self.row()['scheduled_start_at'],row['scheduled_start_at'])
+        with psycopg.connect(self.dsn) as conn:
+            events=conn.execute("SELECT details_json FROM audit_events WHERE campaign_id=%s AND event_type='placement_auto_scheduled' ORDER BY created_at",(row['id'],)).fetchall()
+            self.assertEqual(len(events),2);self.assertEqual(events[1][0]['reason'],'prepared_tag_selected')
+            self.assertEqual(events[1][0]['previous_node_id'],str(before['proxy_node_id']))
+
+    def test_late_binding_cannot_start_shortened_forecast_before_selection(self):
+        from app.promotion_runtime import handle
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET requested_start_at=now()-interval '1 hour' WHERE id=%s",(self.f['campaign'],))
+        self.paid();auto_schedule.service_once(self.dsn);node=self.row()['proxy_node_id'];self.bind(node)
+        request=dict(host='management-'+node.hex+'.example.org',port=8443)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            plan=handle(conn,request);self.assertEqual(plan['state'],'idle')
+            self.assertEqual(plan['reason'],'binding_selection_pending')
+        before=datetime.now(timezone.utc);auto_schedule.service_once(self.dsn);row=self.row()
+        self.assertGreaterEqual(row['scheduled_start_at'],before)
+        self.assertEqual(row['scheduled_end_at']-row['scheduled_start_at'],HOUR)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            plan=handle(conn,request);self.assertEqual(plan['state'],'apply')
+            self.assertEqual(plan['campaign_id'],str(row['id']))
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+        self.assertEqual(self.row()['placement_status'],'active')
+        auto_schedule.service_once(self.dsn);self.assertEqual(self.row()['scheduled_start_at'],row['scheduled_start_at'])
+
+    def test_manual_move_is_preserved_even_when_other_binding_is_ready(self):
+        self.paid();auto_schedule.service_once(self.dsn)
+        self.request('PATCH',f"/operator/campaigns/{self.f['campaign']}/slot",json={'proxy_node_id':str(self.f['node']),'start_at':(self.start+4*HOUR).isoformat()})
+        second=self._management_fixture()['node'];self.bind(second)
+        # Транзакция ручного переноса могла начаться раньше фонового назначения.
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE audit_events SET created_at=created_at-interval '1 hour' WHERE campaign_id=%s AND event_type='placement_rescheduled'",(self.f['campaign'],))
+        auto_schedule.service_once(self.dsn)
+        self.assertEqual((self.row()['proxy_node_id'],self.row()['scheduled_start_at']),(self.f['node'],self.start+4*HOUR))
+        self.assertEqual(self.request('GET',f"/campaigns/{self.f['campaign']}/promotion-status")['automation_status'],'setup_required')
+
+    def test_stale_or_another_channels_tag_is_never_selected(self):
+        self.paid();auto_schedule.service_once(self.dsn);before=self.row()
+        other=self._management_fixture();self.bind(other['node'])
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE channel_promotion_bindings SET channel_url='https://t.me/wrong_channel' WHERE proxy_node_id=%s",(other['node'],))
+        auto_schedule.service_once(self.dsn);self.assertEqual(self.row()['proxy_node_id'],before['proxy_node_id'])
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('DELETE FROM channel_promotion_bindings WHERE proxy_node_id=%s',(other['node'],))
+        self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(other['node']),channel_id=str(other['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
+        auto_schedule.service_once(self.dsn);self.assertEqual(self.row()['proxy_node_id'],before['proxy_node_id'])
+        self.assertEqual(self.request('GET',f"/campaigns/{self.f['campaign']}/promotion-status")['automation_status'],'setup_required')
+
+    def test_replacement_does_not_take_over_observed_or_applied_campaign(self):
+        self.paid();auto_schedule.service_once(self.dsn);before=self.row()
+        second=self._management_fixture()['node'];self.bind(second)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("INSERT INTO promotion_runtime(proxy_node_id,campaign_id,state) VALUES(%s,%s,'applied')",(before['proxy_node_id'],before['id']))
+        auto_schedule.service_once(self.dsn);self.assertEqual(self.row()['proxy_node_id'],before['proxy_node_id'])
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('DELETE FROM promotion_runtime WHERE campaign_id=%s',(before['id'],))
+            conn.execute("INSERT INTO placement_observations(campaign_id,observer_user_id,result,method,observed_at,note) VALUES(%s,%s,'visible','separate_unsubscribed_client',now(),'Test: existing observation')",(before['id'],self.f['admin']))
+        auto_schedule.service_once(self.dsn);self.assertEqual(self.row()['proxy_node_id'],before['proxy_node_id'])
+
+    def test_concurrent_reselection_queues_without_overlaps(self):
+        self.paid();second_campaign=self.other();auto_schedule.service_once(self.dsn)
+        second=self._management_fixture()['node'];self.bind(second);self.other(second,self.start,2*HOUR)
+        barrier=threading.Barrier(2)
+        def run():barrier.wait();return auto_schedule.service_once(self.dsn)
+        with ThreadPoolExecutor(max_workers=2) as pool:list(pool.map(lambda _:run(),range(2)))
+        rows=[self.row(),self.row(second_campaign)]
+        self.assertEqual({r['proxy_node_id'] for r in rows},{second})
+        self.assertEqual({r['scheduled_start_at'] for r in rows},{self.start+2*HOUR,self.start+3*HOUR})
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM audit_events WHERE campaign_id=ANY(%s) AND details_json->>'reason'='prepared_tag_selected'",([r['id'] for r in rows],)).fetchone()[0],2)
+
+    def test_upgrade_marks_only_matching_automatic_forecasts_once(self):
+        from pathlib import Path
+        self.paid();auto_schedule.service_once(self.dsn)
+        manual=self.other(self.f['node'],self.start+3*HOUR)
+        migration=(Path(__file__).resolve().parents[1]/'database/047_automatic_tag_selection.sql').read_text()
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            try:
+                conn.execute('ALTER TABLE campaigns DROP COLUMN auto_schedule_managed, DROP COLUMN auto_schedule_tag_pending')
+                conn.execute(migration)
+                auto=conn.execute('SELECT auto_schedule_managed,auto_schedule_tag_pending FROM campaigns WHERE id=%s',(self.f['campaign'],)).fetchone()
+                self.assertEqual(auto,dict(auto_schedule_managed=True,auto_schedule_tag_pending=True))
+                self.assertFalse(conn.execute('SELECT auto_schedule_managed FROM campaigns WHERE id=%s',(manual,)).fetchone()['auto_schedule_managed'])
+                conn.execute('UPDATE campaigns SET auto_schedule_managed=false,auto_schedule_tag_pending=false WHERE id=%s',(self.f['campaign'],))
+                conn.execute(migration)
+                self.assertFalse(conn.execute('SELECT auto_schedule_managed FROM campaigns WHERE id=%s',(self.f['campaign'],)).fetchone()['auto_schedule_managed'])
+            finally:
+                conn.rollback()
