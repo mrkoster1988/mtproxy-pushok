@@ -5,6 +5,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /srv/mtproxy-pushok
 
+# Кириллица и знак рубля в изображениях подарочных сертификатов.
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && mkdir -p /var/lib/mtproxy-pushok/payment-proofs \

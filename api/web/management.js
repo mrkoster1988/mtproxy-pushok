@@ -89,14 +89,17 @@ window.pushokManagement=(()=>{
     target.append(el('h2',title));
     if(!items.length)target.append(el('p',title==='Удалённые'?'Удалённых объектов нет.':'Завершённых кампаний пока нет.','empty'));
     for(const item of items){
-     const done=completed.includes(item),row=el('article',undefined,'card');row.dataset.archiveKind=item.kind;row.dataset.archiveId=item.id;
-     const tools=el('div',undefined,'card-tools'),head=el('div',undefined,'tile-heading');if(item.channel_id)head.append(window.pushokViews.channelAvatar(item.channel_id,item.title,item.channel_url));head.append(el('h3',kinds[item.kind]+' · '+item.title));row.append(tools,head,el('p',(done?'В архиве: ':'Удалено: ')+date(item.archived_at)));
+     const done=completed.includes(item),row=el('article',undefined,'card archive-card');row.dataset.archiveKind=item.kind;row.dataset.archiveId=item.id;
+     const tools=el('div',undefined,'archive-tools'),head=el('div',undefined,'archive-heading'),identity=el('div',undefined,'archive-identity');
+     if(item.channel_id)identity.append(window.pushokViews.channelAvatar(item.channel_id,item.title,item.channel_url));
+     identity.append(el('h3',item.title));head.append(identity,tools);
+     const meta=el('p',kinds[item.kind]+' · '+date(item.archived_at),'archive-meta');meta.title=(done?'В архиве: ':'Удалено: ')+date(item.archived_at);row.append(head,meta);
      if(item.kind==='campaigns'){
       if(done)row.append(el('p','Завершено · '+(labels[item.payment_status]||item.payment_status)),el('p','Период: '+date(item.scheduled_start_at)+' — '+date(item.scheduled_end_at)));
       tools.append(window.pushokViews.iconAction(button('',()=>showCampaignReport({id:item.id},row)),'chart','Отчёт по кампании'));
       if(!miniAppMode)tools.append(window.pushokViews.iconAction(button('',()=>downloadCampaignCsv({id:item.id})),'download','Скачать CSV'));
      }
-     if(!done)row.append(button('Восстановить',async()=>{await api('/management/archive/'+item.kind+'/'+item.id+'/restore',{method:'POST'});await refresh();await renderArchive(target);notice('Объект восстановлен. Проверьте настройки перед использованием.',true);}));
+     if(!done)tools.append(window.pushokViews.iconAction(button('',async()=>{await api('/management/archive/'+item.kind+'/'+item.id+'/restore',{method:'POST'});await refresh();await renderArchive(target);notice('Объект восстановлен. Проверьте настройки перед использованием.',true);}),'restore','Восстановить'));
      if(item.kind==='campaigns'&&['admin','operator'].includes(me.role)&&operatorCampaigns.some(c=>c.id===item.id&&c.archived_at))row.append(button('Незавершённые действия',()=>window.cabinet.go('moderation/'+item.id)));
      target.append(row);
      if(item.id===selectedId)void showCampaignReport({id:item.id},row)?.catch(e=>row.append(el('p',e.message)));

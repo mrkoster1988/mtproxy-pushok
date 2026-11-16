@@ -11,6 +11,28 @@ window.pushokLinks=(()=>{
   a.href='https://t.me/share/url?url='+encodeURIComponent(url)+'&text='+encodeURIComponent(text);a.target='_blank';a.rel='noopener noreferrer';
   return a;
  }
+ function giftShare(gift,row){
+  const action=window.pushokViews.iconAction(button('',async()=>{
+   const session=token,uid=me?.id,app=window.Telegram?.WebApp;
+   const native=Boolean(app?.shareMessage&&app.isVersionAtLeast?.('8.0'));
+   const data=await api('/admin/wallet/gifts/'+gift.id+'/share?prepare='+native,{method:'POST'});
+   if(session!==token||uid!==me?.id||!row.isConnected)return;
+   if(native&&data.message_id){
+    try{app.shareMessage(data.message_id,sent=>{if(sent&&session===token&&uid===me?.id)notice('Сертификат отправлен.',true);});return;}catch{}
+   }
+   row.querySelector('.gift-share-preview')?.remove();
+   const preview=el('section',undefined,'gift-share-preview'),heading=el('div',undefined,'panel-heading'),image=el('img');
+   heading.append(el('h4','Подарочный сертификат'),window.pushokViews.iconAction(button('',()=>preview.remove()),'close','Закрыть сертификат'));
+   image.src=data.image_path;image.alt='Подарочный сертификат puShok на '+money(gift.amount)+' бонусами на рекламу';image.width=1200;image.height=720;
+   const actions=el('div',undefined,'inline-actions'),send=el('a','Поделиться текстом','ui-button'),download=el('a','','ui-button');
+   send.href=data.share_url;send.target='_blank';send.rel='noopener noreferrer';send.prepend(window.pushokViews.icon('share'));
+   download.href=data.image_path;download.download='pushok-certificate.jpg';window.pushokViews.iconAction(download,'download','Скачать сертификат');
+   const copy=window.pushokViews.iconAction(button('',async()=>{await navigator.clipboard.writeText(data.text);notice('Текст и ссылка скопированы.',true); }),'copy','Скопировать текст сертификата');
+   actions.append(send,download,copy);preview.append(heading,image,el('p',data.text,'gift-share-text'),actions);row.append(preview);
+   preview.scrollIntoView({block:'nearest'});
+  }),'share','Поделиться');
+  action.classList.add('gift-share');return action;
+ }
  async function apply(){
   if(!pending||!me||busy)return;busy=true;
   const payload=pending,session=token,uid=me.id;
@@ -38,5 +60,5 @@ window.pushokLinks=(()=>{
   }}
   finally{busy=false;}
  }
- return {capture,share,apply,reset(){pending='';}};
+ return {capture,share,giftShare,apply,reset(){pending='';}};
 })();

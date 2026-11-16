@@ -278,6 +278,35 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .card-tools{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:-4px 0 8px}
 .cabinet-mode .card-tools>.icon-action{width:36px;min-width:36px;height:36px;min-height:36px;padding:8px;border-color:var(--line)}
 .cabinet-mode .card-tools>.icon-action.danger-text{color:#ffadad}
+/* Архив: действия рядом с названием, дата отдельной компактной строкой. */
+.cabinet-mode .archive-list>h2{margin:8px 0 0;font-size:16px}
+.cabinet-mode .archive-list>.archive-card{padding:10px 12px}
+.archive-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0}
+.archive-identity{display:flex;align-items:center;gap:8px;min-width:0;flex:1}
+.cabinet-mode .archive-identity h3{font-size:14px;line-height:1.35;margin:0;overflow-wrap:anywhere;min-width:0}
+.cabinet-mode .archive-identity .channel-avatar{width:32px;height:32px;flex:none}
+.archive-tools{display:flex;align-items:center;gap:2px;flex:none}
+.cabinet-mode .archive-tools>.icon-action{width:44px;min-width:44px;height:44px;min-height:44px;margin:0;padding:12px;border:0;border-radius:8px}
+.cabinet-mode .archive-tools>.icon-action:hover{background:var(--surface-3)}
+.cabinet-mode .archive-card>p{margin:4px 0 0;font-size:12px;overflow-wrap:anywhere}
+.cabinet-mode .archive-card>.archive-meta{margin:2px 0 0;color:var(--muted);font-size:11px}
+.cabinet-mode .archive-card>.campaign-report{margin-top:10px}
+/* Сертификаты: пять действий в одном ряду, переключатель отдельно в заголовке. */
+.cabinet-mode .wallet-gift{padding:10px 12px}
+.gift-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.cabinet-mode .gift-heading h3{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;min-width:0;overflow-wrap:anywhere}
+.gift-heading h3>.ui-icon{color:var(--mint)}
+.cabinet-mode .wallet-gift>p{margin:4px 0;font-size:12px}
+.cabinet-mode .wallet-gift>.wallet-gift-summary{font-size:13px;font-weight:600;color:var(--text)}
+.cabinet-mode .wallet-gift>.growth-code{font-size:11px;color:var(--muted)}
+.gift-actions{display:flex;align-items:center;gap:4px;margin-top:8px;border-top:1px solid var(--line-soft);padding-top:4px;flex-wrap:wrap}
+.cabinet-mode :is(.gift-actions,.gift-heading)>.icon-action{width:44px;min-width:44px;min-height:44px;height:44px;padding:12px;margin:0;border:0;border-radius:8px}
+.cabinet-mode .gift-actions>.gift-share{background:var(--surface-3)}
+.cabinet-mode .gift-actions>:has(use[href$='#pi-trash']){color:#f5a6a6}
+.cabinet-mode .wallet-gift-toggle[aria-pressed=false]{color:var(--muted)}
+.gift-share-preview{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.gift-share-preview>img{display:block;width:100%;height:auto;border-radius:10px;margin-top:8px}
+.cabinet-mode .gift-share-text{white-space:pre-line;overflow-wrap:anywhere;font-size:12px}
 .channel-tile>.management-form,.channel-report{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
 .channel-report{display:grid;gap:10px}.channel-report>p{margin:0}.channel-report a{font-size:13px}
 .channel-preview{display:flex;align-items:center;gap:12px;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px}

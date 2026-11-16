@@ -1560,6 +1560,8 @@ def main():
                 check_channel_layout(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_mobile_polish import check_mobile_polish
                 check_mobile_polish(browser,base,output,failures,PostgresIntegration.dsn)
+                from check_gift_sharing import check_gift_sharing
+                check_gift_sharing(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_application_licenses import check_application_licenses
                 check_application_licenses(browser,base,output,failures,PostgresIntegration.dsn)
                 assert not failures, failures
