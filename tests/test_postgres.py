@@ -2072,7 +2072,7 @@ class PostgresIntegration(unittest.TestCase):
         actor = {'id':f['admin'],'role':'admin'}
         main.app.dependency_overrides[main.get_current_user] = lambda: actor
         path = '/campaigns/'+str(f['campaign'])+'/promotion-status'
-        self.assertEqual(self.request('GET',path)['automation_status'], 'setup_required')
+        self.assertEqual(self.request('GET',path)['automation_status'], 'awaiting_slot')
         self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),
             channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
         self.assertEqual(self.request('GET',path)['automation_status'], 'awaiting_slot')

@@ -77,6 +77,7 @@ class AutomaticPlacementTests(unittest.TestCase):
         self.addCleanup(cleanup);return cid
 
     def bind(self,node):
+        fixture.main.app.dependency_overrides[fixture.main.get_current_user]=lambda:{'id':self.f['admin'],'role':'admin'}
         self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(node),channel_id=str(self.f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
 
     def test_payment_assigns_requested_time_without_binding_and_is_not_activation(self):

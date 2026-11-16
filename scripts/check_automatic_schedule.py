@@ -53,6 +53,8 @@ def check_automatic_schedule(browser, base, output, failures, dsn):
         expect(staff.locator('.approval-current')).to_contain_text('Ожидается автоматический запуск')
         staff.screenshot(path=str(output/'53-automatic-schedule-admin-390.png'))
         staff.get_by_role('link',name='Настройки запуска',exact=True).click()
+        expect(staff).to_have_url(base+'/#/sponsors/'+str(channel)+'/'+str(node))
+        expect(staff.locator('#promotion-automation form')).to_be_visible()
         expect(staff.locator('#promotion-automation').get_by_label('Канал',exact=True)).to_have_value(str(channel))
         expect(staff.locator('#promotion-automation').get_by_label('Узел',exact=True)).to_have_value(str(node))
     finally:
