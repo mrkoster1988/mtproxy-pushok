@@ -48,6 +48,7 @@ def main():
     release_fixture = release_patcher.start()
     logo_image=io.BytesIO();Image.new('RGB',(160,160),(38,198,184)).save(logo_image,format='JPEG')
     logo_patcher=patch('app.channel_logos.logo',return_value=logo_image.getvalue());logo_patcher.start()
+    avatar_patcher=patch('app.user_profiles.user_avatar',return_value=logo_image.getvalue());avatar_patcher.start()
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=True)
     # These values belong only to the local disposable test server.
@@ -1571,6 +1572,7 @@ def main():
             sock.close()
         release_patcher.stop()
         logo_patcher.stop()
+        avatar_patcher.stop()
         PostgresIntegration.tearDownClass()
 
 
