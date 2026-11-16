@@ -68,6 +68,8 @@ class PostgresIntegration(unittest.TestCase):
             main.DATABASE_URL, main.PAYMENT_PROOFS_DIR, main.PLACEMENT_EVIDENCE_DIR
         )
         cls.storage = tempfile.TemporaryDirectory()
+        cls.control_env = patch.dict(os.environ, {'PUSHOK_CONTROL_DIR':str(Path(cls.storage.name)/'control')})
+        cls.control_env.start()
         main.DATABASE_URL = cls.dsn
         main.PAYMENT_PROOFS_DIR = cls.storage.name
         main.PLACEMENT_EVIDENCE_DIR = str(Path(cls.storage.name) / "placement-evidence")
@@ -83,6 +85,7 @@ class PostgresIntegration(unittest.TestCase):
         main.DATABASE_URL, main.PAYMENT_PROOFS_DIR, main.PLACEMENT_EVIDENCE_DIR = (
             cls.old_dsn, cls.old_storage, cls.old_evidence_storage
         )
+        cls.control_env.stop()
         cls.storage.cleanup()
         with psycopg.connect(cls.admin_dsn, autocommit=True) as conn:
             conn.execute(sql.SQL("DROP DATABASE {}").format(sql.Identifier(cls.dbname)))
