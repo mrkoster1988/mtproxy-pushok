@@ -83,6 +83,7 @@ def check_bonus_links(browser,base,output,failures,dsn):
         for width in (320,390):
             page.set_viewport_size({'width':width,'height':844})
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+        row.evaluate("node=>node.scrollIntoView({block:'center',behavior:'instant'})")
         row.screenshot(path=str(output/'53-compact-topup-profile.png'))
         row.get_by_role('link',name='Открыть профиль пользователя').click()
         expect(page.locator('[data-page=user]')).to_be_visible()

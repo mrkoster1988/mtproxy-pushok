@@ -968,6 +968,8 @@ def main():
                 refresh(advertiser)
                 go(advertiser,'create/'+edited['id'])
                 advertiser.locator('summary').filter(has_text='Изменить или удалить заявку').click()
+                # Keep the real pointer above the fixed mobile navigation during focus scroll.
+                advertiser.get_by_role('button',name='Изменить тариф и дату',exact=True).evaluate("node=>node.scrollIntoView({block:'center',behavior:'instant'})")
                 advertiser.get_by_role('button',name='Изменить тариф и дату',exact=True).click()
                 advertiser.get_by_label('Желаемое начало',exact=True).fill(tomorrow+'T16:00')
                 advertiser.get_by_role('button',name='Сохранить изменения',exact=True).click()
