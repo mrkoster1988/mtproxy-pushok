@@ -13,6 +13,7 @@
  }
  const routes={
   wallet:['Баланс','Пополнения, списания и история операций'],
+  visitors:['Посетители','Кто открывал кабинет'],
   growth:['Бонусы и приглашения','Реферальная программа, промокоды, подарки и скидки'],
   dashboard:['Главная','Обзор ваших размещений'],
   channels:['Мои каналы','Управление рекламируемыми Telegram-каналами'],
@@ -260,6 +261,7 @@
   if(!state.ready||!state.loaded||!me)return;
   state.renderKey=dataKey();
   profileShortcut.replaceChildren(window.pushokViews.profileAvatar());
+  const moderationLink=bottomNav.querySelector('[data-route=moderation]');moderationLink.querySelector('.nav-badge')?.remove();const pending=operatorCampaigns.filter(c=>!c.archived_at&&['pending','changes_requested','rejected'].includes(c.moderation_status)).length;if(['admin','operator'].includes(me.role)&&pending){const count=el('span',pending>99?'99+':String(pending),'nav-badge');count.setAttribute('aria-label','Не прошли модерацию: '+pending);moderationLink.append(count);}
   metrics('dashboard',[]);
   if(state.route==='dashboard'){void window.pushokWallet.overview(dashboardWallet);void window.pushokGrowth.overview(dashboardReferral);}
 
@@ -355,7 +357,7 @@
   panel.append(el('p','Загрузка состояния СБП…'));
   try{await paint(await api(base));}catch(e){if(panel.isConnected){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку СБП',()=>renderSbp(c,panel)));}}
  }
- function permitted(name){return !(['moderation','sponsors'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(name==='settings'&&me?.role!=='admin');}
+function permitted(name){return !(['moderation','sponsors'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(['settings','visitors'].includes(name)&&me?.role!=='admin');}
  function renderSelected({background=false}={}){
   const [name,id]=routeParts();
   helpText.textContent=hints[name]||'Удалённые объекты можно восстановить. Для заявки сначала восстановите её канал и тариф.';
@@ -364,6 +366,7 @@
   const openPanels=background&&selected?[...pages[name].querySelectorAll('.campaign-report,.automation-panel')]:[];
   state.selectedKey=key;
   if(name==='wallet')void window.pushokWallet?.load(content.wallet);
+  if(name==='visitors')void window.pushokVisitors.load(content.visitors);
   if(name==='growth')void window.pushokGrowth?.load(content.growth);
   if(name==='archive')void window.pushokManagement.renderArchive(archiveRows,id);
   if(name==='sponsors')void renderAutomation();
@@ -435,7 +438,7 @@
   if(url.searchParams.has('wallet_topup')){url.searchParams.delete('wallet_topup');url.hash='/wallet';history.replaceState(null,'',url);}
   if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);activate();
- },logout(){window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
+},logout(){window.pushokVisitors?.reset();window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   bottomNav.querySelector('[data-route=moderation]').hidden=true;bottomNav.style.setProperty('--nav-count',4);
   [$('order-result'),detail,dashboardReferral,dashboardWallet,profileShortcut,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
