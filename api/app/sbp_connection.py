@@ -1,6 +1,7 @@
 """Приватная конфигурация ЮKassa; ключ никогда не возвращается API."""
 import os
 import re
+from functools import wraps
 from . import control
 
 
@@ -24,6 +25,15 @@ def valid(cfg):
                 re.fullmatch(r'[A-Za-z0-9_\-]{8,256}', cfg.get('secret', '')) and
                 re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', cfg.get('host', '')) and
                 '..' not in cfg['host'] and type(cfg.get('test_mode')) is bool)
+
+
+def serialized_creation(function):
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        # Тот же межпроцессный lock, что у сохранения конфигурации.
+        with control.locked():
+            return function(*args, **kwargs)
+    return wrapped
 
 
 def router_for(dsn, require_admin):

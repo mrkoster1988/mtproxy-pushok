@@ -65,3 +65,31 @@ class SBPConnectionTests(unittest.TestCase):
         for changed in [dict(host='https://evil.example/path'),dict(secret='bad\nkey'),dict(host='a..b')]:
             self.assertEqual(self.client.put('/api/v1/admin/sbp/connection',json=self.data|changed).status_code,422)
         self.request.assert_not_called()
+
+    def test_invoice_creation_waits_for_configuration_lock(self):
+        import threading
+        started=threading.Event();entered=threading.Event()
+        @connection.serialized_creation
+        def invoice():
+            entered.set()
+        def worker():
+            started.set()
+            invoice()
+        with control.locked():
+            thread=threading.Thread(target=worker,daemon=True);thread.start()
+            self.assertTrue(started.wait(2))
+            self.assertFalse(entered.wait(0.05))
+        thread.join(2)
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(entered.is_set())
+
+    def test_private_configuration_is_in_backup_allowlist(self):
+        sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
+        import cabinet_backup
+        self.assertEqual(cabinet_backup.CONFIG['.control/sbp-private.json'],'sbp-private.json')
+        self.assertIn('sbp-private.json',cabinet_backup.ALLOWED)
+
+    def test_corrupt_saved_configuration_never_falls_back_to_environment(self):
+        Path(self.temp.name,'sbp-private.json').write_text('broken')
+        with patch.dict(os.environ,{'YOOKASSA_SHOP_ID':'999','YOOKASSA_SECRET_KEY':'secret_from_env'}):
+            self.assertEqual(connection.current(),{})

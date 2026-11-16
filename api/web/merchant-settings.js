@@ -28,7 +28,7 @@ window.pushokSBP=(()=>{
      sbp_connection_has_payments:'По этому магазину уже есть счета. Смена магазина, домена или режима требует переноса и сверки платежей.',
      sbp_connection_check_failed:'ЮKassa не подтвердила подключение. Проверьте ключ и повторите.',
      sbp_connection_shop_not_ready:'Проверьте режим магазина, доступность СБП и статус подключения в ЮKassa.'
-    })[error.message]||'Не удалось сохранить подключение. Проверьте поля и повторите.';}
+    })[error.message]||error.message||'Не удалось сохранить подключение. Проверьте поля и повторите.';}
     finally{save.disabled=false;}
    });
    box.append(hint,result,form);host.replaceChildren(box);

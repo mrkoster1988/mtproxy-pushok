@@ -86,6 +86,9 @@ def read_checkout(dsn, campaign_id, user_id):
         return _view(campaign, _attempt(conn, campaign_id), settings())
 
 
+from .sbp_connection import serialized_creation
+
+@serialized_creation
 def create_checkout(dsn, campaign_id, user_id):
     cfg = settings()
     if not cfg['enabled']:

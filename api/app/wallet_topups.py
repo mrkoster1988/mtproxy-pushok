@@ -32,6 +32,9 @@ def parse_payload(value):
         return None
 
 
+from .sbp_connection import serialized_creation
+
+@serialized_creation
 def create(dsn,user,data):
     currency=data.currency
     if currency=='RUB' and user.get('login_surface')=='telegram':
