@@ -298,15 +298,8 @@ def main():
                 go(advertiser, 'payments/' + campaign_id)
                 advertiser.get_by_role('button', name='Реквизиты и сумма', exact=True).click()
                 expect(advertiser.locator('.payment-instructions')).to_contain_text('ТЕСТОВАЯ ИНСТРУКЦИЯ')
-                advertiser.get_by_role('button', name='Бронь на 15 минут', exact=True).click()
-                advertiser.get_by_role('button', name='Найти свободные прокси', exact=True).click()
-                expect(advertiser.get_by_label('Свободный прокси', exact=True)).to_be_enabled()
-                advertiser.get_by_label('Свободный прокси', exact=True).select_option(index=1)
-                advertiser.get_by_role('button', name='Забронировать на 15 минут', exact=True).click()
-                expect(advertiser.locator('.hold-timer')).to_contain_text('До освобождения слота')
-                advertiser.once('dialog', lambda dialog: dialog.accept())
-                advertiser.get_by_role('button', name='Отменить бронь', exact=True).click()
-                expect(advertiser.get_by_role('button', name='Найти свободные прокси', exact=True)).to_be_visible()
+                expect(advertiser.get_by_role('button', name='Бронь на 15 минут', exact=True)).to_have_count(0)
+                expect(advertiser.get_by_label('Свободный прокси', exact=True)).to_have_count(0)
 
                 image_bytes = io.BytesIO()
                 Image.new('RGB', (64, 64), 'teal').save(image_bytes, format='PNG')
@@ -342,7 +335,7 @@ def main():
                     title_link.click()
                     expect(reviewer.locator('[data-page=moderation]')).to_be_visible()
                     expect(reviewer.locator('#queue .approval-card')).to_have_attribute('data-campaign-id', campaign_id)
-                    reviewer.locator('summary').filter(has_text='Ручное назначение периода').click()
+                    reviewer.locator('summary').filter(has_text='Изменить расписание').click()
                     expect(reviewer.get_by_role('button', name='Назначить слот', exact=True)).to_be_visible()
                     reviewer.set_viewport_size({'width': 1440, 'height': 1000})
                 # Пустой выбор объясняется рядом с формой, а не выглядит как молчание.
@@ -366,7 +359,7 @@ def main():
                 operator.get_by_role('button', name='Снять будущий слот', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Слот не назначен')
                 expect(operator.locator('#queue')).to_contain_text('Оплачено')
-                operator.locator('summary').filter(has_text='Ручное назначение периода').click()
+                operator.locator('summary').filter(has_text='Изменить расписание').click()
                 operator.get_by_label('Начало размещения', exact=True).fill(tomorrow + 'T12:00')
                 operator.get_by_role('button', name='Назначить слот', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Запланировано')
@@ -1561,6 +1554,8 @@ def main():
 
                 from check_user_profiles import check_user_profiles
                 check_user_profiles(browser, base, output, failures, PostgresIntegration.dsn)
+                from check_automatic_schedule import check_automatic_schedule
+                check_automatic_schedule(browser, base, output, failures, PostgresIntegration.dsn)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))

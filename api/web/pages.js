@@ -42,7 +42,7 @@
   campaigns:'Одобрение канала, подтверждение оплаты и фактическое размещение — разные статусы.',
   campaign:'Если нужны исправления, прочтите комментарий, исправьте канал и отправьте заявку повторно.',
   payments:'Не переводите деньги повторно до выяснения результата. Загрузка чека не подтверждает поступление денег.',
-  calendar:'Выбор даты не бронирует слот. Временная бронь на 15 минут доступна в одобренной заявке до проверки оплаты.',
+  calendar:'Выберите желаемое начало. После оплаты система назначит свободное время; если выбранное занято — ближайший следующий период.',
   reports:'История отражает события системы и ручные наблюдения. Счётчик показов Telegram недоступен.',
   moderation:'Проверяйте канал и оплату раздельно. Агент активирует кампанию после применения тега; завершение после снятия/смены тега — автоматическое.',
   sponsors:'Запись узла и план движка не устанавливают MTProxy. Управление тегом и проверка показа выполняются отдельно.',
@@ -223,6 +223,7 @@
    const form=el('form'),node=el('select'),channel=el('select'),tag=el('input'),confirmed=el('input');
    node.required=true;channel.required=true;tag.required=true;tag.type='password';tag.pattern='[0-9a-fA-F]{32}';tag.autocomplete='off';confirmed.type='checkbox';confirmed.required=true;
    nodes.forEach(n=>option(node,n.id,n.name+' · '+n.host+':'+n.port));data.channels.forEach(c=>option(channel,c.id,c.title+' · '+c.telegram_url));
+   const selectedChannel=routeParts()[1],selectedNode=location.hash.split('/')[3];if(data.channels.some(c=>c.id===selectedChannel))channel.value=selectedChannel;if(nodes.some(n=>n.id===selectedNode))node.value=selectedNode;
    const submit=el('button','Включить для канала');submit.type='submit';submit.disabled=!nodes.length||!data.channels.length;
    form.append(field('Узел',node),field('Канал',channel),field('Тег этого канала из @MTProxyBot',tag),field('Я проверил: этот тег связан именно с выбранным каналом в Telegram',confirmed),submit);
    form.addEventListener('submit',e=>{e.preventDefault();run(async()=>{await api('/admin/promotion-bindings',{method:'PUT',body:{node_id:node.value,channel_id:channel.value,ad_tag:tag.value,telegram_binding_confirmed:confirmed.checked}});tag.value='';await renderAutomation();notice('Связь сохранена. Агент применит тег в пределах назначенного слота.',true);},submit);});

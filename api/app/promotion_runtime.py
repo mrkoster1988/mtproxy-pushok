@@ -32,10 +32,10 @@ def campaign_automation_status(campaign, confirmed, node=None, *, now=None):
     if node and (node['status'] != 'active' or node['archived_at']
                  or node['target_engine'] not in (None, 'official_mtproxy')):
         return 'node_unavailable'
-    if not campaign['prepared']:
-        return 'setup_required'
     if status == 'not_scheduled':
         return 'awaiting_slot'
+    if not campaign['prepared']:
+        return 'setup_required'
     start = campaign.get('scheduled_start_at')
     if start and start > now:
         return 'scheduled'

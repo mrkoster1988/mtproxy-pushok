@@ -225,7 +225,7 @@ async function renderHoldPanel(c,panel){
  panel.append(start,find,select,hint,book);
 }
 function addHoldAction(c,box,actions){
- if(!holdEligibility(c))return;
+ if(me?.role!=='admin'||!holdEligibility(c))return;
  actions.append(button('Бронь на 15 минут',async()=>{
   let panel=box.querySelector('.slot-hold-panel');
   if(panel){panel.remove();return;}
@@ -738,13 +738,13 @@ async function loadAvailability(){
   const data=await api('/availability?'+params);
   if(request!==calendarRequest)return;
   $('availability-days').replaceChildren(...data.days.map(day=>{
-   const calendarLabels={available:'Свободно: '+day.available_nodes,unconfigured:'По согласованию',occupied:'Нет мест',past:'Время прошло',invalid_local_time:'Нет такого времени',ambiguous_local_time:'Неоднозначное время'};
+   const calendarLabels={available:'Свободно: '+day.available_nodes,unconfigured:'Автоподбор',occupied:'Занято → позже',past:'Время прошло',invalid_local_time:'Нет такого времени',ambiguous_local_time:'Неоднозначное время'};
    const b=button(new Date(day.start_at).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})+' · '+(calendarLabels[day.status]||'Недоступно'),async()=>{
-    clearRequestedDate();b.setAttribute('aria-pressed','true');$('requested-start').value=day.start_at;$('calendar-selection').textContent='Желаемое начало: '+date(day.start_at)+(day.status==='unconfigured'?' · расписание ещё не настроено, требуется согласование':'');window.pushokOrder?.summary();
+    clearRequestedDate();b.setAttribute('aria-pressed','true');$('requested-start').value=day.start_at;$('calendar-selection').textContent='Желаемое начало: '+date(day.start_at)+(['occupied','unconfigured'].includes(day.status)?' · после оплаты подберём ближайшее свободное время':'');window.pushokOrder?.summary();
    });
    const display=new Date(day.start_at);b.setAttribute('aria-label',b.textContent);b.dataset.availability=day.status;
    b.replaceChildren(el('small',display.toLocaleDateString('ru-RU',{weekday:'short',month:'short'})),el('strong',String(display.getDate())),el('span',calendarLabels[day.status]||'Недоступно'));
-   b.disabled=!['available','unconfigured'].includes(day.status);b.setAttribute('aria-pressed','false');return b;
+   b.disabled=!['available','unconfigured','occupied'].includes(day.status);b.setAttribute('aria-pressed','false');return b;
   }));
  }catch(e){if(request===calendarRequest){$('availability-days').replaceChildren(el('p','Не удалось получить доступные даты.','muted'));throw e;}}
 }
@@ -906,9 +906,9 @@ const automationMessages={
  cancelled:['Размещение отменено',()=> 'Автоматический запуск этой кампании отменён.'],
  start_missed:['Запуск не был подтверждён',()=> 'Назначенный период уже прошёл. После восстановления связи с агентом система подберёт новый период; он не считается отработанным.'],
  agent_unavailable:['Нет свежего ответа агента',()=> 'Запуск сейчас не подтверждён. Администратору нужно проверить службу агента в разделе «Спонсоры и узлы».'],
- setup_required:['Нужна настройка автозапуска',()=> 'Администратору нужно связать канал со спонсорским тегом доступного узла. После подготовки размещением управляет агент.'],
+ setup_required:['Запуск ожидает подготовки',s=>['admin','operator'].includes(me?.role)?'Период назначен. Для запуска свяжите канал с тегом назначенного узла в разделе «Узлы и спонсоры».':'Период назначен. Подготавливаем запуск вашего канала; оплата сохранена.'],
  node_unavailable:['Узел недоступен для автозапуска',()=> 'Администратору нужно проверить состояние и настройки узла.'],
- awaiting_slot:['Подбираем свободный период',()=> 'Оплата подтверждена. Система автоматически назначит доступный слот.'],
+ awaiting_slot:['Подбираем свободный период',()=> 'Оплата подтверждена. Система автоматически назначит ближайшее свободное время на полную длительность тарифа.'],
  paused:['Автоподбор приостановлен',()=> 'Администратору нужно возобновить автоматическое назначение периода.'],
  awaiting_payment:['Ожидается оплата',()=> 'После подтверждения оплаты система подберёт период размещения.'],
  awaiting_moderation:['Ожидается модерация',()=> 'Автоматическое размещение станет доступно после одобрения канала и оплаты.']

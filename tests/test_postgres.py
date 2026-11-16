@@ -1793,14 +1793,9 @@ class PostgresIntegration(unittest.TestCase):
         f=self._management_fixture(ready=True)
         service_once(self.dsn)
         with psycopg.connect(self.dsn) as conn:
-            self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()[0],'not_scheduled')
-        main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['admin'],'role':'admin'}
-        self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
-        service_once(self.dsn)
-        with psycopg.connect(self.dsn) as conn:
             first=conn.execute('SELECT placement_status,scheduled_start_at,scheduled_end_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
             self.assertEqual(first[0],'scheduled')
-            self.assertGreater(first[2],first[1])
+            self.assertEqual((first[2]-first[1]).total_seconds(),3600)
         service_once(self.dsn)
         with psycopg.connect(self.dsn) as conn:
             second=conn.execute('SELECT placement_status,scheduled_start_at,scheduled_end_at FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
@@ -1943,7 +1938,7 @@ class PostgresIntegration(unittest.TestCase):
         service_once(self.dsn,limit=100)
         with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
             c=conn.execute('SELECT *,scheduled_start_at>now() AS future FROM campaigns WHERE id=%s',(f['campaign'],)).fetchone()
-            self.assertTrue(c['future']);self.assertEqual(c['placement_status'],'scheduled');self.assertIsNone(c['archived_at'])
+            self.assertGreater(c['scheduled_start_at'],datetime.now(timezone.utc)-timedelta(seconds=10));self.assertEqual(c['placement_status'],'scheduled');self.assertIsNone(c['archived_at'])
             self.assertEqual((c['scheduled_end_at']-c['scheduled_start_at']).total_seconds(),3600)
             self.assertEqual(c['payment_status'],'verified');self.assertEqual(c['price_kopecks_snapshot'],100)
             self.assertEqual(conn.execute('SELECT id FROM payment_attempts WHERE campaign_id=%s',(f['campaign'],)).fetchall(),[{'id':invoice}])

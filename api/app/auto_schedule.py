@@ -1,4 +1,4 @@
-"""Назначение свободного периода. Не управляет тегами и не подтверждает показ."""
+"""Автоподбор полного периода после оплаты. Подготовка тега проверяется отдельно."""
 from datetime import datetime, timedelta, timezone
 import json
 import psycopg
@@ -16,8 +16,11 @@ def earliest_gap(start, duration, occupied):
 
 
 def service_once(dsn, limit=20):
+    if not 1 <= limit <= 100:
+        raise ValueError('limit_out_of_range')
     scheduled = 0
-    with psycopg.connect(dsn, row_factory=dict_row) as conn:
+    with psycopg.connect(dsn, connect_timeout=3, row_factory=dict_row,
+                         options='-c statement_timeout=5000') as conn:
         if not conn.execute('SELECT pg_try_advisory_xact_lock(736102482) AS ok').fetchone()['ok']:
             return {'scheduled': 0}
         # После простоя не списываем пропущенный период как оказанную услугу.
@@ -36,10 +39,11 @@ def service_once(dsn, limit=20):
         campaigns = conn.execute("""SELECT * FROM campaigns WHERE archived_at IS NULL
             AND moderation_status='approved' AND payment_status='verified'
             AND placement_status='not_scheduled' AND NOT auto_schedule_paused
-            AND (requested_start_at IS NULL OR requested_start_at<=now()+interval '90 days')
-            ORDER BY created_at,id LIMIT %s FOR UPDATE SKIP LOCKED""", (limit,)).fetchall()
-        nodes = conn.execute("SELECT id FROM proxy_nodes WHERE status='active' AND archived_at IS NULL ORDER BY id FOR UPDATE").fetchall()
-        now = datetime.now(timezone.utc) + timedelta(minutes=2)
+            AND EXISTS(SELECT 1 FROM sponsor_channels ch WHERE ch.id=campaigns.channel_id AND ch.archived_at IS NULL)
+            ORDER BY COALESCE(requested_start_at,created_at),created_at,id LIMIT %s FOR UPDATE SKIP LOCKED""", (limit,)).fetchall()
+        nodes = conn.execute("""SELECT id FROM proxy_nodes WHERE status='active' AND archived_at IS NULL
+            AND (target_engine IS NULL OR target_engine='official_mtproxy') ORDER BY id FOR UPDATE""").fetchall()
+        now = datetime.now(timezone.utc)
         for c in campaigns:
             start = max(c['requested_start_at'] or now, now)
             duration = timedelta(seconds=c['duration_seconds_snapshot'])
@@ -51,9 +55,13 @@ def service_once(dsn, limit=20):
                 AND b.node_host=n.host AND b.node_port=n.port
                 AND (n.target_engine IS NULL OR n.target_engine='official_mtproxy')""",(c['channel_id'],)).fetchall()
             prepared_ids = {str(p['proxy_node_id']) for p in prepared}
+            # Связь тега определяет пригодные узлы для запуска, но её отсутствие
+            # не должно оставлять оплаченную заявку без расписания.
+            hold = conn.execute("""SELECT proxy_node_id,starts_at,ends_at FROM slot_holds
+                WHERE campaign_id=%s AND expires_at>now()""", (c['id'],)).fetchone()
             candidates = []
             for node in nodes:
-                if str(node["id"]) not in prepared_ids:
+                if prepared_ids and str(node["id"]) not in prepared_ids:
                     continue
                 rows = conn.execute("""SELECT scheduled_start_at AS left_at,scheduled_end_at AS right_at
                     FROM campaigns WHERE proxy_node_id=%s AND placement_status IN ('scheduled','active')
@@ -61,16 +69,23 @@ def service_once(dsn, limit=20):
                     WHERE proxy_node_id=%s AND campaign_id<>%s AND expires_at>now()""",
                     (node['id'],node['id'],c['id'])).fetchall()
                 available = earliest_gap(start,duration,[(r['left_at'],r['right_at']) for r in rows])
-                if available <= now + timedelta(days=90):
-                    candidates.append((available,str(node['id'])))
+                # Уважить ещё действующую бронь, созданную до обновления кабинета.
+                held = bool(hold and hold['proxy_node_id']==node['id'] and hold['starts_at']>=start
+                            and hold['ends_at']-hold['starts_at']==duration
+                            and earliest_gap(hold['starts_at'],duration,[(r['left_at'],r['right_at']) for r in rows])==hold['starts_at'])
+                if held:
+                    available = hold['starts_at']
+                candidates.append((0 if held else 1,available,str(node['id'])))
             if not candidates:
                 continue
-            at,node_id = min(candidates)
+            _,at,node_id = min(candidates)
             conn.execute('DELETE FROM slot_holds WHERE campaign_id=%s',(c['id'],))
             conn.execute("""UPDATE campaigns SET proxy_node_id=%s,scheduled_start_at=%s,
                 scheduled_end_at=%s,placement_status='scheduled',updated_at=now() WHERE id=%s""",
                 (node_id,at,at+duration,c['id']))
-            details = {'node_id':node_id,'start_at':at.isoformat(),'end_at':(at+duration).isoformat()}
+            details = {'node_id':node_id,'start_at':at.isoformat(),'end_at':(at+duration).isoformat(),
+                       'requested_start_at':c['requested_start_at'].isoformat() if c['requested_start_at'] else None,
+                       'shifted':at>start,'promotion_prepared':node_id in prepared_ids}
             if c['id'] in recovered:
                 previous = recovered[c['id']]
                 details.update(reason='missed_start_recovered',previous_start_at=previous['scheduled_start_at'].isoformat(),
