@@ -6,7 +6,7 @@ ALTER TABLE growth_referrals ADD COLUMN IF NOT EXISTS reward_bonus_kopecks INTEG
 
 ALTER TABLE wallet_entries DROP CONSTRAINT IF EXISTS wallet_entries_kind_check;
 ALTER TABLE wallet_entries ADD CONSTRAINT wallet_entries_kind_check CHECK(kind IN
- ('topup','payment','refund','manual_credit','manual_debit','reversal','provider_refund','referral_reward','referral_reversal','gift_credit'));
+ ('topup','payment','refund','manual_credit','manual_debit','reversal','provider_refund','referral_reward','referral_reversal'));
 CREATE TABLE IF NOT EXISTS growth_wallet_rewards (
  referred_user_id UUID PRIMARY KEY REFERENCES growth_referrals(referred_user_id),
  inviter_user_id UUID NOT NULL REFERENCES users(id),

@@ -1,5 +1,6 @@
 """Выключатель и подарки: реальные транзакции, гонки и сохранение обязательств."""
 import unittest
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -13,6 +14,11 @@ from app.wallet import WalletSettings, Topup
 
 
 class GiftValidation(unittest.TestCase):
+    def test_released_migration_037_checksum_is_preserved(self):
+        # Установщик v1.17 записал этот digest; изменения существующего файла блокируют upgrade.
+        old=Path(__file__).resolve().parents[1]/'database/037_referral_balance.sql'
+        self.assertEqual(hashlib.sha256(old.read_bytes()).hexdigest(),'f09133ee15371a329714c47020c5ae8a98002d81c71d1279bb2dda54647b595e')
+
     def test_strict_limits_timezone_and_code(self):
         data=dict(request_id=uuid4(),name='Подарок',amount=100,max_uses=1,expires_at=datetime.now(timezone.utc)+timedelta(days=1))
         for amount in (True,0,-1,1.5,1000001):
@@ -146,7 +152,8 @@ class WalletControlsGiftsIntegration(unittest.TestCase):
         self.redeem(gift['code'])
         root=Path(__file__).resolve().parents[1]
         with topups.connect(self.dsn) as conn:
-            for filename in ('037_referral_balance.sql','038_wallet_controls_gifts.sql'):
+            # Старые миграции установщик пропускает по журналу; новая допускает повтор.
+            for filename in ('038_wallet_controls_gifts.sql','038_wallet_controls_gifts.sql'):
                 conn.execute((root/'database'/filename).read_text())
         self.assertEqual(self.balances()['BONUS'],12345)
         self.assertTrue(self.redeem(gift['code'])['already_redeemed'])
