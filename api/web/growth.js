@@ -1,7 +1,8 @@
 'use strict';
 window.pushokGrowth=(()=>{
- let epoch=0,target=null,overviewEpoch=0;
+ let epoch=0,target=null,overviewEpoch=0,offersDeleted=false;
  Object.assign(errors,{
+  growth_offer_not_found:'Предложение не найдено или удалено.',growth_kind_locked:'Тип существующего предложения изменить нельзя.',growth_used_identity_locked:'Использованный код и получателя менять нельзя.',growth_limit_used:'Лимит не может быть меньше уже использованного.',growth_referral_terms_locked:'Условия заработанного купона зафиксированы. Можно менять название и срок.',
   growth_free_tariff:'Для бесплатного тарифа код не нужен. Выберите платный тариф или уберите код.',
   growth_code_unavailable:'Код недоступен: проверьте тариф, срок действия и лимит использований.',
   growth_code_exists:'Такой код уже существует. Выберите другой.',growth_quote_required:'Сначала рассчитайте стоимость.',
@@ -32,28 +33,49 @@ window.pushokGrowth=(()=>{
   rf.append(el('p','Награда выдаётся один раз после первого оплаченного и завершённого размещения приглашённого. Тип, сумма или условия купона фиксируются при принятии приглашения. Изменения действуют только для новых приглашений. Отключение программы закрывает новые приглашения; уже принятые сохраняют условия.','muted'));
   rf.append(el('p','Бонусная награда — фиксированная сумма, не процент и не обмен Stars. Бесплатные, тестовые и полностью бонусные оплаты не дают награду. При возврате оплаты награда отменяется; потраченные бонусы образуют задолженность. Бонусы без срока, для рублёвых размещений на сайте; без вывода и перевода другому пользователю.','muted'));
   save(rf,'Сохранить условия');bind(rf,()=>api('/admin/growth/settings',{method:'PUT',body:{referrals_enabled:enabled.checked,reward_percent:Number(percent.value),reward_days:Number(days.value),reward_mode:rewardMode.value,reward_bonus_kopecks:Math.round(Number(bonus.value)*100)}}));referral.append(rf);root.append(referral);
-  const create=panel('Создать предложение'),f=el('form');
-  const kind=field(f,'Тип предложения','select');[['Промокод','promo'],['Автоматическая скидка','discount'],['Подарочное размещение','gift']].forEach(([l,v])=>option(kind,l,v));
-  const name=field(f,'Название','text','',true);name.maxLength=100;
-  const code=field(f,'Промокод','text','PUSHOK-'+crypto.randomUUID().slice(0,8).toUpperCase(),true);code.maxLength=48;code.pattern='[A-Za-z0-9_-]{3,48}';
-  const pct=field(f,'Скидка, %','number','10',true);pct.min=1;pct.max=100;
-  const tariff=field(f,'Тариф','select');option(tariff,'Все тарифы','');available.filter(t=>!t.admin_only).forEach(t=>option(tariff,t.name,t.id));
-  const hours=field(f,'Минимальная длительность размещения, часов','number','0',true);hours.min=0;hours.max=8760;
-  const start=field(f,'Начало (ваше местное время; пусто — сейчас)','datetime-local');
-  const end=field(f,'Окончание (ваше местное время; пусто — без срока)','datetime-local');
-  const limit=field(f,'Всего заявок (пусто — без ограничения)','number');limit.min=1;limit.max=1000000;
-  const own=field(f,'Заявок на одного пользователя','number','1',true);own.min=1;own.max=1000000;
-  function mode(){const gift=kind.value==='gift',selected=tariff.value;tariff.replaceChildren();option(tariff,gift?'Выберите платный тариф':'Все тарифы','');available.filter(t=>!t.admin_only&&(!gift||t.price_kopecks>0)).forEach(t=>option(tariff,t.name,t.id));tariff.value=[...tariff.options].some(o=>o.value===selected)?selected:'';code.parentElement.hidden=kind.value!=='promo';code.required=kind.value==='promo';code.disabled=kind.value!=='promo';pct.disabled=gift;if(gift)pct.value=100;tariff.required=gift;limit.disabled=gift;if(gift)limit.value=1;own.disabled=gift;if(gift)own.value=1;}
-  kind.addEventListener('change',mode);mode();
-  f.append(el('p','Применяется одна, самая выгодная скидка. Лимит расходуется при отправке заявки, даже если её потом отзовут или отклонят. Подарок — код на одно бесплатное размещение выбранного тарифа; модерация остаётся обязательной. Условия созданных предложений не редактируются: выключите старое и создайте новое.','muted'));
-  save(f,'Создать предложение');bind(f,()=>api('/admin/growth/offers',{method:'POST',body:{kind:kind.value,name:name.value,code:kind.value==='promo'?code.value:null,percent:Number(pct.value),tariff_id:tariff.value||null,min_duration_seconds:Math.round(Number(hours.value)*3600),starts_at:start.value?new Date(start.value).toISOString():null,ends_at:end.value?new Date(end.value).toISOString():null,total_limit:limit.value?Number(limit.value):null,per_user_limit:Number(own.value)}}));create.append(f);root.append(create);
-  const list=panel('Предложения и выданные бонусы');list.append(el('p','Последние 200 предложений. Код подарка передавайте получателю: воспользоваться им сможет первый предъявитель.','muted'));
-  if(!data.offers.length)list.append(el('p','Предложений пока нет.'));
-  data.offers.forEach(o=>{const row=el('article',undefined,'card');const expired=o.ends_at&&new Date(o.ends_at)<=new Date();row.append(el('h3',o.name),el('p',({promo:'Промокод',discount:'Скидка',gift:'Подарок',referral:'Реферальный бонус'})[o.kind]+' · '+o.percent+'% · '+(o.tariff_name||'Все тарифы')),el('p','Использовано: '+o.uses+(o.total_limit?' / '+o.total_limit:'')+' · '+(!o.active?'Выключено':expired?'Срок истёк':'Включено')));
-   row.append(window.pushokLinks.share('offer_'+o.id.replaceAll('-',''),'🎁 '+o.name+' — '+o.percent+'% на размещение в puShok. Откройте приложение, чтобы применить предложение.'+(o.recipient_user_id?' Персональный купон.':'')));
+  if(!offersDeleted){const create=panel('Создать предложение');offerForm(create,available);root.append(create);}
+  const list=panel('Предложения и выданные бонусы'),tabs=el('nav',undefined,'bonus-tabs');
+  for(const [value,title] of [[false,'Предложения'],[true,'Удалённые предложения']]){const b=button(title,()=>{offersDeleted=value;return load(target);});b.setAttribute('aria-pressed',String(offersDeleted===value));tabs.append(b);}list.append(tabs);
+  if(!data.offers.length)list.append(el('p',offersDeleted?'Удалённых предложений нет.':'Предложений пока нет.'));
+  data.offers.forEach(o=>{const row=el('article',undefined,'card bonus-offer');const expired=o.ends_at&&new Date(o.ends_at)<=new Date();row.append(el('h3',o.name),el('p',({promo:'Промокод',discount:'Скидка',gift:'Подарок',referral:'Реферальный бонус'})[o.kind]+' · '+o.percent+'% · '+(o.tariff_name||'Все тарифы')),el('p','Использовано: '+o.uses+(o.total_limit?' / '+o.total_limit:'')+' · '+(o.deleted_at?'Удалено':!o.active?'Выключено':expired?'Срок истёк':'Включено')));
    if(o.code)row.append(el('p',o.code,'growth-code'));if(o.ends_at)row.append(el('p','До '+date(o.ends_at),'muted'));
-   if(o.kind!=='referral')row.append(button(o.active?'Выключить':'Включить',async()=>{await api('/admin/growth/offers/'+o.id,{method:'PATCH',body:{active:!o.active}});await load(target);}));list.append(row);
+   if(o.recipient_user_id)row.append(el('p','Получатель: '+(o.recipient_username?'@'+o.recipient_username:'ID '+o.recipient_telegram_id),'muted'));
+   const actions=el('div',undefined,'bonus-actions');row.append(actions);function action(text,icon,fn){const b=button(text,fn);b.prepend(window.pushokViews.icon(icon));actions.append(b);}
+   if(o.deleted_at)action('Восстановить','refresh',async()=>{await api('/admin/growth/offers/'+o.id+'/restore',{method:'POST'});await load(target);});
+   else{
+    actions.append(window.pushokLinks.share('offer_'+o.id.replaceAll('-',''),'🎁 '+o.name+' — '+o.percent+'% на размещение в puShok. Откройте приложение, чтобы применить предложение.'+(o.recipient_user_id?' Персональный купон.':'')));
+    if(o.code)action('Скопировать код','copy',async()=>{await navigator.clipboard.writeText(o.code);notice('Код скопирован.',true);});
+    action('Изменить','edit',()=>{row.querySelector('.offer-editor')?.remove();offerForm(row,available,o).scrollIntoView({block:'center'});});
+    action('Удалить','trash',async()=>{if(!confirm('Удалить «'+o.name+'»? Новые применения прекратятся. История заявок и начислений сохранится.'))return;await api('/admin/growth/offers/'+o.id,{method:'DELETE'});await load(target);});
+    if(o.kind!=='referral'||o.active)action(o.active?'Выключить':'Включить','status',async()=>{await api('/admin/growth/offers/'+o.id,{method:'PATCH',body:{active:!o.active}});await load(target);});
+   }list.append(row);
   });root.append(list);
+ }
+ function offerForm(parent,available,o=null){
+  const f=el('form',undefined,'offer-editor'),referral=o?.kind==='referral',used=Boolean(o?.uses);
+  const kind=field(f,'Тип предложения','select');[['Промокод','promo'],['Автоматическая скидка','discount'],['Подарочное размещение','gift'],...(referral?[['Реферальный купон','referral']]:[])].forEach(([l,v])=>option(kind,l,v));if(o)kind.value=o.kind;kind.disabled=Boolean(o);
+  const name=field(f,'Название','text',o?.name||'',true);name.maxLength=100;
+  const code=field(f,'Промокод','text',o?.code||'PUSHOK-'+crypto.randomUUID().slice(0,8).toUpperCase(),true);code.maxLength=48;code.pattern='[A-Za-z0-9_-]{3,48}';
+  const pct=field(f,'Скидка, %','number',o?.percent||10,true);pct.min=1;pct.max=100;
+  const tariff=field(f,'Тариф','select');
+  const hours=field(f,'Минимальная длительность размещения, часов','number',o?o.min_duration_seconds/3600:0,true);hours.min=0;hours.max=8760;
+  const local=value=>value?new Date(new Date(value)-new Date(value).getTimezoneOffset()*60000).toISOString().slice(0,16):'';
+  const start=field(f,'Начало (ваше местное время; пусто — сейчас)','datetime-local',local(o?.starts_at));
+  const end=field(f,'Окончание (ваше местное время; пусто — без срока)','datetime-local',local(o?.ends_at));
+  const limit=field(f,'Всего заявок (пусто — без ограничения)','number',o?.total_limit||'');limit.min=Math.max(1,o?.uses||0);limit.max=1000000;
+  const own=field(f,'Заявок на одного пользователя','number',o?.per_user_limit||1,true);own.min=1;own.max=1000000;
+  const personal=field(f,'Персональное предложение','checkbox');personal.checked=Boolean(o?.recipient_user_id);personal.disabled=used||referral;
+  const recipient=window.pushokUsers.picker(f,{label:'Получатель предложения: @никнейм или ID',value:o?.recipient_telegram_id?String(o.recipient_telegram_id):o?.recipient_user_id||''});
+  function recipientMode(){recipient.disable(!personal.checked||used||referral);}personal.addEventListener('change',recipientMode);recipientMode();
+  function mode(){const gift=kind.value==='gift',selected=tariff.value||o?.tariff_id;tariff.replaceChildren();option(tariff,gift?'Выберите платный тариф':'Все тарифы','');available.filter(t=>!t.admin_only&&(!gift||t.price_kopecks>0)).forEach(t=>option(tariff,t.name,t.id));if(o?.tariff_id&&![...tariff.options].some(t=>t.value===o.tariff_id))option(tariff,o.tariff_name||'Сохранённый тариф',o.tariff_id);tariff.value=[...tariff.options].some(t=>t.value===selected)?selected:'';code.parentElement.hidden=kind.value!=='promo';code.required=kind.value==='promo';code.disabled=kind.value!=='promo'||used;pct.disabled=gift||referral;if(gift)pct.value=100;tariff.required=gift;limit.disabled=gift||referral;if(gift)limit.value=1;own.disabled=gift||referral;if(gift)own.value=1;for(const input of [tariff,hours,start])input.disabled=referral;}
+  kind.addEventListener('change',mode);mode();
+  f.append(el('p',referral?'Условия заработанного купона зафиксированы. Можно изменить название и срок либо выключить купон.':o?'Изменения действуют на новые заявки. Уже созданные заявки сохранят свою цену; использованный код и получатель зафиксированы.':'Применяется одна, самая выгодная скидка. Лимит расходуется при отправке заявки. Персональное предложение доступно только выбранному пользователю.','muted'));
+  save(f,o?'Сохранить предложение':'Создать предложение');bind(f,async()=>{
+   const user=personal.checked&&!used&&!referral?await recipient.resolve():null;
+   const body={kind:kind.value,name:name.value,code:kind.value==='promo'?code.value:o?.code||null,percent:Number(pct.value),tariff_id:tariff.value||null,min_duration_seconds:Math.round(Number(hours.value)*3600),starts_at:o&&start.value===local(o.starts_at)?o.starts_at:start.value?new Date(start.value).toISOString():null,ends_at:o&&end.value===local(o.ends_at)?o.ends_at:end.value?new Date(end.value).toISOString():null,total_limit:limit.value?Number(limit.value):null,per_user_limit:Number(own.value),recipient_user_id:used||referral?o.recipient_user_id:personal.checked?user?.id:null};
+   if(personal.checked&&!body.recipient_user_id)throw Error('Выберите получателя предложения.');
+   return api('/admin/growth/offers'+(o?'/'+o.id:''),{method:o?'PUT':'POST',body});
+  });if(o)f.append(button('Отмена',()=>f.remove()));parent.append(f);return f;
  }
  function rewardDescription(r){return r.reward_mode==='bonus'?money(r.reward_bonus_kopecks)+' на бонусный баланс':'купон на скидку '+r.reward_percent+'%, срок '+r.reward_days+' дней';}
  function invitationList(root,mine){
@@ -102,10 +124,10 @@ window.pushokGrowth=(()=>{
    const rewards=panel('Мои купоны');if(!mine.coupons.length)rewards.append(el('p','Бонусных купонов пока нет.'));
    mine.coupons.forEach(c=>{const row=el('article',undefined,'card'),expired=c.ends_at&&new Date(c.ends_at)<=new Date();row.append(el('h3',c.name+' · '+c.percent+'%'),el('p',c.used?'Использован':!c.active?'Отменён':expired?'Срок истёк':'Доступен'),el('p',c.code,'growth-code'));if(c.ends_at)row.append(el('p','До '+date(c.ends_at),'muted'));row.append(window.pushokLinks.share('offer_'+c.id.replaceAll('-',''),'🎁 Персональный купон puShok: '+c.percent+'%. Доступен только владельцу купона.'));rewards.append(row);});
    rewards.append(el('p','Введите код купона, подарка или промокод при создании заявки. Он применяется к одной заявке; скидки не суммируются. Это скидка на размещение puShok, не денежный баланс.','muted'));const order=el('a','Создать размещение →');order.href='#/create';rewards.append(order);root.append(rewards);
-   if(me.role==='admin'){const [data,available]=await Promise.all([api('/admin/growth'),api('/admin/tariffs')]);if(version!==epoch||session!==token||uid!==me?.id)return;adminPanels(root,data,available);}
+   if(me.role==='admin'){const [data,available]=await Promise.all([api('/admin/growth?deleted='+offersDeleted),api('/admin/tariffs')]);if(version!==epoch||session!==token||uid!==me?.id)return;adminPanels(root,data,available);}
    root.querySelectorAll('.panel').forEach(panel=>{const notes=[...panel.querySelectorAll(':scope > p.muted')];if(notes.length)panel.append(window.pushokViews.disclosure('Условия и подробности',notes));});
    node.replaceChildren(root);
   }catch(e){if(version===epoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить',()=>load(node)));}
  }
- return {load,overview,reset(){epoch++;overviewEpoch++;if(target)target.replaceChildren();target=null;}};
+ return {load,overview,reset(){offersDeleted=false;epoch++;overviewEpoch++;if(target)target.replaceChildren();target=null;}};
 })();

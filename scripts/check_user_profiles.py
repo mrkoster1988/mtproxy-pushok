@@ -69,7 +69,7 @@ def check_user_profiles(browser, base, output, failures, dsn):
             expect(own.locator('.profile-details')).to_contain_text('В кабинете с')
             own.get_by_text('Сведения об аккаунте',exact=True).click()
             client.screenshot(path=str(output/'51-own-profile.png'))
-            for label,route in (('Каналы: 1','channels'),('Кампании: 11','campaigns'),('Архив: 1','archive')):
+            for label,route in (('Каналы: 1','channels'),('Кампании: 11','campaigns/mine'),('Архив: 1','archive')):
                 own.get_by_role('button',name=label,exact=True).click()
                 expect(client).to_have_url(base+'/#/'+route)
                 go(client,'profile')

@@ -52,7 +52,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.33",
+    version="1.34",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -3001,3 +3001,6 @@ app.include_router(campaign_pricing_router(lambda: DATABASE_URL, require_admin))
 
 from .user_profiles import router_for as user_profiles_router
 app.include_router(user_profiles_router(lambda: DATABASE_URL, get_current_user))
+
+from .admin_users import router_for as admin_users_router
+app.include_router(admin_users_router(lambda: DATABASE_URL, require_admin))

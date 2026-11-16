@@ -107,6 +107,7 @@ window.pushokViews=(()=>{
   const groups=[['Мой кабинет',[['channels','channel','Мои каналы'],['reports','chart','Отчёты'],['growth','gift','Бонусы и подарки']]]];
   if(['admin','operator'].includes(me.role)){
    const admin=[['moderation','moderation','Модерация'],['sponsors','server','Узлы и спонсоры']];
+   if(me.role==='admin')admin.unshift(['users','users','Пользователи']);
    if(me.role==='admin')admin.push(['settings','settings','Настройки']);
    groups.push(['Управление',admin]);
   }

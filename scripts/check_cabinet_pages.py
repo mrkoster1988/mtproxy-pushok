@@ -484,7 +484,7 @@ def main():
                 admin.locator('#loading-title-form').screenshot(path=str(output/'loading-form-no-frame.png'))
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute("INSERT INTO users(telegram_user_id,first_name) VALUES(991199001,'Тест команды')")
-                admin.locator('#team-id').fill('991199001')
+                admin.get_by_label('Пользователь для назначения роли',exact=True).fill('991199001')
                 admin.locator('#team-role').select_option('admin')
                 admin.once('dialog',lambda dialog:dialog.accept())
                 admin.locator('#team-form button[type=submit]').click()
@@ -531,7 +531,7 @@ def main():
                 advertiser.get_by_label('Поиск кампаний', exact=True).press('Enter')
                 expect(advertiser.locator('#campaigns')).to_contain_text('Поиск не дал результатов')
                 advertiser.get_by_role('button', name='Сбросить поиск и фильтр', exact=True).click()
-                expect(advertiser.locator('#campaigns')).to_contain_text('Заявок пока нет')
+                expect(advertiser.locator('#campaigns')).to_contain_text('У вас нет текущих личных кампаний')
                 expect(advertiser.locator('#campaigns')).not_to_contain_text('Исправленный канал')
                 go(advertiser, 'help')
                 advertiser.locator('[data-page=help] summary').first.click()
@@ -1297,7 +1297,7 @@ def main():
                 go(admin,'wallet')
                 open_wallet_tools(admin)
                 expect(admin.locator('[data-page=wallet]')).to_contain_text('Управление балансами')
-                admin.get_by_label('Telegram ID пользователя',exact=True).fill('7909549877')
+                admin.get_by_label('Пользователь: @никнейм или ID',exact=True).fill('7909549877')
                 admin.get_by_role('button',name='Найти пользователя',exact=True).click()
                 expect(admin.locator('.wallet-lookup-error')).to_contain_text('Пользователь не найден')
                 go(admin,'campaigns');go(admin,'wallet');open_wallet_tools(admin)
@@ -1306,7 +1306,7 @@ def main():
                 admin.get_by_role('button',name='К моему балансу',exact=True).click()
                 expect(admin.locator('.wallet-lookup-error')).to_have_count(0)
                 open_wallet_tools(admin)
-                admin.get_by_label('Telegram ID пользователя',exact=True).fill('99116000')
+                admin.get_by_label('Пользователь: @никнейм или ID',exact=True).fill('99116000')
                 admin.get_by_role('button',name='Найти пользователя',exact=True).click()
                 expect(admin.get_by_role('heading',name='Ручная операция',exact=True)).to_be_visible()
                 admin.get_by_label('Сумма операции',exact=True).fill('300')
@@ -1510,7 +1510,7 @@ def main():
                 admin.get_by_label('Название подарка',exact=True).fill('Персональный подарок')
                 admin.get_by_label('Подарок, бонусных ₽',exact=True).fill('50.25')
                 admin.get_by_label('Только одному пользователю Telegram',exact=True).check()
-                admin.get_by_label('Telegram ID получателя подарка',exact=True).fill('99116003')
+                admin.get_by_label('Получатель подарка: @никнейм или ID',exact=True).fill('99116003')
                 expect(admin.get_by_label('Количество получателей',exact=True)).to_be_disabled()
                 expect(admin.get_by_label('Количество получателей',exact=True)).to_have_value('1')
                 admin.get_by_label('Действует до (ваше время)',exact=True).fill((datetime.now(timezone.utc)+timedelta(days=30)).strftime('%Y-%m-%dT%H:%M'))
@@ -1554,6 +1554,8 @@ def main():
 
                 from check_user_profiles import check_user_profiles
                 check_user_profiles(browser, base, output, failures, PostgresIntegration.dsn)
+                from check_admin_users import check_admin_users
+                check_admin_users(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_automatic_schedule import check_automatic_schedule
                 check_automatic_schedule(browser, base, output, failures, PostgresIntegration.dsn)
                 assert not failures, failures
