@@ -1,7 +1,7 @@
 """Цвета Telegram-кнопок по действию; подписи, ссылки и callback не меняются."""
 
 _ACTIONS = {
-    "advertise": "success", "draft:confirm": "success",
+    "help": "primary", "advertise": "success", "draft:confirm": "success",
     "start": "primary", "campaigns": "primary", "tariffs": "primary",
     "moderation": "primary", "delivery:refresh": "primary",
     "draft:cancel": "danger", "review:cancel": "danger",
@@ -28,7 +28,7 @@ def _style(button):
 
 
 def with_button_styles(payload):
-    """Копия сообщения с нативными цветами. Помощь и неизвестные действия нейтральны."""
+    """Копия сообщения с нативными цветами. Неизвестные действия остаются нейтральными."""
     markup = payload.get("reply_markup")
     if not isinstance(markup, dict) or not isinstance(markup.get("inline_keyboard"), list):
         return payload
@@ -43,3 +43,4 @@ def with_button_styles(payload):
             buttons.append({**button, "style": style} if style and "style" not in button else dict(button))
         colored.append(buttons)
     return {**payload, "reply_markup": {**markup, "inline_keyboard": colored}}
+

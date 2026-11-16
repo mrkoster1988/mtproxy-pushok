@@ -58,12 +58,12 @@ def keyboard():
         [{"text": "📢 Разместить рекламу", "callback_data": "advertise"}],
         [{"text": "📋 Мои кампании", "callback_data": "campaigns"}],
         [{"text": "📣 Наш канал", "url": CHANNEL_URL},
-         {"text": "❓ Помощь", "callback_data": "help"}],
+         {"text": "❓ Помощь", "callback_data": "help", "style": "primary"}],
     ]}
     url = miniapp_url()
     proxy = current_proxy_url()
     if url:
-        result['inline_keyboard'][0] = [{'text': '📢 Разместить рекламу', 'web_app': {'url': url + '#/create'}}]
+        result['inline_keyboard'][0] = [{'text': '📢 Разместить рекламу', 'web_app': {'url': url + '#/create'}, 'style':'success'}]
     if proxy:
         result['inline_keyboard'].insert(0, [{'text': '🔗 Подключить прокси', 'url': proxy, 'style': 'danger'}])
     # Необязательные фирменные иконки; без реальных IDs структура кнопок не меняется.
@@ -520,7 +520,7 @@ def process_stars_update(update, token, internal_api=None, send=None):
 
 
 def response_for(update, campaign_loader=None, wizard=None, submitter=None,
-                 operator_inbox=None, delivery_inbox=None, tariff_loader=None, referral_handler=None):
+                 operator_inbox=None, delivery_inbox=None, tariff_loader=None, referral_handler=None, coupon_handler=None):
     """Вернуть (sendMessage_payload, callback_query_id) либо None."""
     # Старые кнопки и /advertise тоже открывают ту же единую форму.
     launch = miniapp_url()
@@ -530,6 +530,15 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
     actor = (callback or message).get('from') or {}
     command = str(message.get('text') or '').split(maxsplit=1)
     command = command[0].lower() if command else ''
+    coupon = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+c_([a-fA-F0-9]{32})', str(message.get('text') or ''), re.IGNORECASE)
+    if coupon and coupon_handler and chat.get('type')=='private' and type(actor.get('id')) is int and actor['id']==chat.get('id'):
+        try:
+            coupon_handler(actor['id'],coupon[1])
+            text='🎁 Купон теперь ваш! Он появится в кабинете → Бонусы и подарки. Действует на рублёвое размещение на сайте, не на оплату Stars.'
+        except HTTPError as exc:
+            if exc.code not in (400,403,404,409,422):raise
+            text='Купон недоступен: он уже использован, передан другому человеку или срок истёк.'
+        return ({'chat_id':chat['id'],'text':text,'reply_markup':keyboard()},None)
     invite = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+(?:ref_|r_)([A-Za-z0-9_-]{3,48})', str(message.get('text') or ''), re.IGNORECASE)
     if invite and referral_handler and chat.get('type') == 'private' and type(actor.get('id')) is int and actor['id'] == chat.get('id'):
         try:
@@ -674,6 +683,7 @@ def run():
                                         submitter=submit_campaign_draft,
                                         operator_inbox=operator_inbox,
                                         delivery_inbox=delivery_inbox,
+                                        coupon_handler=lambda uid,code: _internal_api('coupon', {'telegram_user_id':uid,'code':code}),
                                         referral_handler=lambda uid,code: _internal_api('referral', {'telegram_user_id':uid,'code':code}))
                 if response is not None:
                     payload, callback_id = response

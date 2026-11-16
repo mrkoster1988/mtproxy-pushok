@@ -1,0 +1,29 @@
+'use strict';
+window.pushokRefunds=(()=>{
+ Object.assign(errors,{refund_not_paid:'У заявки нет подтверждённой оплаты.',refund_in_progress:'Предыдущий возврат ещё не проверен. Обновите его статус.',refund_request_conflict:'Параметры запроса изменились. Обновите карточку.',refund_amount_exceeds_remaining:'Сумма больше доступного остатка. Обновите карточку.',refund_stars_full_only:'Telegram Stars можно вернуть только целиком.',refund_sbp_minimum:'Для СБП сумма возврата — от 1 ₽. Остаток также должен быть не меньше 1 ₽ или равен нулю.',refund_manual_confirmation:'Подтвердите, что уже вернули деньги вне кабинета.',refund_provider_changed:'Настройки платёжного провайдера изменились. Нужна проверка владельца.',refund_manual_review_required:'Нужна сверка у провайдера. Новый возврат не создаётся.',refund_payment_ambiguous:'Не удалось однозначно определить оплату. Нужна сверка.',refund_provider_unavailable:'Провайдер не подтвердил результат. Проверьте этот возврат повторно.'});
+ const labels={created:'Запрос сохранён',pending:'Ожидаем провайдера',review:'Нужна проверка',succeeded:'Возвращено',canceled:'Провайдер отменил возврат'};
+ async function load(c,root){
+  const session=token;root.replaceChildren(el('h3','Возврат оплаты'),el('p','Проверяем платежи…','muted'));
+  try{const data=await api('/admin/campaigns/'+c.id+'/refunds');if(!root.isConnected||session!==token)return;
+   root.replaceChildren(el('h3','Возврат оплаты'));const fmt=n=>data.currency==='XTR'?n+' Stars':money(n);
+   if(!data.paid_confirmed){root.append(el('p','Возврат доступен после подтверждения оплаты.','muted'));return;}
+   root.append(el('p',({wallet:'На внутренний баланс',sbp:'СБП — на счёт плательщика',telegram_stars:'В личный баланс Stars',manual:'Ручная оплата — учёт выполненного возврата'})[data.source]),el('p','Оплачено: '+fmt(data.paid)+' · Возвращено: '+fmt(data.refunded)),el('p','Доступно к возврату: '+fmt(data.remaining)));
+   const pending=data.items.some(r=>['created','pending','review'].includes(r.status));
+   for(const r of data.items){const row=el('article',undefined,'card');row.append(el('p',labels[r.status]+' · '+fmt(r.amount)),el('p',date(r.created_at)+' · '+r.reason,'muted'));if(r.error_code)row.append(el('p',errors[r.error_code]||'Требуется сверка.'));if(['created','pending','review'].includes(r.status))row.append(button('Проверить возврат',async()=>{await api('/admin/campaigns/'+c.id+'/refunds/'+r.id+'/retry',{method:'POST'});await load(c,root);}));if(data.source==='sbp'&&r.status==='review'&&!r.provider_refund_id){const id=el('input');id.placeholder='ID возврата из ЮKassa';id.setAttribute('aria-label','ID возврата из ЮKassa');const reconcile=button('Сверить по ID',async()=>{if(!id.value.trim())return;await api('/admin/campaigns/'+c.id+'/refunds/'+r.id+'/retry',{method:'POST',body:{provider_refund_id:id.value.trim()}});await load(c,root);});row.append(el('p','Если ЮKassa уже выполнила возврат, укажите его ID. Проверка не отправляет деньги повторно.','muted'),id,reconcile);}root.append(row);}
+   if(pending||!data.remaining)return;
+   if(c.placement_status==='active'){root.append(el('p','Сначала завершите размещение и подтвердите снятие спонсора.','muted'));return;}
+   const open=button('Вернуть средства',()=>{form.hidden=!form.hidden;});open.prepend(window.pushokViews.icon('back'));root.append(open);
+   const form=el('form');form.hidden=true;const mode=el('select');option(mode,'full','Полный возврат');if(data.partial_allowed)option(mode,'partial','Частичный возврат');mode.setAttribute('aria-label','Вид возврата');
+   const amount=el('input');amount.type='number';amount.step=data.currency==='XTR'?'1':'0.01';amount.min=data.currency==='XTR'||data.source==='sbp'?'1':'0.01';amount.max=String(data.currency==='XTR'?data.remaining:data.remaining/100);amount.value=amount.max;amount.readOnly=true;amount.required=true;amount.setAttribute('aria-label','Сумма возврата');mode.addEventListener('change',()=>{amount.readOnly=mode.value==='full';if(amount.readOnly)amount.value=amount.max;});
+   const reason=el('input');reason.required=true;reason.minLength=3;reason.maxLength=500;reason.setAttribute('aria-label','Причина возврата');reason.placeholder='Причина возврата';
+   form.append(mode,el('label',data.currency==='XTR'?'Сумма, Stars':'Сумма, ₽'),amount,reason);
+   if(!data.partial_allowed)form.append(el('p','Для Stars доступен только полный возврат.','muted'));
+   if(data.source==='wallet')form.append(el('p','Сначала возвращаются бонусные рубли, затем денежные. Бонусы остаются бонусами.','muted'));
+   form.append(el('p','Будущее размещение будет отменено. Реферальная награда за эту оплату отзывается.','muted'));
+   const confirmed=el('input');confirmed.type='checkbox';if(data.source==='manual'){confirmed.required=true;const label=el('label','Я уже вернул деньги плательщику вне кабинета');label.prepend(confirmed);form.append(label);}
+   const submit=el('button',data.source==='manual'?'Записать выполненный возврат':'Подтвердить возврат');submit.type='submit';form.append(submit);let request=crypto.randomUUID();
+   form.addEventListener('submit',async e=>{e.preventDefault();if(!form.reportValidity())return;const n=Math.round(Number(amount.value)*(data.currency==='XTR'?1:100));if(!confirm('Подтвердить возврат '+fmt(n)+'?'))return;submit.disabled=true;try{const r=await api('/admin/campaigns/'+c.id+'/refunds',{method:'POST',body:{request_id:request,amount:n,reason:reason.value.trim(),manual_confirmed:confirmed.checked}});notice(r.status==='succeeded'?'Возврат подтверждён.':'Запрос сохранён. Результат ещё проверяется.',r.status==='succeeded');await load(c,root);}catch(e){notice(e.message);}finally{submit.disabled=false;}});root.append(form);
+  }catch(e){if(root.isConnected&&session===token)root.replaceChildren(el('h3','Возврат оплаты'),el('p',e.message),button('Повторить',()=>load(c,root)));}
+ }
+ return {load};
+})();

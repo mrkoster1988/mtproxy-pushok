@@ -714,7 +714,7 @@ async function refresh({background=false}={}){
  if(window.cabinet)window.cabinet.sync(own,{background});
 }
 async function enter(){
- me=await api('/me');channels=await api('/channels');tariffs=await api('/me/tariffs');updatePublicPrice();
+ me=await api('/me');window.pushokVisitors?.start();channels=await api('/channels');tariffs=await api('/me/tariffs');updatePublicPrice();
  const isOperator=['operator','admin'].includes(me.role);nodes=isOperator?await api('/operator/proxy-nodes'):[];
  $('identity').textContent=me.first_name||'Рекламодатель';$('logout').hidden=false;
  $('login').hidden=true;$('workspace').hidden=false;$('operator-tab').hidden=!isOperator;

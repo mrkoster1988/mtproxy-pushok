@@ -110,6 +110,12 @@ def main():
                 result['slots'] = schedule_once(os.environ['DATABASE_URL'])
             except psycopg.Error:
                 result['slots'] = {'status': 'retry'}
+        if args.apply:
+            try:
+                from .refunds import service_once as refund_once
+                result['refunds']=refund_once(os.environ['DATABASE_URL'],limit=args.limit)
+            except (psycopg.Error,HTTPException):
+                result['refunds']={'status':'review'}
         print(json.dumps(result), flush=True)
         if args.once:
             return

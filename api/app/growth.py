@@ -6,7 +6,7 @@ import re
 import secrets
 from datetime import datetime, timezone
 from typing import Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psycopg
 from psycopg.rows import dict_row
@@ -216,7 +216,7 @@ def router_for(get_dsn, get_user, require_admin):
             conn.execute('INSERT INTO growth_profiles(user_id) VALUES(%s) ON CONFLICT DO NOTHING', (user['id'],))
             code = short_referral_code(conn, user['id'])
             settings = conn.execute('SELECT * FROM growth_settings').fetchone()
-            coupons = conn.execute('''SELECT o.id,o.name,o.code,o.percent,o.ends_at,o.active,
+            coupons = conn.execute('''SELECT o.id,o.kind,o.name,o.code,o.percent,o.ends_at,o.active,o.recipient_user_id,
                 EXISTS(SELECT 1 FROM growth_redemptions d WHERE d.offer_id=o.id) AS used
                 FROM growth_offers o WHERE recipient_user_id=%s ORDER BY created_at DESC LIMIT 100''', (user['id'],)).fetchall()
             count = conn.execute('SELECT count(*) AS n FROM growth_referrals WHERE inviter_user_id=%s', (user['id'],)).fetchone()['n']
@@ -250,6 +250,49 @@ def router_for(get_dsn, get_user, require_admin):
             conn.execute('INSERT INTO users(telegram_user_id) VALUES(%s) ON CONFLICT DO NOTHING', (payload.telegram_user_id,))
             uid = conn.execute('SELECT id FROM users WHERE telegram_user_id=%s', (payload.telegram_user_id,)).fetchone()['id']
             return claim_referral(conn, uid, payload.code)
+        return db(action)
+
+    @router.post('/growth/coupons/{offer_id}/share')
+    def share_coupon(offer_id:UUID,response:Response,user=Depends(get_user)):
+        no_cache(response)
+        def action(conn):
+            offer=conn.execute('SELECT * FROM growth_offers WHERE id=%s FOR UPDATE',(offer_id,)).fetchone()
+            if not offer or offer['recipient_user_id']!=user['id']:
+                raise HTTPException(404,'growth_code_unavailable')
+            if not offer['active'] or (offer['ends_at'] and offer['ends_at']<=datetime.now(timezone.utc)) or conn.execute('SELECT 1 FROM growth_redemptions WHERE offer_id=%s',(offer_id,)).fetchone():
+                raise HTTPException(409,'growth_code_unavailable')
+            row=conn.execute('SELECT * FROM growth_coupon_shares WHERE offer_id=%s',(offer_id,)).fetchone()
+            if not row or row['owner_id']!=user['id'] or row['claimed_by']:
+                row=conn.execute('''INSERT INTO growth_coupon_shares(offer_id,owner_id) VALUES(%s,%s)
+                    ON CONFLICT(offer_id) DO UPDATE SET owner_id=excluded.owner_id,token=gen_random_uuid(),
+                    claimed_by=NULL,claimed_at=NULL,created_at=now() RETURNING token''',(offer_id,user['id'])).fetchone()
+            bot=os.getenv('TELEGRAM_BOT_USERNAME','mtproxy_pushok_bot').lstrip('@')
+            if not re.fullmatch(r'[A-Za-z0-9_]{5,32}',bot):raise HTTPException(503,'growth_link_unavailable')
+            return {'link':'https://t.me/'+bot+'?start=c_'+row['token'].hex,'percent':offer['percent'],'name':offer['name']}
+        return db(action)
+
+    @router.post('/internal/bot/coupon',include_in_schema=False)
+    def accept_coupon(payload:BotClaimInput,response:Response,x_pushok_bot_secret:str|None=Header(default=None)):
+        _verify_bot_secret(x_pushok_bot_secret);no_cache(response)
+        try:share_token=UUID(payload.code)
+        except ValueError:raise HTTPException(404,'growth_code_unavailable') from None
+        def action(conn):
+            share=conn.execute('SELECT * FROM growth_coupon_shares WHERE token=%s',(share_token,)).fetchone()
+            if not share:raise HTTPException(404,'growth_code_unavailable')
+            offer=conn.execute('SELECT * FROM growth_offers WHERE id=%s FOR UPDATE',(share['offer_id'],)).fetchone()
+            share=conn.execute('SELECT * FROM growth_coupon_shares WHERE token=%s FOR UPDATE',(share_token,)).fetchone()
+            if not share:raise HTTPException(409,'growth_code_unavailable')
+            conn.execute('INSERT INTO users(telegram_user_id) VALUES(%s) ON CONFLICT DO NOTHING',(payload.telegram_user_id,))
+            uid=conn.execute('SELECT id FROM users WHERE telegram_user_id=%s',(payload.telegram_user_id,)).fetchone()['id']
+            if share['claimed_by']==uid:return {'saved':True}
+            if (share['claimed_by'] or share['owner_id']==uid or offer['recipient_user_id']!=share['owner_id']
+                or not offer['active'] or (offer['ends_at'] and offer['ends_at']<=datetime.now(timezone.utc))
+                or conn.execute('SELECT 1 FROM growth_redemptions WHERE offer_id=%s',(offer['id'],)).fetchone()):
+                raise HTTPException(409,'growth_code_unavailable')
+            conn.execute('UPDATE growth_offers SET recipient_user_id=%s WHERE id=%s',(uid,offer['id']))
+            conn.execute('UPDATE growth_coupon_shares SET claimed_by=%s,claimed_at=now() WHERE token=%s',(uid,share_token))
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'coupon_transferred',jsonb_build_object('offer_id',%s::uuid,'from_user',%s::uuid))",(uid,offer['id'],share['owner_id']))
+            return {'saved':True}
         return db(action)
 
     @router.get('/admin/growth')

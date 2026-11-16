@@ -4,6 +4,7 @@ window.pushokViews=(()=>{
  function icon(name){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.classList.add('ui-icon');
+  if(name==='share'){svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.8');const path=document.createElementNS('http://www.w3.org/2000/svg','path');path.setAttribute('d','M8.5 10.5l7-4m-7 7l7 4M8.5 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM21 5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm0 14a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z');svg.append(path);return svg;}
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg#pi-'+name);svg.append(use);return svg;
  }
  // Иконка всегда имеет доступное имя и подпись при наведении.
@@ -112,7 +113,7 @@ window.pushokViews=(()=>{
   const groups=[['Мой кабинет',[['channels','channel','Мои каналы'],['reports','chart','Отчёты'],['growth','gift','Бонусы и подарки']]]];
   if(['admin','operator'].includes(me.role)){
    const admin=[['moderation','moderation','Модерация'],['sponsors','server','Узлы и спонсоры']];
-   if(me.role==='admin')admin.push(['settings','settings','Настройки']);
+   if(me.role==='admin')admin.push(['visitors','users','Посетители'],['settings','settings','Настройки']);
    groups.push(['Управление',admin]);
   }
   groups.push(['Поддержка',[['help','support','Помощь'],['bot','channel','Telegram-бот']]]);

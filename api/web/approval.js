@@ -149,6 +149,7 @@ window.pushokApproval=(()=>{
    check(block.f,'Тег кампании снят; в подключённом Telegram без подписки канал больше не показан как спонсор');block.finish();
   }
   if(!c.archived_at&&window.pushokManagement)box.append(window.pushokManagement.campaignActions(c,true));
+  if(me.role==='admin'){const refunds=el('section',undefined,'campaign-refunds');box.append(refunds);void window.pushokRefunds?.load(c,refunds);}
   const history=details('История и документы',box);
   history.append(el('p','Номер заявки: '+c.id),el('p','Желаемое начало: '+date(c.requested_start_at)),button('Отчёт по кампании',()=>showCampaignReport(c,history)));
   if(['scheduled','active','completed'].includes(c.placement_status))history.append(button('Журнал проверок',async()=>{

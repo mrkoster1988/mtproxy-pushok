@@ -20,6 +20,16 @@ window.pushokGrowth=(()=>{
  function panel(title){const p=el('section',undefined,'panel');p.append(el('h2',title));return p;}
  function bind(form,fn){form.addEventListener('submit',async e=>{e.preventDefault();const b=form.querySelector('button[type="submit"]');b.disabled=true;try{await fn();notice('Сохранено.',true);await load(target);}catch(err){notice(err.message);}finally{b.disabled=false;}});}
  function save(form,text){const b=el('button',text,'primary');b.type='submit';form.append(b);}
+ function shareAction(url,text,label='Поделиться предложением'){
+  const share=el('a','','ui-button');share.href='https://t.me/share/url?url='+encodeURIComponent(url)+'&text='+encodeURIComponent(text);share.target='_blank';share.rel='noopener noreferrer';window.pushokViews.iconAction(share,'share',label);share.addEventListener('click',event=>{if(miniAppMode&&typeof window.Telegram?.WebApp?.openTelegramLink==='function'){event.preventDefault();window.Telegram.WebApp.openTelegramLink(share.href);}});return share;
+ }
+ function offerShare(row,o){
+  if(!o.active||o.used||(o.ends_at&&new Date(o.ends_at)<=new Date())||(o.total_limit&&o.uses>=o.total_limit))return;
+  const actions=el('div',undefined,'offer-share-actions');
+  if(o.recipient_user_id){if(o.recipient_user_id!==me.id)return;const prepare=button('Передать купон',async()=>{const data=await api('/growth/coupons/'+o.id+'/share',{method:'POST'});actions.replaceChildren(shareAction(data.link,'🎁 Дарю купон puShok: −'+o.percent+'% на рекламу канала!\nОткрой ссылку и нажми «Запустить». Купон получит первый открывший; оплата в рублях на сайте.','Отправить купон'));actions.append(el('p','Купон перейдёт первому получателю ссылки. До принятия он остаётся у вас.','muted'));});prepare.prepend(window.pushokViews.icon('share'));actions.append(prepare);
+  }else{const text=(o.kind==='gift'?'🎁 Подарок: размещение в puShok!':'✨ Скидка '+o.percent+'% на рекламу канала в puShok!')+'\n'+(o.code?'🎟 Код: '+o.code:'Скидка применяется автоматически.')+(o.tariff_name?'\nТариф: '+o.tariff_name:'')+(o.min_duration_seconds?' · от '+o.min_duration_seconds/3600+' ч':'')+(o.ends_at?'\n⏳ До '+date(o.ends_at):'')+'\nДля рублёвых заявок на сайте. Лимиты и условия — при оформлении.';actions.append(shareAction(location.origin+'/#/create',text));}
+  row.append(actions);
+ }
  function adminPanels(root,data,available){
   const referral=panel('Реферальная программа'),rf=el('form');
   const enabled=field(rf,'Принимать новые приглашения','checkbox');enabled.checked=data.settings.referrals_enabled;
@@ -35,7 +45,7 @@ window.pushokGrowth=(()=>{
   const create=panel('Создать предложение'),f=el('form');
   const kind=field(f,'Тип предложения','select');[['Промокод','promo'],['Автоматическая скидка','discount'],['Подарочное размещение','gift']].forEach(([l,v])=>option(kind,l,v));
   const name=field(f,'Название','text','',true);name.maxLength=100;
-  const code=field(f,'Промокод','text','',true);code.maxLength=48;code.pattern='[A-Za-z0-9_-]{3,48}';
+  const code=field(f,'Промокод','text','PUSHOK-'+crypto.randomUUID().replaceAll('-','').slice(0,6).toUpperCase(),true);code.maxLength=48;code.pattern='[A-Za-z0-9_-]{3,48}';
   const pct=field(f,'Скидка, %','number','10',true);pct.min=1;pct.max=100;
   const tariff=field(f,'Тариф','select');option(tariff,'Все тарифы','');available.filter(t=>!t.admin_only).forEach(t=>option(tariff,t.name,t.id));
   const hours=field(f,'Минимальная длительность размещения, часов','number','0',true);hours.min=0;hours.max=8760;
@@ -51,6 +61,7 @@ window.pushokGrowth=(()=>{
   if(!data.offers.length)list.append(el('p','Предложений пока нет.'));
   data.offers.forEach(o=>{const row=el('article',undefined,'card');const expired=o.ends_at&&new Date(o.ends_at)<=new Date();row.append(el('h3',o.name),el('p',({promo:'Промокод',discount:'Скидка',gift:'Подарок',referral:'Реферальный бонус'})[o.kind]+' · '+o.percent+'% · '+(o.tariff_name||'Все тарифы')),el('p','Использовано: '+o.uses+(o.total_limit?' / '+o.total_limit:'')+' · '+(!o.active?'Выключено':expired?'Срок истёк':'Включено')));
    if(o.code)row.append(el('p',o.code,'growth-code'));if(o.ends_at)row.append(el('p','До '+date(o.ends_at),'muted'));
+   offerShare(row,o);
    if(o.kind!=='referral')row.append(button(o.active?'Выключить':'Включить',async()=>{await api('/admin/growth/offers/'+o.id,{method:'PATCH',body:{active:!o.active}});await load(target);}));list.append(row);
   });root.append(list);
  }
@@ -99,7 +110,7 @@ window.pushokGrowth=(()=>{
    if(!mine.bound&&mine.referrals_enabled){const form=el('form'),code=field(form,'Код пригласившего вас пользователя','text','',true);code.maxLength=48;save(form,'Принять приглашение');bind(form,()=>api('/growth/referral',{method:'POST',body:{code:code.value}}));p.append(form);}
    root.append(p);invitationList(root,mine);
    const rewards=panel('Мои купоны');if(!mine.coupons.length)rewards.append(el('p','Бонусных купонов пока нет.'));
-   mine.coupons.forEach(c=>{const row=el('article',undefined,'card'),expired=c.ends_at&&new Date(c.ends_at)<=new Date();row.append(el('h3',c.name+' · '+c.percent+'%'),el('p',c.used?'Использован':!c.active?'Отменён':expired?'Срок истёк':'Доступен'),el('p',c.code,'growth-code'));if(c.ends_at)row.append(el('p','До '+date(c.ends_at),'muted'));rewards.append(row);});
+   mine.coupons.forEach(c=>{const row=el('article',undefined,'card'),expired=c.ends_at&&new Date(c.ends_at)<=new Date();row.append(el('h3',c.name+' · '+c.percent+'%'),el('p',c.used?'Использован':!c.active?'Отменён':expired?'Срок истёк':'Доступен'),el('p',c.code,'growth-code'));if(c.ends_at)row.append(el('p','До '+date(c.ends_at),'muted'));offerShare(row,c);rewards.append(row);});
    rewards.append(el('p','Введите код купона, подарка или промокод при создании заявки. Он применяется к одной заявке; скидки не суммируются. Это скидка на размещение puShok, не денежный баланс.','muted'));const order=el('a','Создать размещение →');order.href='#/create';rewards.append(order);root.append(rewards);
    if(me.role==='admin'){const [data,available]=await Promise.all([api('/admin/growth'),api('/admin/tariffs')]);if(version!==epoch||session!==token||uid!==me?.id)return;adminPanels(root,data,available);}
    root.querySelectorAll('.panel').forEach(panel=>{const notes=[...panel.querySelectorAll(':scope > p.muted')];if(notes.length)panel.append(window.pushokViews.disclosure('Условия и подробности',notes));});

@@ -172,3 +172,5 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .referral-actions{display:flex;gap:4px;flex-shrink:0}
 .referral-actions .icon-action{width:40px;min-width:40px;min-height:44px;padding:8px}
 .referral-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+
+.cabinet-mode .mobile-bottom-nav .nav-badge{position:absolute;top:0;left:calc(50% + 7px);min-width:16px;height:16px;padding:0 4px;border-radius:9px;background:#c83c4d;color:#fff;font-size:10px;line-height:16px;text-align:center}.visitor-list{display:grid;gap:8px}.visitor-row{padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow-wrap:anywhere}.visitor-row p{margin:4px 0;font-size:12px}.offer-share-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
