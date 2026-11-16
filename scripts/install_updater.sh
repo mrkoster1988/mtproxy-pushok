@@ -10,6 +10,7 @@ cat > /etc/systemd/system/mtproxy-pushok-updater.service <<'UNIT'
 [Unit]
 Description=Pushok published release updater
 After=docker.service network-online.target
+StartLimitIntervalSec=0
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/mtproxy-pushok
@@ -27,6 +28,16 @@ Unit=mtproxy-pushok-updater.service
 [Install]
 WantedBy=multi-user.target
 UNIT
+cat > /etc/systemd/system/mtproxy-pushok-updater.timer <<'UNIT'
+[Unit]
+Description=Recover pending Pushok update requests
+[Timer]
+OnBootSec=60
+OnUnitInactiveSec=60
+Unit=mtproxy-pushok-updater.service
+[Install]
+WantedBy=timers.target
+UNIT
 systemctl daemon-reload
 python3 - <<'MARKER'
 import json, os, tempfile
@@ -37,7 +48,7 @@ with os.fdopen(fd, 'w') as stream:
     json.dump({'version':1}, stream)
 os.replace(path, '.control/installed.json')
 MARKER
-systemctl enable --now mtproxy-pushok-updater.path
+systemctl enable --now mtproxy-pushok-updater.path mtproxy-pushok-updater.timer
 if [[ "${1:-}" != --install-only ]]; then
   args=(--bootstrap)
   [[ "${1:-}" != --enable-stars ]] || args+=(--enable-stars)

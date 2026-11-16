@@ -809,11 +809,12 @@ function renderSoftware(){
  if(c){
  let status=!c.updater_installed?'Служба обновления ещё не установлена на VPS.':c.requested?'Запрос принят. Ожидаем запуск.':states[c.update.state]||'Состояние установки неизвестно.';
  if(['running','failed'].includes(c.update.state)&&stages[c.update.stage])status+=' Этап: '+stages[c.update.stage]+'.';
- if(c.update.at)status+=' '+date(c.update.at);
+ if(c.requested&&c.requested_at){status+=' '+date(c.requested_at);if(Date.now()-Date.parse(c.requested_at)>120000)status+=' Запуск задерживается. Служба автоматически повторяет проверку очереди; если ожидание сохраняется, проверьте журнал обновления на VPS.';}
+ else if(c.update.at)status+=' '+date(c.update.at);
  $('software-update-status').textContent=status;
  }
  $('software-update').disabled=!c?.updater_installed||busy||r?.state!=='available';
- $('software-update').textContent=busy?'Обновление выполняется…':r?.state==='available'?'Установить v'+r.available_version:'Установить обновление';
+ $('software-update').textContent=busy?(c.requested?'Ожидаем запуск…':'Обновление выполняется…'):r?.state==='available'?'Установить v'+r.available_version:'Установить обновление';
  const banner=$('software-update-notice');
  if(banner){banner.hidden=r?.state!=='available';$('software-update-notice-text').textContent=r?.state==='available'?'Доступно обновление v'+r.available_version+' · установлено v'+r.installed_version:'';}
 }

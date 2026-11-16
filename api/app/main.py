@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.20",
+    version="1.21",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2815,6 +2815,7 @@ def control_status(response: Response, admin=Depends(require_admin)):
             'sbp_test_mode': cfg['test_mode'],
             'updater_installed': control.read('installed.json') is not None,
             'update': control.read('status.json', {'state': 'idle'}),
+            'requested_at': (control.read('request.json') or {}).get('at'),
             'requested': control.read('request.json') is not None}
 
 @app.put('/api/v1/admin/control/payments', tags=['admin'])

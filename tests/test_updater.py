@@ -57,6 +57,13 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(flock.call_args_list[0].args[1], updater.fcntl.LOCK_EX)
         self.assertEqual(updater.read_control('status.json')['state'], 'succeeded')
 
+    def test_recovery_marks_abandoned_running_status_failed(self):
+        updater.status('running', stage='build')
+        with patch.object(updater, 'run') as run:
+            updater.main()
+        run.assert_not_called()
+        self.assertEqual(updater.read_control('status.json')['code'], 'worker_interrupted')
+
     def test_fixed_release_backup_before_migration_and_ready_before_success(self):
         self.request()
         with patch.object(updater, 'run', side_effect=self.fake_run):

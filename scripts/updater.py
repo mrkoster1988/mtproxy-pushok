@@ -103,6 +103,9 @@ def main():
             request = CONTROL / 'request.json'
             if '--bootstrap' not in sys.argv:
                 if not request.exists():
+                    previous = read_control('status.json')
+                    if previous.get('state') == 'running':
+                        status('failed', code='worker_interrupted', stage=previous.get('stage'))
                     return
                 try:
                     data = read_control('request.json')
@@ -136,6 +139,7 @@ def main():
             status('running', stage=stage)
             if target != old:
                 run('git', 'merge', '--ff-only', target)
+            run('bash', 'scripts/install_updater.sh', '--install-only')
             stage = "build"
             status('running', stage=stage)
             run('python3', 'scripts/installer_runtime.py', 'compose', *profile, 'build')
