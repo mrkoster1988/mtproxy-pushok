@@ -320,7 +320,7 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .cabinet-mode .channel-footer>.ui-button{min-height:38px;padding:9px 13px;margin:0;font-size:12px;border-radius:9px;flex:none}
 .channel-search-bar{display:flex;align-items:center;gap:9px;min-width:0;border:1px solid var(--line);border-radius:12px;background:#0a1e2e;padding:0 10px 0 13px;margin-bottom:14px}
 .channel-search-bar>.ui-icon{width:18px;height:18px;color:var(--muted)}
-.cabinet-mode .channel-search-bar input.channel-search[type=search]{flex:1;width:0;margin:0;padding:12px 0;min-height:46px;border:0;border-radius:0;background:transparent;font-size:14px;outline:none}
+.cabinet-mode .channel-search-bar input.channel-search[type=search]{flex:1;width:0;margin:0;padding:12px 0;min-height:46px;border:0;border-radius:0;background:transparent;font-size:14px;outline:none!important;box-shadow:none}
 .channel-search-bar:focus-within{border-color:var(--mint);box-shadow:0 0 0 3px #35d4c41c}
 .channel-search-bar input::-webkit-search-cancel-button{display:none}
 .cabinet-mode .channel-search-bar>.icon-action{width:30px;min-width:30px;height:32px;min-height:32px;padding:6px;margin:0;border:0;color:var(--muted)}
@@ -331,4 +331,4 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .channel-form-actions>button{margin:0}
 @media(max-width:359px){.cabinet-mode .channel-tile{padding:12px}.channel-heading{grid-template-columns:38px minmax(0,1fr) auto;gap:7px}.channel-heading>.channel-avatar{width:38px;height:38px}.cabinet-mode .channel-identity h3{font-size:14px}.channel-heading>.card-tools{gap:0}.cabinet-mode .channel-footer>.ui-button{padding:9px 10px}.channel-footer{gap:8px}.cabinet-mode .channel-add{padding:16px}}
 
-.cabinet-mode .page-heading h1:focus{outline:none}
+.cabinet-mode .page-heading h1:focus{outline:none!important}
