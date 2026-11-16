@@ -614,6 +614,7 @@ def main():
                     mini.get_by_role('link',name='Открыть @mtproxy_pushok_bot',exact=True).click()
                     assert mini.evaluate('window.__miniLink')=='https://t.me/mtproxy_pushok_bot'
                     go(mini,'create')
+                    expect(mini.locator('#tariff-select option:checked')).to_contain_text('200 XTR')
                     mini.locator('#order-channel-mode').click()
                     mini.locator('#order-channel-url').fill('@pushok_onepage')
                     mini.locator('#order-channel-title').fill('Канал из одной формы')
