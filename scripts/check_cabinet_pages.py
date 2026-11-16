@@ -193,7 +193,12 @@ def main():
                 advertiser = new_page("advertiser")
                 expect(advertiser.locator('[data-page=dashboard] .empty-state')).to_contain_text('Здесь появятся кампании')
                 expect(advertiser.locator('[data-page=dashboard] .campaign-tile')).to_have_count(0)
-                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_contain_text('0')
+                proxy=advertiser.get_by_role('link',name='Подключить прокси',exact=True)
+                expect(proxy).to_be_visible()
+                advertiser.evaluate("window.cabinet.config({telegram_bot_username:'fixture_bot',proxy_url:'https://t.me/proxy?server=proxy.example.org&port=443&secret=ddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'})")
+                expect(proxy).to_have_attribute('href','https://t.me/proxy?server=proxy.example.org&port=443&secret=ddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+                assert proxy.evaluate("e=>getComputedStyle(e).backgroundColor==='rgb(217, 71, 80)'")
+                assert proxy.evaluate("e=>e.previousElementSibling.textContent==='Создать кампанию'")
                 expect(advertiser.locator('[data-page=dashboard] .payment-counts')).to_have_count(0)
                 go(advertiser, "settings", expected_page="dashboard")
                 expect(advertiser.locator('[data-page=dashboard]')).to_be_visible()
@@ -770,7 +775,7 @@ def main():
                             if screen=='growth':
                                 expect(mini.locator('.growth-page')).to_be_visible()
                             if screen=='home':
-                                expect(mini.locator('#dashboard-wallet .wallet-total')).to_have_attribute('data-currency','RUB')
+                                expect(mini.locator('#dashboard-wallet')).to_have_count(0)
                             assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2'), (width,route)
                             if screen=='stars':
                                 expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата подтверждена сервером')
@@ -1332,10 +1337,8 @@ def main():
                 advertiser.screenshot(path=str(output/'39-wallet-user-mobile.png'),full_page=True)
                 # Главная показывает тот же серверный остаток; ошибка API не превращается в ноль.
                 go(advertiser,'dashboard')
-                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_contain_text('220')
-                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_have_attribute('data-currency','RUB')
+                expect(advertiser.locator('#dashboard-wallet')).to_have_count(0)
                 # Регрессия видео: задержанный ответ не меняет геометрию и DOM карточек.
-                expect(advertiser.locator('#dashboard-wallet .wallet-overview')).to_have_attribute('aria-busy','false')
                 expect(advertiser.locator('#dashboard-referral .referral-overview')).to_have_attribute('aria-busy','false')
                 advertiser.evaluate("""() => {
                     window.__originalFetch=window.fetch;
@@ -1343,38 +1346,23 @@ def main():
                     window.fetch=(url,options)=>['/api/v1/wallet','/api/v1/growth/me'].includes(String(url))?new Promise(resolve=>{
                         window.__pendingRefresh.push(()=>window.__originalFetch(url,options).then(resolve));
                     }):window.__originalFetch(url,options);
-                    const panel=document.querySelector('#dashboard-wallet .wallet-overview');
-                    const total=panel.querySelector('.wallet-total');
                     const tile=document.querySelector('[data-page=dashboard] .campaign-tile');
                     const y=tile.getBoundingClientRect().top,scroll=scrollY;
                     const referral=document.querySelector('#dashboard-referral .referral-overview'),invite=referral.querySelector('.referral-link');
-                    window.__stable={panel,total,tile,referral,invite,y,scroll,samples:[],stop:false};
+                    window.__stable={tile,referral,invite,y,scroll,samples:[],stop:false};
                     const sample=()=>{const s=window.__stable;s.samples.push([s.tile.getBoundingClientRect().top,scrollY]);if(!s.stop)requestAnimationFrame(sample);};
                     requestAnimationFrame(sample);void refreshStatuses();
                 }""")
-                advertiser.wait_for_function('window.__pendingRefresh.length===2')
+                advertiser.wait_for_function('window.__pendingRefresh.length===1')
                 advertiser.wait_for_timeout(250)
-                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_contain_text('220')
                 advertiser.evaluate('() => Promise.all(window.__pendingRefresh.map(release=>release()))')
-                expect(advertiser.locator('#dashboard-wallet .wallet-overview')).to_have_attribute('aria-busy','false')
                 assert advertiser.evaluate("""() => {
                     const s=window.__stable;s.stop=true;window.fetch=window.__originalFetch;
-                    return s.panel===document.querySelector('#dashboard-wallet .wallet-overview') &&
-                      s.total===document.querySelector('#dashboard-wallet .wallet-total') &&
-                      s.referral===document.querySelector('#dashboard-referral .referral-overview') &&
+                    return s.referral===document.querySelector('#dashboard-referral .referral-overview') &&
                       s.invite===document.querySelector('#dashboard-referral .referral-link') &&
                       s.tile===document.querySelector('[data-page=dashboard] .campaign-tile') &&
                       s.samples.length>2 && s.samples.every(([y,scroll])=>Math.abs(y-s.y)<1&&Math.abs(scroll-s.scroll)<1);
                 }"""), 'Background refresh moved the dashboard or recreated its cards'
-                def unavailable_wallet(route):
-                    route.fulfill(status=503,content_type='application/json',body='{"detail":"temporarily_unavailable"}')
-                advertiser.route('**/api/v1/wallet',unavailable_wallet)
-                advertiser.evaluate('() => refreshStatuses()')
-                expect(advertiser.locator('#dashboard-wallet')).to_contain_text('не обновлён')
-                expect(advertiser.locator('#dashboard-wallet .wallet-total')).to_contain_text('220')
-                advertiser.unroute('**/api/v1/wallet',unavailable_wallet)
-                advertiser.evaluate('() => refreshStatuses()')
-                expect(advertiser.locator('#dashboard-wallet h2')).to_have_text('Баланс Pushok')
                 for width in (320,390,1280):
                     advertiser.set_viewport_size({'width':width,'height':900})
                     assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
@@ -1407,7 +1395,7 @@ def main():
                 go(advertiser,'dashboard')
                 expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
                 expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
-                assert advertiser.evaluate("document.querySelector('#dashboard-referral').getBoundingClientRect().bottom <= document.querySelector('#dashboard-wallet').getBoundingClientRect().top")
+                assert advertiser.locator('#dashboard-referral').evaluate('e=>e===e.parentElement.lastElementChild')
                 share=advertiser.locator('#dashboard-referral').get_by_role('link',name='Поделиться реферальной ссылкой',exact=True)
                 expect(share).to_be_visible()
                 from urllib.parse import urlparse,parse_qs

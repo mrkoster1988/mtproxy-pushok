@@ -53,7 +53,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.42",
+    version="1.43",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1801,7 +1801,8 @@ def list_operator_campaigns(
 @app.get("/api/v1/public-config", tags=["configuration"])
 def public_config() -> dict[str, str]:
     username = os.getenv("TELEGRAM_BOT_USERNAME", "").lstrip("@")
-    return {"telegram_bot_username": "" if username.startswith("REPLACE_WITH") else username}
+    from .proxy_link import current_proxy_url
+    return {"telegram_bot_username": "" if username.startswith("REPLACE_WITH") else username, "proxy_url": current_proxy_url() or ""}
 
 
 @app.get("/api/v1/channels", response_model=list[ChannelResponse], tags=["channels"])

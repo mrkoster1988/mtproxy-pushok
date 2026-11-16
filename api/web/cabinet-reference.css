@@ -361,3 +361,6 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 @media(max-width:359px){.cabinet-mode .channel-tile{padding:12px}.channel-heading{grid-template-columns:38px minmax(0,1fr) auto;gap:7px}.channel-heading>.channel-avatar{width:38px;height:38px}.cabinet-mode .channel-identity h3{font-size:14px}.channel-heading>.card-tools{gap:0}.cabinet-mode .channel-footer>.ui-button{padding:9px 10px}.channel-footer{gap:8px}.cabinet-mode .channel-add{padding:16px}}
 
 .cabinet-mode .page-heading h1:focus{outline:none!important}
+
+/* Главная: два действия под баннером, приглашение внизу. */
+.dashboard-intro{grid-template-columns:1fr}.dashboard-hero-actions{display:grid;gap:8px}.dashboard-hero-actions>a.dashboard-connect-proxy{background:#d94750;color:#fff!important}.dashboard-connect-proxy[aria-disabled=true]{opacity:.65;cursor:default}
