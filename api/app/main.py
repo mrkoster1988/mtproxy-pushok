@@ -43,7 +43,7 @@ from .payment_gate import stars_invoices_enabled
 from .launch_readiness import build_launch_readiness, MAX_AGE
 from . import sbp_checkout, sbp_admin, stars_checkout
 from .promotion_diagnostics import diagnostics as promotion_diagnostics
-from .promotion_runtime import confirmation as promotion_confirmation
+from .promotion_runtime import confirmation as promotion_confirmation, campaign_automation_status
 from .miniapp_auth import validate_init_data
 from .sbp_webhook import router as sbp_webhook_router
 from .sbp_provider import SBPProviderError
@@ -52,7 +52,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.25",
+    version="1.26",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2947,10 +2947,15 @@ def delete_promotion_binding(node_id: UUID, channel_id: UUID, admin: dict = Depe
 @app.get('/api/v1/campaigns/{campaign_id}/promotion-status', tags=['campaigns'])
 def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_current_user)):
     with psycopg.connect(DATABASE_URL,connect_timeout=3,row_factory=dict_row) as conn:
-        row=conn.execute('''SELECT c.advertiser_user_id,c.proxy_node_id,
-            EXISTS(SELECT 1 FROM channel_promotion_bindings b WHERE b.proxy_node_id=c.proxy_node_id AND b.channel_id=c.channel_id
-            AND b.channel_url=(SELECT telegram_url FROM sponsor_channels WHERE id=c.channel_id)
-            AND (b.node_host,b.node_port)=(SELECT host,port FROM proxy_nodes WHERE id=c.proxy_node_id)) AS prepared,
+        row=conn.execute('''SELECT c.advertiser_user_id,c.proxy_node_id,c.placement_status,
+            c.moderation_status,c.payment_status,c.auto_schedule_paused,c.scheduled_start_at,c.scheduled_end_at,
+            EXISTS(SELECT 1 FROM channel_promotion_bindings b
+            JOIN proxy_nodes n ON n.id=b.proxy_node_id JOIN sponsor_channels ch ON ch.id=b.channel_id
+            WHERE (c.proxy_node_id IS NULL OR b.proxy_node_id=c.proxy_node_id) AND b.channel_id=c.channel_id
+            AND b.channel_url=ch.telegram_url AND ch.archived_at IS NULL
+            AND (b.node_host,b.node_port)=(n.host,n.port)
+            AND n.archived_at IS NULL AND n.status='active'
+            AND (n.target_engine IS NULL OR n.target_engine='official_mtproxy')) AS prepared,
             r.campaign_id,r.state,r.checked_at,r.plan_revision
             FROM campaigns c LEFT JOIN promotion_runtime r ON r.proxy_node_id=c.proxy_node_id
             WHERE c.id=%s''',(campaign_id,)).fetchone()
@@ -2960,7 +2965,12 @@ def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_curren
                           (row['proxy_node_id'],)).fetchone()
         result=promotion_confirmation(conn, node, row)
         result['config_applied'] = bool(result['config_applied'] and row['campaign_id']==campaign_id)
-        return {'prepared':row['prepared'], **result}
+        now=datetime.now(timezone.utc)
+        return {'prepared':row['prepared'], **result,
+                'automation_status':campaign_automation_status(row,result,node,now=now),
+                'placement_status':row['placement_status'],
+                'scheduled_start_at':row['scheduled_start_at'],
+                'scheduled_end_at':row['scheduled_end_at'], 'server_time':now}
 
 from .team import router_for as team_router
 app.include_router(team_router(lambda: DATABASE_URL, require_admin))

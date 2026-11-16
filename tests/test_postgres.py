@@ -2070,6 +2070,45 @@ class PostgresIntegration(unittest.TestCase):
         self.request('DELETE','/admin/promotion-bindings/'+str(f['node'])+'/'+str(f['channel']))
         self.assertFalse(self.request('GET',path)['config_applied'])
 
+    def test_campaign_automation_status_tracks_agent_without_observations(self):
+        from app.promotion_runtime import handle
+        from psycopg.rows import dict_row
+        f = self._management_fixture(ready=True)
+        actor = {'id':f['admin'],'role':'admin'}
+        main.app.dependency_overrides[main.get_current_user] = lambda: actor
+        path = '/campaigns/'+str(f['campaign'])+'/promotion-status'
+        self.assertEqual(self.request('GET',path)['automation_status'], 'setup_required')
+        self.request('PUT','/admin/promotion-bindings',json=dict(node_id=str(f['node']),
+            channel_id=str(f['channel']),ad_tag=uuid4().hex,telegram_binding_confirmed=True))
+        self.assertEqual(self.request('GET',path)['automation_status'], 'awaiting_slot')
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='scheduled',scheduled_start_at=now()+interval '1 hour',scheduled_end_at=now()+interval '2 hours' WHERE id=%s",(f['node'],f['campaign']))
+        result = self.request('GET',path)
+        self.assertEqual(result['automation_status'], 'scheduled')
+        self.assertFalse(result['config_applied'])
+        self.assertIn('server_time',result)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '1 minute' WHERE id=%s",(f['campaign'],))
+        self.assertEqual(self.request('GET',path)['automation_status'], 'agent_unavailable')
+        request = dict(host='management-'+f['node'].hex+'.example.org',port=8443)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            plan = handle(conn,request)
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+        self.write_promotion_report(plan)
+        result = self.request('GET',path)
+        self.assertEqual(result['automation_status'], 'active')
+        self.assertFalse(result['display_verified'])
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET scheduled_end_at=now()-interval '1 second' WHERE id=%s",(f['campaign'],))
+        self.assertEqual(self.request('GET',path)['automation_status'], 'finishing')
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            plan = handle(conn,request)
+            self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
+            self.assertEqual(conn.execute('SELECT count(*) AS n FROM placement_observations WHERE campaign_id=%s',(f['campaign'],)).fetchone()['n'],0)
+        self.assertEqual(self.request('GET',path)['automation_status'], 'completed')
+        actor.update(id=f['stranger'],role='advertiser')
+        self.request('GET',path,expected=404)
+
     def test_promotion_confirmation_invalidates_changed_plan_in_both_endpoints(self):
         from app.promotion_runtime import handle
         from psycopg.rows import dict_row

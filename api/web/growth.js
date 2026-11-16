@@ -74,13 +74,18 @@ window.pushokGrowth=(()=>{
   actions.append(copy,share);row.append(link,actions);root.append(row);
  }
  async function overview(node){
-  if(!node||!me)return;const version=++overviewEpoch,session=token,uid=me.id;node.replaceChildren(el('p','Загружаем приглашение…','muted'));
+  if(!node||!me)return;const version=++overviewEpoch,session=token,uid=me.id;
+  let card=node.querySelector('.referral-overview');
+  if(!card){card=el('section',undefined,'referral-overview');card.append(el('h2','Приглашайте друзей'),el('p','Загружаем приглашение…','muted'));node.replaceChildren(card);}
+  card.setAttribute('aria-busy','true');
   try{
    const mine=await api('/growth/me');if(version!==overviewEpoch||session!==token||uid!==me?.id)return;
-   const card=el('section',undefined,'referral-overview'),head=el('div',undefined,'section-heading'),title=el('h2','Приглашайте друзей');title.prepend(window.pushokViews.icon('users'));head.append(title);card.append(head);
+   const signature=JSON.stringify([mine.referrals_enabled,mine.link,mine.invited,mine.reward_mode,mine.reward_bonus_kopecks,mine.reward_percent,mine.reward_days]);
+   if(card.dataset.snapshot===signature){card.querySelector('h2').lastChild.textContent='Приглашайте друзей';card.removeAttribute('title');card.setAttribute('aria-busy','false');return;}
+   const head=el('div',undefined,'section-heading'),title=el('h2','Приглашайте друзей');title.prepend(window.pushokViews.icon('users'));head.append(title);card.replaceChildren(head);
    card.append(el('p',mine.referrals_enabled?'За первое оплаченное рублями и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены.','muted'));
-   referralLink(card,mine);const info=el('div',undefined,'referral-meta'),more=el('a','Бонусы и условия');more.href='#/growth';info.append(el('span','Приглашено: '+mine.invited),more);card.append(info);node.replaceChildren(card);
-  }catch(e){if(version===overviewEpoch&&session===token&&uid===me?.id)node.replaceChildren(el('p','Не удалось загрузить приглашение.','muted'),button('Повторить',()=>overview(node)));}
+   referralLink(card,mine);const info=el('div',undefined,'referral-meta'),more=el('a','Бонусы и условия');more.href='#/growth';info.append(el('span','Приглашено: '+mine.invited),more);card.append(info);card.dataset.snapshot=signature;card.removeAttribute('title');card.setAttribute('aria-busy','false');
+  }catch(e){if(version===overviewEpoch&&session===token&&uid===me?.id){card.querySelector('h2').lastChild.textContent='Приглашения · нет связи';card.title='Не удалось обновить приглашение. Повторим при следующем обновлении.';card.setAttribute('aria-busy','false');}}
  }
  async function load(node){
   if(!node||!me)return;target=node;const version=++epoch,session=token,uid=me.id;node.replaceChildren(el('p','Загружаем бонусы…'));
