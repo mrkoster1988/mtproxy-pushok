@@ -8,7 +8,7 @@ window.pushokTeam=(()=>{
   const editable=['admin','operator'].includes(me?.role)&&user.id!==me.id&&(me.role==='admin'||user.role!=='admin');
   const label=()=>roles[user.role]||'Пользователь';
   const badge=el(editable?'button':'span',undefined,'person-role'+(editable?' role-button':'')),editor=el('form',undefined,'role-editor');editor.hidden=true;
-  function paint(){badge.replaceChildren(document.createTextNode(label()+(user.blocked_at?' · Заблокирован':'')));badge.classList.toggle('is-blocked',Boolean(user.blocked_at));if(editable){badge.append(window.pushokViews.icon('edit'));badge.setAttribute('aria-label','Изменить права: '+label());}}
+  function paint(){badge.dataset.role=user.role;badge.replaceChildren(document.createTextNode(label()+(user.blocked_at?' · Заблокирован':'')));badge.classList.toggle('is-blocked',Boolean(user.blocked_at));if(editable){badge.append(window.pushokViews.icon('edit'));badge.setAttribute('aria-label','Изменить права: '+label());}}
   paint();if(!editable)return {badge,editor};
   badge.type='button';badge.setAttribute('aria-expanded','false');editor.id='role-'+crypto.randomUUID();badge.setAttribute('aria-controls',editor.id);
   const session=token,viewer=me.id,current=()=>session===token&&viewer===me?.id&&badge.isConnected;
