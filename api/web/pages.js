@@ -88,7 +88,8 @@
  const backButton=button('Назад',async()=>back());backButton.className='screen-back';backButton.setAttribute('aria-label','Назад');backButton.replaceChildren(window.pushokViews.icon('back'));
  const mobileBrand=link('puShok','dashboard');mobileBrand.className='mobile-brand';
  window.pushokViews.brand(mobileBrand);
- const refreshButton=$('refresh');refreshButton.setAttribute('aria-label','Обновить');refreshButton.textContent='↻';bar.append(backButton,mobileBrand,account,refreshButton,topHelp);const legacyLogout=el('div');legacyLogout.hidden=true;legacyLogout.append($('logout'));bar.append(searchForm,legacyLogout);stage.append(bar);shell.append(stage);workspace.prepend(shell);
+ const profileShortcut=link('','profile');profileShortcut.className='profile-shortcut';profileShortcut.setAttribute('aria-label','Открыть профиль');
+ const refreshButton=$('refresh');refreshButton.setAttribute('aria-label','Обновить');refreshButton.textContent='↻';bar.append(backButton,mobileBrand,account,refreshButton,profileShortcut,topHelp);const legacyLogout=el('div');legacyLogout.hidden=true;legacyLogout.append($('logout'));bar.append(legacyLogout);stage.append(bar);shell.append(stage);workspace.prepend(shell);
  Object.entries(routes).forEach(([name,[title,subtitle]])=>{
   const page=name==='settings'?$('settings'):el('section');page.dataset.page=name;page.hidden=true;page.classList.add('cabinet-page');
   const heading=el('header',undefined,'page-heading'),titles=el('div');const h=el('h1',title);h.tabIndex=-1;titles.append(h,el('p',subtitle));heading.append(titles);
@@ -117,18 +118,24 @@
  calendarTariff.addEventListener('change',()=>run(async()=>{$('tariff-select').value=calendarTariff.value;await loadAvailability();}));
  content.calendar.append(link('Перейти к созданию кампании','create'));
  const listTools=el('div',undefined,'list-tools'),filter=el('select');filter.setAttribute('aria-label','Статус кампаний');
- [['','Все статусы'],['draft','Черновики'],['pending','На модерации'],['changes_requested','Нужны исправления'],['awaiting_payment','Ожидают оплаты'],['active','Активные'],['completed','Завершённые']].forEach(([v,t])=>option(filter,v,t));
+ [['','Все статусы'],['draft','Черновики'],['pending','На модерации'],['changes_requested','Нужны исправления'],['awaiting_payment','Ожидают оплаты'],['active','Активные']].forEach(([v,t])=>option(filter,v,t));
  const reset=button('Сбросить поиск и фильтр',async()=>{state.search='';state.filter='';search.value='';filter.value='';renderList();});
- filter.addEventListener('change',()=>{state.filter=filter.value;renderList();});listTools.append(filter,reset);content.campaigns.append(listTools,$('campaigns'));
+ filter.addEventListener('change',()=>{state.filter=filter.value;renderList();});listTools.append(searchForm,filter,reset);content.campaigns.append(listTools,$('campaigns'));
+ // Архив всегда виден рядом с текущими кампаниями, без поиска в настройках.
+ for(const name of ['campaigns','archive']){
+  const tabs=el('nav',undefined,'campaign-tabs');tabs.setAttribute('aria-label','Текущие кампании и архив');
+  for(const [route,title] of [['campaigns','Текущие'],['archive','Архив']]){const a=link(title,route);if(route===name)a.setAttribute('aria-current','page');tabs.append(a);}
+  pages[name].querySelector('.page-heading').after(tabs);
+ }
  const dashboardHero=el('section',undefined,'dashboard-hero');
  const heroCopy=el('div',undefined,'dashboard-hero-copy');
  heroCopy.append(el('p','РЕКЛАМА В TELEGRAM','eyebrow'),el('h2','Продвигайте свой канал'),el('p','Реклама в MTProxy'));
  const heroActions=el('div',undefined,'dashboard-hero-actions');heroActions.append(link('+ Создать кампанию','create'));
  const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
  dashboardHero.append(heroCopy,dashboardMascot,heroActions);
- const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardPayments=el('div');dashboardIntro.append(dashboardHero,dashboardPayments);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
+ const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardWallet=el('div'),dashboardPayments=el('div');dashboardWallet.id='dashboard-wallet';dashboardIntro.append(dashboardHero,dashboardWallet);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
  const bottomNav=el('nav',undefined,'mobile-bottom-nav');bottomNav.setAttribute('aria-label','Основные разделы');
- [['dashboard','home','Главная'],['campaigns','campaign','Кампании'],['payments','wallet','Оплата'],['profile','user','Профиль']].forEach(([route,icon,title])=>{
+ [['dashboard','home','Главная'],['campaigns','campaign','Кампании'],['wallet','wallet','Баланс'],['profile','user','Профиль']].forEach(([route,icon,title])=>{
   const a=link(title,route);a.dataset.route=route;
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);bottomNav.append(a);
@@ -136,6 +143,12 @@
  shell.append(bottomNav);
  const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.classList.add('flat-section');summary.append(summaryRows);content.dashboard.append(summary);
  const summaryHeading=el('div',undefined,'section-heading');summaryHeading.append(summary.querySelector('h2'),link('Все кампании →','campaigns'));summary.prepend(summaryHeading);
+ summary.append(link('Архив кампаний →','archive'));
+ const shortcutsGrid=el('div',undefined,'dashboard-shortcuts');
+ for(const [route,icon,title,note] of [['growth','gift','Бонусы и приглашения','Промокоды, подарки и награды'],['calendar','calendar','Календарь размещений','Выберите даты рекламы']]){
+  const a=link('',route),copy=el('span');a.className='dashboard-shortcut';copy.append(el('strong',title),el('small',note));a.append(window.pushokViews.icon(icon),copy,el('span','›','menu-chevron'));shortcutsGrid.append(a);
+ }
+ content.dashboard.prepend(shortcutsGrid);content.dashboard.append(dashboardPayments);
  const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);content.dashboard.append(dashboardHelp);
  const onboarding=section('С чего начать');onboarding.id='onboarding';onboarding.append(el('p','Заполните одну форму: канал, тариф и желаемая дата. После проверки канала оплатите размещение.'));
  onboarding.append(button('Скрыть инструкцию',async()=>{sessionStorage.setItem('pushok-onboarding-hidden','1');onboarding.hidden=true;}),link('Разместить рекламу','create'));content.dashboard.append(onboarding);
@@ -244,12 +257,14 @@
  $('channel-select').addEventListener('change',renderQuote);$('tariff-select').addEventListener('change',renderQuote);
  function render(){
   if(!state.ready||!state.loaded||!me)return;
-  metrics('dashboard',[]);
+  profileShortcut.replaceChildren(window.pushokViews.profileAvatar());
+  metrics('dashboard',[['Активны',state.campaigns.filter(c=>c.placement_status==='active').length,'Размещения сейчас'],['Запланированы',state.campaigns.filter(c=>c.placement_status==='scheduled').length,'Ожидают своего времени'],['На модерации',state.campaigns.filter(c=>c.moderation_status==='pending').length,'Проверяем канал']]);
+  if(state.route==='dashboard')void window.pushokWallet.overview(dashboardWallet);
   window.pushokViews.paymentOverview(dashboardPayments,state.campaigns.filter(c=>c.moderation_status==='approved'),{compact:true});
   metrics('channels',[]);
-  metrics('campaigns',[['Всего',state.campaigns.length,'Ваши заявки'],['Ожидают оплаты',state.campaigns.filter(c=>c.payment_status==='awaiting_payment').length,'После модерации'],['Завершены',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным системы']]);
+  metrics('campaigns',[['Текущие',state.campaigns.length,'Ваши заявки'],['Ожидают оплаты',state.campaigns.filter(c=>c.payment_status==='awaiting_payment').length,'После модерации']]);
   renderQuote();metrics('calendar',[['Часовой пояс',calendarZone,'Время в календаре'],['Период',14,'Дней в запросе доступности']]);
-  metrics('reports',[['Кампаний',state.campaigns.length,'В вашем аккаунте'],['В эфире',state.campaigns.filter(c=>c.placement_status==='active').length,'По данным запуска'],['Завершено',state.campaigns.filter(c=>c.placement_status==='completed').length,'По данным API']]);
+  metrics('reports',[['Текущих кампаний',state.campaigns.length,'Завершённые — в архиве'],['В эфире',state.campaigns.filter(c=>c.placement_status==='active').length,'По данным запуска']]);
   channelRows.classList.add('channel-manager');
   window.pushokViews.channelCards(channelRows,channels);
   window.pushokViews.campaigns(summaryRows,state.campaigns.slice(0,3));renderList();
@@ -389,7 +404,7 @@
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
-  bottomNav.querySelectorAll('a').forEach(a=>{const section=['campaign','create'].includes(name)?'campaigns':['dashboard','campaigns','payments'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  bottomNav.querySelectorAll('a').forEach(a=>{const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':['dashboard','campaigns','wallet'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   backButton.hidden=name==='dashboard';
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
   searchForm.hidden=name!=='campaigns';
@@ -408,7 +423,7 @@
   if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);activate();
  },logout(){window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
-  [$('order-result'),detail,dashboardPayments,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
+  [$('order-result'),detail,dashboardWallet,dashboardPayments,profileShortcut,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['settings-stars-counts','settings-stars-status','settings-sbp-status','launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());
