@@ -8,8 +8,8 @@
   <meta name="description" content="MTProxy Pushok — кабинет спонсорской рекламы в Telegram. Создание заявки, модерация, оплата и управление размещениями.">
   <title>puShok · MTProxy — кабинет спонсора</title>
   <link rel="stylesheet" href="/assets/styles.css?v=132">
-  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=138">
-  <script src="/assets/app.js?v=138" defer></script>
+  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=139">
+  <script src="/assets/app.js?v=139" defer></script>
   <script src="/assets/merchant-settings.js?v=1" defer></script>
   <script src="/assets/bonus-links.js?v=135" defer></script>
   <script src="/assets/wallet.js?v=138" defer></script>
@@ -19,12 +19,12 @@
   <script src="/assets/campaign-pricing.js?v=129" defer></script>
   <script src="/assets/approval.js?v=133" defer></script>
   <script src="/assets/user-profiles.js?v=136" defer></script>
-  <script src="/assets/mobile-views.js?v=138" defer></script>
+  <script src="/assets/mobile-views.js?v=139" defer></script>
   <script src="/assets/default-sponsor.js?v=110" defer></script>
   <script src="/assets/users.js?v=136" defer></script>
   <script src="/assets/team.js?v=138" defer></script>
   <script src="/assets/application-licenses.js?v=137" defer></script>
-  <script src="/assets/pages.js?v=138" defer></script>
+  <script src="/assets/pages.js?v=139" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -111,9 +111,9 @@
             <h2>Ваш Telegram-канал</h2>
             <p class="panel-lead">Расскажите, какой канал хотите продвигать.</p>
             <form id="channel-form">
-              <label>Название канала<input name="title" required maxlength="255" placeholder="Например, Новости технологий"></label>
-              <label>Ссылка на канал<input name="telegram_url" required type="url" placeholder="https://t.me/channel"></label>
-              <button class="primary" type="submit">Добавить канал <span aria-hidden="true">↗</span></button>
+              <label>Ссылка или @username<input name="telegram_url" required type="text" maxlength="255" placeholder="@pushok_proxy" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+              <label>Название канала<input name="title" required maxlength="255" placeholder="Название из Telegram"></label>
+              <button class="primary" type="submit">Добавить канал</button>
             </form>
           </section>
 
@@ -308,7 +308,7 @@
       </div>
     </section>
 
-    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.38</span></footer>
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.39</span></footer>
   </main>
 </body>
 </html>
