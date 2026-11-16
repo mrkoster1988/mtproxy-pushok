@@ -888,7 +888,7 @@ function showIcons(data){
   select.value=data.mapping[key]||'';select.addEventListener('change',update);update();
   label.append(thumb,select);target.append(label);
  }
- $('icons-status').textContent=data.items.length?'Получено иконок: '+data.items.length+'. Фирменное меню включается только при выборе всех пяти основных иконок. Иначе используются обычные эмодзи.':'Набор ещё не загружен.';
+ $('icons-status').textContent=data.items.length?'Получено иконок: '+data.items.length+'. Фирменное меню включается только при выборе иконок всех кнопок главного меню. Иначе используются обычные эмодзи.':'Набор ещё не загружен.';
 }
 $('icons-import').addEventListener('click',()=>run(async()=>{showIcons(await api('/admin/icons/import',{method:'POST'}));},$('icons-import')));
 $('icons-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{

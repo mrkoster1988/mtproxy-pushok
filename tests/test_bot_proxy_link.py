@@ -40,6 +40,10 @@ class ProxyLinkTests(unittest.TestCase):
         self.assertIn(url, payload['text'])
         self.assertNotIn('разрабатывается', payload['text'])
         self.assertTrue(any(b.get('url') == url for row in payload['reply_markup']['inline_keyboard'] for b in row))
+        rows=payload['reply_markup']['inline_keyboard']
+        self.assertEqual(rows[0][0]['style'],'danger')
+        self.assertFalse(any(b.get('callback_data')=='tariffs' for row in rows for b in row))
+        self.assertEqual([b.get('url') or b.get('callback_data') for b in rows[-1]],[main.CHANNEL_URL,'help'])
         calls = []
         nav = Navigation(lambda token, method, body: calls.append((method, body)) or {'message_id': len(calls)})
         nav.deliver('fixture', update, payload)
