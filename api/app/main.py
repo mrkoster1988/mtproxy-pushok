@@ -52,7 +52,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.31",
+    version="1.32",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -240,6 +240,7 @@ class CampaignResponse(BaseModel):
 
 
 class OperatorCampaignResponse(CampaignResponse):
+    advertiser_user_id: UUID | None = None
     advertiser_first_name: str | None = None
     advertiser_last_name: str | None = None
     advertiser_username: str | None = None
@@ -1727,6 +1728,7 @@ def list_operator_campaigns(
             rows = connection.execute(
                 f"""
                 SELECT sc.title AS channel_title, sc.telegram_url AS channel_url,
+                       c.advertiser_user_id,
                        u.first_name AS advertiser_first_name,
                        u.last_name AS advertiser_last_name,
                        u.username AS advertiser_username,
@@ -2632,7 +2634,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=131" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=132" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
@@ -2995,3 +2997,6 @@ app.include_router(channel_logos_router(lambda: DATABASE_URL, get_current_user))
 
 from .campaign_pricing import router_for as campaign_pricing_router
 app.include_router(campaign_pricing_router(lambda: DATABASE_URL, require_admin))
+
+from .user_profiles import router_for as user_profiles_router
+app.include_router(user_profiles_router(lambda: DATABASE_URL, get_current_user))

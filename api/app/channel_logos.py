@@ -53,7 +53,11 @@ def _download(token, username):
     photo = chat.get('photo')
     if not isinstance(photo, dict) or not isinstance(photo.get('small_file_id'), str):
         return None
-    file = _call(token, 'getFile', {'file_id': photo['small_file_id']})
+    return _photo_file(token, photo['small_file_id'])
+
+
+def _photo_file(token, file_id):
+    file = _call(token, 'getFile', {'file_id': file_id})
     path = file.get('file_path')
     if (not isinstance(path, str) or not re.fullmatch(r'[A-Za-z0-9_/-]+\.(?:jpg|jpeg|png)', path)
             or path.startswith('/') or '..' in path or file.get('file_size', 0) > MAX_BYTES):
@@ -76,7 +80,32 @@ def logo(telegram_url):
     if not match or not re.fullmatch(r'\d+:[A-Za-z0-9_-]+', token):
         return None
     username = match[1].lower()
-    key = (hashlib.sha256(token.encode()).digest(), os.getenv('PUSHOK_TELEGRAM_TEST_ENVIRONMENT', '0'), username)
+    return _cached(token, 'channel:' + username, lambda: _download(token, username))
+
+
+def _download_user(token, telegram_id):
+    result = _call(token, 'getUserProfilePhotos', {'user_id': telegram_id, 'offset': 0, 'limit': 1})
+    photos = result.get('photos')
+    if not isinstance(photos, list) or not photos or not isinstance(photos[0], list):
+        return None
+    sizes = [p for p in photos[0] if isinstance(p, dict) and isinstance(p.get('file_id'), str)
+             and isinstance(p.get('width'), int) and isinstance(p.get('height'), int)
+             and p['width'] > 0 and p['height'] > 0]
+    if not sizes:
+        return None
+    photo = min(sizes, key=lambda p: abs(max(p['width'], p['height']) - 160))
+    return _photo_file(token, photo['file_id'])
+
+
+def user_avatar(telegram_id):
+    token = os.getenv('TELEGRAM_BOT_TOKEN', '')
+    if not isinstance(telegram_id, int) or telegram_id <= 0 or not re.fullmatch(r'\d+:[A-Za-z0-9_-]+', token):
+        return None
+    return _cached(token, 'user:' + str(telegram_id), lambda: _download_user(token, telegram_id))
+
+
+def _cached(token, identity, download):
+    key = (hashlib.sha256(token.encode()).digest(), os.getenv('PUSHOK_TELEGRAM_TEST_ENVIRONMENT', '0'), identity)
     with _lock:
         cached = _cache.get(key)
         if cached and cached[0] > time.monotonic():
@@ -87,7 +116,7 @@ def logo(telegram_url):
         _pending.add(key)
     try:
         try:
-            data = _download(token, username)
+            data = download()
         except (OSError, ValueError, TypeError, KeyError, Image.DecompressionBombError, HTTPException):
             # Ошибки urllib содержат URL с токеном: не журналировать и не отдавать их клиенту.
             data = None

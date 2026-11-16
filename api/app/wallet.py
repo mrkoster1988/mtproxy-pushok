@@ -236,7 +236,7 @@ def router_for(dsn,current_user,require_admin):
     def search_users(query:str=Query(default='',max_length=100),admin=Depends(require_admin)):
         value=query.strip().lstrip('@')
         with db() as conn:
-            return conn.execute("""SELECT telegram_user_id,first_name,last_name,username FROM users
+            return conn.execute("""SELECT id,telegram_user_id,first_name,last_name,username FROM users
                 WHERE telegram_user_id>0 AND (%s='' OR telegram_user_id::text=%s
                   OR position(lower(%s) in lower(coalesce(username,'')))>0
                   OR position(lower(%s) in lower(concat_ws(' ',first_name,last_name)))>0)

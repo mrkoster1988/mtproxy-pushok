@@ -21,6 +21,7 @@
   campaign:['Кампания','Модерация, оплата и размещение — отдельные этапы'],
   payments:['Мои оплаты','Оплата и история ваших кампаний'],
   profile:['Профиль','Ваш аккаунт и разделы кабинета'],
+  user:['Профиль пользователя','Каналы и кампании рекламодателя'],
   calendar:['Календарь размещений','Доступность на полную длительность тарифа'],
   reports:['Отчёты и история','Подтверждённые события ваших кампаний'],
   moderation:['Модерация','Одна карточка — от проверки канала до завершения'],
@@ -34,6 +35,7 @@
   wallet:'Баланс оплачивает размещения puShok. Автосписание включается отдельно с пределом суммы за заявку.',
   growth:'Подарок и промокод вводятся при создании заявки. Скидки не суммируются: применяется самое выгодное предложение.',
   profile:'Ваши каналы, отчёты и настройки. Разделы управления доступны по роли аккаунта.',
+  user:'Данные аккаунта, его каналы и кампании. Фото и имя берутся из Telegram.',
   dashboard:'Здесь показаны данные ваших кампаний из кабинета. Показ спонсора проверяется отдельно.',
   channels:'API принимает публичную ссылку https://t.me/channel. Добавление канала ещё не означает одобрение рекламы.',
   create:'Заполните форму и отправьте заявку. После одобрения оплатите размещение здесь же.',
@@ -355,9 +357,10 @@
   panel.append(el('p','Загрузка состояния СБП…'));
   try{await paint(await api(base));}catch(e){if(panel.isConnected){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку СБП',()=>renderSbp(c,panel)));}}
  }
- function permitted(name){return !(['moderation','sponsors'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(name==='settings'&&me?.role!=='admin');}
+ function permitted(name){return !(['moderation','sponsors','user'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(name==='settings'&&me?.role!=='admin');}
  function renderSelected({background=false}={}){
   const [name,id]=routeParts();
+  if(name==='user')window.pushokProfiles.show(content.user,id);
   helpText.textContent=hints[name]||'Удалённые объекты можно восстановить. Для заявки сначала восстановите её канал и тариф.';
   const selected=state.campaigns.find(c=>c.id===id),key=JSON.stringify([name,id,selected]);
   if(background&&id&&['campaign','payments','create'].includes(name)&&state.selectedKey===key){refreshLivePanels();return;}
@@ -404,6 +407,7 @@
  }
  function back(){
   const [name,id]=routeParts();
+  if(name==='user'){go(window.pushokProfiles.backRoute());return;}
   if(name==='moderation'&&id)window.pushokApproval?.resetSelection();
   go(id?(name==='campaign'||name==='create'?'campaigns':name):['create','channels','calendar','archive'].includes(name)?'campaigns':name==='payments'?'wallet':['dashboard','campaigns','wallet','profile'].includes(name)?'dashboard':'profile');
  }
@@ -417,7 +421,7 @@
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
   const canModerate=['admin','operator'].includes(me.role);bottomNav.style.setProperty('--nav-count',canModerate?5:4);
-  bottomNav.querySelectorAll('a').forEach(a=>{a.hidden=a.dataset.route==='moderation'&&!canModerate;const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':['dashboard','moderation','campaigns','wallet'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  bottomNav.querySelectorAll('a').forEach(a=>{a.hidden=a.dataset.route==='moderation'&&!canModerate;const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':name==='user'?'moderation':['dashboard','moderation','campaigns','wallet'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   backButton.hidden=['dashboard','campaigns','wallet','profile'].includes(name)||(name==='moderation'&&!section);profileShortcut.hidden=name!=='dashboard';
   render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
   searchForm.hidden=name!=='campaigns';
@@ -437,7 +441,7 @@
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);activate();
  },logout(){window.pushokLinks?.reset();window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   bottomNav.querySelector('[data-route=moderation]').hidden=true;bottomNav.style.setProperty('--nav-count',4);
-  [$('order-result'),detail,dashboardReferral,dashboardWallet,profileShortcut,paymentOverview,paymentRows,content.profile,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
+  [$('order-result'),detail,dashboardReferral,dashboardWallet,profileShortcut,paymentOverview,paymentRows,content.profile,content.user,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['settings-stars-counts','settings-stars-status','settings-sbp-status','launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());
