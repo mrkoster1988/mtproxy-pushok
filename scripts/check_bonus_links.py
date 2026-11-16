@@ -67,3 +67,25 @@ def check_bonus_links(browser,base,output,failures,dsn):
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
         page.screenshot(path=str(output/'52-promo-deeplink-mobile.png'),full_page=True)
     finally:page.context.close()
+
+    with psycopg.connect(dsn) as conn:
+        uid=conn.execute('SELECT id FROM users WHERE telegram_user_id=%s',(recipient,)).fetchone()[0]
+        conn.execute("INSERT INTO wallet_topups(user_id,request_id,provider,currency,amount,provider_account,test_mode) VALUES(%s,%s,'telegram_stars','XTR',123,'test-only',false)",(uid,uuid4()))
+    page=launch(99881310,'')
+    try:
+        page.locator('.mobile-bottom-nav a[data-route=wallet]').click()
+        page.locator('[data-wallet-section=review]>summary').click()
+        page.get_by_role('button',name='Показать последние 30 пополнений').click()
+        row=page.locator('.wallet-topup-review').filter(has_text='ID '+str(recipient)).first
+        expect(row).to_contain_text('123 Stars')
+        expect(row.locator('.person-handle')).to_have_text('@bonus_receiver')
+        expect(row.locator('.user-avatar')).to_be_visible()
+        for width in (320,390):
+            page.set_viewport_size({'width':width,'height':844})
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+        row.screenshot(path=str(output/'53-compact-topup-profile.png'))
+        row.get_by_role('link',name='Открыть профиль пользователя').click()
+        expect(page.locator('[data-page=user]')).to_be_visible()
+        page.get_by_role('button',name='Назад',exact=True).click()
+        expect(page.locator('[data-page=wallet]')).to_be_visible()
+    finally:page.context.close()

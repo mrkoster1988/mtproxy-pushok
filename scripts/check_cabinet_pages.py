@@ -186,7 +186,7 @@ def main():
                 draft_tag = admin.get_by_label('Тег этого канала из @MTProxyBot', exact=True)
                 draft_tag.fill('b' * 32)
                 admin.get_by_role('button', name='Обновить диагностику', exact=True).click()
-                expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=binding_missing]')).to_be_visible()
+                expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=no_current_campaign]')).to_be_visible()
                 expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Подтверждения от агента пока нет')
                 expect(draft_tag).to_have_value('b' * 32)
 
