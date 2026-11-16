@@ -172,3 +172,17 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .referral-actions{display:flex;gap:4px;flex-shrink:0}
 .referral-actions .icon-action{width:40px;min-width:40px;min-height:44px;padding:8px}
 .referral-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+
+/* Индивидуальные условия заявки: компактная форма внутри карточки модерации. */
+.campaign-pricing{margin:8px 0 12px;border-top:1px solid var(--border,#29495b);padding-top:8px}
+.campaign-pricing>summary{cursor:pointer;color:var(--accent,#2dd4bf);font-weight:600}
+.campaign-pricing fieldset{border:0;margin:0;padding:0;min-width:0}
+.campaign-pricing .pricing-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.campaign-pricing label{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:13px}
+.campaign-pricing input,.campaign-pricing select{width:100%;min-width:0;font-size:14px;padding:9px 10px}
+.campaign-pricing p{margin:8px 0;font-size:13px;line-height:1.45;overflow-wrap:anywhere}
+.campaign-pricing .pricing-preview{font-weight:700;color:var(--text,#e8f4fa)}
+.campaign-pricing button{margin-top:8px;padding:9px 16px;font-size:14px;min-height:40px}
+.campaign-pricing .pricing-history span{display:block}
+.campaign-pricing .pricing-feedback:empty{display:none}
+.campaign-pricing [hidden]{display:none!important}
