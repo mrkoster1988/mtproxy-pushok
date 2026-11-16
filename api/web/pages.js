@@ -154,7 +154,7 @@
  const heroCopy=el('div',undefined,'dashboard-hero-copy');
  heroCopy.append(el('h2','Продвигайте свой канал'),el('p','Реклама в MTProxy'));
  const heroActions=el('div',undefined,'dashboard-hero-actions');heroActions.append(link('Создать кампанию','create'));
- const connectProxy=el('a','Подключить прокси','dashboard-connect-proxy');connectProxy.setAttribute('aria-disabled','true');connectProxy.title='Ссылка подключения ещё не настроена';connectProxy.addEventListener('click',event=>{if(!connectProxy.hasAttribute('href')){event.preventDefault();notice('Ссылка подключения прокси пока не настроена.');}});heroActions.append(connectProxy);
+ const connectProxy=el('a','Подключить прокси','dashboard-connect-proxy');connectProxy.setAttribute('role','link');connectProxy.tabIndex=0;connectProxy.setAttribute('aria-disabled','true');connectProxy.title='Ссылка подключения ещё не настроена';connectProxy.addEventListener('click',event=>{if(!connectProxy.hasAttribute('href')){event.preventDefault();notice('Ссылка подключения прокси пока не настроена.');}});heroActions.append(connectProxy);
  const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
  dashboardHero.append(heroCopy,dashboardMascot,heroActions);
  const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardReferral=el('div');dashboardReferral.id='dashboard-referral';dashboardIntro.append(dashboardHero);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
