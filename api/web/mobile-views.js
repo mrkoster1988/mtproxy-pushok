@@ -29,16 +29,16 @@ window.pushokViews=(()=>{
   return loadAvatar(fallback,id?'users/'+encodeURIComponent(id)+'/avatar':'','user:'+id,'');
  }
  function loadAvatar(fallback,path,key,alt){
-  if(!path||!token)return fallback;if(logoSession!==token){clearLogos();logoSession=token;}
+  if(!path||!token)return fallback;const scope=token+'|'+me?.role;if(logoSession!==scope){clearLogos();logoSession=scope;}
   const epoch=logoEpoch,session=token;
   if(!logos.has(key)){
    if(logos.size>=128)return fallback;
    const entry={url:null};logos.set(key,entry);
    entry.promise=fetchLogo('/api/v1/'+path,{headers:{Authorization:'Bearer '+session},cache:'no-store'})
-    .then(async r=>{if(!r||r.status!==200||r.headers.get('Content-Type')?.split(';')[0]!=='image/jpeg')return null;const blob=await r.blob();if(blob.size>1048576||epoch!==logoEpoch||session!==token)return null;entry.url=URL.createObjectURL(blob);return entry.url;}).catch(()=>null);
+    .then(async r=>{if(!r||r.status!==200||r.headers.get('Content-Type')?.split(';')[0]!=='image/jpeg')return null;const blob=await r.blob();if(blob.size>1048576||epoch!==logoEpoch||session!==token||scope!==token+'|'+me?.role)return null;entry.url=URL.createObjectURL(blob);return entry.url;}).catch(()=>null);
   }
   const initial=[...fallback.childNodes].map(n=>n.cloneNode(true));
-  logos.get(key).promise.then(src=>{if(!src||epoch!==logoEpoch||session!==token)return;const img=el('img');img.alt=alt;img.width=48;img.height=48;img.decoding='async';img.addEventListener('error',()=>fallback.replaceChildren(...initial),{once:true});img.src=src;fallback.replaceChildren(img);});return fallback;
+  logos.get(key).promise.then(src=>{if(!src||epoch!==logoEpoch||session!==token||scope!==token+'|'+me?.role)return;const img=el('img');img.alt=alt;img.width=48;img.height=48;img.decoding='async';img.addEventListener('error',()=>fallback.replaceChildren(...initial),{once:true});img.src=src;fallback.replaceChildren(img);});return fallback;
  }
  function avatar(kind='channel'){const a=el('span',undefined,'ui-avatar');a.append(icon(kind));return a;}
  function profileAvatar(){

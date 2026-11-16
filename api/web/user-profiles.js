@@ -56,9 +56,10 @@ window.pushokProfiles=(()=>{
   }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p','Обзор не обновлён. '+e.message,'muted'),button('Повторить',()=>ownOverview(target)));}
  }
  function show(target,uid){
+  if(!['admin','operator'].includes(me?.role)){target.replaceChildren();return;}
   const session=token,viewer=me?.id;let archived=false,campaignPage=0,channelPage=0,serial=0;
   target.replaceChildren(el('p','Загрузка профиля…','muted'));
-  const valid=()=>session===token&&viewer===me?.id&&target.isConnected&&location.hash==='#/user/'+uid;
+  const valid=()=>session===token&&viewer===me?.id&&['admin','operator'].includes(me?.role)&&target.isConnected&&location.hash==='#/user/'+uid;
   function external(url,text){
    try{const parsed=new URL(url);if(parsed.protocol!=='https:'||parsed.hostname!=='t.me'||parsed.username||parsed.password)throw Error();
     const a=el('a',text);a.href=parsed.href;a.target='_blank';a.rel='noopener noreferrer';return a;

@@ -659,7 +659,6 @@ def list_campaigns(
             rows = connection.execute(
                 """
                 SELECT sc.title AS channel_title, sc.telegram_url AS channel_url,
-                       c.advertiser_user_id,
                        c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
                        c.duration_seconds_snapshot, c.price_kopecks_snapshot, c.base_price_kopecks_snapshot, c.stars_price_snapshot,
                        c.growth_offer_name, c.discount_percent_snapshot,
@@ -1729,6 +1728,7 @@ def list_operator_campaigns(
             rows = connection.execute(
                 f"""
                 SELECT sc.title AS channel_title, sc.telegram_url AS channel_url,
+                       c.advertiser_user_id,
                        u.first_name AS advertiser_first_name,
                        u.last_name AS advertiser_last_name,
                        u.username AS advertiser_username,
