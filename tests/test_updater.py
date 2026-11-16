@@ -41,6 +41,22 @@ class UpdaterTests(unittest.TestCase):
             return 'new\n'
         return ''
 
+    def test_busy_finalizer_preserves_active_worker_status(self):
+        self.request()
+        updater.status('running', stage='build')
+        with patch.object(sys, 'argv', ['updater.py', '--finalize']), patch.object(updater.fcntl, 'flock', side_effect=BlockingIOError), patch.object(updater, 'run') as run:
+            updater.main()
+        run.assert_not_called()
+        self.assertTrue((self.root / '.control/request.json').exists())
+        self.assertEqual(updater.read_control('status.json')['stage'], 'build')
+
+    def test_worker_waits_for_lock_before_consuming_request(self):
+        self.request()
+        with patch.object(updater.fcntl, 'flock') as flock, patch.object(updater, 'run', side_effect=self.fake_run):
+            updater.main()
+        self.assertEqual(flock.call_args_list[0].args[1], updater.fcntl.LOCK_EX)
+        self.assertEqual(updater.read_control('status.json')['state'], 'succeeded')
+
     def test_fixed_release_backup_before_migration_and_ready_before_success(self):
         self.request()
         with patch.object(updater, 'run', side_effect=self.fake_run):
@@ -113,3 +129,4 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(updater.read_control('payments.json'),{})
         path.unlink();path.write_text(json.dumps({'large':'a'*17000}))
         self.assertEqual(updater.read_control('payments.json'),{})
+

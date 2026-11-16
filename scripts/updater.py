@@ -79,7 +79,17 @@ def read_control(name):
 def main():
     CONTROL.mkdir(mode=0o700, exist_ok=True)
     with lock_file('host-lock') as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if '--finalize' in sys.argv:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                # Другой обновлятор ещё работает: его статус менять нельзя.
+                return
+        else:
+            # Ожидаем владельца, сохраняя запрос. systemd ограничивает общее время.
+            # После освобождения блокировки запрос проверяется заново.
+            print('Waiting for updater lock', flush=True)
+            fcntl.flock(lock, fcntl.LOCK_EX)
         if '--finalize' in sys.argv:
             with queue_lock():
                 try:
