@@ -43,6 +43,7 @@ class CampaignAutomationTests(unittest.TestCase):
             (dict(payment_status='awaiting_payment'), 'awaiting_payment'),
             (dict(placement_status='not_scheduled',auto_schedule_paused=True), 'paused'),
             (dict(placement_status='not_scheduled'), 'awaiting_slot'),
+            (dict(placement_status='not_scheduled',prepared=False), 'awaiting_slot'),
             (dict(prepared=False), 'setup_required'),
         ]:
             with self.subTest(changes=changes):

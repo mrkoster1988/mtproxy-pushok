@@ -1,8 +1,9 @@
-"""Фоновый GET ожидающих СБП-платежей. Новые счета и размещения не создаёт."""
+"""Сверка СБП, списания кошелька и независимый автоподбор оплаченных размещений."""
 import argparse
 import json
 import os
 from .payment_gate import sbp_reconciliation_enabled
+from .auto_schedule import service_once as schedule_once
 import signal
 import threading
 
@@ -81,6 +82,18 @@ def service_once(dsn, *, apply=False, limit=20):
             conn.execute('SELECT pg_advisory_unlock(%s)', (_LOCK,))
 
 
+def schedule_loop(dsn, stopped, limit=20):
+    """Расписание не ждёт сети банка или списаний кошелька. Повтор безопасен."""
+    while not stopped.is_set():
+        try:
+            result = schedule_once(dsn, limit=limit)
+        except psycopg.Error:
+            result = {'status': 'retry'}
+        if result.get('scheduled') or result.get('status'):
+            print(json.dumps({'slots': result}), flush=True)
+        stopped.wait(5)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--once', action='store_true', help='один пакет вместо службы')
@@ -94,6 +107,9 @@ def main():
     stopped = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stopped.set())
+    if not args.once:
+        threading.Thread(target=schedule_loop, args=(os.environ['DATABASE_URL'], stopped, args.limit),
+                         name='automatic-slots', daemon=True).start()
     while True:
         try:
             result = service_once(os.environ['DATABASE_URL'], apply=args.apply, limit=args.limit)
@@ -105,11 +121,11 @@ def main():
                 result['wallet'] = wallet_once(os.environ['DATABASE_URL'], limit=args.limit)
             except psycopg.Error:
                 result['wallet'] = {'status': 'retry'}
-            try:
-                from .auto_schedule import service_once as schedule_once
-                result['slots'] = schedule_once(os.environ['DATABASE_URL'])
-            except psycopg.Error:
-                result['slots'] = {'status': 'retry'}
+            if args.once:
+                try:
+                    result['slots'] = schedule_once(os.environ['DATABASE_URL'], limit=args.limit)
+                except psycopg.Error:
+                    result['slots'] = {'status': 'retry'}
         print(json.dumps(result), flush=True)
         if args.once:
             return

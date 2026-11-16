@@ -36,7 +36,7 @@ window.pushokOrder=(()=>{
   $('order-date').querySelector('summary').textContent='Дата · '+(start?date(start):'согласовать с оператором');
   const stars=q?q.stars_price_xtr:tariff?.stars_price_xtr;
   const cost=total===0?'Бесплатно':miniAppMode?(attempt?'Уточняется после отправки':stars>0?stars+' XTR':'Цена Stars не задана'):money(total);
-  const rows=[['Канал',channel],['Тариф',tariff?tariff.name+' · '+tariff.duration_seconds/3600+' ч':'Не выбран'],['Стоимость',tariff?cost:'—'],['Начало',start?date(start):'По согласованию']];
+  const rows=[['Канал',channel],['Тариф',tariff?tariff.name+' · '+tariff.duration_seconds/3600+' ч':'Не выбран'],['Стоимость',tariff?cost:'—'],['Начало',start?date(start):'После оплаты, ближайшее свободное время']];
   if(q?.offer_name)rows.push(['Скидка',q.offer_name+' · '+q.discount_percent+'%']);
   if(!miniAppMode&&q?.stars_price_xtr>0)rows.push(['В Telegram Stars',q.stars_price_xtr+' XTR']);
   $('order-summary').replaceChildren(...rows.flatMap(([key,value])=>[el('dt',key),el('dd',value)]));

@@ -103,8 +103,10 @@ window.pushokApproval=(()=>{
   }else if(c.payment_status!=='verified'){
    content.append(el('h3','2. Ожидаем оплату'),el('p',c.payment_status==='refunded'?'Оплата возвращена. Размещение недоступно.':'Рекламодатель оплачивает свою заявку. Stars и СБП подтверждаются сервером; загруженный чек появится здесь для проверки.'),button('Проверить статус оплаты',refresh));
   }else if(c.placement_status==='not_scheduled'){
-   content.append(el('p','После одобрения и оплаты система подберёт свободный период на узле с подготовленным тегом этого канала. Если привязки нет, заявка ожидает подготовки в разделе «Узлы и спонсоры».'),button('🗓️ Подобрать автоматически',()=>perform(()=>post('auto-schedule'),'Автоподбор включён. Обновите карточку через минуту.')));
-   content=details('Ручное назначение периода',content);
+   void renderPromotionStatus(c,content);
+   content.append(el('p','Начало — с выбранного клиентом времени или сразу после освобождения места. Если дата не выбрана — ближайшее доступное время.'));
+   content=details('Изменить расписание',content);
+   content.append(button('Возобновить автоподбор',()=>perform(()=>post('auto-schedule'),'Автоподбор включён. Расписание обновится автоматически.')));
    const block=form('3. Назначьте размещение','Назначить слот',async guard=>{if(new Date(start.value).getTime()<=Date.now())throw Error('Начало уже прошло. Выберите будущее время или нажмите «Через 2 минуты».');const free=await api('/operator/campaigns/'+c.id+'/available-nodes?'+new URLSearchParams({start_at:new Date(start.value).toISOString()}));guard();if(!free.nodes.some(n=>n.id===select.value))throw Error('Узел занят на выбранный период или недоступен. Проверьте свободные узлы и выберите другое время.');await post('schedule',{proxy_node_id:select.value,start_at:new Date(start.value).toISOString()});});
    const select=el('select');select.required=true;option(select,'','Выберите узел');const active=nodes.filter(n=>n.status==='active');active.forEach(n=>option(select,n.id,n.name));if(active.length===1)select.value=active[0].id;field(block.f,'Прокси-узел',select);
    const start=el('input');start.type='datetime-local';start.required=true;const requested=new Date(c.requested_start_at),d=requested.getTime()>Date.now()?requested:new Date(Date.now()+5*60000);start.value=localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');field(block.f,'Начало размещения',start);
@@ -115,7 +117,8 @@ window.pushokApproval=(()=>{
    block.finish();
   }else if(c.placement_status==='scheduled'){
    void renderPromotionStatus(c,content);
-   content.append(el('h3','Автоматический запуск'),el('p','В назначенное время агент применит подготовленный тег и переведёт кампанию в активную. Ошибки и повторы обрабатываются автоматически.'));
+   content.append(el('p','Начало: '+date(c.scheduled_start_at)+' · до '+date(c.scheduled_end_at),'approval-period'));
+   if(me.role==='admin'){const setup=el('a','Настройки запуска');setup.href='#/sponsors/'+c.channel_id+(c.proxy_node_id?'/'+c.proxy_node_id:'');content.append(setup);}
    content=details('Дополнительная ручная проверка',content);
    content.append(el('p','Назначено: '+date(c.scheduled_start_at)+' — '+date(c.scheduled_end_at)));
    let savedReport=null;

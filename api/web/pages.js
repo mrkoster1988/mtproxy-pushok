@@ -42,7 +42,7 @@
   campaigns:'Одобрение канала, подтверждение оплаты и фактическое размещение — разные статусы.',
   campaign:'Если нужны исправления, прочтите комментарий, исправьте канал и отправьте заявку повторно.',
   payments:'Не переводите деньги повторно до выяснения результата. Загрузка чека не подтверждает поступление денег.',
-  calendar:'Выбор даты не бронирует слот. Временная бронь на 15 минут доступна в одобренной заявке до проверки оплаты.',
+  calendar:'Выберите желаемое начало. После оплаты система назначит свободное время; если выбранное занято — ближайший следующий период.',
   reports:'История отражает события системы и ручные наблюдения. Счётчик показов Telegram недоступен.',
   moderation:'Проверяйте канал и оплату раздельно. Агент активирует кампанию после применения тега; завершение после снятия/смены тега — автоматическое.',
   sponsors:'Запись узла и план движка не устанавливают MTProxy. Управление тегом и проверка показа выполняются отдельно.',
@@ -200,7 +200,7 @@
  const sponsorNode=el('select');sponsorNode.required=true;sponsorNode.setAttribute('aria-label','Узел спонсорского тега');
  const sponsorEngine=el('select');sponsorEngine.setAttribute('aria-label','Движок спонсорского тега');Object.entries(engineTitles).forEach(([v,t])=>option(sponsorEngine,v,t));
  const sponsorTag=el('input');sponsorTag.type='password';sponsorTag.required=true;sponsorTag.minLength=32;sponsorTag.maxLength=32;sponsorTag.pattern='[0-9a-fA-F]{32}';sponsorTag.autocomplete='off';sponsorTag.setAttribute('aria-label','ad_tag из MTProxyBot');
- function field(title,input){const label=el('label',title);label.append(input);return label;}
+ function field(title,input){const label=el('label',title);if(!input.hasAttribute('aria-label'))input.setAttribute('aria-label',title);label.append(input);return label;}
  const sponsorSave=el('button','Сохранить регистрацию');sponsorSave.type='submit';
  const sponsorResult=el('p',undefined,'muted');sponsorResult.setAttribute('role','status');
  sponsorForm.append(field('Узел',sponsorNode),field('Движок',sponsorEngine),field('ad_tag из @MTProxyBot · 32 шестнадцатеричных символа',sponsorTag),sponsorSave);
@@ -213,8 +213,12 @@
  automationPanel.id='promotion-automation';automationRuntime.id='promotion-automation-runtime';automationRuntime.setAttribute('aria-live','polite');
  automationPanel.append(el('p','Один раз подготовьте тег для канала через @MTProxyBot → Set promotion. Агент на VPS применит его в назначенное время и вернёт исходный после окончания. Применение тега не подтверждает фактический показ.','muted'),automationBody,automationRuntime);
  content.sponsors.append(automationPanel);
- let automationRevision=0;
+ let automationRevision=0,automationFocusRoute='';
  async function renderAutomation(){
+  // Из карточки заявки сначала открываем её форму, чтобы загрузка диагностики
+  // выше по странице не сдвигала поля после перехода.
+  if(routeParts()[0]==='sponsors'&&routeParts()[1])content.sponsors.prepend(automationPanel);
+  else content.sponsors.append(automationPanel);
   void renderDiagnostics();
   automationPanel.hidden=me?.role!=='admin';if(me?.role!=='admin')return;
   const rev=++automationRevision,session=token;automationBody.replaceChildren(el('p','Загрузка…'));
@@ -223,10 +227,16 @@
    const form=el('form'),node=el('select'),channel=el('select'),tag=el('input'),confirmed=el('input');
    node.required=true;channel.required=true;tag.required=true;tag.type='password';tag.pattern='[0-9a-fA-F]{32}';tag.autocomplete='off';confirmed.type='checkbox';confirmed.required=true;
    nodes.forEach(n=>option(node,n.id,n.name+' · '+n.host+':'+n.port));data.channels.forEach(c=>option(channel,c.id,c.title+' · '+c.telegram_url));
+   const selectedChannel=routeParts()[1],selectedNode=location.hash.split('/')[3];if(data.channels.some(c=>c.id===selectedChannel))channel.value=selectedChannel;if(nodes.some(n=>n.id===selectedNode))node.value=selectedNode;
    const submit=el('button','Включить для канала');submit.type='submit';submit.disabled=!nodes.length||!data.channels.length;
    form.append(field('Узел',node),field('Канал',channel),field('Тег этого канала из @MTProxyBot',tag),field('Я проверил: этот тег связан именно с выбранным каналом в Telegram',confirmed),submit);
    form.addEventListener('submit',e=>{e.preventDefault();run(async()=>{await api('/admin/promotion-bindings',{method:'PUT',body:{node_id:node.value,channel_id:channel.value,ad_tag:tag.value,telegram_binding_confirmed:confirmed.checked}});tag.value='';await renderAutomation();notice('Связь сохранена. Агент применит тег в пределах назначенного слота.',true);},submit);});
    automationBody.replaceChildren(form);
+   if(routeParts()[0]==='sponsors'&&selectedChannel&&automationFocusRoute!==location.hash){
+    automationFocusRoute=location.hash;
+    window.scrollTo({top:window.scrollY+automationPanel.getBoundingClientRect().top-bar.getBoundingClientRect().height-12,behavior:'instant'});
+    node.focus({preventScroll:true});
+   }
    if(!nodes.length)automationBody.prepend(el('p','Нет узлов. Добавьте узел выше или восстановите его в разделе «Удалённые».'));
    for(const b of data.bindings){const row=el('div',undefined,'card');row.append(el('p',b.name+' → '+b.title+' · тег …'+b.tag_ending),button('Отключить',async()=>{await api('/admin/promotion-bindings/'+b.proxy_node_id+'/'+b.channel_id,{method:'DELETE'});await renderAutomation();notice('Связь отключена. При следующей проверке агент вернёт исходный тег.',true);}));automationBody.append(row);}
   }catch(e){if(rev===automationRevision&&token===session)automationBody.replaceChildren(el('p',e.message));}
@@ -238,7 +248,7 @@
   ['Как начать?','Откройте «Разместить рекламу», укажите канал, тариф и дату. Проверьте итог и отправьте на модерацию одной кнопкой.'],
   ['Как указать канал?','Используйте публичную ссылку https://t.me/channel. Исправления доступны в черновике или по запросу модератора.'],
   ['Цена и Stars','Цена фиксируется в заявке. RUB и XTR настраиваются отдельно, автоматического курса нет.'],
-  ['Дата и бронь','Календарь справочный. В одобренной заявке можно получить бронь на 15 минут, если API найдёт свободный узел.'],
+  ['Дата размещения','Выберите желаемое начало. После оплаты система назначит полный свободный период. Если выбранное время занято, размещение начнётся в ближайшее подходящее время после него.'],
   ['Как оплатить?',miniAppMode?'Откройте карточку оплаты заявки и выберите Stars. Успешность проверяется сервером.':'Откройте заявку. Реквизиты доступны после настройки владельцем. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
   [miniAppMode?'Telegram Stars':'Stars и СБП',miniAppMode?'Счёт Stars можно открыть в карточке оплаты, если приём включён владельцем.':'Stars оформляются в Telegram-боте. СБП доступна только во внешнем кабинете после настройки владельцем. Возврат из банка не подтверждает оплату: результат сверяется сервером.'],
   ['Что значит «Активно»?','Агент подтвердил применение тега и работу прокси. После окончания агент снимает или сменяет тег и завершает кампанию. Это не счётчик показов Telegram.'],
@@ -415,6 +425,7 @@
  function activate(){
   if(!me||!state.ready)return;
   let [name,section]=routeParts();
+  if(name!=='sponsors')automationFocusRoute='';
   if(!permitted(name)){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}
   if($('notice').dataset.route!==location.hash)$('notice').hidden=true;
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
