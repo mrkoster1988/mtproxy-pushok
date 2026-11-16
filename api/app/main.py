@@ -53,7 +53,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.42",
+    version="1.43",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1281,6 +1281,7 @@ def schedule_placement(
                 UPDATE campaigns
                 SET proxy_node_id = %s, scheduled_start_at = %s,
                     scheduled_end_at = %s, placement_status = 'scheduled',
+                    auto_schedule_managed = false, auto_schedule_tag_pending = false,
                     updated_at = now()
                 WHERE id = %s
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
@@ -3003,7 +3004,9 @@ def delete_promotion_binding(node_id: UUID, channel_id: UUID, admin: dict = Depe
 @app.get('/api/v1/campaigns/{campaign_id}/promotion-status', tags=['campaigns'])
 def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_current_user)):
     with psycopg.connect(DATABASE_URL,connect_timeout=3,row_factory=dict_row) as conn:
-        row=conn.execute('''SELECT c.advertiser_user_id,c.proxy_node_id,c.placement_status,
+        row=conn.execute('''SELECT c.advertiser_user_id,c.proxy_node_id,c.placement_status,c.channel_id,
+            c.auto_schedule_managed AS automatic_assignment,
+            c.auto_schedule_tag_pending AS preparation_was_pending,
             c.moderation_status,c.payment_status,c.auto_schedule_paused,c.scheduled_start_at,c.scheduled_end_at,
             EXISTS(SELECT 1 FROM channel_promotion_bindings b
             JOIN proxy_nodes n ON n.id=b.proxy_node_id JOIN sponsor_channels ch ON ch.id=b.channel_id
@@ -3017,6 +3020,18 @@ def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_curren
             WHERE c.id=%s''',(campaign_id,)).fetchone()
         if not row or (user['role'] not in ('admin','operator') and row['advertiser_user_id']!=user['id']):
             raise HTTPException(404,'campaign_not_found')
+        row['binding_selection_pending'] = False
+        if (row['placement_status']=='scheduled' and row['automatic_assignment'] and not row['auto_schedule_paused']
+                and (not row['prepared'] or row['preparation_was_pending'])
+                and not (row['campaign_id']==campaign_id and row['state']=='applied')):
+            row['binding_selection_pending'] = bool(conn.execute('''SELECT 1 FROM channel_promotion_bindings b
+                JOIN proxy_nodes n ON n.id=b.proxy_node_id JOIN sponsor_channels ch ON ch.id=b.channel_id
+                WHERE b.channel_id=%s AND b.channel_url=ch.telegram_url AND ch.archived_at IS NULL
+                  AND n.status='active' AND n.archived_at IS NULL
+                  AND (n.target_engine IS NULL OR n.target_engine='official_mtproxy')
+                  AND (b.node_host,b.node_port)=(n.host,n.port)
+                  AND NOT EXISTS(SELECT 1 FROM placement_observations WHERE campaign_id=%s)
+                LIMIT 1''',(row['channel_id'],campaign_id)).fetchone())
         node=conn.execute('SELECT id,host,port,status,archived_at,target_engine FROM proxy_nodes WHERE id=%s',
                           (row['proxy_node_id'],)).fetchone()
         result=promotion_confirmation(conn, node, row)

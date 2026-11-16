@@ -34,6 +34,8 @@ def campaign_automation_status(campaign, confirmed, node=None, *, now=None):
         return 'node_unavailable'
     if status == 'not_scheduled':
         return 'awaiting_slot'
+    if campaign.get('binding_selection_pending'):
+        return 'selecting_tag'
     if not campaign['prepared']:
         return 'setup_required'
     start = campaign.get('scheduled_start_at')
@@ -80,7 +82,8 @@ def node_plan(conn, node):
       FROM campaigns c JOIN channel_promotion_bindings b
       ON b.proxy_node_id=c.proxy_node_id AND b.channel_id=c.channel_id
       JOIN sponsor_channels ch ON ch.id=c.channel_id
-      WHERE c.proxy_node_id=%s AND (c.placement_status='scheduled' OR (c.placement_status='active' AND EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied')))
+      WHERE c.proxy_node_id=%s
+      AND (c.placement_status='active' OR NOT COALESCE(c.auto_schedule_tag_pending,false)) AND (c.placement_status='scheduled' OR (c.placement_status='active' AND EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied')))
       AND c.moderation_status='approved' AND c.payment_status='verified'
       AND c.archived_at IS NULL AND ch.archived_at IS NULL
       AND b.channel_url=ch.telegram_url AND b.node_host=%s
@@ -95,6 +98,7 @@ def node_plan(conn, node):
 
 def waiting_reason(conn, node):
     row = conn.execute("""SELECT c.id,c.moderation_status,c.payment_status,
+        c.auto_schedule_tag_pending AS binding_selection_pending,
         c.scheduled_start_at,c.scheduled_start_at>now() AS future,
         c.scheduled_end_at<=now() AS ended,ch.archived_at AS channel_archived,
         b.channel_id AS bound_channel,
@@ -102,7 +106,7 @@ def waiting_reason(conn, node):
         FROM campaigns c JOIN sponsor_channels ch ON ch.id=c.channel_id
         JOIN proxy_nodes n ON n.id=c.proxy_node_id
         LEFT JOIN channel_promotion_bindings b ON b.proxy_node_id=c.proxy_node_id AND b.channel_id=c.channel_id
-        WHERE c.proxy_node_id=%s AND c.archived_at IS NULL AND c.placement_status IN ('scheduled','active')
+          WHERE c.proxy_node_id=%s AND c.archived_at IS NULL AND c.placement_status IN ('scheduled','active')
         ORDER BY (c.scheduled_end_at>now()) DESC,c.scheduled_start_at,c.id LIMIT 1""", (node['id'],)).fetchone()
     if row:
         result = {'campaign_id': str(row['id'])}
@@ -120,6 +124,8 @@ def waiting_reason(conn, node):
             return dict(result, reason='binding_missing')
         if not row['binding_current']:
             return dict(result, reason='binding_changed')
+        if row.get('binding_selection_pending'):
+            return dict(result, reason='binding_selection_pending')
 
     return {'reason': 'no_current_campaign'}
 
