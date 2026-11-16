@@ -11,7 +11,7 @@ def check_automatic_schedule(browser, base, output, failures, dsn):
     owner,admin,node,channel,tariff,busy,campaign=[uuid4() for _ in range(7)]
     start=datetime.now(timezone.utc).replace(second=0,microsecond=0)+timedelta(days=3)
     host='schedule-'+node.hex+'.example.org';url='https://t.me/automatic_slot_test'
-    tokens={};contexts=[]
+    tokens={};contexts=[];replacement_node=uuid4();replacement_busy=uuid4()
     with psycopg.connect(dsn) as conn:
         for uid,role in ((owner,'advertiser'),(admin,'admin')):
             conn.execute("INSERT INTO users(id,telegram_user_id,role,first_name) VALUES(%s,%s,%s,'Автоподбор')",(uid,int(uid.hex[:12],16),role))
@@ -59,8 +59,26 @@ def check_automatic_schedule(browser, base, output, failures, dsn):
         expect(staff.locator('#promotion-automation').get_by_label('Узел',exact=True)).to_have_value(str(node))
         staff.screenshot(path=str(output/'54-automatic-schedule-settings-390.png'))
         expect(staff.locator('#promotion-automation').get_by_label('Узел',exact=True)).to_be_in_viewport()
+        # Готовая связь на другом узле должна сама заменить неподготовленный прогноз.
+        with psycopg.connect(dsn) as conn:
+            conn.execute('DELETE FROM channel_promotion_bindings WHERE proxy_node_id=%s AND channel_id=%s',(node,channel))
+            replacement_host='replacement-'+replacement_node.hex+'.example.org'
+            conn.execute("INSERT INTO proxy_nodes(id,name,host,port) VALUES(%s,'Готовый узел',%s,8443)",(replacement_node,replacement_host))
+            conn.execute("INSERT INTO channel_promotion_bindings(proxy_node_id,channel_id,ad_tag,confirmed_by,channel_url,node_host,node_port) VALUES(%s,%s,%s,%s,%s,%s,8443)",(replacement_node,channel,uuid4().hex,admin,url,replacement_host))
+            conn.execute('''INSERT INTO campaigns(id,advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,duration_seconds_snapshot,
+                price_kopecks_snapshot,currency_snapshot,moderation_status,payment_status,placement_status,
+                proxy_node_id,scheduled_start_at,scheduled_end_at)
+                VALUES(%s,%s,%s,%s,'Занято',10800,0,'RUB','approved','verified','scheduled',%s,%s,%s)''',(replacement_busy,owner,channel,tariff,replacement_node,start,start+timedelta(hours=3)))
+        client.evaluate('refresh()');expect(client.locator('[data-page=campaign] [data-promotion-summary]')).to_contain_text('Подбираем готовый тег')
+        service_once(dsn,limit=100);client.evaluate('refresh()')
+        expect(client.locator('[data-page=campaign] [data-promotion-summary]')).to_contain_text('Ожидается автоматический запуск')
+        response=client.request.get(base+'/api/v1/campaigns/'+str(campaign)+'/promotion-status',headers={'Authorization':'Bearer '+tokens['advertiser']})
+        assert response.json()['prepared'] is True
+        assert datetime.fromisoformat(response.json()['scheduled_start_at'].replace('Z','+00:00'))==start+timedelta(hours=3)
+        client.screenshot(path=str(output/'75-prepared-tag-auto-selection-320.png'))
+
     finally:
         for ctx in contexts:ctx.close()
         with psycopg.connect(dsn) as conn:
-            conn.execute("UPDATE campaigns SET placement_status='cancelled' WHERE id=ANY(%s)",([campaign,busy],))
-            conn.execute("UPDATE proxy_nodes SET status='paused' WHERE id=%s",(node,))
+            conn.execute("UPDATE campaigns SET placement_status='cancelled' WHERE id=ANY(%s)",([campaign,busy,replacement_busy],))
+            conn.execute("UPDATE proxy_nodes SET status='paused' WHERE id=ANY(%s)",([node,replacement_node],))

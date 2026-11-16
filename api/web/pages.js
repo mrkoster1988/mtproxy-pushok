@@ -225,7 +225,7 @@
  },sponsorSave);});
  const automationPanel=section('Автоприменение по расписанию'),automationBody=el('div'),automationRuntime=el('div');
  automationPanel.id='promotion-automation';automationRuntime.id='promotion-automation-runtime';automationRuntime.setAttribute('aria-live','polite');
- automationPanel.append(el('p','Один раз подготовьте тег для канала через @MTProxyBot → Set promotion. Агент на VPS применит его в назначенное время и вернёт исходный после окончания. Применение тега не подтверждает фактический показ.','muted'),automationBody,automationRuntime);
+ automationPanel.append(el('p','Один раз подтвердите связь тега с каналом через @MTProxyBot → Set promotion. Система сама выберет ближайший свободный период среди подходящих узлов и перенесёт туда ожидающую автоматическую заявку. Агент применит тег по расписанию. Тег другого канала не перепривязывается автоматически в Telegram.','muted'),automationBody,automationRuntime);
  content.sponsors.append(automationPanel);
  let automationRevision=0,automationFocusRoute='';
  async function renderAutomation(){

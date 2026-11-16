@@ -24,7 +24,7 @@ TAG = re.compile(r'[0-9a-fA-F]{32}')
 PLAN_CODES = {
     'ready', 'idle', 'default_sponsor', 'default_binding_missing', 'node_not_found', 'node_ambiguous', 'node_paused', 'node_archived',
     'engine_unsupported', 'manual_placement_active', 'conflicting_campaigns',
-    'binding_missing', 'binding_changed', 'channel_archived', 'moderation_pending',
+    'binding_missing', 'binding_changed', 'binding_selection_pending', 'channel_archived', 'moderation_pending',
     'payment_pending', 'waiting_start', 'period_ended', 'no_current_campaign',
 }
 REPORT_CODES = PLAN_CODES | {

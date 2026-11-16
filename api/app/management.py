@@ -207,7 +207,7 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
             if hold:
                 raise HTTPException(409, 'slot_held_by_another_campaign')
             conn.execute('DELETE FROM slot_holds WHERE campaign_id=%s', (campaign_id,))
-            conn.execute('UPDATE campaigns SET proxy_node_id=%s,scheduled_start_at=%s,scheduled_end_at=%s,updated_at=now() WHERE id=%s', (payload.proxy_node_id,payload.start_at,end,campaign_id))
+            conn.execute('UPDATE campaigns SET proxy_node_id=%s,scheduled_start_at=%s,scheduled_end_at=%s,auto_schedule_managed=false,auto_schedule_tag_pending=false,updated_at=now() WHERE id=%s', (payload.proxy_node_id,payload.start_at,end,campaign_id))
             event(conn, user, 'placement_rescheduled', {'node_id':payload.proxy_node_id,'start_at':payload.start_at}, campaign_id)
         return {'updated': True}
 
@@ -253,7 +253,7 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
         with transaction() as conn:
             c = owned_campaign(conn, campaign_id, user, True)
             future_slot(conn, c, datetime.now(timezone.utc))
-            conn.execute("UPDATE campaigns SET auto_schedule_paused=true,placement_status='not_scheduled',proxy_node_id=NULL,scheduled_start_at=NULL,scheduled_end_at=NULL,updated_at=now() WHERE id=%s", (campaign_id,))
+            conn.execute("UPDATE campaigns SET auto_schedule_paused=true,auto_schedule_managed=false,auto_schedule_tag_pending=false,placement_status='not_scheduled',proxy_node_id=NULL,scheduled_start_at=NULL,scheduled_end_at=NULL,updated_at=now() WHERE id=%s", (campaign_id,))
             conn.execute('DELETE FROM slot_holds WHERE campaign_id=%s', (campaign_id,))
             event(conn, user, 'placement_slot_removed', {}, campaign_id)
         return {'removed': True, 'payment_unchanged': True}
