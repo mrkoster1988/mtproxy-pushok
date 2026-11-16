@@ -439,11 +439,6 @@ body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5}
 button,input,select,textarea{font:inherit}
 button,.primary{border-radius:12px;box-shadow:none;min-height:44px;padding:10px 16px}
 input:not([type=checkbox]):not([type=radio]),select,textarea{font-size:16px;min-height:44px;padding:11px 13px;border-radius:12px}
-input[type=checkbox]{appearance:none!important;display:inline-block!important;width:42px!important;height:24px!important;min-height:24px!important;padding:0!important;margin:0 10px 0 0!important;flex:none;border-radius:20px!important;background:#43586b!important;border:2px solid #587184!important;vertical-align:middle;cursor:pointer;position:relative}
-input[type=checkbox]:before{content:"";display:block;width:16px;height:16px;margin:2px;border-radius:50%;background:white;transition:transform .15s}
-input[type=checkbox]:checked{background:#128576!important;border-color:#32d3bc!important}
-input[type=checkbox]:checked:before{transform:translateX(17px)}
-input[type=checkbox]:focus-visible{outline:2px solid #ffb65f;outline-offset:3px}
 .cabinet-topbar{gap:10px;padding:12px 0;align-items:center}
 .cabinet-topbar form[hidden]{display:none!important}
 .cabinet-topbar .refresh-button{font-size:0;padding:8px 12px}

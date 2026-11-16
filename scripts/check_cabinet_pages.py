@@ -115,6 +115,13 @@ def main():
                     page.evaluate("route => window.cabinet.go(route)", route)
                     expect(page.locator('[data-page="' + (expected_page or route.split('/')[0]) + '"]')).to_be_visible()
 
+                def open_wallet_tools(page):
+                    # После проверки компактного вида раскрываем нужные формы старых сценариев.
+                    expect(page.locator('.wallet-balances').first).to_be_visible()
+                    for summary in page.locator('.wallet-disclosure > summary').all():
+                        if not summary.evaluate('(s) => s.parentElement.open'):
+                            summary.click()
+
                 def check_navigation_icons(page):
                     # Проверяем внешний SVG через настоящий static route и отрисованный <use>.
                     import xml.etree.ElementTree as ET
@@ -181,6 +188,18 @@ def main():
                 forbidden = advertiser.request.get(base + '/api/v1/admin/payments/status',
                     headers={"Authorization": "Bearer " + sessions['advertiser']})
                 assert forbidden.status == 403
+                # Компактная стартовая раскладка: история доступна, формы открываются по запросу.
+                go(advertiser, 'wallet')
+                expect(advertiser.locator('.wallet-journal')).to_be_visible()
+                expect(advertiser.locator('[data-wallet-section=topup]')).not_to_have_attribute('open', '')
+                expect(advertiser.get_by_label('Сумма пополнения',exact=True)).to_be_hidden()
+                advertiser.locator('[data-wallet-section=topup] > summary').click()
+                expect(advertiser.get_by_label('Сумма пополнения',exact=True)).to_be_visible()
+                advertiser.locator('[data-wallet-section=topup] > summary').click()
+                expect(advertiser.get_by_label('Автоматически оплачивать мои одобренные заявки')).not_to_be_checked()
+                go(advertiser, 'profile')
+                expect(advertiser.locator('.profile-group')).to_have_count(2)
+                expect(advertiser.locator('.profile-menu a[href="#/wallet"]')).to_have_count(0)
                 go(advertiser, 'create')
                 advertiser.locator('#order-channel-url').fill('@unsaved_order_channel')
                 go(advertiser, "channels")
@@ -216,8 +235,17 @@ def main():
                 expect(first_tile.locator('.campaign-steps dt')).to_have_text(['Модерация', 'Оплата', 'Размещение'])
                 expect(first_tile.locator('.tile-period')).to_contain_text('Желаемое начало:')
                 expect(first_tile.locator('.badge--active')).to_have_count(0)
+                advertiser.set_viewport_size({'width':390,'height':844})
+                assert first_tile.bounding_box()['height'] < 270, first_tile.bounding_box()
+                assert float(first_tile.locator('.tile-title').evaluate('(e)=>getComputedStyle(e).fontSize').replace('px','')) <= 16
+                expect(advertiser.locator('.campaign-tabs a[href="#/archive"]')).to_be_visible()
+                expect(advertiser.locator('.campaign-tabs a[href="#/channels"]')).to_be_visible()
+                advertiser.locator('.campaign-tabs a[href="#/channels"]').click()
+                advertiser.locator('.screen-back').click()
+                expect(advertiser.locator('[data-page=campaigns]')).to_be_visible()
+
                 expect(first_tile.get_by_role('link', name='Перейти к оплате', exact=True)).to_have_count(0)
-                first_tile.get_by_role('link', name='Открыть кампанию', exact=True).click()
+                first_tile.locator('.tile-heading > .icon-action').click()
                 expect(advertiser.locator('[data-page=campaign]')).to_be_visible()
                 go(advertiser, 'campaign/'+campaign_id)
                 expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На модерации')
@@ -1193,6 +1221,7 @@ def main():
                 refresh(advertiser)
                 go(advertiser,'create')
                 advertiser.locator('#tariff-select').select_option(str(growth_tariff))
+                advertiser.locator('#order-promo-section > summary').click()
                 advertiser.locator('#order-promo').fill('BROWSER20')
                 advertiser.locator('#order-quote').click()
                 expect(advertiser.locator('#order-quote-status')).to_contain_text('Браузерный промокод')
@@ -1209,6 +1238,7 @@ def main():
                     assert connection.execute('SELECT count(*) FROM growth_redemptions WHERE campaign_id=%s',(growth_cid,)).fetchone()[0]==1
                 # Баланс: реальная запись администратора, оплата владельца и возврат.
                 go(admin,'wallet')
+                open_wallet_tools(admin)
                 expect(admin.locator('[data-page=wallet]')).to_contain_text('Управление балансами')
                 admin.get_by_label('Telegram ID пользователя',exact=True).fill('99116000')
                 admin.get_by_role('button',name='Найти пользователя',exact=True).click()
@@ -1227,6 +1257,7 @@ def main():
                 advertiser.get_by_role('button',name='Оплатить с баланса',exact=True).click()
                 expect(advertiser.locator('[data-page=payments]')).to_contain_text('Оплачено с баланса')
                 go(advertiser,'wallet')
+                open_wallet_tools(advertiser)
                 expect(advertiser.locator('.wallet-balances').first).to_contain_text('220')
                 expect(advertiser.get_by_role('heading',name='Управление балансами',exact=True)).to_have_count(0)
                 expect(advertiser.get_by_label('Автоматически оплачивать мои одобренные заявки')).not_to_be_checked()
@@ -1250,11 +1281,12 @@ def main():
                 for width in (320,390,1280):
                     advertiser.set_viewport_size({'width':width,'height':900})
                     assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
-                    advertiser.screenshot(path=str(output/('dashboard-v119-'+str(width)+'.png')),full_page=False)
+                    advertiser.screenshot(path=str(output/('dashboard-v122-'+str(width)+'.png')),full_page=False)
                 advertiser.set_viewport_size({'width':390,'height':844})
                 advertiser.locator('.mobile-bottom-nav a[data-route=wallet]').click()
                 expect(advertiser.locator('.wallet-balances')).to_be_visible()
                 go(admin,'wallet')
+                open_wallet_tools(admin)
                 expect(admin.get_by_label('Основание возврата',exact=True)).to_be_visible()
                 admin.get_by_label('Основание возврата',exact=True).fill('Отмена тестового размещения')
                 admin.get_by_role('button',name='Вернуть на баланс',exact=True).click()
@@ -1287,6 +1319,7 @@ def main():
                         VALUES(%s,'telegram_stars','telegram_bot',100,'XTR','succeeded',%s)""",(referral_cid,'browser-referral-'+str(referral_cid)))
                     connection.execute("UPDATE campaigns SET moderation_status='approved',payment_status='verified',placement_status='completed' WHERE id=%s",(referral_cid,))
                 go(advertiser,'wallet')
+                open_wallet_tools(advertiser)
                 expect(advertiser.locator('.wallet-entry').filter(has_text='Реферальная награда')).to_have_count(1)
                 expect(advertiser.locator('.wallet-entry').filter(has_text='Реферальная награда').get_by_role('link',name='Открыть заявку →')).to_have_count(0)
                 go(advertiser,'growth')
@@ -1300,11 +1333,13 @@ def main():
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute("UPDATE campaigns SET payment_status='refunded' WHERE id=%s",(referral_cid,))
                 go(advertiser,'wallet')
+                open_wallet_tools(advertiser)
                 expect(advertiser.locator('.wallet-entry').filter(has_text='Отмена реферальной награды')).to_have_count(1)
                 go(advertiser,'growth')
                 expect(advertiser.get_by_role('heading',name='Награда отменена после возврата',exact=True)).to_be_visible()
                 # Подарочный бонус: конструктор, повтор активации и общий выключатель.
                 go(admin,'wallet')
+                open_wallet_tools(admin)
                 admin.get_by_label('Название подарка',exact=True).fill('Подарок для проверки')
                 admin.get_by_label('Подарок, бонусных ₽',exact=True).fill('25.50')
                 admin.get_by_label('Количество получателей',exact=True).fill('1')
@@ -1315,6 +1350,7 @@ def main():
                 gift_code=gift_row.locator('.growth-code').inner_text()
                 admin.screenshot(path=str(output/'42-wallet-gifts-admin-mobile.png'),full_page=True)
                 go(advertiser,'wallet')
+                open_wallet_tools(advertiser)
                 expect(advertiser.get_by_role('link',name='Открыть мои Stars в Telegram ↗')).to_have_attribute('href','tg://stars')
                 advertiser.get_by_label('Валюта пополнения',exact=True).select_option('XTR')
                 expect(advertiser.get_by_label('Валюта пополнения',exact=True)).to_have_value('XTR')
@@ -1337,6 +1373,7 @@ def main():
                 admin.get_by_role('button',name='Сохранить настройку баланса',exact=True).click()
                 expect(admin.locator('.wallet-settings-state')).to_have_text('Баланс выключен')
                 go(advertiser,'wallet')
+                open_wallet_tools(advertiser)
                 expect(advertiser.locator('[data-page=wallet]')).to_contain_text('Внутренний баланс выключен.')
                 expect(advertiser.get_by_role('button',name='Создать счёт на пополнение',exact=True)).to_have_count(0)
                 expect(advertiser.get_by_role('button',name='Получить подарок',exact=True)).to_have_count(0)
@@ -1346,12 +1383,14 @@ def main():
                 admin.get_by_role('button',name='Сохранить настройку баланса',exact=True).click()
                 expect(admin.locator('.wallet-settings-state')).to_have_text('Баланс включён')
                 go(advertiser,'wallet')
+                open_wallet_tools(advertiser)
                 expect(advertiser.get_by_label('Автоматически оплачивать мои одобренные заявки',exact=True)).not_to_be_checked()
                 # Персональный подарок и реальная выгрузка журнала активаций.
                 go(outsider,'profile')
                 expect(outsider.locator('.profile-identity')).to_contain_text('Telegram ID: 99116003')
                 expect(outsider.get_by_role('button',name='Скопировать ID',exact=True)).to_be_visible()
                 go(admin,'wallet')
+                open_wallet_tools(admin)
                 admin.get_by_label('Название подарка',exact=True).fill('Персональный подарок')
                 admin.get_by_label('Подарок, бонусных ₽',exact=True).fill('50.25')
                 admin.get_by_label('Только одному пользователю Telegram',exact=True).check()
@@ -1366,6 +1405,7 @@ def main():
                 personal_row.get_by_role('button',name='История активаций',exact=True).click()
                 expect(personal_row.locator('.wallet-gift-report')).to_contain_text('Этот код ещё никто не активировал.')
                 go(outsider,'wallet')
+                open_wallet_tools(outsider)
                 outsider.get_by_label('Подарочный код на баланс',exact=True).fill(personal_code)
                 outsider.evaluate("window.previousGiftPage=document.querySelector('[data-page=wallet] .wallet-page')")
                 outsider.get_by_role('button',name='Получить подарок',exact=True).click()

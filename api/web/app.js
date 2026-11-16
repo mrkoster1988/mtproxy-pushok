@@ -318,11 +318,11 @@ function card(c,op,{compact=false}={}){
  if(!op&&window.pushokManagement)box.append(window.pushokManagement.campaignActions(c));
  const change=async(path,body)=>{await api('/operator/campaigns/'+c.id+'/'+path,{method:'POST',body});notice('Изменения сохранены.',true);await refresh();};
  if(!op){
-  if(c.moderation_status==='approved'&&c.price_kopecks_snapshot>0&&!location.hash.startsWith('#/payments/')){const pay=el('a',c.payment_status==='verified'?'Посмотреть оплату':'Перейти к оплате','ui-button primary');pay.href='#/payments/'+c.id;actions.append(pay);}
+  if(c.moderation_status==='approved'&&c.price_kopecks_snapshot>0&&!location.hash.startsWith('#/payments/')){const pay=el('a',c.payment_status==='verified'?'Оплата':'Оплатить',c.payment_status==='verified'?'ui-button':'ui-button primary');pay.setAttribute('aria-label',c.payment_status==='verified'?'Посмотреть оплату':'Перейти к оплате');pay.prepend(window.pushokViews.icon('wallet'));pay.href='#/payments/'+c.id;actions.append(pay);}
   const reports=compact?el('details',undefined,'order-reports'):actions;if(compact){reports.append(el('summary','История и отчёт'));box.append(reports);}
-  reports.append(button('Отчёт по кампании',()=>showCampaignReport(c,box)));
+  const reportButton=button('Отчёт',()=>showCampaignReport(c,box));reportButton.setAttribute('aria-label','Отчёт по кампании');reportButton.prepend(window.pushokViews.icon('chart'));reports.append(reportButton);
   if(['scheduled','active','completed'].includes(c.placement_status)){
-   actions.append(button('Статус проверки показа',async()=>{
+   const observationButton=button('Показ',async()=>{
     const data=await api('/campaigns/'+c.id+'/display-observation');
     const panel=el('section',undefined,'observation-panel');
     const title=data.result==='visible'?'Оператор сообщил: показ виден':
@@ -331,7 +331,7 @@ function card(c,op,{compact=false}={}){
     if(data.observed_at)panel.append(el('p','Время наблюдения: '+date(data.observed_at)));
     panel.append(el('p','Это ручное наблюдение оператора, не подтверждение Telegram API.','muted'));
     panel.append(button('Закрыть',()=>panel.remove()));box.append(panel);
-   }));
+   });observationButton.setAttribute('aria-label','Статус проверки показа');observationButton.prepend(window.pushokViews.icon('status'));actions.append(observationButton);
   }
   addHoldAction(c,box,actions);
   if(c.price_kopecks_snapshot>0&&!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected','proof_submitted','verified'].includes(c.payment_status)){

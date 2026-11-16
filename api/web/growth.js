@@ -76,6 +76,7 @@ window.pushokGrowth=(()=>{
    mine.coupons.forEach(c=>{const row=el('article',undefined,'card'),expired=c.ends_at&&new Date(c.ends_at)<=new Date();row.append(el('h3',c.name+' · '+c.percent+'%'),el('p',c.used?'Использован':!c.active?'Отменён':expired?'Срок истёк':'Доступен'),el('p',c.code,'growth-code'));if(c.ends_at)row.append(el('p','До '+date(c.ends_at),'muted'));rewards.append(row);});
    rewards.append(el('p','Введите код купона, подарка или промокод при создании заявки. Он применяется к одной заявке; скидки не суммируются. Это скидка на размещение puShok, не денежный баланс.','muted'));const order=el('a','Создать размещение →');order.href='#/create';rewards.append(order);root.append(rewards);
    if(me.role==='admin'){const [data,available]=await Promise.all([api('/admin/growth'),api('/admin/tariffs')]);if(version!==epoch||session!==token||uid!==me?.id)return;adminPanels(root,data,available);}
+   root.querySelectorAll('.panel').forEach(panel=>{const notes=[...panel.querySelectorAll(':scope > p.muted')];if(notes.length)panel.append(window.pushokViews.disclosure('Условия и подробности',notes));});
    node.replaceChildren(root);
   }catch(e){if(version===epoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить',()=>load(node)));}
  }

@@ -13,7 +13,7 @@ window.pushokOrder=(()=>{
   $('order-quote-status').textContent='Рассчитываем стоимость…';
   try{const data=await api('/growth/quote',{method:'POST',body:{tariff_id:tid,code:$('order-promo').value.trim()||null}});
    if(version!==quoteEpoch||key!==currentKey()||session!==token)return null;
-   priceQuote=data;quoteKey=key;$('order-quote-status').textContent=data.offer_name?'Применено: '+data.offer_name+' · '+data.discount_percent+'%. Скидки не суммируются.':'Стоимость по тарифу. Доступных автоматических скидок нет.';summary();return data;
+   priceQuote=data;quoteKey=key;$('order-quote-status').textContent=data.offer_name?'Применено: '+data.offer_name+' · '+data.discount_percent+'%. Скидки не суммируются.':'';summary();return data;
   }catch(e){if(version===quoteEpoch&&session===token){priceQuote=null;quoteKey=null;$('order-quote-status').textContent=e.message;summary();}throw e;}
  }
  function invalidate(){priceQuote=null;quoteKey=null;quoteEpoch++;$('order-quote-status').textContent='Нажмите «Рассчитать скидку», чтобы увидеть итог.';summary();}
@@ -33,7 +33,7 @@ window.pushokOrder=(()=>{
   const start=$('requested-start').value;
   const q=quoteKey===currentKey()?priceQuote:null;
   const total=attempt?attempt.expected_price_kopecks:q?q.price_kopecks:tariff?.price_kopecks;
-  $('order-date').querySelector('summary').textContent='3. Дата · '+(start?date(start):'согласовать с оператором');
+  $('order-date').querySelector('summary').textContent='Дата · '+(start?date(start):'согласовать с оператором');
   const stars=q?q.stars_price_xtr:tariff?.stars_price_xtr;
   const cost=total===0?'Бесплатно':miniAppMode?(attempt?'Уточняется после отправки':stars>0?stars+' XTR':'Цена Stars не задана'):money(total);
   const rows=[['Канал',channel],['Тариф',tariff?tariff.name+' · '+tariff.duration_seconds/3600+' ч':'Не выбран'],['Стоимость',tariff?cost:'—'],['Начало',start?date(start):'По согласованию']];
