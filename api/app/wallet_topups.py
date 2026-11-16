@@ -7,7 +7,7 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import dict_row
 from fastapi import HTTPException
-from . import wallet_ledger as ledger, sbp_provider, stars_checkout
+from . import wallet_ledger as ledger, wallet_controls as controls, sbp_provider, stars_checkout
 from .sbp_checkout import settings as sbp_settings
 from .sbp_verification import validate_sbp_identity, SBPVerificationError
 from .payment_gate import stars_invoices_enabled
@@ -48,6 +48,7 @@ def create(dsn,user,data):
         account,test,provider=str(bot_id),is_test_environment(),'telegram_stars'
     # Ключ сохраняется до внешнего вызова; неопределённый результат повторяем тем же ключом.
     with connect(dsn) as conn:
+        controls.require_enabled(conn)
         # Один незавершённый счёт на пользователя/валюту, даже после очистки localStorage.
         conn.execute('SELECT id FROM users WHERE id=%s FOR UPDATE',(user['id'],))
         conn.execute("UPDATE wallet_topups SET status='failed',invoice_url=NULL WHERE user_id=%s AND provider='telegram_stars' AND status='pending' AND expires_at<=now() AND precheckout_approved_at IS NULL",(user['id'],))
@@ -68,6 +69,7 @@ def create(dsn,user,data):
 
 def resume(dsn,tid,user):
     with connect(dsn) as conn:
+        controls.require_enabled(conn)
         row=conn.execute('SELECT * FROM wallet_topups WHERE id=%s AND user_id=%s FOR UPDATE',(tid,user['id'])).fetchone()
         if not row:raise HTTPException(404,'wallet_topup_not_found')
         if row['status']!='created':return view(row)
