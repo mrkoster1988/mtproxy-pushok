@@ -55,7 +55,7 @@ def _operator(connection, telegram_id: int):
     row = connection.execute(
         """
         SELECT id FROM users
-        WHERE telegram_user_id = %s AND role IN ('admin', 'operator')
+        WHERE telegram_user_id = %s AND blocked_at IS NULL AND role IN ('admin', 'operator')
         """,
         (telegram_id,),
     ).fetchone()
@@ -151,7 +151,7 @@ def operator_recipients(
                 SELECT u.telegram_user_id
                 FROM bot_operator_subscriptions s
                 JOIN users u ON u.id = s.operator_user_id
-                WHERE u.role IN ('admin', 'operator') AND u.telegram_user_id > 0
+                WHERE u.role IN ('admin', 'operator') AND u.blocked_at IS NULL AND u.telegram_user_id > 0
                 ORDER BY s.subscribed_at ASC
                 LIMIT 5
                 """

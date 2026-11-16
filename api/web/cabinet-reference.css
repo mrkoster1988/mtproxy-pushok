@@ -248,3 +248,10 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .cabinet-mode #notice>button{width:32px;height:32px;min-height:32px;min-width:0;padding:0;margin:0;font-size:23px;line-height:1;border-radius:8px}
 .cabinet-mode #notice>.notice-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
 .cabinet-mode #notice .notice-actions>button{font:inherit;font-weight:600;min-height:40px;padding:8px 14px;margin:0;white-space:normal;background:transparent;color:inherit;border:1px solid currentColor;border-radius:8px}
+
+/* Управление правами рядом с ролью в профиле и каталоге. */
+.cabinet-mode .person-role.role-button{display:inline-flex;align-items:center;gap:6px;min-height:36px;width:fit-content;max-width:100%;margin:4px 0 0;padding:6px 9px;font-size:12px;line-height:1.4;color:var(--mint);background:transparent;border:1px solid var(--line);border-radius:7px;white-space:normal;text-align:left}
+.role-button .ui-icon{width:14px;height:14px}.person-role.is-blocked{color:#f5a6a6!important;border-color:#80515c!important}
+.cabinet-mode .role-editor{width:100%;min-width:0;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.role-editor fieldset{min-width:0;padding:0;margin:0;border:0}.role-editor legend{font-size:14px;font-weight:650;margin-bottom:8px}.role-editor p{font-size:12px;line-height:1.5}.role-editor [role=status]:empty{display:none}
+.role-actions{display:flex;flex-wrap:wrap;gap:8px}.cabinet-mode .role-actions button{margin:0;min-height:40px;padding:8px 12px;font-size:12px}.cabinet-mode .role-actions .role-block{color:#f5a6a6;background:transparent;border:1px solid #80515c}

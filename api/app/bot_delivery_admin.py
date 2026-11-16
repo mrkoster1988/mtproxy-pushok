@@ -51,7 +51,7 @@ class DeliveryReport(BaseModel):
 def _require_admin(connection, telegram_user_id):
     row = connection.execute(
         """SELECT id FROM users
-           WHERE telegram_user_id = %s AND role = 'admin'""",
+           WHERE telegram_user_id = %s AND role = 'admin' AND blocked_at IS NULL""",
         (telegram_user_id,),
     ).fetchone()
     if row is None:

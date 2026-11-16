@@ -1556,6 +1556,8 @@ def main():
                 check_user_profiles(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_admin_users import check_admin_users
                 check_admin_users(browser,base,output,failures,PostgresIntegration.dsn)
+                from check_user_access import check_user_access
+                check_user_access(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_automatic_schedule import check_automatic_schedule
                 check_automatic_schedule(browser, base, output, failures, PostgresIntegration.dsn)
                 assert not failures, failures

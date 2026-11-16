@@ -52,7 +52,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.35",
+    version="1.36",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -390,7 +390,7 @@ def get_current_user(
             user = connection.execute(
                 """
                 SELECT u.id, u.telegram_user_id, u.role, u.first_name, u.last_name,
-                       u.username, s.id AS session_id, s.login_surface
+                       u.username, u.blocked_at, s.id AS session_id, s.login_surface
                 FROM users AS u
                 JOIN user_sessions AS s ON s.user_id = u.id
                 WHERE u.id = %s AND s.id = %s
@@ -402,6 +402,8 @@ def get_current_user(
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     if user is None:
         raise HTTPException(status_code=401, detail="session_revoked_or_expired")
+    if user['blocked_at'] is not None:
+        raise HTTPException(status_code=401, detail='user_blocked')
     return user
 
 
@@ -498,10 +500,12 @@ def _start_telegram_session(payload: TelegramLoginPayload, *, surface="web") -> 
                         last_name = EXCLUDED.last_name,
                         username = EXCLUDED.username,
                         updated_at = now()
-                    RETURNING id
+                    RETURNING id,blocked_at
                     """,
                     (payload.id, payload.first_name, payload.last_name, payload.username),
                 ).fetchone()
+                if user['blocked_at'] is not None:
+                    raise HTTPException(403, 'user_blocked')
                 cursor.execute(
                     """
                     INSERT INTO user_sessions (id, user_id, expires_at, login_surface)
@@ -2635,7 +2639,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=132" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=136" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
@@ -2976,7 +2980,7 @@ def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_curren
                 'scheduled_end_at':row['scheduled_end_at'], 'server_time':now}
 
 from .team import router_for as team_router
-app.include_router(team_router(lambda: DATABASE_URL, require_admin))
+app.include_router(team_router(lambda: DATABASE_URL, require_admin, require_operator))
 
 from .default_sponsor import router_for as default_sponsor_router
 app.include_router(default_sponsor_router(lambda: DATABASE_URL, require_admin))
@@ -3003,4 +3007,4 @@ from .user_profiles import router_for as user_profiles_router
 app.include_router(user_profiles_router(lambda: DATABASE_URL, get_current_user))
 
 from .admin_users import router_for as admin_users_router
-app.include_router(admin_users_router(lambda: DATABASE_URL, require_admin))
+app.include_router(admin_users_router(lambda: DATABASE_URL, require_operator))

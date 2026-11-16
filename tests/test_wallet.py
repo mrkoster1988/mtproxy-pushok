@@ -197,6 +197,17 @@ class WalletIntegration(unittest.TestCase):
         receipt=StarsReceiptInput(telegram_user_id=self.tg,invoice_payload=pre.invoice_payload,currency='XTR',total_amount=300,telegram_payment_charge_id='charge-'+str(uuid4()))
         return row,pre,receipt
 
+    def test_block_rejects_wallet_precheckout_but_preserves_received_payment(self):
+        row,pre,receipt=self.star_topup()
+        self.assertTrue(topups.precheckout(self.dsn,pre)['ok'])
+        with topups.connect(self.dsn) as conn:
+            conn.execute('UPDATE users SET blocked_at=now() WHERE id=%s',(self.owner,))
+        self.assertFalse(topups.precheckout(self.dsn,pre)['ok'])
+        self.assertEqual(topups.settle_stars(self.dsn,receipt)['status'],'applied')
+        self.assertEqual(self.balances()['XTR'],row['amount'])
+        topups.settle_stars(self.dsn,receipt)
+        self.assertEqual(self.balances()['XTR'],row['amount'])
+
     def test_star_precheckout_not_credit_success_once_refund_debt(self):
         row,pre,receipt=self.star_topup();self.assertTrue(topups.precheckout(self.dsn,pre)['ok']);self.assertEqual(self.balances()['XTR'],0)
         self.assertFalse(topups.precheckout(self.dsn,pre.model_copy(update={'query_id':'another'}))['ok'])
