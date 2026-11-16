@@ -118,6 +118,7 @@ class ApplicationLicenses(unittest.TestCase):
         self.approve(o,expected=False,total_amount=200);self.approve(o)
         self.assertEqual(self.settle(o)['status'],'applied');self.assertEqual(self.settle(o)['status'],'already_processed')
         grants=self.store('status')['grants'];self.assertEqual(len(grants),1);self.assertEqual(grants[0]['terms']['max_nodes'],2)
+        self.assertLessEqual(grants[0]['starts_at'],int(time.time()))
         next_order=self.invoice(updated);self.approve(next_order,total_amount=200);self.settle(next_order,total_amount=200)
         grants=self.store('status')['grants'];self.assertEqual(len(grants),2);self.assertEqual(grants[0]['ends_at'],grants[1]['starts_at']);self.assertEqual(grants[1]['terms']['max_nodes'],8)
 
@@ -161,7 +162,7 @@ class ApplicationLicenses(unittest.TestCase):
                 return 'created'
             except psycopg.Error as exc:return exc.diag.message_primary
         with ThreadPoolExecutor(max_workers=4) as pool:results=list(pool.map(add,range(4)))
-        self.assertEqual(results.count('created'),1);self.assertEqual(results.count('application_license_limit_max_nodes'),3)
+        self.assertEqual(results.count('created'),1,results);self.assertEqual(results.count('application_license_limit_max_nodes'),3)
         with self.assertRaisesRegex(psycopg.Error,'application_license_limit_max_admins'):
             with psycopg.connect(self.dsn) as conn:conn.execute("UPDATE users SET role='admin' WHERE id=%s",(self.user,))
         self.actor={'id':self.user,'role':'advertiser'};body={'channel_id':str(self.channel),'tariff_id':str(self.tariff)}

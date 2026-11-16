@@ -121,7 +121,7 @@ def checkout(conn,p):
 
 
 def status_for(conn,iid):
-    grants=conn.execute('SELECT id,terms,extract(epoch FROM starts_at)::BIGINT AS starts_at,extract(epoch FROM ends_at)::BIGINT AS ends_at FROM app_license_grants WHERE installation_id=%s AND revoked_at IS NULL AND ends_at>now() ORDER BY starts_at,id',(iid,)).fetchall()
+    grants=conn.execute('SELECT id,terms,floor(extract(epoch FROM starts_at))::BIGINT AS starts_at,floor(extract(epoch FROM ends_at))::BIGINT AS ends_at FROM app_license_grants WHERE installation_id=%s AND revoked_at IS NULL AND ends_at>now() ORDER BY starts_at,id',(iid,)).fetchall()
     orders=conn.execute('SELECT id,terms,amount,status,test_mode,created_at,expires_at,precheckout_at,invoice_url FROM app_license_orders WHERE installation_id=%s ORDER BY created_at DESC,id DESC LIMIT 20',(iid,)).fetchall()
     return {'grants':[dict(g,id=str(g['id'])) for g in grants],'orders':json.loads(json.dumps(orders,default=str)),'lease_until':int(time.time())+72*3600}
 
