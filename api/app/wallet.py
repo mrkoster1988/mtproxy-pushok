@@ -105,7 +105,7 @@ def router_for(dsn,current_user,require_admin):
         balances=ledger.accounts(conn,uid)
         prefs=conn.execute('SELECT auto_pay,currency,per_campaign_limit,use_bonus FROM wallet_preferences WHERE user_id=%s',(uid,)).fetchone()
         return {'enabled':controls.settings(conn)['enabled'],'balances':balances,'has_debt':any(v<0 for v in balances.values()),'preferences':prefs or
-            dict(auto_pay=False,currency='XTR',per_campaign_limit=0,use_bonus=True)}
+            dict(auto_pay=False,currency='RUB',per_campaign_limit=0,use_bonus=True)}
 
     def journal(conn,uid,page,limit=30):
         rows=conn.execute('''SELECT e.id,e.entry_number,e.currency,e.delta,e.balance_after,e.kind,e.reason,e.created_at,e.campaign_id,
@@ -193,6 +193,8 @@ def router_for(dsn,current_user,require_admin):
 
     @router.put('/api/v1/wallet/preferences')
     def preferences(data:Preferences,user=Depends(current_user)):
+        if data.auto_pay and data.currency=='XTR':
+            raise HTTPException(409,'wallet_stars_topup_retired')
         if data.auto_pay and data.currency=='RUB' and user.get('login_surface')=='telegram':
             raise HTTPException(409,'wallet_stars_only_in_telegram')
         with db() as conn:
@@ -248,6 +250,10 @@ def router_for(dsn,current_user,require_admin):
     def adjust(tg:int,data:Adjustment,admin=Depends(require_admin)):
         with db() as conn:
             admin_lock(conn,admin);uid=target(conn,tg)['id']
+            if data.currency=='XTR':
+                balance=ledger.accounts(conn,uid,lock=True)['XTR']
+                if data.direction!='credit' or balance>=0 or data.amount>-balance:
+                    raise HTTPException(409,'wallet_stars_topup_retired')
             return ledger.post(conn,uid,data.currency,data.amount*(1 if data.direction=='credit' else -1),
                 'manual_'+data.direction,'manual:'+str(admin['id'])+':'+str(data.request_id),data.reason,actor=admin['id'])
 

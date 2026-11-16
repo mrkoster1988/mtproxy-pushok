@@ -95,6 +95,9 @@ def discounted(amount, percent, *, rub=False):
 
 def quote(conn, user, tariff, code=None, *, lock=False):
     code = normalize_code(code)
+    telegram = user.get('login_surface') == 'telegram'
+    if telegram and code:
+        raise HTTPException(409, 'growth_rub_only')
     if code and tariff['price_kopecks'] == 0:
         raise HTTPException(409, 'growth_free_tariff')
     # Один и тот же порядок блокировок для параллельных покупок разных кодов.
@@ -107,7 +110,7 @@ def quote(conn, user, tariff, code=None, *, lock=False):
         ORDER BY id""" + (' FOR UPDATE' if lock else ''),
         (code, tariff['id'], tariff['duration_seconds'], user['id'])).fetchall()
     eligible = []
-    if tariff['price_kopecks'] == 0:
+    if tariff['price_kopecks'] == 0 or telegram:
         offers = []
     for offer in offers:
         counts = conn.execute("""SELECT count(*) AS total,count(*) FILTER(WHERE user_id=%s) AS own
@@ -122,7 +125,7 @@ def quote(conn, user, tariff, code=None, *, lock=False):
     result = dict(tariff_id=str(tariff['id']), duration_seconds=tariff['duration_seconds'],
         base_price_kopecks=tariff['price_kopecks'],
         price_kopecks=discounted(tariff['price_kopecks'], percent, rub=True),
-        stars_price_xtr=discounted(tariff['stars_price_xtr'], percent),
+        stars_price_xtr=tariff['stars_price_xtr'],
         discount_percent=percent, offer_id=str(offer['id']) if offer else None,
         offer_name=offer['name'] if offer else None)
     result['revision'] = hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()

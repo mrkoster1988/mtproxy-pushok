@@ -43,6 +43,8 @@ def create(dsn,user,data):
 
 def _create(dsn,user,data):
     currency=data.currency
+    if currency == 'XTR':
+        raise HTTPException(409, 'wallet_stars_topup_retired')
     if currency=='RUB' and user.get('login_surface')=='telegram':
         raise HTTPException(409,'wallet_stars_only_in_telegram')
     cfg=sbp_settings()

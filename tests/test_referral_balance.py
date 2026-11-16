@@ -58,8 +58,8 @@ class ReferralBalanceIntegration(unittest.TestCase):
     def external(self, cid, *, test=False):
         with psycopg.connect(self.dsn) as conn:
             conn.execute("""INSERT INTO payment_attempts(campaign_id,provider,payment_channel,amount,currency,status,
-                provider_payment_id,telegram_test_environment,settled_at)
-                VALUES(%s,'telegram_stars','telegram_bot',151,'XTR','succeeded',%s,%s,now())""", (cid,uuid4().hex,test))
+                provider_payment_id,sbp_test_mode,settled_at)
+                VALUES(%s,'sbp','external_web',30000,'RUB','succeeded',%s,%s,now())""", (cid,uuid4().hex,test))
 
     def complete(self, cid):
         with psycopg.connect(self.dsn) as conn:

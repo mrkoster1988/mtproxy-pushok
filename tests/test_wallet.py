@@ -157,8 +157,9 @@ class WalletIntegration(unittest.TestCase):
         patcher=patch('app.wallet_topups.stars_checkout.credentials',return_value=('token',12345));patcher.start();self.addCleanup(patcher.stop)
         patcher=patch('app.wallet_topups.is_test_environment',return_value=test);patcher.start();self.addCleanup(patcher.stop)
         patcher=patch('app.wallet_topups.stars_invoices_enabled',return_value=True);patcher.start();self.addCleanup(patcher.stop)
-        with patch('app.wallet_topups.stars_checkout.create_invoice_link',return_value='https://t.me/$invoice'):
-            row=topups.create(self.dsn,self.actor,Topup(request_id=uuid4(),currency='XTR',amount=300))
+        with topups.connect(self.dsn) as conn:
+            row=conn.execute("""INSERT INTO wallet_topups(user_id,request_id,provider,currency,amount,provider_account,test_mode,status,invoice_url,expires_at)
+                VALUES(%s,%s,'telegram_stars','XTR',300,'12345',%s,'pending','https://t.me/$invoice',now()+interval '30 minutes') RETURNING *""",(self.owner,uuid4(),test)).fetchone()
         pre=StarsPrecheckoutInput(query_id=str(uuid4()),telegram_user_id=self.tg,invoice_payload='wallet:'+str(row['id']),currency='XTR',total_amount=300)
         receipt=StarsReceiptInput(telegram_user_id=self.tg,invoice_payload=pre.invoice_payload,currency='XTR',total_amount=300,telegram_payment_charge_id='charge-'+str(uuid4()))
         return row,pre,receipt

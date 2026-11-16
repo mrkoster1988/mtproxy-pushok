@@ -46,6 +46,8 @@ def main():
         'commit':'a'*40, 'checked_at':'2026-11-15T15:00:00+00:00',
         'attempted_at':'2026-11-15T15:00:00+00:00'})
     release_fixture = release_patcher.start()
+    logo_image=io.BytesIO();Image.new('RGB',(160,160),(38,198,184)).save(logo_image,format='JPEG')
+    logo_patcher=patch('app.channel_logos.logo',return_value=logo_image.getvalue());logo_patcher.start()
     output = args.out.resolve()
     output.mkdir(parents=True, exist_ok=True)
     # These values belong only to the local disposable test server.
@@ -193,9 +195,9 @@ def main():
                 go(advertiser, 'wallet')
                 expect(advertiser.locator('.wallet-journal')).to_be_visible()
                 expect(advertiser.locator('[data-wallet-section=topup]')).not_to_have_attribute('open', '')
-                expect(advertiser.get_by_label('Сумма пополнения',exact=True)).to_be_hidden()
+                expect(advertiser.get_by_label('Сумма пополнения, ₽',exact=True)).to_be_hidden()
                 advertiser.locator('[data-wallet-section=topup] > summary').click()
-                expect(advertiser.get_by_label('Сумма пополнения',exact=True)).to_be_visible()
+                expect(advertiser.get_by_label('Сумма пополнения, ₽',exact=True)).to_be_visible()
                 advertiser.locator('[data-wallet-section=topup] > summary').click()
                 expect(advertiser.get_by_label('Автоматически оплачивать мои одобренные заявки')).not_to_be_checked()
                 go(advertiser, 'profile')
@@ -727,12 +729,12 @@ def main():
                         for screen, route in mini_screens:
                             go(mini,route)
                             if screen=='wallet':
-                                expect(mini.locator('.wallet-balances .wallet-primary')).to_have_attribute('data-currency','XTR')
+                                expect(mini.locator('.wallet-balances .wallet-primary')).to_have_attribute('data-currency','RUB')
                                 expect(mini.locator('.wallet-tools a')).to_have_attribute('href','#/payments')
                             if screen=='growth':
                                 expect(mini.locator('.growth-page')).to_be_visible()
                             if screen=='home':
-                                expect(mini.locator('#dashboard-wallet .wallet-total')).to_have_attribute('data-currency','XTR')
+                                expect(mini.locator('#dashboard-wallet .wallet-total')).to_have_attribute('data-currency','RUB')
                             assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2'), (width,route)
                             if screen=='stars':
                                 expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата подтверждена сервером')
@@ -906,6 +908,9 @@ def main():
                 refresh(advertiser)
                 go(advertiser,'channels')
                 row=advertiser.locator('[data-page=channels] .channel-tile').filter(has_text='Канал управления')
+                expect(row.locator('.channel-avatar img')).to_be_visible()
+                assert row.locator('.channel-avatar img').evaluate('(img)=>img.complete && img.naturalWidth===160')
+                advertiser.screenshot(path=str(output/'47-channel-logo-mobile.png'),full_page=True)
                 row.locator('.channel-tools summary').click()
                 row.get_by_role('button',name='✏️ Изменить',exact=True).click()
                 row.get_by_label('Название канала',exact=True).fill('Изменённый канал управления')
@@ -1245,7 +1250,7 @@ def main():
                 expect(advertiser.locator('#order-quote-status')).to_contain_text('Браузерный промокод')
                 expect(advertiser.locator('#order-summary')).to_contain_text('20%')
                 expect(advertiser.locator('#order-summary')).to_contain_text('80')
-                expect(advertiser.locator('#order-summary')).to_contain_text('80 XTR')
+                expect(advertiser.locator('#order-summary')).to_contain_text('100 XTR')
                 advertiser.screenshot(path=str(output/'37-growth-quote-mobile.png'),full_page=True)
                 assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
                 advertiser.locator('#order-submit').click()
@@ -1333,8 +1338,8 @@ def main():
                     friend_channel=connection.execute("INSERT INTO sponsor_channels(owner_user_id,title,telegram_url) VALUES(%s,'Друг','https://t.me/browser_friend') RETURNING id",(friend_id,)).fetchone()[0]
                     referral_cid=connection.execute("""INSERT INTO campaigns(advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot)
                         VALUES(%s,%s,%s,'Реферальный тест',3600,10000,'RUB') RETURNING id""",(friend_id,friend_channel,growth_tariff)).fetchone()[0]
-                    connection.execute("""INSERT INTO payment_attempts(campaign_id,provider,payment_channel,amount,currency,status,provider_payment_id)
-                        VALUES(%s,'telegram_stars','telegram_bot',100,'XTR','succeeded',%s)""",(referral_cid,'browser-referral-'+str(referral_cid)))
+                    connection.execute("""INSERT INTO payment_attempts(campaign_id,provider,payment_channel,amount,currency,status,provider_payment_id,sbp_test_mode)
+                        VALUES(%s,'sbp','external_web',10000,'RUB','succeeded',%s,false)""",(referral_cid,'browser-referral-'+str(referral_cid)))
                     connection.execute("UPDATE campaigns SET moderation_status='approved',payment_status='verified',placement_status='completed' WHERE id=%s",(referral_cid,))
                 go(advertiser,'wallet')
                 open_wallet_tools(advertiser)
@@ -1370,8 +1375,8 @@ def main():
                 go(advertiser,'wallet')
                 open_wallet_tools(advertiser)
                 expect(advertiser.get_by_role('link',name='Открыть мои Stars в Telegram ↗')).to_have_attribute('href','tg://stars')
-                advertiser.get_by_label('Валюта пополнения',exact=True).select_option('XTR')
-                expect(advertiser.get_by_label('Валюта пополнения',exact=True)).to_have_value('XTR')
+                expect(advertiser.get_by_label('Валюта пополнения',exact=True)).to_have_count(0)
+                expect(advertiser.get_by_role('button',name='Пополнить через СБП',exact=True)).to_be_visible()
                 for _ in range(2):
                     advertiser.get_by_label('Подарочный код на баланс',exact=True).fill(gift_code)
                     advertiser.evaluate("window.previousGiftPage=document.querySelector('[data-page=wallet] .wallet-page')")
@@ -1393,7 +1398,7 @@ def main():
                 go(advertiser,'wallet')
                 open_wallet_tools(advertiser)
                 expect(advertiser.locator('[data-page=wallet]')).to_contain_text('Внутренний баланс выключен.')
-                expect(advertiser.get_by_role('button',name='Создать счёт',exact=True)).to_have_count(0)
+                expect(advertiser.get_by_role('button',name='Пополнить через СБП',exact=True)).to_have_count(0)
                 expect(advertiser.get_by_role('button',name='Получить подарок',exact=True)).to_have_count(0)
                 expect(advertiser.locator('.wallet-entry').filter(has_text='Подарок: Подарок для проверки')).to_have_count(1)
                 advertiser.screenshot(path=str(output/'44-wallet-disabled-mobile.png'),full_page=True)
@@ -1473,6 +1478,7 @@ def main():
         if sock:
             sock.close()
         release_patcher.stop()
+        logo_patcher.stop()
         PostgresIntegration.tearDownClass()
 
 

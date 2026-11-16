@@ -51,7 +51,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.23",
+    version="1.24",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2977,3 +2977,6 @@ app.include_router(wallet_router_for(lambda: DATABASE_URL, get_current_user, req
 
 from .sbp_connection import router_for as sbp_connection_router
 app.include_router(sbp_connection_router(lambda: DATABASE_URL, require_admin))
+
+from .channel_logos import router_for as channel_logos_router
+app.include_router(channel_logos_router(lambda: DATABASE_URL, get_current_user))
