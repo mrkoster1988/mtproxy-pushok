@@ -57,8 +57,8 @@ def check_automatic_schedule(browser, base, output, failures, dsn):
         expect(staff.locator('#promotion-automation form')).to_be_visible()
         expect(staff.locator('#promotion-automation').get_by_label('Канал',exact=True)).to_have_value(str(channel))
         expect(staff.locator('#promotion-automation').get_by_label('Узел',exact=True)).to_have_value(str(node))
-        expect(staff.locator('#promotion-automation').get_by_label('Узел',exact=True)).to_be_in_viewport()
         staff.screenshot(path=str(output/'54-automatic-schedule-settings-390.png'))
+        expect(staff.locator('#promotion-automation').get_by_label('Узел',exact=True)).to_be_in_viewport()
     finally:
         for ctx in contexts:ctx.close()
         with psycopg.connect(dsn) as conn:

@@ -215,6 +215,10 @@
  content.sponsors.append(automationPanel);
  let automationRevision=0,automationFocusRoute='';
  async function renderAutomation(){
+  // Из карточки заявки сначала открываем её форму, чтобы загрузка диагностики
+  // выше по странице не сдвигала поля после перехода.
+  if(routeParts()[0]==='sponsors'&&routeParts()[1])content.sponsors.prepend(automationPanel);
+  else content.sponsors.append(automationPanel);
   void renderDiagnostics();
   automationPanel.hidden=me?.role!=='admin';if(me?.role!=='admin')return;
   const rev=++automationRevision,session=token;automationBody.replaceChildren(el('p','Загрузка…'));
