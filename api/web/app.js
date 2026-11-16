@@ -18,7 +18,7 @@ async function api(path,{method='GET',body}={}){
  const headers={};if(token)headers.Authorization='Bearer '+token;
  if(body&&!(body instanceof FormData))headers['Content-Type']='application/json';
  let r;try{r=await fetch('/api/v1'+path,{method,headers,cache:'no-store',body:body instanceof FormData?body:body?JSON.stringify(body):undefined});}catch{throw Error('Нет связи с сервером. Проверьте соединение и повторите действие.');}
- if(!r.ok){let d;try{d=(await r.json()).detail;}catch{d='';}if(r.status===401&&token){token='';sessionStorage.removeItem(sessionKey);$('workspace').hidden=true;$('login').hidden=false;$('logout').hidden=true;if(window.cabinet)window.cabinet.logout();if(miniAppMode)window.pushokMiniApp.expired();}
+ if(!r.ok){let d;try{d=(await r.json()).detail;}catch{d='';}if(r.status===401&&token){token='';sessionStorage.removeItem(sessionKey);$('workspace').hidden=true;$('login').hidden=false;$('logout').hidden=true;window.pushokSBP?.reset();if(window.cabinet)window.cabinet.logout();if(miniAppMode)window.pushokMiniApp.expired();}
  const error=Error(errors[d]||(r.status===422?'Проверьте заполненные поля.':typeof d==='string'&&d.endsWith('_not_configured')?'Вход ещё не настроен администратором.':'Не удалось выполнить действие. Попробуйте снова.'));error.status=r.status;throw error;}
  return r.status===204?null:r.json();
 }
@@ -756,7 +756,7 @@ for(const id of ['calendar-from','calendar-time','tariff-select'])$(id).addEvent
 window.onTelegramAuth=data=>run(async()=>{const session=await api('/auth/telegram',{method:'POST',body:data});token=session.access_token;sessionStorage.setItem(sessionKey,token);await enter();notice('Вход выполнен.',true);});
 $('channel-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{await api('/channels',{method:'POST',body:Object.fromEntries(new FormData(e.target))});e.target.reset();await enter();notice('Канал добавлен.',true);},e.submitter);});
 
-$('logout').addEventListener('click',()=>run(async()=>{await api('/auth/logout',{method:'POST'});sessionStorage.removeItem(sessionKey);if(miniAppMode)window.pushokMiniApp.signedOut();else location.reload();}));
+$('logout').addEventListener('click',()=>run(async()=>{await api('/auth/logout',{method:'POST'});window.pushokSBP?.reset();sessionStorage.removeItem(sessionKey);if(miniAppMode)window.pushokMiniApp.signedOut();else location.reload();}));
 $('refresh').addEventListener('click',()=>run(async()=>{await refresh();await loadAvailability();},$('refresh')));
 $('queue-filter').addEventListener('change',()=>run(refresh));
 $('advertiser-tab').addEventListener('click',()=>operatorView(false));

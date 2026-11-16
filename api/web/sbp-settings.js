@@ -34,5 +34,5 @@ window.pushokSBP=(()=>{
    box.append(hint,result,form);host.replaceChildren(box);
   }catch(error){if(valid())host.replaceChildren(el('p','Не удалось загрузить подключение СБП.'),button('Повторить',load));}
  }
- return {load};
+ return {load,reset(){generation++;$('sbp-connection')?.replaceChildren();}};
 })();
