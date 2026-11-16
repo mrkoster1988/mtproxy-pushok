@@ -1269,7 +1269,7 @@ def main():
                 go(advertiser,'wallet')
                 open_wallet_tools(advertiser)
                 expect(advertiser.locator('.wallet-balances').first).to_contain_text('220')
-                expect(advertiser.get_by_role('heading',name='Управление балансами',exact=True)).to_have_count(0)
+                expect(advertiser.locator('[data-wallet-section=admin]')).to_have_count(0)
                 expect(advertiser.get_by_label('Автоматически оплачивать мои одобренные заявки')).not_to_be_checked()
                 for width in (320,390):
                     advertiser.set_viewport_size({'width':width,'height':844})
