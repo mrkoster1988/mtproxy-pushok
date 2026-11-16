@@ -2,7 +2,7 @@
 from types import SimpleNamespace
 import psycopg
 from fastapi import HTTPException
-from . import wallet_topups as topups, wallet_ledger as ledger
+from . import wallet_topups as topups, wallet_ledger as ledger, wallet_controls as controls
 from .sbp_provider import SBPProviderError
 from .sbp_verification import SBPVerificationError
 
@@ -28,6 +28,7 @@ def service_once(dsn,limit=20):
         try:topups.refund_stars(dsn,SimpleNamespace(telegram_user_id=row['telegram_user_id'],currency=row['currency'],total_amount=row['amount'],telegram_payment_charge_id=row['charge_id']))
         except (HTTPException,psycopg.Error):report['deferred']+=1
     with topups.connect(dsn) as conn:
+        if not controls.settings(conn)['enabled']:return report
         # Все подходящие кампании, без голодания из-за первых заявок без средств.
         rows=conn.execute('''SELECT c.id,c.advertiser_user_id,p.currency FROM campaigns c JOIN wallet_preferences p ON p.user_id=c.advertiser_user_id
             JOIN tariffs t ON t.id=c.tariff_id WHERE p.auto_pay AND c.wallet_checked_at<now()-interval '1 minute' AND c.archived_at IS NULL AND c.moderation_status='approved'
