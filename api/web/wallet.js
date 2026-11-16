@@ -35,7 +35,7 @@ window.pushokWallet=(()=>{
  function value(n,c){return c==='XTR'?String(n):(n/100).toFixed(2);}
  function panel(title){const p=el('section',undefined,'panel');p.append(el('h2',title));return p;}
  function foldPanels(root,data){
-  const folds={'Пополнить баланс':['topup','Пополнить','plus'],'Активировать подарочный код':['gift','Подарочный код','gift'],'Автоматическая оплата':['autopay','Автооплата · '+(data.preferences.auto_pay?'включена':'выключена'),'refresh'],'Мои Stars в Telegram':['telegram','Личные Stars в Telegram','star'],'Мои пополнения':['topups','Счета на пополнение','wallet'],'Управление балансами':['admin','Управление балансами','users'],'Сверка пополнений':['review','Сверка пополнений','check'],'Подарочные коды на баланс':['gifts','Выдать подарок','gift']};
+  const folds={'История операций':['history','История операций','chart'],'Пополнить баланс':['topup','Пополнить','plus'],'Активировать подарочный код':['gift','Подарочный код','gift'],'Автоматическая оплата':['autopay','Автооплата · '+(data.preferences.auto_pay?'включена':'выключена'),'refresh'],'Мои Stars в Telegram':['telegram','Личные Stars в Telegram','star'],'Мои пополнения':['topups','Счета на пополнение','wallet'],'Управление балансами':['admin','Управление балансами','users'],'Сверка пополнений':['review','Сверка пополнений','check'],'Подарочные коды на баланс':['gifts','Выдать подарок','gift']};
   for(const p of [...root.children]){const h=p.querySelector(':scope > h2'),entry=folds[h?.textContent];if(!entry)continue;
    const [key,title,name]=entry,d=el('details',undefined,'disclosure-panel wallet-disclosure'),summary=el('summary',title);summary.prepend(window.pushokViews.icon(name));d.dataset.walletSection=key;
    d.open=Boolean(expanded[key]||(key==='topups'&&data.topups.some(t=>['created','pending','review'].includes(t.status))));
@@ -179,7 +179,7 @@ window.pushokWallet=(()=>{
    const payments=el('a','Мои оплаты','ui-button');payments.href='#/payments';tools.append(payments);root.append(tools);
    const request=pending();if(request){const p=panel('Незавершённая операция');p.append(el('p','Ответ не получен. Повтор отправит тот же запрос и не создаст вторую операцию.'),button('Повторить незавершённую операцию',()=>replay(request)));root.append(p);}
    if(data.enabled){topupForm(root,data);redeemGift(root);}else root.append(el('p','Внутренний баланс выключен. Остатки и история сохранены, новые пополнения и списания остановлены. Ранее выставленные счета продолжают проверяться. Заявки можно оплачивать напрямую.','wallet-warning'));
-   topupList(root,data);entries(root,journal,false,async page=>{historyPage=page;await load(node);});autopay(root,data);telegramStars(root);
+   topupList(root,data);autopay(root,data);telegramStars(root);
    if(me.role==='admin'){
     const admin=panel('Управление балансами'),f=el('form'),tg=field(f,'Пользователь: @никнейм или ID','text',adminTelegram);tg.required=true;tg.placeholder='Telegram ID, @username или имя';tg.maxLength=100;f.prepend(el('p','Поиск по Telegram ID, @username или имени. Пользователь появляется после входа в puShok.','muted'));
     submit(f,'Найти пользователя',async()=>{adminTelegram=tg.value.trim();adminPage=0;await adminLookup();});f.append(button('К моему балансу',()=>{adminSeq++;adminTelegram='';adminPage=0;tg.value='';adminTarget?.replaceChildren();const section=f.closest('details');if(section)section.open=false;expanded.admin=false;node.scrollIntoView({block:'start'});}));admin.append(f);adminTarget=el('div',undefined,'wallet-admin-result');admin.append(adminTarget);root.append(admin);
@@ -189,6 +189,7 @@ window.pushokWallet=(()=>{
      review.append(list);}));root.append(review);
    }
    if(me.role==='admin'){const gifts=await api('/admin/wallet/gifts?page='+giftPage+'&deleted='+giftDeleted);if(version!==epoch||session!==token||uid!==me?.id)return;adminGifts(root,gifts);}
+   entries(root,journal,false,async page=>{historyPage=page;await load(node);});
    foldPanels(root,data);node.replaceChildren(root);if(adminTelegram&&adminTarget)await adminLookup();
   }catch(e){if(version===epoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить',()=>load(node)));}
  }
