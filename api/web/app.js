@@ -829,8 +829,9 @@ async function loadControl({payments=false}={}){
  if(displayedVersion&&displayedVersion!==c.version&&c.update.state==='succeeded'){location.reload();return;}
  displayedVersion=c.version;softwareControl=c;
  if(payments){
+ void window.pushokSBP?.load();
  $('enable-stars').checked=c.stars;$('enable-sbp').checked=c.sbp;$('enable-sbp').disabled=!c.sbp_configured;
- $('payment-config-note').textContent=c.sbp_configured?(c.sbp_test_mode?'СБП: тестовый магазин. Реальные списания не включены.':'СБП: рабочий магазин настроен.'):'Для СБП задайте YOOKASSA_SHOP_ID, YOOKASSA_SECRET_KEY и PUSHOK_PUBLIC_PAYMENT_HOST на сервере. Stars настраиваются отдельно.';
+ $('payment-config-note').textContent=c.sbp_configured?(c.sbp_test_mode?'СБП: тестовый магазин. Реальные списания не включены.':'СБП: рабочий магазин настроен.'):'Подключите магазин ЮKassa в форме «Подключение СБП».';
  }
  renderSoftware();
 }

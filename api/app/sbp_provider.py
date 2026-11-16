@@ -8,6 +8,7 @@ import base64
 import json
 import os
 from .control import flag
+from .sbp_connection import current as connection_config
 import re
 from collections.abc import Mapping
 from urllib.error import HTTPError, URLError
@@ -34,16 +35,16 @@ def sbp_enabled() -> bool:
 
 
 def _credentials() -> tuple[str, str]:
-    shop = os.getenv("YOOKASSA_SHOP_ID", "")
-    key = os.getenv("YOOKASSA_SECRET_KEY", "")
+    cfg = connection_config()
+    shop, key = cfg.get("shop", ""), cfg.get("secret", "")
     if not shop or not key or ":" in shop or "\n" in shop or "\r" in shop:
         raise SBPProviderError("sbp_credentials_not_configured")
     return shop, key
 
 
 def _request(method: str, url: str, *, body: Mapping | None = None,
-             idempotence_key: str | None = None) -> dict:
-    shop, secret = _credentials()
+             idempotence_key: str | None = None, credentials=None) -> dict:
+    shop, secret = credentials if credentials is not None else _credentials()
     raw_token = base64.b64encode(f"{shop}:{secret}".encode()).decode("ascii")
     headers = {"Authorization": "Basic " + raw_token, "Accept": "application/json"}
     data = None
@@ -94,7 +95,7 @@ def create_sbp_payment(*, campaign_id: str, amount_kopecks: int,
         valid = False
     if not valid:
         raise SBPProviderError("sbp_invalid_return_url")
-    expected_host = os.getenv("PUSHOK_PUBLIC_PAYMENT_HOST", "").strip().lower()
+    expected_host = connection_config().get("host", "").strip().lower()
     if not expected_host or parts.hostname.lower() != expected_host:
         raise SBPProviderError("sbp_return_host_not_allowed")
 
