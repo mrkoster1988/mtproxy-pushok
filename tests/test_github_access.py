@@ -89,6 +89,7 @@ class GitHubAccessTests(unittest.TestCase):
         for op in ('store', 'erase', ''):
             self.assertEqual(github_credentials.credentials(op, valid, self.directory), '')
 
+    @unittest.skipUnless(shutil.which('git'), 'host-only Git integration; runs in the main CI job')
     def test_real_git_helper_with_private_token_and_no_global_credentials(self):
         subprocess.run(['git', 'init', '-q', str(self.root)], check=True)
         (self.root / 'scripts').mkdir()
