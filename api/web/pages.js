@@ -226,7 +226,7 @@
  },sponsorSave);});
  const automationPanel=section('Автоприменение по расписанию'),automationBody=el('div'),automationRuntime=el('div');
  automationPanel.id='promotion-automation';automationRuntime.id='promotion-automation-runtime';automationRuntime.setAttribute('aria-live','polite');
- automationPanel.append(el('p','Один раз подтвердите связь тега с каналом через @MTProxyBot → Set promotion. Система сама выберет ближайший свободный период среди подходящих узлов и перенесёт туда ожидающую автоматическую заявку. Агент применит тег по расписанию. Тег другого канала не перепривязывается автоматически в Telegram.','muted'),automationBody,automationRuntime);
+ automationPanel.append(el('p','После подключения аккаунта владельца агент сам выберет свободный узел, задаст канал в @MTProxyBot и проверит привязку. Подготовка и ожидание обновления Telegram не уменьшают оплаченный период. Занятые узлы и ручные размещения не переключаются.','muted'),automationBody,automationRuntime);
  content.sponsors.append(automationPanel);
  let automationRevision=0,automationFocusRoute='';
  async function renderAutomation(){
@@ -246,11 +246,19 @@
    const submit=el('button','Включить для канала');submit.type='submit';submit.disabled=!nodes.length||!data.channels.length;
    form.append(field('Узел',node),field('Канал',channel),field('Тег этого канала из @MTProxyBot',tag),field('Я проверил: этот тег связан именно с выбранным каналом в Telegram',confirmed),submit);
    form.addEventListener('submit',e=>{e.preventDefault();run(async()=>{await api('/admin/promotion-bindings',{method:'PUT',body:{node_id:node.value,channel_id:channel.value,ad_tag:tag.value,telegram_binding_confirmed:confirmed.checked}});tag.value='';await renderAutomation();notice('Связь сохранена. Агент применит тег в пределах назначенного слота.',true);},submit);});
-   automationBody.replaceChildren(form);
+   const manual=el('details');manual.append(el('summary','Ручная привязка готового тега'),form);
+   const autoStatus=el('div',undefined,'cards');autoStatus.setAttribute('aria-live','polite');
+   const phaseTitles={inspect:'Проверяем регистрацию прокси',bind:'Привязываем канал в Telegram',propagating:'Ожидаем обновления Telegram',done:'Привязка проверена'};
+   const errorTitles={not_connected:'Нужно подключить аккаунт владельца',revoked:'Подключение отозвано — войдите заново',proxy_not_found:'Прокси не найден в аккаунте владельца',proxy_ambiguous:'В @MTProxyBot несколько записей этого адреса',telegram_flood_wait:'Telegram попросил подождать',target_changed:'Заявка или канал изменились',binding_not_verified:'Бот пока не подтвердил привязку',owner_helper_unavailable:'Служба подключения пока недоступна'};
+   for(const item of data.telegram_automation||[]){const row=el('div',undefined,'card');row.append(el('h3',item.name),el('p',item.error_code?(errorTitles[item.error_code]||'Ответ Telegram требует проверки: '+item.error_code):(phaseTitles[item.phase]||'Проверяем состояние')));if(item.phase!=='done')row.append(el('p','Следующая проверка: '+date(item.retry_at),'muted'));autoStatus.append(row);}
+   if(!autoStatus.childElementCount)autoStatus.append(el('p','Автоматические привязки ещё не запускались. Агент берёт одобренные и оплаченные заявки, когда подходит время подготовки.','muted'));
+   const command=el('code','sudo bash /opt/mtproxy-pushok/scripts/connect_telegram_owner.sh enable');command.style.whiteSpace='pre-wrap';command.style.overflowWrap='anywhere';
+   const connect=el('details');connect.append(el('summary','Подключить аккаунт владельца'),el('p','Один раз выполните на VPS. Если вход уже сохранён, повторный код не потребуется.'),command,el('p','Код входа и пароль вводятся только в терминале VPS. Для первичного входа нужны api_id и api_hash с my.telegram.org/apps.','muted'));
+   automationBody.replaceChildren(autoStatus,connect,manual);
    if(routeParts()[0]==='sponsors'&&selectedChannel&&automationFocusRoute!==location.hash){
     automationFocusRoute=location.hash;
     window.scrollTo({top:window.scrollY+automationPanel.getBoundingClientRect().top-bar.getBoundingClientRect().height-12,behavior:'instant'});
-    node.focus({preventScroll:true});
+    automationPanel.setAttribute('tabindex','-1');automationPanel.focus({preventScroll:true});
    }
    if(!nodes.length)automationBody.prepend(el('p','Нет узлов. Добавьте узел выше или восстановите его в разделе «Удалённые».'));
    for(const b of data.bindings){const row=el('div',undefined,'card');row.append(el('p',b.name+' → '+b.title+' · тег …'+b.tag_ending),button('Отключить',async()=>{await api('/admin/promotion-bindings/'+b.proxy_node_id+'/'+b.channel_id,{method:'DELETE'});await renderAutomation();notice('Связь отключена. При следующей проверке агент вернёт исходный тег.',true);}));automationBody.append(row);}

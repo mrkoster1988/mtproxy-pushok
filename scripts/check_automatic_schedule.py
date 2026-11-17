@@ -54,10 +54,13 @@ def check_automatic_schedule(browser, base, output, failures, dsn):
         staff.screenshot(path=str(output/'53-automatic-schedule-admin-390.png'))
         staff.get_by_role('link',name='Настройки запуска',exact=True).click()
         expect(staff).to_have_url(base+'/#/sponsors/'+str(channel)+'/'+str(node))
+        expect(staff.locator('#promotion-automation form')).not_to_be_visible()
+        staff.get_by_text('Ручная привязка готового тега',exact=True).click()
         expect(staff.locator('#promotion-automation form')).to_be_visible()
         expect(staff.locator('#promotion-automation').get_by_label('Канал',exact=True)).to_have_value(str(channel))
         expect(staff.locator('#promotion-automation').get_by_label('Узел',exact=True)).to_have_value(str(node))
         staff.screenshot(path=str(output/'54-automatic-schedule-settings-390.png'))
+        staff.locator('#promotion-automation').get_by_label('Узел',exact=True).scroll_into_view_if_needed()
         expect(staff.locator('#promotion-automation').get_by_label('Узел',exact=True)).to_be_in_viewport()
         # Готовая связь на другом узле должна сама заменить неподготовленный прогноз.
         with psycopg.connect(dsn) as conn:

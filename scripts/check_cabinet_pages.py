@@ -183,6 +183,7 @@ def main():
                 expect(admin.locator('[data-page=sponsors]')).to_contain_text('окончанием aaaa')
                 assert admin.get_by_label('ad_tag из MTProxyBot', exact=True).input_value() == ''
                 # Обновление статусов не стирает введённый, ещё не сохранённый тег.
+                admin.get_by_text('Ручная привязка готового тега', exact=True).click()
                 draft_tag = admin.get_by_label('Тег этого канала из @MTProxyBot', exact=True)
                 draft_tag.fill('b' * 32)
                 admin.get_by_role('button', name='Обновить диагностику', exact=True).click()
@@ -407,6 +408,7 @@ def main():
                     expect(node_card).to_contain_text('Тег применён; показ не проверен')
                     expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Тег применён; показ не проверен')
                     expect(node_card).not_to_contain_text('Дождитесь')
+                    admin.get_by_text('Ручная привязка готового тега', exact=True).click()
                     draft_tag = admin.get_by_label('Тег этого канала из @MTProxyBot', exact=True)
                     draft_tag.fill('d' * 32)
                     admin.set_viewport_size({'width': 390, 'height': 844})
