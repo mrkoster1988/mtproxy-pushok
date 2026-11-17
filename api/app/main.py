@@ -53,7 +53,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.50",
+    version="1.51",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1807,7 +1807,8 @@ def list_operator_campaigns(
 def public_config() -> dict[str, str]:
     username = os.getenv("TELEGRAM_BOT_USERNAME", "").lstrip("@")
     from .proxy_link import current_proxy_url
-    return {"telegram_bot_username": "" if username.startswith("REPLACE_WITH") else username, "proxy_url": current_proxy_url() or ""}
+    from .home_banner import read
+    return {"telegram_bot_username": "" if username.startswith("REPLACE_WITH") else username, "proxy_url": current_proxy_url() or "", **{"home_"+key: value for key,value in read().items()}}
 
 
 @app.get("/api/v1/channels", response_model=list[ChannelResponse], tags=["channels"])
@@ -3104,3 +3105,16 @@ app.include_router(channel_directory_router(lambda: DATABASE_URL, get_current_us
 
 from .campaign_analytics import router_for as campaign_analytics_router
 app.include_router(campaign_analytics_router(lambda: DATABASE_URL,get_current_user))
+
+
+from . import home_banner
+@app.get('/api/v1/admin/home-banner')
+def get_home_banner(admin=Depends(require_admin)):
+    return home_banner.read()
+
+@app.put('/api/v1/admin/home-banner')
+def set_home_banner(data: home_banner.Banner, admin=Depends(require_admin)):
+    try:
+        return home_banner.save(data)
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail='Не удалось сохранить текст главной') from exc

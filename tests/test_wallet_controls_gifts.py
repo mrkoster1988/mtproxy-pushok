@@ -165,3 +165,15 @@ class WalletControlsGiftsIntegration(unittest.TestCase):
         for _ in range(2):self.request('POST','/wallet/campaigns/'+str(cid)+'/pay',json=dict(currency='XTR',expected_amount=151))
         self.assertEqual(self.balances()['XTR'],149)
         self.assertNotIn('telegram_stars_balance',self.request('GET','/wallet'))
+
+    def test_exhausted_gifts_archive_keeps_partial_codes_and_history(self):
+        single=self.gift();partial=self.gift(max_uses=2)
+        self.redeem(single['code']);self.redeem(partial['code'])
+        self.actor={'id':self.admin,'role':'admin'}
+        active=self.request('GET','/admin/wallet/gifts?archived=false')
+        archived=self.request('GET','/admin/wallet/gifts?archived=true')
+        self.assertIn(str(partial['id']),[g['id'] for g in active['items']])
+        self.assertNotIn(str(single['id']),[g['id'] for g in active['items']])
+        self.assertIn(str(single['id']),[g['id'] for g in archived['items']])
+        report=self.request('GET','/admin/wallet/gifts/'+str(single['id'])+'/redemptions')
+        self.assertEqual(report['total'],1)

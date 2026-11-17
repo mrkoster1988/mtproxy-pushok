@@ -159,7 +159,7 @@ function loadAdminSettings(){
  $('tariff-admin-fields').disabled=true;
  adminSettingsLoad=(async()=>{
   const results=await Promise.allSettled([loadControl({payments:true}),api('/admin/icons').then(showIcons),
-   window.pushokDefaultSponsor.load(),window.pushokTeam.load(),renderLoadingSettings(),renderPaymentSettings(),window.pushokWallet.settings(),renderSBPReview(),renderTariffAdmin(),renderCoreReadiness(),renderLaunchReadiness()]);
+   window.pushokDefaultSponsor.load(),window.pushokTeam.load(),renderLoadingSettings(),renderPaymentSettings(),window.pushokWallet.settings(),renderHomeBanner(),renderSBPReview(),renderTariffAdmin(),renderCoreReadiness(),renderLaunchReadiness()]);
   const failed=results.find(x=>x.status==='rejected');if(failed)throw failed.reason;
  })().finally(()=>{$('tariff-admin-fields').disabled=false;adminSettingsLoad=null;});
  return adminSettingsLoad;
@@ -958,3 +958,11 @@ async function refreshStatuses(){
 }
 setInterval(refreshStatuses,20000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refreshStatuses();});
+
+async function renderHomeBanner(){
+ if(me?.role!=='admin')return;const session=token;const data=await api('/admin/home-banner');if(session!==token||me?.role!=='admin')return;
+ const title=$('home-banner-title'),subtitle=$('home-banner-subtitle'),preview=$('home-banner-preview');title.value=data.title;subtitle.value=data.subtitle;
+ const show=()=>preview.replaceChildren(el('strong',title.value),el('p',subtitle.value));title.oninput=subtitle.oninput=show;show();
+ $('home-banner-reset').onclick=()=>{title.value='Добро пожаловать в puShok';subtitle.value='Подключайтесь к MTProxy';show();};
+ $('home-banner-form').onsubmit=async e=>{e.preventDefault();try{await api('/admin/home-banner',{method:'PUT',body:{title:title.value,subtitle:subtitle.value}});window.cabinet.config({...window.cabinetBotConfig,home_title:title.value.trim(),home_subtitle:subtitle.value.trim()});notice('Текст главной сохранён.',true);}catch(err){notice(err.message);}};
+}

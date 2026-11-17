@@ -152,8 +152,8 @@
  }
  const dashboardHero=el('section',undefined,'dashboard-hero');
  const heroCopy=el('div',undefined,'dashboard-hero-copy');
- heroCopy.append(el('h2','Продвигайте свой канал'),el('p','Реклама в MTProxy'));
- const heroActions=el('div',undefined,'dashboard-hero-actions');heroActions.append(link('Создать кампанию','create'));
+ heroCopy.append(el('h2','Добро пожаловать в puShok'),el('p','Подключайтесь к MTProxy'));
+ const heroActions=el('div',undefined,'dashboard-hero-actions');
  const connectProxy=el('a','Подключить прокси','dashboard-connect-proxy');connectProxy.setAttribute('role','link');connectProxy.tabIndex=0;connectProxy.setAttribute('aria-disabled','true');connectProxy.title='Ссылка подключения ещё не настроена';connectProxy.addEventListener('click',event=>{if(!connectProxy.hasAttribute('href')){event.preventDefault();notice('Ссылка подключения прокси пока не настроена.');}});heroActions.append(connectProxy);
  const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
  dashboardHero.append(heroCopy,dashboardMascot,heroActions);
@@ -165,10 +165,10 @@
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);bottomNav.append(a);
  });
  shell.append(bottomNav);
- const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.classList.add('flat-section');summary.append(summaryRows);content.dashboard.append(summary);
+ const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.classList.add('flat-section');const campaignIntro=el('div',undefined,'dashboard-campaign-intro');campaignIntro.append(el('p','Продвигайте свой канал'),link('Создать кампанию','create'));summary.append(campaignIntro,summaryRows);content.dashboard.append(summary);
  const summaryHeading=el('div',undefined,'section-heading');summaryHeading.append(summary.querySelector('h2'),link('Все →','campaigns'));summary.prepend(summaryHeading);
 
- const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);content.dashboard.append(dashboardHelp,dashboardReferral);
+ const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);content.dashboard.append(dashboardReferral,dashboardHelp);
  const onboarding=window.pushokViews.disclosure('Как начать',[el('p','Выберите канал и тариф, отправьте заявку. После одобрения оплатите размещение — запуск и завершение выполняются по расписанию.')]);onboarding.id='onboarding';content.help.prepend(onboarding);
  const paymentOverview=el('div'),paymentRows=el('div');content.payments.append(paymentOverview,paymentRows);
  const sponsorQueue=el('section',undefined,'sponsor-queue');content.sponsors.append(sponsorQueue);const reportRows=el('div');content.reports.append(reportRows);
@@ -508,7 +508,7 @@
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['settings-stars-counts','settings-stars-status','settings-sbp-status','launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());
- },config(config){if(/^https:\/\/t\.me\/proxy\?/.test(config.proxy_url||'')){connectProxy.href=config.proxy_url;connectProxy.target='_blank';connectProxy.rel='noopener noreferrer';connectProxy.removeAttribute('aria-disabled');connectProxy.title='Подключить прокси в Telegram';}state.bot=/^[A-Za-z0-9_]{5,32}$/.test(config.telegram_bot_username||'')?config.telegram_bot_username:null;}};
+ },config(config){heroCopy.querySelector('h2').textContent=config.home_title||'Добро пожаловать в puShok';heroCopy.querySelector('p').textContent=config.home_subtitle??'Подключайтесь к MTProxy';if(/^https:\/\/t\.me\/proxy\?/.test(config.proxy_url||'')){connectProxy.href=config.proxy_url;connectProxy.target='_blank';connectProxy.rel='noopener noreferrer';connectProxy.removeAttribute('aria-disabled');connectProxy.title='Подключить прокси в Telegram';}state.bot=/^[A-Za-z0-9_]{5,32}$/.test(config.telegram_bot_username||'')?config.telegram_bot_username:null;}};
  const fieldHelp=[
   [$('channel-form').elements.telegram_url,'Публичная ссылка вида https://t.me/channel. Доступность и содержание проверяются при модерации.'],
   [$('tariff-select'),'Цена фиксируется при создании. Существующие заявки сохранят прежнюю стоимость.'],
