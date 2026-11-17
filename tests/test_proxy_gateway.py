@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import socket
 import socketserver
 import subprocess
@@ -127,7 +128,7 @@ class GatewayTests(unittest.TestCase):
                 path=Path(tmp)/'haproxy.cfg';path.write_text(host.configuration(cfg,nodes))
                 binary=os.environ.get('PUSHOK_TEST_HAPROXY') or shutil.which('haproxy')
                 subprocess.run([binary,'-c','-f',str(path)],capture_output=True,check=True,timeout=10)
-                process=subprocess.Popen([binary,'-db','-f',str(path)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                process=subprocess.Popen([binary,'-W','-db','-f',str(path)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
                 def request(port):
                     with socket.create_connection(('127.0.0.1',port),timeout=1) as s:
                         s.sendall(b'test');return s.recv(64)
@@ -138,13 +139,22 @@ class GatewayTests(unittest.TestCase):
                     time.sleep(.1)
                 self.assertEqual(request(port+1),b'A:test')
                 self.assertIn(request(port),(b'A:test',b'B:test'))
-                servers[0].shutdown();servers[0].server_close()
-                for _ in range(100):
+                # Реальный мягкий reload master-worker, как в systemd-службе.
+                nodes[0]['topic']='travel';nodes[1]['topic']='technology'
+                path.write_text(host.configuration(cfg,nodes));process.send_signal(signal.SIGUSR2)
+                for _ in range(40):
                     try:
                         if request(port+1)==b'B:test':break
                     except OSError:pass
                     time.sleep(.1)
                 self.assertEqual(request(port+1),b'B:test')
+                servers[1].shutdown();servers[1].server_close()
+                for _ in range(100):
+                    try:
+                        if request(port+1)==b'A:test':break
+                    except OSError:pass
+                    time.sleep(.1)
+                self.assertEqual(request(port+1),b'A:test')
             finally:
                 if process:process.terminate();process.wait(timeout=5)
                 for server in servers:server.shutdown();server.server_close()

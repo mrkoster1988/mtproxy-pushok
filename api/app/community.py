@@ -108,7 +108,19 @@ def router_for(dsn,current_user):
     def moderation(cid:UUID,user=Depends(current_user)):
         if user['role'] not in ('admin','operator'):raise HTTPException(403,'operator_role_required')
         from .channel_ai_connection import active
-        row=db(lambda c:c.execute('SELECT decision,reason,attempted_at FROM ai_moderation_checks WHERE campaign_id=%s',(cid,)).fetchone())
+        def read(c):
+            campaign=c.execute('SELECT moderation_status,moderator_comment FROM campaigns WHERE id=%s',(cid,)).fetchone()
+            if not campaign:raise HTTPException(404,'campaign_not_found')
+            row=c.execute('SELECT decision,reason,attempted_at FROM ai_moderation_checks WHERE campaign_id=%s',(cid,)).fetchone()
+            if row:
+                # Атрибуция по журналу, а не по совпадению текста комментария.
+                event=c.execute("SELECT created_at,reason FROM ai_moderation_events WHERE campaign_id=%s AND decision='approved' ORDER BY created_at DESC LIMIT 1",(cid,)).fetchone()
+                manual=c.execute("SELECT max(created_at) at FROM audit_events WHERE campaign_id=%s AND event_type='campaign_moderated'",(cid,)).fetchone()
+                row['approved_by_agent']=bool(event and campaign['moderation_status']=='approved' and (not manual['at'] or event['created_at']>manual['at']))
+                row['agent_profile']='ai-agent'
+                if row['approved_by_agent']:row['reason']=event['reason']
+            return row
+        row=db(read)
         return {'enabled':bool(active('campaign_review')),'check':row}
     @router.post('/presence')
     def presence(user=Depends(current_user)):

@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.83",
+    version="1.84",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1603,11 +1603,14 @@ def get_campaign_report(
                 (campaign_id, campaign_id, campaign_id),
             ).fetchone()
             timeline = connection.execute(
-                """SELECT event_type, created_at
-                   FROM audit_events
-                   WHERE campaign_id = %s AND event_type = ANY(%s::text[])
-                   ORDER BY created_at ASC, id ASC LIMIT 100""",
-                (campaign_id, sorted(PUBLIC_EVENTS)),
+                """SELECT event_type,created_at FROM (
+                       SELECT id,event_type,created_at FROM audit_events
+                       WHERE campaign_id=%s AND event_type = ANY(%s::text[])
+                       UNION ALL
+                       SELECT id,'campaign_approved_by_ai' AS event_type,created_at FROM ai_moderation_events
+                       WHERE campaign_id=%s AND decision='approved'
+                   ) events ORDER BY created_at ASC,id ASC LIMIT 100""",
+                (campaign_id, sorted(PUBLIC_EVENTS), campaign_id),
             ).fetchall()
     except HTTPException:
         raise

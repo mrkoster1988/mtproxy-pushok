@@ -23,7 +23,7 @@ window.pushokApproval=(()=>{
  function archivedQueue(){
   const rows=campaigns.filter(c=>c.archived_at);if(!rows.length)return;
   const panel=details('Удалённые: требуют завершения ('+rows.length+')',root,'trash','archived-review');
-  panel.append(el('p','Эти заявки уже удалены из рабочего списка. Здесь остаются только незавершённые платежи и показы.'));
+  panel.append(el('p','Эти заявки уже удалены из рабочего списка. Здесь остаются только незавершённые платежи и показы.','block-note'));
   for(const c of rows){const row=window.pushokViews.campaignSummary(c,'moderation',{actions:false,openLabel:'Открыть для завершения'});row.classList.add('approval-summary');
    for(const reason of c.archive_pending_actions||[])if(archiveReasons[reason])row.append(el('p',archiveReasons[reason]));
    panel.append(row);
@@ -54,7 +54,7 @@ window.pushokApproval=(()=>{
   option(choose,'','Все заявки');for(const item of choices)option(choose,item.id,(item.archived_at?'Удалена · ':'')+(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;choose.hidden=choices.length===1;
   choose.addEventListener('change',()=>{selected=choose.value;window.cabinet.go(selected?'moderation/'+selected:'moderation');});navigation.append(choose);box.append(navigation);
   box.append(window.pushokViews.campaignSummary(c,'moderation',{actions:false,route:'moderation',openLabel:'Все заявки'}),advertiser(c));
-  if(c.moderation_status==='pending'){const aiState=el('small',undefined,'muted');box.append(aiState);const aiSession=token;void api('/community/moderation/'+c.id).then(data=>{if(aiSession!==token||!box.isConnected)return;aiState.textContent=!data.enabled?'Автомодерация ИИ выключена в настройках владельца.':data.check?.reason||'Ожидает автоматической проверки ИИ.';}).catch(()=>{});}
+
   if(c.archived_at){
    const banner=el('section',undefined,'card approval-archive-notice');banner.setAttribute('role','status');
    banner.append(el('h3','Заявка уже удалена'),el('p','Удалено: '+date(c.archived_at)+'. В рабочей очереди её нет.'));
@@ -63,7 +63,9 @@ window.pushokApproval=(()=>{
   }
   const index=stage(c),progress=el('ol',undefined,'approval-progress');progress.setAttribute('aria-label','Этапы рекламной заявки');
   stages.forEach((title,i)=>{const li=el('li'),marker=el('span',undefined,'approval-step-marker');if(i<index)marker.append(window.pushokViews.icon('check'));else marker.textContent=String(i+1);li.append(marker,el('span',title));if(i===index)li.setAttribute('aria-current','step');if(i<index)li.className='done';progress.append(li);});
-  for(const comment of [c.moderator_comment,c.payment_review_comment])if(comment)box.append(el('p',comment));
+  const decisionNode=el('p',c.moderator_comment||'', 'moderation-decision');box.append(decisionNode);
+  if(c.payment_review_comment)box.append(el('p',c.payment_review_comment));
+  if(window.pushokAssistant){const assistant=window.pushokAssistant.panel(c,{expanded:true,decisionNode});assistant.classList.add('approval-section');assistant.querySelector('.assistant-body').classList.add('approval-body');box.append(assistant);}
   const workflow=el('section',undefined,'approval-current');workflow.setAttribute('aria-label','Работа с заявкой');workflow.append(progress);
   let content=el('div',undefined,'approval-body');const feedback=el('p',undefined,'approval-feedback');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');workflow.append(content,feedback);box.append(workflow);
   const session=token,user=me.id;let busy=false;
@@ -84,7 +86,7 @@ window.pushokApproval=(()=>{
   }
   if(!c.archived_at&&['cancelled','completed'].includes(c.placement_status))content.append(el('h3',c.placement_status==='completed'?'Размещение завершено':'Размещение отменено'));
   else if(c.archived_at&&c.placement_status!=='active'&&c.payment_status!=='proof_submitted'){
-   content.append(el('h3','Проверка платежа удалённой заявки'),el('p','История оплаты сохранена. Архивирование не отменяет выставленный счёт у платёжной системы. Когда счёт будет закрыт, заявка исчезнет из этого раздела и останется в «Удалённых».'),button('Проверить статус оплаты',refresh));
+   content.append(el('h3','Проверка платежа удалённой заявки'),el('p','История оплаты сохранена. Архивирование не отменяет выставленный счёт у платёжной системы. Когда счёт будет закрыт, заявка исчезнет из этого раздела и останется в «Удалённых».','block-note'),button('Проверить статус оплаты',refresh));
   }else if(c.moderation_status==='pending'){
    content.append(el('h3','1. Проверьте канал'),el('p','Откройте канал выше, проверьте содержание и выберите решение.'));
    content.append(button('Одобрить канал',()=>perform(()=>post('moderation',{decision:'approved'}),'Канал одобрен. Статус оплаты — в этой карточке.')));
@@ -107,7 +109,7 @@ window.pushokApproval=(()=>{
    content.append(el('h3','2. Ожидаем оплату'),el('p',c.payment_status==='refunded'?'Оплата возвращена. Размещение недоступно.':'Рекламодатель оплачивает свою заявку. Stars и СБП подтверждаются сервером; загруженный чек появится здесь для проверки.'),button('Проверить статус оплаты',refresh));
   }else if(c.placement_status==='not_scheduled'){
    void renderPromotionStatus(c,content);
-   content.append(el('p','Начало — с выбранного клиентом времени или сразу после освобождения места. Если дата не выбрана — ближайшее доступное время.'));
+
    const resume=button('Возобновить автоподбор',()=>perform(()=>post('auto-schedule'),'Автоподбор включён. Расписание обновится автоматически.'));
    if(c.auto_schedule_paused)content.append(resume);
    content=details('Изменить расписание',content);
@@ -123,7 +125,7 @@ window.pushokApproval=(()=>{
   }else if(c.placement_status==='scheduled'){
    void renderPromotionStatus(c,content);
    content.append(el('p','Окончание: '+date(c.scheduled_end_at),'approval-period'));
-   if(me.role==='admin'){const setup=el('a','Настройки запуска','approval-setup');setup.href='#/sponsors/'+c.channel_id+(c.proxy_node_id?'/'+c.proxy_node_id:'');setup.prepend(window.pushokViews.icon('settings'));setup.append(window.pushokViews.icon('chevron'));content.append(setup);}
+
    content=details('Дополнительная ручная проверка',content,'moderation');
    content.append(el('p','Назначено: '+date(c.scheduled_start_at)+' — '+date(c.scheduled_end_at)));
    let savedReport=null;
@@ -133,27 +135,27 @@ window.pushokApproval=(()=>{
     if(screenshot.files[0]){const body=new FormData();body.append('file',screenshot.files[0]);try{await api('/operator/campaigns/'+c.id+'/display-observations/'+savedReport.id+'/evidence',{method:'POST',body});screenshot.value='';}catch(e){throw Error('Наблюдение сохранено. Скриншот не прикреплён: '+e.message);}}
     guard();try{await post('activate');}catch(e){throw Error('Наблюдение сохранено, активация не подтверждена: '+e.message);}
    });
-   block.f.append(el('p','Проверьте показ в своём Telegram: подключитесь к прокси этой кампании и убедитесь, что вы не подписаны на канал. У канала в списке чатов должна быть отметка «Спонсор прокси». Второй аккаунт не нужен. Кнопка сохраняет результат проверки, сам тег она не переключает.'));
+   block.f.append(el('p','Проверьте показ в своём Telegram: подключитесь к прокси этой кампании и убедитесь, что вы не подписаны на канал. У канала в списке чатов должна быть отметка «Спонсор прокси». Второй аккаунт не нужен. Кнопка сохраняет результат проверки, сам тег она не переключает.','block-note'));
    const observation=note(block.f,'Что увидели при проверке'),screenshot=el('input');screenshot.type='file';screenshot.accept='image/png,image/jpeg';field(block.f,'Скриншот проверки (необязательно)',screenshot);
    check(block.f,'Я подключён к этому прокси, не подписан на канал и вижу отметку «Спонсор прокси»');block.finish();
    const extra=details('Показ не обнаружен',content),f=el('form'),comment=note(f,'Что проверили'),submit=el('button','Записать: показ не обнаружен');submit.type='submit';f.append(submit);extra.append(f);
    f.addEventListener('submit',e=>{e.preventDefault();if(f.reportValidity())void perform(()=>post('display-observations',{result:'not_visible',method:'separate_unsubscribed_client',observed_at:new Date().toISOString(),note:comment.value.trim()}),'Отрицательное наблюдение сохранено. Размещение не активировано.');});
   }else if(c.placement_status==='active'){
    void renderPromotionStatus(c,content);
-   content.append(el('h3','Размещение активно'),el('p','После окончания периода агент снимет или сменит тег и автоматически завершит кампанию.'));
+   content.append(el('h3','Размещение активно'),el('p','После окончания периода агент снимет или сменит тег и автоматически завершит кампанию.','block-note'));
    content=details('Ручное завершение и диагностика',content);
    const block=form('5. Завершите размещение','Подтвердить завершение',()=>post('complete',{tag_removed_confirmed:true,verification_method:'separate_unsubscribed_client'}));
    block.f.append(el('p','Период: '+date(c.scheduled_start_at)+' — '+date(c.scheduled_end_at)));
-   block.f.append(el('p','При настроенном автоприменении агент вернёт исходный тег после окончания периода. При ручном размещении снимите тег самостоятельно. Затем проверьте в подключённом Telegram без подписки, что канал этой кампании больше не отмечен как спонсор. Второй аккаунт не нужен.'));
+   block.f.append(el('p','При настроенном автоприменении агент вернёт исходный тег после окончания периода. При ручном размещении снимите тег самостоятельно. Затем проверьте в подключённом Telegram без подписки, что канал этой кампании больше не отмечен как спонсор. Второй аккаунт не нужен.','block-note'));
    block.f.append(el('p','Если исходный тег ведёт на тот же канал, канал может остаться спонсором. Возврат настроек сам по себе не подтверждает прекращение показа. Кнопка закрывает кампанию после вашей проверки.','muted'));
    check(block.f,'Тег кампании снят; в подключённом Telegram без подписки канал больше не показан как спонсор');block.finish();
   }
   if(me.role==='admin'&&window.pushokCampaignPricing){const pricing=window.pushokCampaignPricing.create(c);pricing.classList.add('approval-section');const heading=pricing.querySelector('summary');heading.replaceChildren(window.pushokViews.icon('price'),el('span','Тариф и скидка'),window.pushokViews.icon('chevron'));pricing.querySelector(':scope > div').classList.add('approval-body');box.append(pricing);}
-  if(window.pushokAssistant){const assistant=window.pushokAssistant.panel(c);assistant.classList.add('approval-section');assistant.querySelector('summary').append(window.pushokViews.icon('chevron'));assistant.querySelector('.assistant-body').classList.add('approval-body');box.append(assistant);}
+
   if(!c.archived_at&&window.pushokManagement)box.append(window.pushokManagement.campaignActions(c,true));
   const history=details('История и документы',box,'history'),facts=el('dl',undefined,'approval-facts'),tools=el('div',undefined,'campaign-action-tools');tools.setAttribute('role','group');tools.setAttribute('aria-label','Документы заявки');
   for(const [title,value] of [['Номер заявки',c.id],['Желаемое начало',date(c.requested_start_at)]]){const row=el('div');row.append(el('dt',title),el('dd',value));facts.append(row);}
-  history.append(facts,tools);tools.append(window.pushokViews.iconAction(button('',()=>showCampaignReport(c,history)),'chart','Отчёт по кампании'));
+  history.append(facts,tools);history.parentElement.addEventListener('toggle',()=>{if(history.parentElement.open&&!history.querySelector('.campaign-report'))void showCampaignReport(c,history,{embedded:true}).catch(()=>{});});tools.append(window.pushokViews.iconAction(button('',()=>showCampaignReport(c,history,{refresh:true,embedded:true})),'chart','Отчёт по кампании'));
   if(['scheduled','active','completed'].includes(c.placement_status))tools.append(window.pushokViews.iconAction(button('',async()=>{
    const rows=await api('/operator/campaigns/'+c.id+'/display-observations');if(!history.isConnected||session!==token)return;
    history.querySelector('.observation-panel')?.remove();const panel=el('section',undefined,'observation-panel');history.append(panel);

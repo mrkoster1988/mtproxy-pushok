@@ -51,7 +51,7 @@ def configuration(settings, nodes):
         ipaddress.IPv4Address(n['address'])
         if type(n['port']) is not int or not 1024 <= n['port'] <= 65535 or n['port'] in listeners.values():
             raise ValueError('port_busy')
-    lines = ['global','  maxconn 4096','  hard-stop-after 30m',
+    lines = ['global','  nbthread 2','  maxconn 4096','  hard-stop-after 30m',
              'defaults','  mode tcp','  timeout connect 3s','  timeout client 24h',
              '  timeout server 24h','  retries 2','  option redispatch','']
     for topic,port in listeners.items():

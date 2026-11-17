@@ -36,6 +36,32 @@ def router_for(dsn, current_user):
         except psycopg.Error as exc:
             raise HTTPException(503, 'database_unavailable') from exc
 
+    @router.get('/ai-agent/profile')
+    def agent_profile(response: Response, viewer=Depends(current_user)):
+        if viewer['role'] not in ('admin', 'operator'):
+            raise HTTPException(403, 'operator_role_required')
+        response.headers.update(PRIVATE_HEADERS)
+        def read(conn):
+            conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
+            account = conn.execute("SELECT * FROM service_accounts WHERE id='ai-agent'").fetchone()
+            counts = conn.execute("""SELECT count(*) FILTER(WHERE decision='approved') approved,
+                count(*) FILTER(WHERE decision='rejected') rejected,
+                count(*) FILTER(WHERE decision='review') review,
+                count(*) FILTER(WHERE decision='retry') retry,
+                count(DISTINCT campaign_id) campaigns, max(created_at) last_decision_at
+                FROM ai_moderation_events WHERE actor_id='ai-agent'""").fetchone()
+            topics = conn.execute("""SELECT topic,
+                count(*) FILTER(WHERE decision='approved') approved,
+                count(*) FILTER(WHERE decision='rejected') rejected,
+                count(*) FILTER(WHERE decision='review') review
+                FROM ai_moderation_events WHERE actor_id='ai-agent' AND decision<>'retry'
+                GROUP BY topic ORDER BY count(*) DESC,topic NULLS LAST""").fetchall()
+            for row in topics:
+                row['label'] = topic_label(row['topic']) if row['topic'] else 'Тема не сохранена'
+            return dict(account=account, counts=counts, topics=topics,
+                automatic_rejection_enabled=False, counting='decisions')
+        return db(read)
+
     @router.get('/{uid}/profile')
     def profile(uid: UUID, response: Response, archived: bool = False,
                 campaign_page: int = Query(default=0, ge=0, le=100000),

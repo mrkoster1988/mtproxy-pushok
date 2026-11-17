@@ -98,7 +98,7 @@ window.pushokProvisioning=(()=>{
    const heading=el('summary'),title=el('span','ИИ · Новые прокси','ai-settings-title');
    title.prepend(window.pushokViews.icon('server'));heading.append(title,el('span',saved.enabled?'Включено':'Выключено','ai-state'));box.append(heading);
    const content=el('div',undefined,'ai-settings-content'),form=el('form'),fields=el('fieldset');
-   const info=el('p','При нехватке слотов ИИ может создать дополнительный экземпляр на этом VPS. Серверы не покупаются. Новые подключения распределяются между готовыми прокси; отдельный порт сам по себе не увеличивает аудиторию.','muted');
+   const info=el('p','При нехватке слотов ИИ может создать дополнительный экземпляр на этом VPS. Серверы не покупаются. Новые подключения распределяются между готовыми прокси; отдельный порт сам по себе не увеличивает аудиторию.','muted block-note');
    const row=el('label','Разрешить автоматическое создание','ai-switch'),enabled=el('input');enabled.type='checkbox';enabled.id='proxy-provisioning-enabled';enabled.checked=saved.enabled;row.append(enabled);fields.append(row);
    function number(label,id,value,min,max){const l=el('label',label),input=el('input');input.type='number';input.id=id;input.value=value;input.min=min;input.max=max;input.step=1;input.required=true;l.append(input);fields.append(l);return input;}
    const maximum=number('Максимум дополнительных экземпляров','proxy-provisioning-max',saved.max_instances,1,3);

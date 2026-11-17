@@ -11,33 +11,35 @@
   <link rel="stylesheet" href="/assets/cabinet-reference.css?v=174">
   <link rel="stylesheet" href="/assets/interface.css?v=179">
   <link rel="stylesheet" href="/assets/moderation.css?v=182">
-  <script src="/assets/app.js?v=183" defer></script>
+  <link rel="stylesheet" href="/assets/controls.css?v=183">
+  <script src="/assets/app.js?v=184" defer></script>
   <script src="/assets/campaign-analytics.js?v=172" defer></script>
   <script src="/assets/merchant-settings.js?v=172" defer></script>
   <script src="/assets/channel-ai-settings.js?v=172" defer></script>
-  <script src="/assets/proxy-provisioning.js?v=178" defer></script>
-  <script src="/assets/proxy-gateway.js?v=183" defer></script>
+  <script src="/assets/proxy-provisioning.js?v=183" defer></script>
+  <script src="/assets/proxy-gateway.js?v=184" defer></script>
   <script src="/assets/bonus-links.js?v=172" defer></script>
-  <script src="/assets/wallet.js?v=172" defer></script>
+  <script src="/assets/wallet.js?v=183" defer></script>
   <script src="/assets/growth.js?v=172" defer></script>
   <script src="/assets/channel-topics.js?v=172" defer></script>
   <script src="/assets/order.js?v=172" defer></script>
   <script src="/assets/management.js?v=182" defer></script>
   <script src="/assets/campaign-pricing.js?v=172" defer></script>
-  <script src="/assets/campaign-assistant.js?v=179" defer></script>
-  <script src="/assets/approval.js?v=182" defer></script>
-  <script src="/assets/verified-profile.js?v=172" defer></script>
+  <script src="/assets/campaign-assistant.js?v=183" defer></script>
+  <script src="/assets/approval.js?v=183" defer></script>
+  <script src="/assets/verified-profile.js?v=183" defer></script>
   <script src="/assets/hall-of-fame.js?v=172" defer></script>
-  <script src="/assets/user-profiles.js?v=174" defer></script>
+  <script src="/assets/user-profiles.js?v=183" defer></script>
   <script src="/assets/community.js?v=172" defer></script>
-  <script src="/assets/mobile-views.js?v=183" defer></script>
+  <script src="/assets/mobile-views.js?v=184" defer></script>
   <script src="/assets/default-sponsor.js?v=172" defer></script>
-  <script src="/assets/users.js?v=172" defer></script>
+  <script src="/assets/users.js?v=183" defer></script>
   <script src="/assets/team.js?v=179" defer></script>
   <script src="/assets/application-licenses.js?v=172" defer></script>
-  <script src="/assets/release-notes.js?v=183" defer></script>
-  <script src="/assets/interface.js?v=183" defer></script>
-  <script src="/assets/pages.js?v=183" defer></script>
+  <script src="/assets/release-notes.js?v=184" defer></script>
+  <script src="/assets/interface.js?v=184" defer></script>
+  <script src="/assets/controls.js?v=183" defer></script>
+  <script src="/assets/pages.js?v=184" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -162,7 +164,7 @@
                 <p id="calendar-selection" aria-live="polite">Дата пока не выбрана.</p>
                 <input id="requested-start" name="requested_start_at" type="hidden">
                 <button id="calendar-clear" type="button" class="subtle-button">Не указывать дату</button>
-                <p class="muted">Выбор даты не бронирует слот. После одобрения и оплаты система подберёт доступное размещение.</p>
+                <p class="muted" data-note>Выбор даты не бронирует слот. После одобрения и оплаты система подберёт доступное размещение.</p>
               </div>
               </div></details>
               <section id="order-review" aria-labelledby="order-review-title">
@@ -189,7 +191,7 @@
           <div id="nodes-list" class="cards"></div>
           <details id="node-create" class="disclosure-panel">
           <summary>Добавить узел</summary>
-          <p class="muted">Добавьте адрес установленного прокси. Сохранение записи не запускает сервер.</p>
+          <p class="muted" data-note>Добавьте адрес установленного прокси. Сохранение записи не запускает сервер.</p>
           <form id="node-form">
             <label>Название узла<input name="name" required maxlength="100" placeholder="Pushok · Финляндия"></label>
             <label>Домен или IP<input name="host" required placeholder="mtproxy.example.org"></label>
@@ -215,7 +217,7 @@
       <div id="settings" hidden>
         <section id="settings-payments" class="panel settings-panel">
           <div class="eyebrow">ПЛАТЁЖНЫЕ КАНАЛЫ</div><h2>Способы оплаты</h2>
-          <p class="muted">Включите нужные способы и задайте цены в разделе «Управление → Тарифы».</p>
+          <p class="muted" data-note>Включите нужные способы и задайте цены в разделе «Управление → Тарифы».</p>
           <div id="sbp-connection"></div>
           <form id="payment-switches">
 <label><input id="enable-stars" type="checkbox">Принимать Telegram Stars</label>
@@ -227,24 +229,24 @@
               <h3>⭐ Telegram Stars · XTR</h3>
               <p id="settings-stars-status" role="status">Состояние запрашивается...</p>
               <p id="settings-stars-counts" class="muted"></p>
-              <p class="muted">Цена Stars устанавливается в разделе «Управление → Тарифы». Приём платежей включается переключателем выше.</p>
+              <p class="muted" data-note>Цена Stars устанавливается в разделе «Управление → Тарифы». Приём платежей включается переключателем выше.</p>
             </article>
             <article class="settings-method">
               <h3>СБП · рубли</h3>
               <p id="settings-sbp-status" role="status">СБП не подключена: состояние запрашивается у сервера.</p>
-              <p class="muted">Цена в рублях устанавливается в разделе «Управление → Тарифы». Магазин подключается в форме выше. Включение СБП запускает фоновую сверку счетов; тестовый режим отмечен отдельно.</p>
+              <p class="muted" data-note>Цена в рублях устанавливается в разделе «Управление → Тарифы». Магазин подключается в форме выше. Включение СБП запускает фоновую сверку счетов; тестовый режим отмечен отдельно.</p>
             </article>
           </div>
           <p id="settings-payments-note" class="muted" role="status">Не сохраняйте реквизиты и секреты в комментариях или полях тарифов.</p>
           </details>
           <h3>СБП: ожидающие и спорные попытки</h3>
-          <p class="muted">Повтор ставит счёт на серверную проверку. Деньги не зачисляются вручную, размещение не запускается. Не указывайте ключи и банковские данные в комментарии.</p>
+          <p class="muted" data-note>Повтор ставит счёт на серверную проверку. Деньги не зачисляются вручную, размещение не запускается. Не указывайте ключи и банковские данные в комментарии.</p>
           <div id="sbp-review-list" aria-live="polite"></div>
         </section>
         <div id="settings-tariffs" class="settings-panel" hidden>
           <section class="core-health tariff-builder" aria-label="Конструктор тарифов MTProxy Pushok">
             <div><span class="eyebrow">ЦЕНЫ И ТАРИФЫ</span><h3>Конструктор тарифов</h3></div>
-            <p class="muted">Создавайте платные и бесплатные тарифы. Бесплатное размещение проходит модерацию без счёта. Условия уже созданных заявок сохраняются.</p>
+            <p class="muted" data-note>Создавайте платные и бесплатные тарифы. Бесплатное размещение проходит модерацию без счёта. Условия уже созданных заявок сохраняются.</p>
             <form id="tariff-admin-form"><fieldset id="tariff-admin-fields" disabled>
               <div class="tariff-builder-toolbar"><label>Тариф<select id="tariff-admin-select"></select></label><button id="tariff-admin-new" type="button">+ Новый тариф</button></div>
               <h4 id="tariff-admin-mode">Редактирование тарифа</h4>
@@ -277,7 +279,7 @@
 <h3 id="loading-title-heading">Экран загрузки Mini App</h3>
 <form id="loading-title-form"><fieldset id="loading-title-fields" disabled>
 <label>Текст надписи<input id="loading-title-input" maxlength="100" required placeholder="Пушок готовит кабинет…"></label>
-<p class="muted">До 100 символов. Появится при следующем открытии Mini App.</p>
+<p class="muted" data-note>До 100 символов. Появится при следующем открытии Mini App.</p>
 <p id="loading-title-preview" aria-live="polite">Пушок готовит кабинет…</p>
 <button type="submit">Сохранить надпись</button>
 </fieldset></form>
@@ -299,11 +301,11 @@
 <button type="button" id="icons-import">Загрузить PushokIcons</button><form id="icons-form"><div id="icons-mapping"></div><button type="submit">Сохранить иконки</button></form><p id="icons-status" role="status"></p></section>
           <div class="core-health" aria-label="Готовность к запуску MTProxy Pushok">
             <div><span class="eyebrow">ГОТОВНОСТЬ ПЛАТФОРМЫ</span><h3>Что осталось до запуска</h3></div>
-            <p class="muted">Результаты проверок и оставшиеся шаги. Уже сохранённые проверки показа и завершения учитываются автоматически; отчёты о платежах и восстановлении добавляет администратор.</p>
+            <p class="muted" data-note>Результаты проверок и оставшиеся шаги. Уже сохранённые проверки показа и завершения учитываются автоматически; отчёты о платежах и восстановлении добавляет администратор.</p>
             <button type="button" id="launch-refresh">Обновить готовность</button>
             <div id="launch-readiness" aria-live="polite">Проверка данных ещё не запускалась.</div>
             <details id="launch-check-details" class="readiness-report"><summary>Записать результат испытания</summary>
-              <p class="muted">Для платежей и восстановления. Записывайте только выполненные проверки на вашем VPS. Укажите проверку за последние 7 дней. История сохраняется после обновлений; отчёт сам по себе ничего не запускает.</p>
+              <p class="muted" data-note>Для платежей и восстановления. Записывайте только выполненные проверки на вашем VPS. Укажите проверку за последние 7 дней. История сохраняется после обновлений; отчёт сам по себе ничего не запускает.</p>
               <form id="launch-check-form"><fieldset id="launch-check-fields">
                 <label for="launch-check-type">Проверка</label><select id="launch-check-type" required><option value="">Выберите проверку</option></select>
                 <p id="launch-check-instructions" class="muted">Выберите проверку, которую уже выполнили.</p>
@@ -315,7 +317,7 @@
                 <button type="submit" id="launch-check-save">Сохранить результат</button>
               </fieldset></form>
             </details>
-            <details class="readiness-report"><summary>Сохранность скриншотов</summary><p class="muted">Проверка файлов не подтверждает фактический показ канала.</p><button type="button" id="launch-evidence-integrity">Проверить файлы скриншотов</button></details>
+            <details class="readiness-report"><summary>Сохранность скриншотов</summary><p class="muted" data-note>Проверка файлов не подтверждает фактический показ канала.</p><button type="button" id="launch-evidence-integrity">Проверить файлы скриншотов</button></details>
           </div>
           <details class="core-health" aria-label="Готовность Pushok Core"><summary>Экспериментальное ядро — отдельные испытания</summary>
             <div><span class="eyebrow">PUSHOK SOURCE CORE · v0.027</span><h3>Pushok Source Core</h3></div>
@@ -326,7 +328,7 @@
       </div>
     </section>
 
-    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.83</span></footer>
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.84</span></footer>
   </main>
 </body>
 </html>

@@ -22,7 +22,7 @@ def check_campaign_assistant_ui(new_page, go, output, dsn):
             conn.execute("""INSERT INTO campaigns(id,advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,moderation_status)
                 VALUES(%s,%s,%s,%s,'ИИ тест',3600,30000,'RUB','pending')""",(cid,uid,channel,tariff))
         page.evaluate('refresh()');go(page,'moderation/'+str(cid))
-        panel=page.locator('.campaign-assistant');panel.locator('summary').click()
+        panel=page.locator('.campaign-assistant');expect(panel).to_have_attribute('open','')
         expect(panel.get_by_role('button',name='Разобрать заявку',exact=True)).to_be_visible()
         # Открытие панели само не вызывает платный анализ.
         response={'summary':'<img src=x onerror="window.aiInjected=true"> Нужна проверка публикаций.',

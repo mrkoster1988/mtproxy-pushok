@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any
 
 PUBLIC_EVENT_TITLES = {
+    "campaign_approved_by_ai": "Одобрено: Агент ИИ",
     "campaign_submitted": "Заявка отправлена",
     "campaign_moderated": "Модерация выполнена",
     "payment_proof_submitted": "Чек отправлен",

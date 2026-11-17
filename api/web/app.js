@@ -258,7 +258,7 @@ async function downloadCampaignCsv(c){
  setTimeout(()=>URL.revokeObjectURL(url),60000);
 }
 
-function showCampaignReport(c, box,{refresh=false}={}){
+function showCampaignReport(c, box,{refresh=false,embedded=false}={}){
  const old=box.querySelector('.campaign-report');
  if(old&&!refresh){old.remove();return;}
  const panel=old||el('section',undefined,'campaign-report'),session=token,request=(panel.reportRequest||0)+1;panel.reportRequest=request;
@@ -269,8 +269,8 @@ function showCampaignReport(c, box,{refresh=false}={}){
   if(!current())return;
   const observationsOpen=panel.querySelector('.report-observations')?.open;
   panel.replaceChildren();
-  const h=el('h4','Отчёт о размещении · '+data.channel.title);
-  panel.append(h);
+  const h=el('h4',embedded?'Сведения о размещении':'Отчёт о размещении · '+data.channel.title),header=el('div',undefined,'report-header');header.append(h);panel.append(header);
+  if(!embedded)header.append(window.pushokViews.iconAction(button('',()=>panel.remove()),'close','Закрыть отчёт'));
   const pairs=[
    ['Тариф',data.tariff.name+' · '+money(data.tariff.price_kopecks)],
    ['Модерация',labels[data.moderation_status]||data.moderation_status],
@@ -285,7 +285,8 @@ function showCampaignReport(c, box,{refresh=false}={}){
    row.append(el('span',key,'muted'),el('strong',value));
    grid.append(row);
   }
-  panel.append(grid);
+  if(!embedded)panel.append(grid);
+  else {const period=el('dl',undefined,'approval-facts');for(const [title,value] of [['Начало',date(data.scheduled_start_at)],['Окончание',date(data.scheduled_end_at)]]){const row=el('div');row.append(el('dt',title),el('dd',value));period.append(row);}panel.append(period);}
   if(window.pushokCampaignAnalytics)panel.append(window.pushokCampaignAnalytics.panel({id:c.id,archived_at:data.placement_status==='completed'?true:null}));
   const observations=window.pushokViews.disclosure('Дополнительные наблюдения в Telegram',[],'report-observations');
   observations.open=Boolean(observationsOpen);
@@ -298,21 +299,20 @@ function showCampaignReport(c, box,{refresh=false}={}){
   observations.append(el('p','Приватных скриншотов в журнале: '+checks.private_screenshot_count+
    '. Файлы доступны только операторам.','muted'));
   observations.append(el('p','Это необязательные наблюдения оператора. Автоматический запуск и завершение не требуют заполнения этого отчёта.','muted'));
-  panel.append(observations);
+  if(checks.total||checks.private_screenshot_count)panel.append(observations);
   panel.append(el('h4','История действий'));
-  const eventNames={campaign_submitted:'Заявка отправлена',campaign_moderated:'Модерация',campaign_pricing_changed:'Тариф или скидка изменены администратором',
+  const eventNames={campaign_approved_by_ai:'Одобрено: Агент ИИ',campaign_submitted:'Заявка отправлена',campaign_moderated:'Модерация',campaign_pricing_changed:'Тариф или скидка изменены администратором',
    sbp_invoice_created:'Выставлен счёт СБП',sbp_payment_verified:'СБП подтверждена сервером',sbp_payment_canceled:'СБП отменена',
    payment_proof_submitted:'Чек отправлен',payment_reviewed:'Проверка оплаты',
    placement_auto_scheduled:'Автоматическое расписание',placement_activated_by_agent:'Агент подтвердил запуск',placement_completed_by_agent:'Агент подтвердил завершение',placement_scheduled:'Время назначено',placement_activated_manually:'Оператор активировал',
    placement_completed_manually:'Оператор завершил'};
   if(data.timeline.length){
    const history=el('ol',undefined,'report-history');
-   for(const event of data.timeline)history.append(el('li',(eventNames[event.event]||'Событие')+
-      ' · '+date(event.at)));
+   for(const event of data.timeline){const row=el('li'),at=el('time',date(event.at));at.dateTime=event.at;row.append(el('span',eventNames[event.event]||'Событие'),at);history.append(row);}
    panel.append(history);
   }else panel.append(el('p','История пока пуста.','muted'));
-  panel.append(el('p','Запуск и завершение отражены в истории событий. Количество просмотров здесь не измеряется.','muted'));
-  panel.append(button('Закрыть отчёт',()=>panel.remove()));
+  window.pushokControls.help(panel,[el('p','Запуск и завершение отражены в истории событий. Количество просмотров спонсора здесь не измеряется. Наблюдения оператора и скриншоты показаны, если они сохранены.')],'О данных отчёта');
+  if(embedded){const docs=el('div',undefined,'report-documents');docs.append(button('Скачать CSV',()=>downloadCampaignCsv(c)));panel.append(docs);}
  }).catch(error=>{if(current()&&!old)panel.remove();throw error;});
 }
 
@@ -949,7 +949,11 @@ async function updatePromotionPanel(panel){
   if(!panel.isConnected||session!==token||request!==panel.promotionRequest)return;
   const message=automationMessages[state.automation_status]||['Состояние уточняется',()=> 'Обновите данные. Подтверждения запуска пока нет.'];
   panel.dataset.automationStatus=state.automation_status||'unknown';
-  if(panel.dataset.promotionSummary){panel.textContent=message[0]+'. '+message[1](state);return;}
+  if(panel.dataset.promotionSummary){
+   let heading=panel.querySelector('h3'),note=panel.querySelector('.automation-explanation');
+   if(!heading){heading=el('h3');note=el('p',undefined,'automation-explanation');panel.replaceChildren(heading);window.pushokControls.help(panel,[note],'О текущем этапе');}
+   heading.textContent=message[0];note.textContent=message[1](state);return;
+  }
   panel.querySelector('h4').textContent=message[0];panel.querySelector('.automation-message').textContent=message[1](state);
   panel.querySelector('.automation-agent').textContent=state.checked_at?'Последний ответ агента: '+date(state.checked_at):'Ответ агента ещё не получен.';
   panel.querySelector('.automation-error').textContent='';
@@ -960,7 +964,7 @@ async function updatePromotionPanel(panel){
  }
 }
 async function renderPromotionStatus(c,parent){
- const text=el('p',undefined,'muted');text.dataset.promotionCampaign=c.id;text.dataset.promotionSummary='true';parent.append(text);await updatePromotionPanel(text);
+ const text=el('section',undefined,'approval-automation-summary');text.dataset.promotionCampaign=c.id;text.dataset.promotionSummary='true';parent.append(text);await updatePromotionPanel(text);
 }
 
 Object.assign(errors,{schedule_before_requested_start:'Выберите время не раньше желаемого начала заявки.'});
@@ -970,7 +974,7 @@ let statusRefreshBusy=false;
 async function refreshStatuses(){
  const route=location.hash.split('/')[1];
  if(!me||!token||document.hidden||statusRefreshBusy||!['dashboard','campaigns','campaign','payments','moderation'].includes(route))return;
- if(document.querySelector('input:focus,textarea:focus,select:focus')||[...document.querySelectorAll('details[open]')].some(node=>node.getClientRects().length))return;
+ if(document.querySelector('.assistant-output:not(:empty),input:focus,textarea:focus,select:focus')||[...document.querySelectorAll('details[open]:not(.assistant-open)')].some(node=>node.getClientRects().length))return;
  statusRefreshBusy=true;
  try{await refresh({background:true});}catch{}finally{statusRefreshBusy=false;}
 }

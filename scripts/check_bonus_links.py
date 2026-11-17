@@ -117,7 +117,8 @@ def check_bonus_links(browser,base,output,failures,dsn):
     try:
         page.locator('.mobile-bottom-nav a[data-route=wallet]').click()
         page.locator('[data-wallet-section=review]>summary').click()
-        page.get_by_role('button',name='Показать последние 30 пополнений').click()
+        expect(page.locator('.wallet-review')).to_be_visible()
+        expect(page.locator('.wallet-review details')).to_have_count(0)
         row=page.locator('.wallet-topup-review').filter(has_text='ID '+str(recipient)).first
         expect(row).to_contain_text('123 Stars')
         expect(row.locator('.person-handle')).to_have_text('@bonus_receiver')
