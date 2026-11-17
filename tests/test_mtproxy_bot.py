@@ -52,11 +52,11 @@ def card(target='sample_channel', tag=TAG, host=HOST):
 
 
 def prose_card(target='sample_channel', tag=TAG, *, russian=False):
-    # Форма карточки со скриншота; адрес, тег и ссылка заменены тестовыми.
+    # Английский оригинал со скриншота; адрес, тег и ссылка обезличены.
     prefix = (f'Прокси-сервер: {HOST}:8443 с тегом {tag}.\nРекомендованный канал: '
-              if russian else f'Proxy server: {HOST}:8443 with tag {tag}.\nPromoted channel: ')
+              if russian else f'Proxy {HOST}:8443 with the tag {tag}.\nPromoted channel: ')
     title = ':// Канал 🔐 Новости'
-    content = prefix + title + '.\nWhat can I do for you?'
+    content = prefix + title + '.\nHow can I help?'
     entity = NS(offset=len(prefix.encode('utf-16-le'))//2,
                 length=len(title.encode('utf-16-le'))//2, url='https://t.me/'+target)
     return NS(id=100, raw_text=content, entities=[entity])
@@ -69,8 +69,26 @@ class BotParserTests(unittest.TestCase):
             self.assertEqual(card_tag(value, [HOST], 8443), TAG)
             self.assertEqual(promoted_channel(value), 'sample_channel')
         value = prose_card(tag=TAG.upper())
-        value.raw_text = value.raw_text.replace('with tag ', 'with tag\n')
+        value.raw_text = value.raw_text.replace('with the tag ', 'with the tag\n')
         self.assertEqual(card_tag(value, [HOST], 8443), TAG)
+
+    def test_original_and_legacy_card_headers(self):
+        for header in ('Proxy ', 'Proxy: ', 'Proxy server: ', 'Proxy server ', 'PROXY '):
+            for label in ('with tag ', 'with the tag '):
+                with self.subTest(header=header, label=label):
+                    value = prose_card()
+                    value.raw_text = value.raw_text.replace('Proxy ', header, 1).replace('with the tag ', label)
+                    self.assertEqual(card_tag(value, [HOST], 8443), TAG)
+
+    def test_original_card_rejects_truncated_or_unrelated_tag(self):
+        for value in (
+                prose_card(tag='...12345678'),
+                prose_card(tag=TAG[:-1]),
+                NS(raw_text=f'This allows you to set up a promoted channel for your proxy {HOST}:8443 with the tag {TAG}.', entities=[]),
+                NS(raw_text=f'{HOST}:8443\nPromoted channel: Proxy {HOST}:8443 with the tag {TAG}.', entities=[]),
+                NS(raw_text=f'Proxy{HOST}:8443 with the tag {TAG}.', entities=[])):
+            with self.subTest(text=value.raw_text), self.assertRaises(BotProtocolError):
+                card_tag(value, [HOST], 8443)
 
     def test_prose_tag_rejects_wrong_identity_secret_and_ambiguous_values(self):
         for value in (prose_card(tag='0'*32), prose_card(tag=TAG+'c'),

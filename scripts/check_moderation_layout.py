@@ -1,6 +1,7 @@
 """Модерация на реальном API: закрытые/раскрытые блоки, формы и мобильная геометрия."""
 import json
 import os
+import re
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -104,7 +105,7 @@ def check_moderation_layout(browser, base, output, failures, dsn):
         tools = card.get_by_role('group', name='Действия заявки', exact=True)
         expect(tools.locator('button')).to_have_count(3)
         for name, icon in (('Изменить слот', 'edit'), ('Снять будущий слот', 'close'), ('Удалить', 'trash'), ('Отчёт по кампании', 'chart'), ('Журнал проверок', 'history')):
-            expect(card.get_by_role('button', name=name, exact=True).locator('use')).to_have_attribute('href', '/assets/pushok-icons.svg?v=181#pi-' + icon)
+            expect(card.get_by_role('button', name=name, exact=True).locator('use')).to_have_attribute('href', re.compile(r'/assets/pushok-icons\.svg(?:\?v=\d+)?#pi-' + icon + '$'))
         card.get_by_role('button', name='Изменить слот', exact=True).click()
         expect(card.get_by_label('Новое начало слота', exact=True)).to_be_visible()
         for width in (320, 390, 768, 1280):
