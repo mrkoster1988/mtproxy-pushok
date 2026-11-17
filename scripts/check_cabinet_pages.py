@@ -4,7 +4,7 @@
 Requires an explicitly approved TEST_ADMIN_DSN and PUSHOK_TEST_DB_ALLOWED=1.
 Sessions are seeded only into a fresh test database; no login bypass is added to API.
 """
-from ui_test_helpers import open_settings
+from ui_test_helpers import open_settings, open_management
 import argparse
 import base64
 import io
@@ -31,6 +31,7 @@ def main():
     parser.add_argument("--browser-executable")
     parser.add_argument("--sponsors-only", action="store_true", help="Полный сценарий страницы спонсоров")
     parser.add_argument("--interface-only", action="store_true")
+    parser.add_argument("--management-only", action="store_true")
     parser.add_argument("--campaign-cards-only", action="store_true", help="Карточки кампаний во всех разделах")
     parser.add_argument("--verification-only", action="store_true", help="Подтверждение контакта, профиль и настройки подарка")
     parser.add_argument("--ai-only", action="store_true", help="Подключение ИИ, хранение ключа и роли")
@@ -168,6 +169,12 @@ def main():
                     if failures:raise AssertionError(failures)
                     print('PASS: unified campaign cards, actions, archive and mobile widths')
                     return
+                if args.management_only:
+                    from check_management_navigation import check_management_navigation
+                    check_management_navigation(browser,base,output,failures,PostgresIntegration.dsn)
+                    if failures:raise AssertionError(failures)
+                    print('PASS: management menu, all forms, roles, legacy links and mobile widths')
+                    return
                 if args.interface_only:
                     from check_interface import check_interface
                     check_interface(browser,base,output,failures,PostgresIntegration.dsn)
@@ -195,7 +202,7 @@ def main():
                 if args.ai_only:
                     from check_channel_ai_ui import check_channel_ai_ui
                     admin = new_page('admin',390)
-                    go(admin,'settings');admin.locator('#settings-system-tab').click();open_settings(admin)
+                    go(admin,'management/payments');open_management(admin,'automation')
                     check_channel_ai_ui(admin,new_page('advertiser'),new_page('operator'),new_page,go,output,PostgresIntegration.dsn)
                     from check_campaign_assistant_ui import check_campaign_assistant_ui
                     check_campaign_assistant_ui(new_page,go,output,PostgresIntegration.dsn)
@@ -612,16 +619,19 @@ def main():
                 advertiser.set_viewport_size({'width':390,'height':844})
                 advertiser.screenshot(path=str(output/'completed-archive-mobile.png'),full_page=True)
 
-                go(admin, 'settings')
-                admin.locator('#settings-system-tab').click();open_settings(admin)
+                go(admin, 'management/payments')
+                open_management(admin,'automation')
                 from check_channel_ai_ui import check_channel_ai_ui
                 check_channel_ai_ui(admin, advertiser, operator, new_page, go, output,PostgresIntegration.dsn)
+                open_management(admin,'people')
                 expect(admin.locator('#team-fields')).to_be_enabled()
                 for field in ('loading-title-fields','team-fields','default-sponsor-fields'):
                     assert admin.locator('#'+field).evaluate('(e)=>getComputedStyle(e).borderTopWidth')=='0px'
+                open_management(admin,'design')
                 admin.locator('#loading-title-form').screenshot(path=str(output/'loading-form-no-frame.png'))
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute("INSERT INTO users(telegram_user_id,first_name) VALUES(991199001,'Тест команды')")
+                open_management(admin,'people')
                 admin.get_by_label('Пользователь для назначения роли',exact=True).fill('991199001')
                 admin.locator('#team-role').select_option('admin')
                 admin.once('dialog',lambda dialog:dialog.accept())
@@ -632,6 +642,7 @@ def main():
                 admin.once('dialog',lambda dialog:dialog.accept())
                 admin.locator('#team-form button[type=submit]').click()
                 expect(admin.locator('#team-list')).not_to_contain_text('Тест команды')
+                open_management(admin,'automation')
                 admin.locator('#default-sponsor-channel').select_option(str(fixture['channel_id']))
                 admin.locator('#default-sponsor-form details summary').click()
                 admin.locator('#default-sponsor-node').select_option(str(fixture['id']))
@@ -643,7 +654,7 @@ def main():
                 admin.locator('#default-sponsor-channel').select_option('')
                 admin.locator('#default-sponsor-form button[type=submit]').click()
                 expect(admin.locator('#default-sponsor-status')).to_contain_text('не выбран')
-                admin.locator('#settings-tariffs-tab').click();open_settings(admin)
+                open_management(admin,'tariffs')
                 expect(admin.locator('#tariff-admin-name')).to_have_value('1 день')
                 admin.locator('#tariff-admin-rub').fill('450.55')
                 admin.locator('#tariff-admin-stars').fill('200')
@@ -717,8 +728,8 @@ def main():
                     expect(advertiser.locator('[data-page=payments] .campaign-steps')).to_contain_text('К оплате')
                     with psycopg.connect(PostgresIntegration.dsn) as connection:
                         aid=connection.execute("UPDATE payment_attempts SET sbp_requires_review=true WHERE campaign_id=%s AND provider='sbp' RETURNING id",(sbp_cid,)).fetchone()[0]
-                    go(admin,'settings')
-                    admin.locator('#settings-payments-tab').click();open_settings(admin)
+                    go(admin,'management/payments')
+                    open_management(admin,'payments')
                     review=admin.locator('[data-attempt-id="'+str(aid)+'"]')
                     expect(review).to_contain_text('Ответ провайдера не прошёл проверку')
                     review.get_by_label('Причина повторной сверки',exact=True).fill('short')
@@ -750,17 +761,17 @@ def main():
                     ('05-detail', 'campaign/' + sbp_cid), ('06-payment', 'payments/' + sbp_cid),
                     ('07-calendar', 'calendar'), ('08-reports', 'reports'),
                     ('09-moderation', 'moderation'), ('10-sponsors', 'sponsors'),
-                    ('11-settings', 'settings'), ('12-help', 'help'), ('13-bot', 'bot'), ('35-profile', 'profile')]
+                    ('11-management', 'management/payments'), ('12-help', 'help'), ('13-bot', 'bot'), ('35-profile', 'profile')]
                 # The admin owns no advertiser campaigns: capture own detail/payment as advertiser.
                 for name, route in screens:
-                    page = admin if route.split('/')[0] in ('moderation', 'sponsors', 'settings') else advertiser
+                    page = admin if route.split('/')[0] in ('moderation', 'sponsors', 'management') else advertiser
                     go(page, route)
                     if route == 'sponsors':
                         page.get_by_role('tab', name='Размещения', exact=True).click()
                         page.locator('#sponsor-diagnostics-details').evaluate('(d) => d.open = false')
-                    if route == 'settings':
+                    if route == 'management/payments':
                         expect(page.locator('#settings-stars-counts')).to_contain_text('Тарифов')
-                        page.locator('#settings-payments-tab').click();open_settings(page)
+                        open_management(page,'payments')
                     page.evaluate("window.scrollTo({top:0,left:0,behavior:'instant'})")
                     page.wait_for_function('window.scrollY === 0')
                     page.screenshot(path=str(output / (name + '.png')), full_page=True)
@@ -1012,9 +1023,9 @@ def main():
                 expect(admin.locator('#tariff-access-hint')).to_be_visible()
                 expect(advertiser.locator('#tariff-select option[value="'+private_tariff+'"]')).to_have_count(0)
                 # v0.051: compact settings, free tariff, and payment control form.
-                go(admin, 'settings')
+                go(admin, 'management/payments')
                 expect(admin.get_by_label('Поиск кампаний', exact=True)).to_be_hidden()
-                admin.locator('#settings-tariffs-tab').click();open_settings(admin)
+                open_management(admin,'tariffs')
                 admin.locator('#tariff-admin-select').select_option(private_tariff)
                 expect(admin.locator('#tariff-admin-access')).to_be_visible()
                 expect(admin.locator('#tariff-admin-rub')).to_have_attribute('readonly','')
@@ -1046,7 +1057,7 @@ def main():
                 for width in (320,390):
                     admin.set_viewport_size({'width':width,'height':844})
                     admin.locator('#tariff-admin-actions').screenshot(path=str(output/f'tariff-actions-{width}.png'))
-                admin.locator('#settings-payments-tab').click();open_settings(admin)
+                open_management(admin,'payments')
                 with patch.dict(os.environ, {'PUSHOK_CONTROL_DIR':str(Path(PostgresIntegration.storage.name)/'control'),
                                            'TELEGRAM_BOT_TOKEN':'123456:fixture_token_for_browser'}):
                     admin.locator('#enable-stars').check()
@@ -1066,7 +1077,7 @@ def main():
                     icon_bytes=io.BytesIO();Image.new('RGBA',(48,48),'orange').save(icon_bytes,format='PNG')
                     catalog=[{'id':'123456789','emoji':'🐱','image':'data:image/png;base64,'+base64.b64encode(icon_bytes.getvalue()).decode()}]
                     api.control.write('emoji-catalog.json',catalog)
-                    admin.locator('#settings-system-tab').click();open_settings(admin)
+                    open_management(admin,'design')
                     with patch.object(api.emoji_settings,'fetch',return_value=catalog):
                         admin.locator('#icons-import').click()
                         expect(admin.locator('.emoji-gallery img')).to_have_count(1)
@@ -1272,8 +1283,8 @@ def main():
                 admin.unroute('**/api/v1/admin/control/update')
 
                 # Constructor creates real free/public and paid/inactive tariffs through the API.
-                go(admin,'settings')
-                admin.locator('#settings-tariffs-tab').click();open_settings(admin)
+                go(admin,'management/payments')
+                open_management(admin,'tariffs')
                 admin.locator('#tariff-admin-new').click()
                 expect(admin.locator('#tariff-admin-delete')).to_be_hidden()
                 admin.locator('#tariff-admin-name').fill('Бесплатные два дня')
@@ -1282,8 +1293,8 @@ def main():
                 admin.locator('#tariff-admin-free').check()
                 expect(admin.locator('#tariff-admin-rub')).to_have_value('0.00')
                 expect(admin.locator('#tariff-admin-preview')).to_contain_text('Бесплатно')
-                admin.locator('#settings-payments-tab').click();open_settings(admin)
-                admin.locator('#settings-tariffs-tab').click();open_settings(admin)
+                open_management(admin,'payments')
+                open_management(admin,'tariffs')
                 expect(admin.locator('#tariff-admin-name')).to_have_value('Бесплатные два дня')
                 for width in (390,320):
                     admin.set_viewport_size({'width':width,'height':844})
@@ -1324,7 +1335,7 @@ def main():
                 expect(admin.locator('#tariff-admin-select')).to_have_value(paid_tariff['id'])
 
                 # История приёмки: настоящая форма/API, сохранность черновика и отрицательный результат.
-                admin.locator('#settings-system-tab').click();open_settings(admin)
+                open_management(admin,'technical')
                 admin.locator('#launch-refresh').click()
                 expect(admin.locator('#launch-readiness')).to_contain_text('Бесплатный пилот')
                 expect(admin.locator('#launch-readiness')).to_contain_text('Платный запуск')
@@ -1619,8 +1630,8 @@ def main():
                     advertiser.set_viewport_size({'width':width,'height':844})
                     assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
                 advertiser.screenshot(path=str(output/'43-wallet-gift-user-mobile.png'),full_page=True)
-                go(admin,'settings')
-                admin.locator('#settings-payments-tab').click();open_settings(admin)
+                go(admin,'management/payments')
+                open_management(admin,'payments')
                 expect(admin.get_by_label('Включить внутренний баланс',exact=True)).to_be_checked()
                 admin.get_by_label('Включить внутренний баланс',exact=True).uncheck()
                 admin.get_by_role('button',name='Сохранить настройку баланса',exact=True).click()
@@ -1684,6 +1695,8 @@ def main():
                 admin.set_viewport_size({'width':390,'height':1500})
                 personal_row.evaluate('(node) => scrollTo(0, node.getBoundingClientRect().top + scrollY - 140)')
                 personal_row.screenshot(path=str(output/'45-personal-gift-report-mobile.png'))
+                from check_management_navigation import check_management_navigation
+                check_management_navigation(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_campaign_cards import check_campaign_cards
                 check_campaign_cards(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_campaign_pricing import check_campaign_pricing
@@ -1730,10 +1743,15 @@ def main():
                 expect(advertiser.locator('#workspace')).to_be_hidden()
                 print('PASS: real API/SQL forms, roles, lifecycle, upload/download, reports, routing and mobile widths')
             except Exception:
+                import traceback
+                traceback.print_exc()
                 for page in browser.contexts:
                     for tab in page.pages:
                         if not tab.is_closed():
-                            tab.screenshot(path=str(output / ('failure-' + str(id(tab)) + '.png')), full_page=True)
+                            try:
+                                tab.screenshot(path=str(output / ('failure-' + str(id(tab)) + '.png')), full_page=True, timeout=5000)
+                            except Exception:
+                                pass  # Сбой снимка не должен скрывать исходную ошибку проверки.
                 raise
             finally:
                 browser.close()

@@ -52,8 +52,6 @@ function showSettingsPane(pane){
  const selected=['payments','tariffs','system'].includes(pane)?pane:'payments';
  for(const name of ['payments','tariffs','system']){
   $('settings-'+name).hidden=name!==selected;
-  $('settings-'+name+'-tab').classList.toggle('selected',name===selected);
-  $('settings-'+name+'-tab').setAttribute('aria-pressed',String(name===selected));
  }
 }
 async function renderLoadingSettings(){
@@ -793,9 +791,6 @@ $('settings-tab').addEventListener('click',()=>run(async()=>{
  showWorkspace('settings');
  await loadAdminSettings();
 }));
-for(const pane of ['payments','tariffs','system']){
- $('settings-'+pane+'-tab').addEventListener('click',()=>showSettingsPane(pane));
-}
 run(async()=>{
  if(miniAppMode){await window.pushokMiniApp.start();return;}
  try{const publicTariffs=await api('/tariffs');if(!me)tariffs=publicTariffs;updatePublicPrice();}catch(e){$('hero-tariff-price').textContent='Цена временно недоступна';}

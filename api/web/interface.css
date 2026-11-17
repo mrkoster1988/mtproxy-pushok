@@ -30,3 +30,10 @@
 .cabinet-mode .ui-icon{color:var(--mint,#56e2d7)}.cabinet-mode .icon-action .ui-icon,.cabinet-mode .mobile-bottom-nav .ui-icon{color:inherit}
 /* Компактные иконки помощника сохраняют область нажатия 44 × 44. */
 .cabinet-mode .assistant-actions .icon-action{width:44px;height:44px;min-width:44px;min-height:44px}
+
+/* Разделы открываются из «Управления» без промежуточной вкладки настроек. */
+.cabinet-mode [data-page=management] .page-content{width:100%;max-width:760px;margin:0 auto;min-width:0}
+.cabinet-mode [data-page=management] .settings-category{margin:0;border:0;background:transparent;overflow:visible}
+.cabinet-mode [data-page=management] .settings-category>summary{display:none}
+.cabinet-mode [data-page=management] .settings-category>.settings-section{margin:0 0 12px}
+#profile-management{scroll-margin-top:88px}

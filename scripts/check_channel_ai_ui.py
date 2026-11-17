@@ -1,5 +1,5 @@
 """Админка ИИ с настоящим API/хранилищем; подменяется только OpenAI."""
-from ui_test_helpers import open_settings
+from ui_test_helpers import open_settings, open_management
 import json
 from uuid import uuid4
 from unittest.mock import patch
@@ -184,7 +184,7 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output, dsn):
     # Ответ старой сессии не возвращает настройки после выхода, даже без abort.
     isolated=new_page('admin',390)
     try:
-        go(isolated,'settings');isolated.locator('#settings-system-tab').click();open_settings(isolated)
+        go(isolated,'management/automation');open_management(isolated,'automation')
         expect(isolated.locator('#channel-ai-key')).to_be_visible()
         isolated.locator('#channel-ai-key').fill(key)
         isolated.evaluate('''() => {window.__aiFetch=window.fetch;

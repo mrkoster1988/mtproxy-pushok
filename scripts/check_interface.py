@@ -2,7 +2,7 @@
 from uuid import uuid4
 import psycopg
 from playwright.sync_api import expect
-from ui_test_helpers import open_settings
+from ui_test_helpers import open_settings, open_management
 
 def check_interface(browser,base,output,failures,dsn):
     from app import main as api
@@ -50,12 +50,17 @@ def check_interface(browser,base,output,failures,dsn):
             page.evaluate('r=>window.cabinet.go(r)',route);row=page.locator('[data-page='+route+'] .search-action-row');expect(row).to_be_visible()
             a=row.locator('input[type=search]').bounding_box();b=row.locator(':scope>.icon-action').bounding_box();assert abs(a['y']+a['height']/2-b['y']-b['height']/2)<3
         page.evaluate("window.cabinet.go('dashboard')");expect(page.locator('.home-leaders h2')).to_have_text('Лидеры месяца')
-        page.evaluate("window.cabinet.go('settings')");page.locator('#settings-system-tab').click();expect(page.locator('.settings-category')).to_have_count(4)
-        assert page.locator('.settings-category[open]').count()==0
-        page.evaluate('window.scrollTo(0,0)');page.screenshot(path=str(output/'interface-settings-collapsed-390.png'))
+        page.evaluate("window.cabinet.go('profile')")
+        menu=page.get_by_role('navigation',name='Управление',exact=True)
+        expect(menu.get_by_role('link',name='Настройки',exact=True)).to_have_count(0)
+        menu.get_by_role('link',name='Пользователи и награды',exact=True).click()
+        expect(page.locator('[data-page=management] h1')).to_have_text('Пользователи и награды')
+        expect(page.locator('.settings-category:visible')).to_have_count(1)
+        assert page.locator('.settings-section[open]:visible').count()==0
+        page.evaluate('window.scrollTo(0,0)');page.screenshot(path=str(output/'interface-management-collapsed-390.png'))
         open_settings(page);ref=page.locator('#referral-settings');ref.get_by_label('Награда за приглашённого',exact=True).select_option('coupon');expect(ref.get_by_label('Скидка за приглашённого, %')).to_be_visible()
         for width in (320,390):
-            page.set_viewport_size({'width':width,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1');page.screenshot(path=str(output/f'interface-settings-{width}.png'))
+            page.set_viewport_size({'width':width,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1');page.screenshot(path=str(output/f'interface-management-{width}.png'))
         page.evaluate("window.cabinet.go('profile')");expect(page.locator('[data-page=profile] .profile-stats')).to_be_visible();page.locator('[data-page=profile] .profile-personal>summary').click();page.screenshot(path=str(output/'interface-profile-390.png'))
     finally:
         ctx.close()

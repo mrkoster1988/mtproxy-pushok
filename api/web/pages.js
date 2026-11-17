@@ -30,7 +30,7 @@
   reports:['Отчёты и история','Подтверждённые события ваших кампаний'],
   moderation:['Модерация','Одна карточка — от проверки канала до завершения'],
   sponsors:['Спонсоры и узлы','Реестр узлов и план движка'],
-  settings:['Настройки','Тарифы, платежи и готовность системы'],
+  management:['Управление','Параметры приложения'],
   archive:['Архив','Завершённые кампании, отчёты и удалённые объекты'],
   help:['Помощь и инструкции','Пошаговые сценарии и ответы на вопросы'],
   bot:['Telegram-бот','Продолжите работу в Telegram']
@@ -51,7 +51,7 @@
   reports:'История отражает события системы и ручные наблюдения. Счётчик показов Telegram недоступен.',
   moderation:'Проверяйте канал и оплату раздельно. Агент активирует кампанию после применения тега; завершение после снятия/смены тега — автоматическое.',
   sponsors:'Запись узла и план движка не устанавливают MTProxy. Управление тегом и проверка показа выполняются отдельно.',
-  settings:'Изменения цены действуют для новых заказов. RUB и XTR задаются отдельно.',
+  management:'Изменения сохраняются кнопкой в выбранной форме. Разделы доступны по роли аккаунта.',
   help:'Инструкции можно открыть снова в любое время. Не отправляйте токены и полные платёжные реквизиты.',
   bot:'Ссылка берётся из настроек сервера. Доступность оплаты определяется конфигурацией бота.'
  };
@@ -105,7 +105,7 @@
  const profileShortcut=link('','profile');profileShortcut.className='profile-shortcut';profileShortcut.setAttribute('aria-label','Открыть профиль');
  const refreshButton=$('refresh');refreshButton.setAttribute('aria-label','Обновить');window.pushokViews.iconAction(refreshButton,'refresh','Обновить');bar.append(backButton,mobileBrand,account,refreshButton,profileShortcut,topHelp);const legacyLogout=el('div');legacyLogout.hidden=true;legacyLogout.append($('logout'));bar.append(legacyLogout);stage.append(bar);shell.append(stage);workspace.prepend(shell);
  Object.entries(routes).forEach(([name,[title,subtitle]])=>{
-  const page=name==='settings'?$('settings'):el('section');page.dataset.page=name;page.hidden=true;page.classList.add('cabinet-page');
+  const page=name==='management'?$('settings'):el('section');page.dataset.page=name;page.hidden=true;page.classList.add('cabinet-page');
   const heading=el('header',undefined,'page-heading'),titles=el('div');const h=el('h1',title);h.tabIndex=-1;titles.append(h);heading.append(titles);
   if(['campaigns','channels'].includes(name)){
    const action=link(name==='channels'?'+ Добавить канал':'+ Создать кампанию',name==='channels'?'channels/new':'create');
@@ -327,8 +327,8 @@
   }catch(e){if(rev===automationRevision&&token===session){automationBody.querySelector('.sponsor-load-error')?.remove();const error=el('div',undefined,'sponsor-load-error');error.setAttribute('role','status');error.append(el('p','Не удалось обновить настройки. '+e.message),window.pushokViews.iconAction(button('',renderAutomation),'refresh','Повторить загрузку настроек'));if(!automationSession)automationBody.replaceChildren(error);else{automationBody.prepend(error);const stale=automationBody.querySelector('#telegram-owner-status');if(stale){stale.dataset.tone='warning';stale.querySelector('h3').textContent='Состояние не обновлено';}}}}finally{if(rev===automationRevision)automationBody.setAttribute('aria-busy','false');}
  }
 
- // Настройки сохраняют отдельные вкладки и проверки роли существующего кода.
- [...pages.settings.children].filter(n=>!['page-heading','metrics','page-layout'].some(c=>n.classList.contains(c))).forEach(n=>content.settings.append(n));
+ // Формы управления сохраняют обработчики и уникальные id при смене раздела.
+ [...pages.management.children].filter(n=>!['page-heading','metrics','page-layout'].some(c=>n.classList.contains(c))).forEach(n=>content.management.append(n));
  const faqs=[
   ['Как начать?','Откройте «Разместить рекламу», укажите канал, тариф и дату. Проверьте итог и отправьте на модерацию одной кнопкой.'],
   ['Как указать канал?','Используйте публичную ссылку https://t.me/channel. Исправления доступны в черновике или по запросу модератора.'],
@@ -390,7 +390,7 @@
   metrics('sponsors',[['Узлы',nodes.length,'В реестре'],['В эфире',placements.filter(c=>c.placement_status==='active').length,'По данным запуска'],['В очереди',placements.filter(c=>c.moderation_status==='approved'&&c.payment_status==='verified'&&['scheduled','not_scheduled'].includes(c.placement_status)).length,'Ожидают запуска']]);
   if(state.route)renderSelected({background});
  }
- function routeParts(){const p=location.hash.replace(/^#\/?/,'').split('/');return [Object.hasOwn(routes,p[0])?p[0]:'dashboard',p[1]||''];}
+ function routeParts(){const p=location.hash.replace(/^#\/?/,'').split('/');if(p[0]==='settings')return ['management',p[1]==='system'?'automation':p[1]||'payments'];return [Object.hasOwn(routes,p[0])?p[0]:'dashboard',p[1]||''];}
  async function renderStars(c,panel){
   const session=token,base='/campaigns/'+c.id+'/stars';
   const current=()=>panel.isConnected&&session===token&&me;
@@ -458,7 +458,7 @@
   panel.append(el('p','Загрузка состояния СБП…'));
   try{await paint(await api(base));}catch(e){if(panel.isConnected){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку СБП',()=>renderSbp(c,panel)));}}
  }
- function permitted(name){return !(['moderation','sponsors','user','users'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(['settings','license'].includes(name)&&me?.role!=='admin');}
+ function permitted(name){return !(['moderation','sponsors','user','users'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(['management','license'].includes(name)&&me?.role!=='admin');}
  function renderSelected({background=false}={}){
   const [name,id]=routeParts();
   if(name==='channels'){
@@ -519,6 +519,7 @@
  }
  function back(){
   const [name,id]=routeParts();
+  if(name==='management'){go('profile/management');return;}
   if(name==='member'){go(window.pushokCommunity.backRoute());return;}
   if(name==='user'){go(window.pushokProfiles.backRoute());return;}
   if(name==='moderation'&&id)window.pushokApproval?.resetSelection();
@@ -527,7 +528,9 @@
  function go(route){if(location.hash==='#/'+route){activate();return;}location.hash='/'+route;}
  function activate(){
   if(!me||!state.ready)return;
+  const previousRoute=state.route;
   let [name,section]=routeParts();
+  if(name==='management'){section=window.pushokInterface.managementSection(section).key;history.replaceState(null,'','#/management/'+section);}
   if(name==='campaigns')state.scope=section==='mine'?'mine':'all';
   if(name!=='sponsors')automationFocusRoute='';
   if(name==='create'&&!me?.phone_verified){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Подтвердите номер перед созданием кампании.');}
@@ -539,14 +542,17 @@
   const canModerate=['admin','operator'].includes(me.role);bottomNav.style.setProperty('--nav-count',canModerate?6:5);
   bottomNav.querySelectorAll('a').forEach(a=>{a.hidden=a.dataset.route==='moderation'&&!canModerate;const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':name==='user'?'moderation':['dashboard','moderation','campaigns','wallet','hall'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   backButton.hidden=['dashboard','campaigns','wallet','profile'].includes(name)||(name==='moderation'&&!section);profileShortcut.hidden=name!=='dashboard';
-  mobileBrand.querySelector('strong').textContent=name==='dashboard'?'puShok':routes[name][0];
+  const pageTitle=name==='management'?window.pushokInterface.managementSection(section).title:routes[name][0];
+  pages[name].querySelector('h1').textContent=pageTitle;
+  mobileBrand.querySelector('strong').textContent=name==='dashboard'?'puShok':pageTitle;
   mobileBrand.classList.toggle('page-brand',name!=='dashboard');
-  render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=routes[name][0]+' · MTProxy Pushok';
+  render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=pageTitle+' · MTProxy Pushok';
   if(name==='channels'&&section==='new'){$('channel-form').elements.telegram_url.focus({preventScroll:true});document.title='Добавить канал · MTProxy Pushok';}
   searchForm.hidden=name!=='campaigns';
   updatePanel.hidden=me.role!=='admin';
   if(me.role==='admin'&&['profile','dashboard'].includes(name))refreshSoftware();
-  if(name==='settings')run(loadAdminSettings);
+  if(name==='management'){window.pushokInterface.settings();window.pushokInterface.showManagement(section);if(previousRoute!=='management')run(loadAdminSettings);else if(section==='payments')run(()=>renderSBPReview());}
+  if(name==='profile'&&section==='management')$('profile-management')?.scrollIntoView({block:'start',behavior:'instant'});
   if(miniAppMode)window.pushokMiniApp.syncNavigation();
   if(name==='profile'&&section==='updates'&&me.role==='admin'){
    window.scrollTo({top:window.scrollY+updatePanel.getBoundingClientRect().top-bar.getBoundingClientRect().height-16,behavior:'instant'});
