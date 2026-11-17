@@ -1,0 +1,70 @@
+/* Заявка: один ритм секций, отдельные панели действий и раскрываемое содержимое. */
+.cabinet-mode #queue { display:grid; gap:12px; align-content:start; }
+.cabinet-mode .approval-card { display:grid; gap:12px; align-content:start; }
+.cabinet-mode .approval-card > * { margin-block:0; min-width:0; }
+.approval-navigation { display:flex; align-items:center; gap:12px; }
+.cabinet-mode .approval-back { display:flex; align-items:center; gap:4px; min-height:44px; white-space:nowrap; font-size:12px; text-decoration:none; }
+.cabinet-mode .approval-navigation select { flex:1; width:0; font-size:12px; }
+.cabinet-mode .approval-advertiser { padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--surface); }
+.cabinet-mode .approval-advertiser .person-caption { margin:0 0 8px; font-size:11px; }
+.cabinet-mode .approval-advertiser .user-avatar { width:36px; height:36px; flex-basis:36px; }
+.cabinet-mode .approval-current { display:grid; gap:12px; padding:12px; }
+.cabinet-mode .approval-archive-notice { display:grid; gap:12px; padding:12px; }
+.cabinet-mode .approval-archive-notice > * { margin-block:0; }
+.cabinet-mode .approval-current > .approval-body { padding:0; }
+.cabinet-mode .approval-progress { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:4px; margin:0; padding:0 0 12px; border-bottom:1px solid var(--line-soft); }
+.cabinet-mode .approval-progress li { display:flex; flex-direction:column; align-items:center; gap:6px; min-width:0; padding:0; background:transparent; border:0; border-radius:0; text-align:center; font-size:10px; line-height:1.3; color:var(--muted); }
+.approval-step-marker { display:grid; place-items:center; width:24px; height:24px; border:1px solid var(--line); border-radius:50%; font-size:11px; }
+.approval-step-marker .ui-icon { width:24px; height:24px; }
+.cabinet-mode .approval-progress li.done { color:#8ce6cf; background:transparent; }
+.approval-progress .done .approval-step-marker { border:0; }
+.cabinet-mode .approval-progress [aria-current=step] { color:var(--text); background:transparent; }
+.approval-progress [aria-current=step] .approval-step-marker { background:var(--mint); color:#052b33; border-color:var(--mint); }
+.cabinet-mode .approval-section { display:block; margin:0; padding:0; border:1px solid var(--line); border-radius:12px; background:var(--surface); min-width:0; overflow:visible; }
+.cabinet-mode .approval-section > summary { display:flex; align-items:center; gap:9px; min-height:48px; padding:12px; box-sizing:border-box; list-style:none; font-size:13px; line-height:1.4; font-weight:600; color:var(--text); cursor:pointer; }
+.approval-section > summary::-webkit-details-marker { display:none; }
+.cabinet-mode .approval-section > summary::after { content:none; }
+.approval-section > summary > span { flex:1; min-width:0; }
+.approval-section > summary > .ui-icon { width:18px; height:18px; }
+.approval-section > summary > .ui-icon:last-child { width:16px; height:16px; margin-left:auto; color:var(--muted); }
+.approval-section[open] > summary > .ui-icon:last-child { transform:rotate(90deg); }
+.cabinet-mode .approval-body { display:grid; align-content:start; gap:12px; min-width:0; padding:0 12px 12px; }
+.cabinet-mode .approval-body > *, .cabinet-mode .approval-body form > * { margin-block:0; min-width:0; }
+.cabinet-mode .approval-body form { display:grid; gap:12px; margin:0; }
+.cabinet-mode .approval-body form label { margin:0; }
+.cabinet-mode .approval-body .approval-section { background:transparent; border-color:var(--line-soft); }
+.cabinet-mode .approval-body .management-form { padding-top:12px; border-top:1px solid var(--line-soft); }
+.cabinet-mode .approval-body .management-form > [role=status]:empty { display:none; }
+.cabinet-mode .approval-body .pricing-fields { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.cabinet-mode .approval-body .pricing-fields label { margin:0; }
+.cabinet-mode .approval-setup { display:flex; align-items:center; gap:8px; min-height:44px; font-size:12px; text-decoration:none; }
+.approval-setup .ui-icon { width:18px; height:18px; }
+.approval-setup .ui-icon:last-child { margin-left:auto; width:16px; }
+.cabinet-mode .campaign-action-tools { display:flex; align-items:center; flex-wrap:wrap; gap:10px; min-width:0; }
+.cabinet-mode .campaign-action-tools > button { margin:0; }
+.cabinet-mode .campaign-action-tools > .icon-action { width:44px; min-width:44px; height:44px; min-height:44px; padding:10px; }
+.cabinet-mode .campaign-action-tools > .danger-text { color:#ffadad; border-color:#a75b665e; }
+.approval-facts { display:grid; gap:10px; }
+.approval-facts > div { display:grid; gap:3px; min-width:0; }
+.approval-facts dt { color:var(--muted); font-size:11px; }
+.approval-facts dd { margin:0; font-size:12px; overflow-wrap:anywhere; color:var(--text-soft); }
+.cabinet-mode .archived-review > .approval-body { gap:12px; }
+.cabinet-mode .approval-body .observation-panel { display:grid; gap:12px; padding:12px; }
+.cabinet-mode .approval-body .observation-panel > * { margin-block:0; }
+.cabinet-mode .approval-section .assistant-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.cabinet-mode .approval-section .assistant-actions > .icon-action { width:44px; min-width:44px; height:44px; margin:0; }
+.cabinet-mode .approval-section .assistant-actions > a { display:flex; align-items:center; min-height:44px; }
+.cabinet-mode .approval-card :is(button,summary,input,textarea,select,a) { scroll-margin-block:90px 110px; }
+.cabinet-mode .approval-body .campaign-report { display:grid; gap:12px; padding:12px; }
+.cabinet-mode .approval-body .campaign-report > * { margin-block:0; }
+.cabinet-mode .approval-body .report-grid { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.cabinet-mode .approval-body .report-cell { padding:8px; background:transparent; border-radius:8px; font-size:11px; }
+.cabinet-mode .approval-body .campaign-report > button { justify-self:start; }
+.cabinet-mode .approval-body .report-observations > summary { font-size:12px; line-height:1.5; }
+.cabinet-mode .approval-body .campaign-analytics { display:grid; gap:12px; }
+.cabinet-mode .approval-body .campaign-analytics > * { margin-block:0; }
+.cabinet-mode .approval-body .campaign-analytics > button { justify-self:start; }
+.cabinet-mode .approval-body .analytics-actions { gap:10px; }
+.cabinet-mode .approval-body button.icon-action { width:44px; min-width:44px; height:44px; min-height:44px; }
+@media (min-width:761px) { .cabinet-mode #queue:has(>.approval-card) { max-width:760px; margin-inline:auto; } }
+@media (max-width:359px) { .cabinet-mode .approval-body .pricing-fields { grid-template-columns:minmax(0,1fr); } }

@@ -12,13 +12,17 @@ window.pushokApproval=(()=>{
  function field(form,title,input){input.setAttribute('aria-label',title);const label=el('label',title);label.append(input);form.append(label);return input;}
  function check(form,text){const input=el('input');input.type='checkbox';input.required=true;field(form,text,input).className='approval-check';return input;}
  function note(form,title){const input=el('textarea');input.required=true;input.minLength=12;input.maxLength=2000;input.rows=3;return field(form,title,input);}
- function details(title,parent){const d=el('details');d.append(el('summary',title));parent.append(d);return d;}
+ function details(title,parent,icon='info',cls=''){
+  const d=el('details',undefined,'approval-section '+cls),summary=el('summary'),body=el('div',undefined,'approval-body');
+  summary.append(window.pushokViews.icon(icon),el('span',title),window.pushokViews.icon('chevron'));
+  d.append(summary,body);parent.append(d);return body;
+ }
  function route(id){selected=id;if(window.cabinet)window.cabinet.go('moderation/'+id);else render();}
  function filtered(){const [key,value]=$('queue-filter').value.split('=');return campaigns.filter(c=>!c.archived_at&&(!key||String(c[key])===value));}
  const archiveReasons={placement:'Активный показ ещё не завершён.',proof:'Загруженный чек ожидает проверки.',payment:'Счёт ещё не закрыт платёжной системой.'};
  function archivedQueue(){
   const rows=campaigns.filter(c=>c.archived_at);if(!rows.length)return;
-  const panel=details('Удалённые: требуют завершения ('+rows.length+')',root);panel.className='archived-review';
+  const panel=details('Удалённые: требуют завершения ('+rows.length+')',root,'trash','archived-review');
   panel.append(el('p','Эти заявки уже удалены из рабочего списка. Здесь остаются только незавершённые платежи и показы.'));
   for(const c of rows){const row=window.pushokViews.campaignSummary(c,'moderation',{actions:false,openLabel:'Открыть для завершения'});row.classList.add('approval-summary');
    for(const reason of c.archive_pending_actions||[])if(archiveReasons[reason])row.append(el('p',archiveReasons[reason]));
@@ -44,23 +48,24 @@ window.pushokApproval=(()=>{
    archivedQueue();return;
   }
   const box=el('article',undefined,'approval-card');box.dataset.campaignId=c.id;root.append(box);
+  const navigation=el('div',undefined,'approval-navigation'),back=el('a','Все заявки','approval-back');back.href='#/moderation';back.prepend(window.pushokViews.icon('back'));navigation.append(back);
   const choose=el('select');choose.setAttribute('aria-label','Выбрать рекламную заявку');
   const choices=campaigns.filter(item=>!item.archived_at||item.id===c.id);
   option(choose,'','Все заявки');for(const item of choices)option(choose,item.id,(item.archived_at?'Удалена · ':'')+(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;choose.hidden=choices.length===1;
-  choose.addEventListener('change',()=>{selected=choose.value;window.cabinet.go(selected?'moderation/'+selected:'moderation');});box.append(choose);
+  choose.addEventListener('change',()=>{selected=choose.value;window.cabinet.go(selected?'moderation/'+selected:'moderation');});navigation.append(choose);box.append(navigation);
   box.append(window.pushokViews.campaignSummary(c,'moderation',{actions:false,route:'moderation',openLabel:'Все заявки'}),advertiser(c));
   if(c.moderation_status==='pending'){const aiState=el('small',undefined,'muted');box.append(aiState);const aiSession=token;void api('/community/moderation/'+c.id).then(data=>{if(aiSession!==token||!box.isConnected)return;aiState.textContent=!data.enabled?'Автомодерация ИИ выключена в настройках владельца.':data.check?.reason||'Ожидает автоматической проверки ИИ.';}).catch(()=>{});}
   if(c.archived_at){
    const banner=el('section',undefined,'card approval-archive-notice');banner.setAttribute('role','status');
    banner.append(el('h3','Заявка уже удалена'),el('p','Удалено: '+date(c.archived_at)+'. В рабочей очереди её нет.'));
    for(const reason of c.archive_pending_actions||[])if(archiveReasons[reason])banner.append(el('p',archiveReasons[reason]));
-   banner.append(button('К рабочим заявкам',()=>route('')),button('Открыть «Удалённые»',()=>window.cabinet.go('archive')));box.append(banner);
+   const actions=el('div',undefined,'campaign-action-tools');actions.append(button('К рабочим заявкам',()=>route('')),button('Открыть «Удалённые»',()=>window.cabinet.go('archive')));banner.append(actions);box.append(banner);
   }
-  if(me.role==='admin'&&window.pushokCampaignPricing)box.append(window.pushokCampaignPricing.create(c));
   const index=stage(c),progress=el('ol',undefined,'approval-progress');progress.setAttribute('aria-label','Этапы рекламной заявки');
-  stages.forEach((title,i)=>{const li=el('li',(i<index?'✓ ':String(i+1)+'. ')+title);if(i===index)li.setAttribute('aria-current','step');if(i<index)li.className='done';progress.append(li);});box.append(progress);
+  stages.forEach((title,i)=>{const li=el('li'),marker=el('span',undefined,'approval-step-marker');if(i<index)marker.append(window.pushokViews.icon('check'));else marker.textContent=String(i+1);li.append(marker,el('span',title));if(i===index)li.setAttribute('aria-current','step');if(i<index)li.className='done';progress.append(li);});
   for(const comment of [c.moderator_comment,c.payment_review_comment])if(comment)box.append(el('p',comment));
-  let content=el('section',undefined,'approval-current');const feedback=el('p',undefined,'approval-feedback');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');box.append(content,feedback);
+  const workflow=el('section',undefined,'approval-current');workflow.setAttribute('aria-label','Работа с заявкой');workflow.append(progress);
+  let content=el('div',undefined,'approval-body');const feedback=el('p',undefined,'approval-feedback');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');workflow.append(content,feedback);box.append(workflow);
   const session=token,user=me.id;let busy=false;
   function validSession(){if(session!==token||me?.id!==user)throw Error('Сессия изменилась. Обновите страницу.');}
   async function perform(fn,message){
@@ -117,9 +122,9 @@ window.pushokApproval=(()=>{
    block.finish();
   }else if(c.placement_status==='scheduled'){
    void renderPromotionStatus(c,content);
-   content.append(el('p','Начало: '+date(c.scheduled_start_at)+' · до '+date(c.scheduled_end_at),'approval-period'));
-   if(me.role==='admin'){const setup=el('a','Настройки запуска');setup.href='#/sponsors/'+c.channel_id+(c.proxy_node_id?'/'+c.proxy_node_id:'');content.append(setup);}
-   content=details('Дополнительная ручная проверка',content);
+   content.append(el('p','Окончание: '+date(c.scheduled_end_at),'approval-period'));
+   if(me.role==='admin'){const setup=el('a','Настройки запуска','approval-setup');setup.href='#/sponsors/'+c.channel_id+(c.proxy_node_id?'/'+c.proxy_node_id:'');setup.prepend(window.pushokViews.icon('settings'));setup.append(window.pushokViews.icon('chevron'));content.append(setup);}
+   content=details('Дополнительная ручная проверка',content,'moderation');
    content.append(el('p','Назначено: '+date(c.scheduled_start_at)+' — '+date(c.scheduled_end_at)));
    let savedReport=null;
    const block=form('4. Подтвердите фактический показ','Подтвердить показ и активировать',async guard=>{
@@ -143,11 +148,13 @@ window.pushokApproval=(()=>{
    block.f.append(el('p','Если исходный тег ведёт на тот же канал, канал может остаться спонсором. Возврат настроек сам по себе не подтверждает прекращение показа. Кнопка закрывает кампанию после вашей проверки.','muted'));
    check(block.f,'Тег кампании снят; в подключённом Telegram без подписки канал больше не показан как спонсор');block.finish();
   }
-  if(window.pushokAssistant)box.append(window.pushokAssistant.panel(c));
+  if(me.role==='admin'&&window.pushokCampaignPricing){const pricing=window.pushokCampaignPricing.create(c);pricing.classList.add('approval-section');const heading=pricing.querySelector('summary');heading.replaceChildren(window.pushokViews.icon('price'),el('span','Тариф и скидка'),window.pushokViews.icon('chevron'));pricing.querySelector(':scope > div').classList.add('approval-body');box.append(pricing);}
+  if(window.pushokAssistant){const assistant=window.pushokAssistant.panel(c);assistant.classList.add('approval-section');assistant.querySelector('summary').append(window.pushokViews.icon('chevron'));assistant.querySelector('.assistant-body').classList.add('approval-body');box.append(assistant);}
   if(!c.archived_at&&window.pushokManagement)box.append(window.pushokManagement.campaignActions(c,true));
-  const history=details('История и документы',box);
-  history.append(el('p','Номер заявки: '+c.id),el('p','Желаемое начало: '+date(c.requested_start_at)),button('Отчёт по кампании',()=>showCampaignReport(c,history)));
-  if(['scheduled','active','completed'].includes(c.placement_status))history.append(button('Журнал проверок',async()=>{
+  const history=details('История и документы',box,'history'),facts=el('dl',undefined,'approval-facts'),tools=el('div',undefined,'campaign-action-tools');tools.setAttribute('role','group');tools.setAttribute('aria-label','Документы заявки');
+  for(const [title,value] of [['Номер заявки',c.id],['Желаемое начало',date(c.requested_start_at)]]){const row=el('div');row.append(el('dt',title),el('dd',value));facts.append(row);}
+  history.append(facts,tools);tools.append(window.pushokViews.iconAction(button('',()=>showCampaignReport(c,history)),'chart','Отчёт по кампании'));
+  if(['scheduled','active','completed'].includes(c.placement_status))tools.append(window.pushokViews.iconAction(button('',async()=>{
    const rows=await api('/operator/campaigns/'+c.id+'/display-observations');if(!history.isConnected||session!==token)return;
    history.querySelector('.observation-panel')?.remove();const panel=el('section',undefined,'observation-panel');history.append(panel);
    if(!rows.length)panel.append(el('p','Проверок пока нет.'));
@@ -155,7 +162,7 @@ window.pushokApproval=(()=>{
     if(report.evidence_id)panel.append(button('Скачать скриншот №'+report.id,()=>download('/operator/campaigns/'+c.id+'/display-observations/'+report.id+'/evidence','sponsor-evidence-'+report.id)));
     else if(report.observer_user_id===me.id){const input=el('input');input.type='file';input.accept='image/png,image/jpeg';field(panel,'Добавить скриншот к отчёту '+report.id,input);panel.append(button('Прикрепить скриншот №'+report.id,async()=>{if(!input.files[0])throw Error('Выберите PNG или JPEG.');const body=new FormData();body.append('file',input.files[0]);await api('/operator/campaigns/'+c.id+'/display-observations/'+report.id+'/evidence',{method:'POST',body});notice('Скриншот сохранён.',true);}));}
    }
-  }));
+  }),'history','Журнал проверок'));
   if(!c.archived_at)archivedQueue();
  }
  async function download(path,name){const session=token;const response=await fetch('/api/v1'+path,{headers:{Authorization:'Bearer '+token}});if(!response.ok)throw Error('Не удалось скачать файл. Обновите состояние.');const blob=await response.blob();if(session!==token||!me)return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}

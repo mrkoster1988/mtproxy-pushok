@@ -274,7 +274,7 @@ function showCampaignReport(c, box,{refresh=false}={}){
   const pairs=[
    ['Тариф',data.tariff.name+' · '+money(data.tariff.price_kopecks)],
    ['Модерация',labels[data.moderation_status]||data.moderation_status],
-   ['Оплата',data.price_kopecks_snapshot===0?'Бесплатно':labels[data.payment_status]||data.payment_status],
+   ['Оплата',data.tariff.price_kopecks===0?'Без оплаты':labels[data.payment_status]||data.payment_status],
    ['Размещение',labels[data.placement_status]||data.placement_status],
    ['Начало',date(data.scheduled_start_at)],
    ['Окончание',date(data.scheduled_end_at)]
