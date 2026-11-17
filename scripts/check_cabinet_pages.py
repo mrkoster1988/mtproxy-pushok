@@ -30,6 +30,7 @@ def main():
     parser.add_argument("--browser-executable")
     parser.add_argument("--sponsors-only", action="store_true", help="Полный сценарий страницы спонсоров")
     parser.add_argument("--verification-only", action="store_true", help="Подтверждение контакта, профиль и настройки подарка")
+    parser.add_argument("--ai-only", action="store_true", help="Подключение ИИ, хранение ключа и роли")
     args = parser.parse_args()
     # main.py captures this setting when imported, before test sessions are issued.
     os.environ["SESSION_SIGNING_KEY"] = "browser-test-only-" * 8
@@ -168,6 +169,14 @@ def main():
                 if args.sponsors_only:
                     from check_sponsor_workspace import check_sponsor_workspace
                     check_sponsor_workspace(browser, base, output, failures, PostgresIntegration.dsn)
+                    return
+                if args.ai_only:
+                    from check_channel_ai_ui import check_channel_ai_ui
+                    admin = new_page('admin',390)
+                    go(admin,'settings');admin.locator('#settings-system-tab').click()
+                    check_channel_ai_ui(admin,new_page('advertiser'),new_page('operator'),new_page,go,output)
+                    if failures:raise AssertionError(failures)
+                    print('PASS: AI settings — real API, private key, roles, logout, mobile widths')
                     return
                 admin = new_page("admin")
                 go(admin, "sponsors")
@@ -581,6 +590,8 @@ def main():
 
                 go(admin, 'settings')
                 admin.locator('#settings-system-tab').click()
+                from check_channel_ai_ui import check_channel_ai_ui
+                check_channel_ai_ui(admin, advertiser, operator, new_page, go, output)
                 expect(admin.locator('#team-fields')).to_be_enabled()
                 for field in ('loading-title-fields','team-fields','default-sponsor-fields'):
                     assert admin.locator('#'+field).evaluate('(e)=>getComputedStyle(e).borderTopWidth')=='0px'

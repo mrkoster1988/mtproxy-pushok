@@ -564,3 +564,20 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .topic-hint p{margin:0;font-size:.85rem;line-height:1.45;overflow-wrap:anywhere}
 .topic-hint button{border:0;background:transparent;color:var(--mint);border-radius:0;padding:6px 0;min-height:36px;font-size:.85rem;white-space:normal;text-align:left}
 .campaign-topic{display:block;color:var(--mint);font-size:.8rem;line-height:1.4;overflow-wrap:anywhere;margin:6px 0 0}
+.cabinet-mode .ai-settings-card{border:1px solid var(--line);border-radius:16px;background:var(--surface);margin:0 0 16px;overflow:hidden}
+.cabinet-mode .ai-settings-card>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px;cursor:pointer;list-style:none}
+.cabinet-mode .ai-settings-card>summary::-webkit-details-marker{display:none}
+.cabinet-mode .ai-settings-title{display:flex;align-items:center;gap:10px;min-width:0;font-weight:700}
+.cabinet-mode .ai-settings-title .ui-icon{flex:none;color:var(--mint)}
+.cabinet-mode .ai-state{font-size:.75rem;color:var(--text-soft);white-space:nowrap;border:1px solid var(--line);padding:4px 8px;border-radius:20px}
+.cabinet-mode .ai-state.active{color:#66d8bf;background:#153c3e;border-color:#287e79}
+.cabinet-mode .ai-settings-content{padding:0 18px 18px;display:grid;gap:14px}
+.cabinet-mode .ai-settings-content fieldset{border:0;padding:0;margin:0;min-width:0;display:grid;gap:14px}
+.cabinet-mode .ai-settings-content label{margin:0;display:grid;gap:8px;font-size:.875rem}
+.cabinet-mode .ai-settings-content .ai-switch{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.cabinet-mode .ai-switch input{flex:none;width:20px;height:20px;margin:0}
+.cabinet-mode .ai-settings-content .muted,.cabinet-mode .ai-settings-status{margin:0;font-size:.8rem;line-height:1.5;overflow-wrap:anywhere}
+.cabinet-mode .ai-settings-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cabinet-mode .ai-settings-actions button{margin:0;min-width:0;min-height:44px;padding:10px 8px;font-size:.85rem}
+.cabinet-mode .ai-remove{justify-self:start;border:0;background:transparent;color:#efa2a5;padding:8px 0;font-size:.8rem}
+@media(max-width:360px){.cabinet-mode .ai-settings-card>summary{padding:14px;gap:8px}.cabinet-mode .ai-settings-title{font-size:.85rem;gap:6px}.cabinet-mode .ai-settings-content{padding:0 14px 14px}}

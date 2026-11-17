@@ -13,6 +13,17 @@ def check_channel_topics_ui(page, output):
 
     page.route('**/api/v1/channel-topics/suggest?*',suggestion)
     try:
+        # Загрузка скрытой формы не должна запускать платные запросы ИИ.
+        page.evaluate('''() => {
+            document.getElementById('campaign-form').hidden=true;
+            document.getElementById('order-channel-url').value='@hidden_topic_demo';
+            window.pushokOrder.summary();
+            document.getElementById('campaign-form').dispatchEvent(new CustomEvent('pushok:channel-verified',{detail:{telegram_url:'https://t.me/hidden_topic_demo'}}));
+        }''')
+        expect(status).not_to_have_attribute('aria-busy','true')
+        page.evaluate("document.getElementById('campaign-form').hidden=false")
+        page.evaluate('window.pushokOrder.summary()')
+        expect(select).to_have_value('education')
         source.fill('@topic_demo')
         expect(select).to_have_value('education')
         expect(status).to_contain_text('по публичным публикациям')
