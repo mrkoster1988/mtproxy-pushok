@@ -1,11 +1,15 @@
 """Собственный Contact, приватность и однократное ежегодное начисление в реальной БД."""
 import os
+import io
+import json
 import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from unittest.mock import Mock, patch
 from uuid import uuid4
+from urllib.error import HTTPError
+from urllib.parse import urlsplit
 
 import psycopg
 from psycopg.rows import dict_row
@@ -78,7 +82,7 @@ class VerificationIntegration(unittest.TestCase):
         self.addCleanup(main.app.dependency_overrides.clear)
         env = patch.dict(os.environ, {'BOT_INTERNAL_SECRET': 'f'*64, 'PUSHOK_TELEGRAM_TEST_ENVIRONMENT': '0'})
         env.start(); self.addCleanup(env.stop)
-        self.headers = {'X-Bot-Secret': 'f'*64, 'X-Pushok-Telegram-Environment': 'production'}
+        self.headers = {'X-Pushok-Bot-Secret': 'f'*64, 'X-Pushok-Telegram-Environment': 'production'}
 
     def verify(self, birthday=None):
         self.request('POST', '/me/verification/request', json={'birthday_opt_in': True})
@@ -96,6 +100,66 @@ class VerificationIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
             cursor = conn.execute(sql, args)
             return cursor.fetchall() if cursor.description else None
+
+    def test_polling_bot_real_transport_verifies_contact_and_delivers_annual_gift(self):
+        """Тот же Request/заголовки, что на VPS; подменяется только HTTP-соединение."""
+        from bot import main as bot
+        birthday = verified.today()
+        self.db('UPDATE birthday_settings SET bonus_amount=12500')
+        messages, routes = [], []
+        updates = [
+            {'update_id': self.update, 'message': {'from': {'id': self.tg},
+             'chat': {'id': self.tg, 'type': 'private'}, 'text': '/verify'}},
+            {'update_id': self.update+1, 'message': {'from': {'id': self.tg},
+             'chat': {'id': self.tg, 'type': 'private'}, 'date': int(time.time()),
+             'contact': {'user_id': self.tg, 'phone_number': '+79991234567'}}},
+        ]
+
+        def bridge(request, **kwargs):
+            path = urlsplit(request.full_url).path
+            self.assertTrue(path.startswith('/api/v1/internal/bot/'))
+            routes.append(path)
+            response = self.client.request(request.get_method(), path,
+                content=request.data, headers=dict(request.header_items()))
+            if not response.is_success:
+                raise HTTPError(request.full_url, response.status_code, 'test response', {}, io.BytesIO(response.content))
+            return io.BytesIO(response.content)
+
+        def telegram(token, method, payload, **kwargs):
+            if method == 'getMe':
+                return {'username': 'mtproxy_pushok_bot'}
+            if method == 'getWebhookInfo':
+                return {}
+            if method == 'getUpdates':
+                if payload['offset'] is not None:
+                    self.assertEqual(payload['offset'], self.update+2)
+                    raise KeyboardInterrupt  # Закончить после полного прохода polling/outbox.
+                return updates
+            if method == 'getChat':
+                self.assertEqual(kwargs['timeout'], 3)
+                return {'birthdate': {'day': birthday.day, 'month': birthday.month}}
+            if method == 'sendMessage':
+                messages.append(payload)
+                return {'message_id': len(messages)}
+            self.fail('Unexpected Telegram method: '+method)
+
+        with patch.dict(os.environ, {'TELEGRAM_BOT_TOKEN': 'local-fixture',
+                                    'TELEGRAM_BOT_USERNAME': 'mtproxy_pushok_bot'}), \
+             patch.object(bot, 'urlopen', side_effect=bridge), \
+             patch.object(bot, 'raw_telegram_call', side_effect=telegram), \
+             patch.object(bot, 'telegram_call', side_effect=telegram), \
+             patch.object(bot, 'Navigation'), patch.object(bot, '_navigation', None), \
+             patch.object(bot, 'deliver_operator_outbox'), patch.object(bot, 'deliver_advertiser_notices'), \
+             patch.object(bot, 'deliver_lifecycle_notices'):
+            with self.assertRaises(KeyboardInterrupt):
+                bot.run()
+        self.assertTrue(self.request('GET', '/me/verification')['phone_verified'])
+        self.assertEqual(self.db('SELECT bonus_amount FROM birthday_rewards WHERE user_id=%s', (self.uid,))[0]['bonus_amount'], 12500)
+        self.assertEqual(len([m for m in messages if 'с днём рождения!' in m['text']]), 1)
+        for route in ('verification/request', 'verification/contact', 'birthday/outbox/claim', 'birthday/outbox/finish'):
+            self.assertIn('/api/v1/internal/bot/'+route, routes)
+        self.assertIsNotNone(self.db('''SELECT delivered_at FROM birthday_notice_outbox o
+            JOIN birthday_rewards r ON r.id=o.reward_id WHERE r.user_id=%s''', (self.uid,))[0]['delivered_at'])
 
     def test_contact_requires_intent_secret_environment_and_matching_owner(self):
         path = '/internal/bot/verification/contact'

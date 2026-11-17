@@ -243,9 +243,9 @@ def router_for(dsn, current_user, require_admin):
             (payload.congratulations_enabled, payload.bonus_amount, admin['id'])).fetchone())
 
     @router.post('/internal/bot/verification/request')
-    def bot_request(payload: BotIntent, response: Response, x_bot_secret: str | None = Header(default=None),
+    def bot_request(payload: BotIntent, response: Response, x_pushok_bot_secret: str | None = Header(default=None),
                     x_pushok_telegram_environment: str | None = Header(default=None)):
-        authorize(x_bot_secret, response, x_pushok_telegram_environment)
+        authorize(x_pushok_bot_secret, response, x_pushok_telegram_environment)
         def create(conn):
             user = conn.execute('SELECT id FROM users WHERE telegram_user_id=%s AND blocked_at IS NULL',
                                 (payload.telegram_user_id,)).fetchone()
@@ -258,21 +258,21 @@ def router_for(dsn, current_user, require_admin):
         return db(create)
 
     @router.post('/internal/bot/verification/contact')
-    def contact(payload: Contact, response: Response, x_bot_secret: str | None = Header(default=None),
+    def contact(payload: Contact, response: Response, x_pushok_bot_secret: str | None = Header(default=None),
                 x_pushok_telegram_environment: str | None = Header(default=None)):
-        authorize(x_bot_secret, response, x_pushok_telegram_environment)
+        authorize(x_pushok_bot_secret, response, x_pushok_telegram_environment)
         return db(lambda conn: save_contact(conn, payload))
 
     @router.post('/internal/bot/birthday/outbox/claim')
-    def claim(response: Response, x_bot_secret: str | None = Header(default=None),
+    def claim(response: Response, x_pushok_bot_secret: str | None = Header(default=None),
               x_pushok_telegram_environment: str | None = Header(default=None)):
-        authorize(x_bot_secret, response, x_pushok_telegram_environment)
+        authorize(x_pushok_bot_secret, response, x_pushok_telegram_environment)
         return db(claim_birthdays)
 
     @router.post('/internal/bot/birthday/outbox/finish')
-    def finish(payload: Finish, response: Response, x_bot_secret: str | None = Header(default=None),
+    def finish(payload: Finish, response: Response, x_pushok_bot_secret: str | None = Header(default=None),
                x_pushok_telegram_environment: str | None = Header(default=None)):
-        authorize(x_bot_secret, response, x_pushok_telegram_environment)
+        authorize(x_pushok_bot_secret, response, x_pushok_telegram_environment)
         def ack(conn):
             column = 'abandoned_at' if payload.permanent_failure else 'delivered_at'
             result = conn.execute(f'''UPDATE birthday_notice_outbox SET {column}=now(),claim_token=NULL,lease_until=NULL
