@@ -36,7 +36,7 @@ window.pushokApproval=(()=>{
   if(!selected&&list.length===1)selected=list[0].id;
   const c=campaigns.find(item=>item.id===selected);
   $('queue-filter').hidden=Boolean(c);$('queue-count').hidden=Boolean(c);
-  root.replaceChildren();$('queue-count').textContent=list.length+' заявок';
+  window.pushokAssistant?.reset();root.replaceChildren();$('queue-count').textContent=list.length+' заявок';
   if(!c){
    if(selected)root.append(el('p','Заявка не найдена или недоступна. Обновите список.','empty'));
    if(!list.length)root.append(el('p','Заявок в этой очереди нет.','empty'));
@@ -146,6 +146,7 @@ window.pushokApproval=(()=>{
    block.f.append(el('p','Если исходный тег ведёт на тот же канал, канал может остаться спонсором. Возврат настроек сам по себе не подтверждает прекращение показа. Кнопка закрывает кампанию после вашей проверки.','muted'));
    check(block.f,'Тег кампании снят; в подключённом Telegram без подписки канал больше не показан как спонсор');block.finish();
   }
+  if(window.pushokAssistant)box.append(window.pushokAssistant.panel(c));
   if(!c.archived_at&&window.pushokManagement)box.append(window.pushokManagement.campaignActions(c,true));
   const history=details('История и документы',box);
   history.append(el('p','Номер заявки: '+c.id),el('p','Желаемое начало: '+date(c.requested_start_at)),button('Отчёт по кампании',()=>showCampaignReport(c,history)));
@@ -161,7 +162,7 @@ window.pushokApproval=(()=>{
   if(!c.archived_at)archivedQueue();
  }
  async function download(path,name){const session=token;const response=await fetch('/api/v1'+path,{headers:{Authorization:'Bearer '+token}});if(!response.ok)throw Error('Не удалось скачать файл. Обновите состояние.');const blob=await response.blob();if(session!==token||!me)return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
- return {resetSelection(){selected='';},sync(items){if(currentUser!==me?.id){selected='';currentUser=me?.id;}campaigns=items;render();},render,clear(){campaigns=[];selected='';currentUser='';root.replaceChildren();$('queue-filter').hidden=false;$('queue-count').hidden=false;}};
+ return {resetSelection(){selected='';},sync(items){if(currentUser!==me?.id){selected='';currentUser=me?.id;}campaigns=items;render();},render,clear(){window.pushokAssistant?.reset();campaigns=[];selected='';currentUser='';root.replaceChildren();$('queue-filter').hidden=false;$('queue-count').hidden=false;}};
 })();
 
 if(me&&['admin','operator'].includes(me.role))window.pushokApproval.sync(operatorCampaigns);

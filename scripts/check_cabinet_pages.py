@@ -175,6 +175,8 @@ def main():
                     admin = new_page('admin',390)
                     go(admin,'settings');admin.locator('#settings-system-tab').click()
                     check_channel_ai_ui(admin,new_page('advertiser'),new_page('operator'),new_page,go,output)
+                    from check_campaign_assistant_ui import check_campaign_assistant_ui
+                    check_campaign_assistant_ui(new_page,go,output,PostgresIntegration.dsn)
                     if failures:raise AssertionError(failures)
                     print('PASS: AI settings — real API, private key, roles, logout, mobile widths')
                     return
@@ -1687,6 +1689,8 @@ def main():
                 check_campaign_analytics(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_sponsor_workspace import check_sponsor_workspace
                 check_sponsor_workspace(browser, base, output, failures, PostgresIntegration.dsn)
+                from check_campaign_assistant_ui import check_campaign_assistant_ui
+                check_campaign_assistant_ui(new_page,go,output,PostgresIntegration.dsn)
                 from check_application_licenses import check_application_licenses
                 check_application_licenses(browser,base,output,failures,PostgresIntegration.dsn)
                 assert not failures, failures
