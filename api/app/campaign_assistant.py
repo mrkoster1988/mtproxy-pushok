@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import channel_ai_connection as settings, channel_topic_suggestions as topics, control, public_channels
+from . import channel_content_review as content
 from .channel_topics import label
 from .telegram_binding import ERRORS as BINDING_ERRORS, CHANNEL_ERRORS
 
@@ -61,6 +62,7 @@ class Advice(BaseModel):
     checks: list[Text] = Field(max_length=5)
     next_steps: list[Text] = Field(max_length=5)
     advertiser_message: str = Field(strict=True, max_length=1500)
+    content_review: content.ContentReview | None
 
 
 def throttle(actor):
@@ -99,9 +101,10 @@ def runtime_facts(runtime):
 
 def explain(kind, facts, channel, config):
     properties = {'summary':{'type':'string'}, 'checks':{'type':'array','items':{'type':'string'}},
-                  'next_steps':{'type':'array','items':{'type':'string'}}, 'advertiser_message':{'type':'string'}}
+                  'next_steps':{'type':'array','items':{'type':'string'}}, 'advertiser_message':{'type':'string'},
+                  'content_review':content.schema()}
     schema = {'type':'object','properties':properties,'required':list(properties),'additionalProperties':False}
-    body = {'model':config[1], 'store':False, 'max_completion_tokens':1000,
+    body = {'model':config[1], 'store':False, 'max_completion_tokens':1500,
             'messages':[{'role':'system','content':
                 'Ты помощник команды MTProxy Pushok. Ответь по-русски, кратко. Задача review: разбор '
                 'содержания канала и чек-лист для модератора. Задача launch: объяснить состояние запуска '
@@ -114,7 +117,15 @@ def explain(kind, facts, channel, config):
                 'Назови конкретные наблюдения из публикаций, отделяя предположения. checks и next_steps: '
                 'не более 5 пунктов по 500 символов. summary до 500 символов. advertiser_message: '
                 'неотправленный черновик до 1500 символов без обещаний и утверждений о принятых решениях; '
-                'пустая строка, если сообщение не требуется.'},
+                'пустая строка, если сообщение не требуется. '
+                'Для launch content_review=null. Для review отдельно оцени признаки сексуального контента 18+, '
+                'независимо от отрасли/тематики. content_review.assessment: flagged — возможные признаки, '
+                'not_detected — не найдены в просмотренных текстах, uncertain — данных недостаточно. '
+                'Отличай продвижение взрослого контента от новостей, медицины, образования и запрета такого контента. '
+                'Медиа ты не видишь; без текстов публикаций не ставь not_detected. '
+                'evidence — до 3 дословных цитат по 3–200 символов, подтверждающих вывод, '
+                'с source: title, description или post_1..post_8 (номер текста в public_channel.posts). '
+                'Для flagged обязательна хотя бы одна цитата. Не обрезай отрицания и важный контекст.'},
                 {'role':'user','content':json.dumps({'task':kind,'server_facts':facts,'public_channel':channel},ensure_ascii=False)}],
             'response_format':{'type':'json_schema','json_schema':{'name':'campaign_assistant','strict':True,'schema':schema}}}
     topics.reserve_ai_call()
@@ -154,7 +165,7 @@ def router_for(dsn, require_operator, promotion_status):
                 public_state = 'available'
                 channel.update(title=chat['title'][:255], description=chat.get('description','')[:2000])
                 if data.kind == 'review':
-                    channel['posts'] = topics.public_posts(chat['username'])[-8:]
+                    channel['posts'] = [text[:1200] for text in topics.public_posts(chat['username'])[-8:]]
             except HTTPException as exc:
                 public_state = 'unavailable' if exc.status_code == 422 else 'unknown'
             facts = {k:row[k] for k in ('moderation_status','payment_status','placement_status','auto_schedule_paused')}
@@ -178,10 +189,20 @@ def router_for(dsn, require_operator, promotion_status):
                 verified.append('Код последней ошибки привязки: ' + facts['binding_error'])
             verified.append('Применение конфигурации не подтверждает фактический показ канала пользователям.')
             engine = 'ai'
+            review = None
             try:
                 advice = explain(data.kind, facts, channel, config)
+                proposal = advice.pop('content_review')
+                if data.kind == 'review':
+                    if proposal is None:
+                        raise ValueError('missing_content_review')
+                    review = content.assess(channel, public_state == 'available', proposal)
+                elif proposal is not None:
+                    raise ValueError('unexpected_content_review')
             except (OSError, ValueError, TypeError, KeyError, IndexError):
                 engine = 'checks'
+                if data.kind == 'review':
+                    review = content.assess(channel, public_state == 'available')
                 advice = {'summary':'ИИ не ответил или вернул неполный ответ. Ниже — только проверки системы.',
                           'checks':[], 'next_steps':[NEXT.get(runtime['automation_status'], 'Обновите диагностику перед следующим действием.')],
                           'advertiser_message':''}
@@ -200,7 +221,7 @@ def router_for(dsn, require_operator, promotion_status):
                 conn.execute("INSERT INTO audit_events(actor_user_id,campaign_id,event_type,details_json) VALUES(%s,%s,'campaign_ai_analyzed',jsonb_build_object('kind',%s::text,'engine',%s::text))",
                              (operator['id'],campaign_id,data.kind,engine))
             return {'kind':data.kind, 'engine':engine, 'generated_at':control.now(), 'facts':verified,
-                    'posts_count':len(channel['posts']), 'advice':advice, 'changes_applied':False}
+                    'posts_count':len(channel['posts']), 'advice':advice, 'content_review':review, 'changes_applied':False}
         except psycopg.Error:
             raise HTTPException(503, 'database_unavailable') from None
         finally:

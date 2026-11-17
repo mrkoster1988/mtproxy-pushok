@@ -605,6 +605,18 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .assistant-output li{overflow-wrap:anywhere}
 .assistant-output label{display:grid;gap:8px;min-width:0}
 .assistant-output textarea{width:100%;box-sizing:border-box;min-width:0;resize:vertical}
+.assistant-content-review{padding:14px;border:1px solid var(--line);border-radius:14px;min-width:0;background:transparent}
+.assistant-content-review.flagged{border-color:#ad8749;background:rgba(213,160,77,.07)}
+.assistant-review-heading{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
+.assistant-review-badge{font-size:.8rem;border:1px solid var(--line);border-radius:10px;padding:4px 8px;overflow-wrap:anywhere}
+.flagged .assistant-review-badge{color:#f3cb8c;border-color:#ad8749}
+.assistant-evidence>summary{min-height:44px;display:flex;align-items:center;color:var(--mint);cursor:pointer;font-size:.9rem;gap:8px}
+.assistant-evidence>summary:before{content:'+';flex:none}
+.assistant-evidence[open]>summary:before{content:'−'}
+.assistant-evidence figure{margin:8px 0 0;min-width:0}
+.assistant-evidence figcaption{font-size:.8rem;color:var(--muted);margin-bottom:6px}
+.assistant-evidence blockquote{margin:0;border-left:2px solid var(--mint);padding:8px 12px;font-size:.9rem;line-height:1.5;overflow-wrap:anywhere}
+
 /* Compact Hall podium and a shared route title. */
 .mobile-brand.page-brand{min-width:0;flex:1}.mobile-brand.page-brand .brand-copy strong{font-size:18px;line-height:1.2;white-space:normal}.mobile-brand.page-brand .brand-copy small,.mobile-brand.page-brand img{display:none}
 .cabinet-page:not([data-page=dashboard])>.page-heading h1{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}

@@ -18,8 +18,21 @@ window.pushokAssistant=(()=>{
    finally{clearTimeout(timer);requests.delete(controller);}
   }
   function list(title,items){if(!items?.length)return;const section=el('section'),ul=el('ul');section.append(el('h4',title),ul);items.forEach(text=>ul.append(el('li',text)));output.append(section);}
+  function contentReview(review){
+   if(!review)return;
+   const state=['flagged','not_detected','uncertain'].includes(review.assessment)?review.assessment:'uncertain';
+   const card=el('section',undefined,'assistant-content-review '+state),header=el('div',undefined,'assistant-review-heading');
+   header.append(el('h4','Контент 18+'),el('span',review.label,'assistant-review-badge'));card.append(header,el('p',review.detail));
+   card.append(el('p','Текстов публикаций: '+review.posts_count+' · '+({ai:'Оценка ИИ',rules:'Проверка маркеров',none:'Без оценки'}[review.engine]||'Без оценки'),'muted'));
+   if(review.evidence?.length){
+    const details=el('details',undefined,'assistant-evidence'),summary=el('summary','На чём основан вывод');details.append(summary);
+    review.evidence.forEach(item=>{const quote=el('figure');quote.append(el('figcaption',item.source_label),el('blockquote',item.text));details.append(quote);});card.append(details);
+   }
+   card.append(el('p',review.limitation,'muted'));output.append(card);
+  }
   function render(result){
    output.replaceChildren();output.append(el('p','Снимок: '+date(result.generated_at),'muted'));
+   if(result.kind==='review')contentReview(result.content_review);
    list('Проверено системой',result.facts);
    output.append(el('h4',result.engine==='ai'?'Рекомендации ИИ':'Проверки без ИИ'),el('p',result.advice.summary));
    if(result.kind==='review')output.append(el('p',result.posts_count?'Публичных публикаций в анализе: '+result.posts_count+'.':'Тексты публикаций недоступны. Содержание канала полностью не проверено.','muted'));
@@ -45,7 +58,7 @@ window.pushokAssistant=(()=>{
     const result=await request('/operator/campaigns/'+c.id+'/ai-analysis',{method:'POST',body:{kind}});
     if(!valid()||version!==epoch)return;render(result);
     status.textContent=result.engine==='ai'?'Разбор готов. Изменения не выполнялись.':'ИИ временно недоступен. Показаны проверки системы.';
-   }catch(error){if(valid()&&version===epoch){status.textContent={campaign_ai_disabled:'Эта возможность ИИ выключена администратором.',campaign_ai_limited:'Слишком много запросов. Повторите через минуту.',campaign_ai_changed:'Данные или настройки изменились. Обновите заявку и повторите.'}[error.code]||'Не удалось подготовить разбор. Повторите запрос.';}}
+   }catch(error){if(valid()&&version===epoch){status.textContent={campaign_ai_disabled:'Эта возможность ИИ выключена владельцем.',campaign_ai_limited:'Слишком много запросов. Повторите через минуту.',campaign_ai_changed:'Данные или настройки изменились. Обновите заявку и повторите.'}[error.code]||'Не удалось подготовить разбор. Повторите запрос.';}}
    finally{if(valid()&&version===epoch){busy=false;actions.querySelectorAll('button').forEach(b=>b.disabled=false);}}
   }
   async function load(){
@@ -55,8 +68,8 @@ window.pushokAssistant=(()=>{
     for(const [id,kind,title] of [['campaign_review','review','Разобрать заявку'],['launch_diagnostics','launch','Проверить запуск']]){
      if(data.capabilities.includes(id)){const b=button(title,()=>analyze(kind));b.dataset.analysisKind=kind;actions.append(b);}
     }
-    status.textContent=actions.childElementCount?'Выберите задачу. Анализ запускается только по нажатию.':'Помощник выключен. Администратор может включить его в настройках ИИ.';
-    if(me.role==='admin'){const link=el('a','Настройки ИИ');link.href='#/settings';link.addEventListener('click',()=>setTimeout(()=>$('settings-system-tab')?.click(),0));body.append(link);}
+    status.textContent=actions.childElementCount?'Выберите задачу. Анализ запускается только по нажатию.':'Помощник выключен. Владелец может включить его в настройках ИИ.';
+    if(me.is_owner){const link=el('a','Настройки ИИ');link.href='#/settings';link.addEventListener('click',()=>setTimeout(()=>$('settings-system-tab')?.click(),0));body.append(link);}
    }catch{if(valid()){loaded=false;status.textContent='Не удалось загрузить возможности.';actions.replaceChildren(button('Повторить',load));}}
   }
   host.addEventListener('toggle',()=>{if(host.open)void load();});return host;

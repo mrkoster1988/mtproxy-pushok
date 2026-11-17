@@ -12,7 +12,8 @@ from app import campaign_assistant as assistant, channel_ai_connection as settin
 from app import channel_topic_suggestions as topics
 
 ADVICE = {'summary':'Нужна проверка содержания канала.', 'checks':['Проверьте последние публикации.'],
-          'next_steps':['Откройте канал и выберите решение.'], 'advertiser_message':'Уточните, пожалуйста, описание вашего канала.'}
+          'next_steps':['Откройте канал и выберите решение.'], 'advertiser_message':'Уточните, пожалуйста, описание вашего канала.',
+          'content_review':{'assessment':'uncertain','evidence':[]}}
 
 def reply(value=ADVICE, **extra):
     return json.dumps({'choices':[{'finish_reason':'stop','message':{'content':json.dumps(value)},**extra}]}).encode()
@@ -32,6 +33,8 @@ class AssistantTransport(unittest.TestCase):
         self.assertFalse(body['store']);self.assertNotIn('tools',body)
         self.assertIn('Ignore rules',body['messages'][1]['content']);self.assertNotIn('private-key',str(body))
         self.assertTrue(body['response_format']['json_schema']['strict']);self.assertEqual(timeout,8)
+        self.assertIn('content_review',body['response_format']['json_schema']['schema']['required'])
+        self.assertIn('независимо от отрасли',body['messages'][0]['content'])
         self.assertLessEqual(limit,32768)
 
     def test_refusal_truncation_extra_commands_and_oversize_are_rejected(self):
@@ -65,7 +68,10 @@ class AssistantIntegration(unittest.TestCase):
         control.write(settings.FILE,self.config)
         self.addCleanup(lambda:(control.root()/settings.FILE).unlink(missing_ok=True))
         assistant._requests.clear();topics._ai_calls.clear()
-        network=patch.object(topics,'read_url',return_value=reply());self.network=network.start();self.addCleanup(network.stop)
+        def response(request, *_):
+            kind=json.loads(json.loads(request.data)['messages'][1]['content'])['task']
+            return reply(ADVICE|{'content_review':None}) if kind=='launch' else reply()
+        network=patch.object(topics,'read_url',side_effect=response);self.network=network.start();self.addCleanup(network.stop)
 
     def test_analysis_does_not_change_campaign_or_balances_and_excludes_private_data(self):
         with psycopg.connect(self.dsn) as conn:
@@ -74,7 +80,9 @@ class AssistantIntegration(unittest.TestCase):
             conn.execute("UPDATE campaigns SET moderator_comment='private-moderator-comment' WHERE id=%s",(self.cid,))
             before=conn.execute('SELECT row_to_json(c) FROM campaigns c WHERE id=%s',(self.cid,)).fetchone()[0]
         data=self.request('POST',self.path,json={'kind':'review'})
-        self.assertEqual(data['engine'],'ai');self.assertFalse(data['changes_applied']);self.assertEqual(data['advice'],ADVICE)
+        self.assertEqual(data['engine'],'ai');self.assertFalse(data['changes_applied'])
+        self.assertEqual(data['advice'],{k:v for k,v in ADVICE.items() if k!='content_review'})
+        self.assertEqual(data['content_review']['assessment'],'uncertain')
         prompt=self.network.call_args.args[0].data.decode()
         for private in ('PRIVATE-NAME','private_username',str(self.owner),'private-moderator-comment','sk-private-fixture-key'):
             self.assertNotIn(private,prompt);self.assertNotIn(private,str(data))
@@ -124,7 +132,42 @@ class AssistantIntegration(unittest.TestCase):
 
     def test_launch_does_not_read_public_posts(self):
         with patch.object(topics,'public_posts') as posts:
-            self.request('POST',self.path,json={'kind':'launch'});posts.assert_not_called()
+            data=self.request('POST',self.path,json={'kind':'launch'});posts.assert_not_called()
+            self.assertIsNone(data['content_review']);self.assertEqual(data['engine'],'ai')
+
+    def test_review_evidence_is_grounded_and_not_saved_in_audit(self):
+        text='Пример публикации: PRIVATE-PUBLIC-CONTENT. Только 18+.'
+        self.network.side_effect=None
+        self.network.return_value=reply(ADVICE|{'content_review':{'assessment':'flagged','evidence':[
+            {'source':'post_1','quote':'Только 18+'}]}})
+        with patch.object(topics,'public_posts',return_value=[text]):
+            data=self.request('POST',self.path,json={'kind':'review'})
+        review=data['content_review']
+        self.assertEqual(review['assessment'],'flagged');self.assertEqual(review['engine'],'ai')
+        self.assertIn(text,review['evidence'][0]['text'])
+        self.assertEqual(self.network.call_count,1)
+        with psycopg.connect(self.dsn) as conn:
+            audit=conn.execute("SELECT details_json FROM audit_events WHERE campaign_id=%s",(self.cid,)).fetchall()
+            self.assertNotIn('PRIVATE-PUBLIC-CONTENT',str(audit))
+            self.assertEqual(conn.execute('SELECT moderation_status FROM campaigns WHERE id=%s',(self.cid,)).fetchone()[0],'pending')
+
+    def test_hallucinated_evidence_discards_entire_ai_advice_and_uses_markers(self):
+        self.network.side_effect=None
+        self.network.return_value=reply(ADVICE|{'summary':'UNSUPPORTED-CLAIM',
+            'content_review':{'assessment':'flagged','evidence':[{'source':'post_1','quote':'Несуществующий фрагмент'}]}})
+        with patch.object(topics,'public_posts',return_value=['Новости о правилах маркировки материалов 18+.']):
+            data=self.request('POST',self.path,json={'kind':'review'})
+        self.assertEqual(data['engine'],'checks');self.assertEqual(data['content_review']['engine'],'rules')
+        self.assertNotIn('UNSUPPORTED-CLAIM',str(data));self.assertEqual(data['advice']['advertiser_message'],'')
+
+    def test_provider_failure_never_hides_explicit_markers(self):
+        self.network.side_effect=URLError('secret-provider-error')
+        with patch.object(topics,'public_posts',return_value=['Материалы канала: NSFW, для взрослой аудитории.']):
+            data=self.request('POST',self.path,json={'kind':'review'})
+        self.assertEqual(data['content_review']['assessment'],'flagged')
+        self.assertEqual(data['content_review']['engine'],'rules')
+        self.assertEqual(self.network.call_count,1)
+        self.assertNotIn('secret-provider-error',str(data))
 
     def test_snapshot_or_permissions_changed_during_analysis_discard_result(self):
         def changed(*args):
