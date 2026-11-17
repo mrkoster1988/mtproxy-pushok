@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.59",
+    version="1.60",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -3137,3 +3137,6 @@ def set_home_banner(data: home_banner.Banner, admin=Depends(require_admin)):
 
 from .verified_profiles import router_for as verified_profiles_router
 app.include_router(verified_profiles_router(lambda: DATABASE_URL, get_current_user, require_admin))
+
+from .hall_of_fame import router_for as hall_router
+app.include_router(hall_router(lambda: DATABASE_URL, get_current_user, require_admin))

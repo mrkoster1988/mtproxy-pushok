@@ -67,6 +67,8 @@ window.pushokProfiles=(()=>{
   const session=token,uid=me?.id;target.replaceChildren(el('p','Загрузка обзора…','muted'));
   try{const data=await api('/users/'+uid+'/profile');if(session!==token||uid!==me?.id||!target.isConnected)return;
    target.replaceChildren(stats(data.counts,key=>window.cabinet.go({current:'campaigns/mine',channels:'channels',archived:'archive'}[key])),invited(data.counts.invited));
+   window.pushokHall.medals(target,data);
+   window.pushokHall.frame(target.previousElementSibling?.querySelector('.user-avatar'),data.frame_rank);
    const details=target.previousElementSibling?.querySelector('.profile-details');
    if(details&&data.user.created_at)details.append(el('p','В кабинете с '+new Date(data.user.created_at).toLocaleDateString('ru-RU'),'muted'));
   }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p','Обзор не обновлён. '+e.message,'muted'),button('Повторить',()=>ownOverview(target)));}
@@ -99,6 +101,8 @@ window.pushokProfiles=(()=>{
    const channelSection=el('section',undefined,'profile-section profile-channels'),campaignSection=el('section',undefined,'profile-section profile-campaigns');
    const overview=stats(data.counts,key=>{if(key==='channels')channelSection.scrollIntoView({block:'start'});else{archived=key==='archived';campaignPage=0;void load();}});
    target.replaceChildren(identity(data.user,data.counts.invited),...(data.verification?[window.pushokVerification.readOnly(data.verification)]:[]),...(me.role==='admin'&&data.wallet?[balance(data.wallet,data.user)]:[]),overview,channelSection,campaignSection);
+   window.pushokHall.frame(target.querySelector('.user-avatar'),data.frame_rank);
+   window.pushokHall.medals(target.querySelector('.profile-identity'),data);
    channelSection.append(el('h2','Каналы'));
    const channelList=el('div',undefined,'profile-list');channelSection.append(channelList);
    if(!data.channels.length)channelList.append(el('p','Каналов пока нет.','empty'));

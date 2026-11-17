@@ -13,6 +13,7 @@
  }
  const routes={
   wallet:['Баланс','Пополнения, списания и история операций'],
+  hall:['Доска почёта','Лидеры сообщества puShok'],
   growth:['Бонусы и приглашения','Реферальная программа, промокоды, подарки и скидки'],
   dashboard:['Главная','Обзор ваших размещений'],
   channels:['Мои каналы','Управление рекламируемыми Telegram-каналами'],
@@ -473,6 +474,7 @@
   state.selectedKey=key;
   if(name==='license'&&!background)void window.pushokAppLicense.load(content.license);
   if(name==='wallet')void window.pushokWallet?.load(content.wallet);
+  if(name==='hall')void window.pushokHall.load(content.hall);
   if(name==='growth')void window.pushokGrowth?.load(content.growth);
   if(name==='archive')void window.pushokManagement.renderArchive(archiveRows,id);
   if(name==='sponsors')void renderAutomation();

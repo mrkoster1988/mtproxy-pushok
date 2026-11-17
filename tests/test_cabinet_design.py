@@ -63,7 +63,7 @@ class CabinetDesignTests(unittest.TestCase):
 
     def test_no_external_styles_scripts_or_tracking(self):
         self.assertEqual({url.split('?')[0] for url in self.parser.links}, {
-            "/assets/campaign-analytics.js", "/assets/campaign-pricing.js", "/assets/bonus-links.js",
+            "/assets/hall-of-fame.js", "/assets/campaign-analytics.js", "/assets/campaign-pricing.js", "/assets/bonus-links.js",
             "/assets/verified-profile.js", "/assets/user-profiles.js", "/assets/users.js", "/assets/application-licenses.js",
             "/assets/merchant-settings.js", "/assets/growth.js", "/assets/wallet.js", "/assets/default-sponsor.js", "/assets/team.js", "/assets/styles.css", "/assets/cabinet-reference.css", "/assets/app.js", "/assets/order.js", "/assets/channel-topics.js", "/assets/approval.js", "/assets/management.js", "/assets/pages.js", "/assets/mobile-views.js", "/assets/pushok-pencil.png"
         })

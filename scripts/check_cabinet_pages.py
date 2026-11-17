@@ -1656,6 +1656,8 @@ def main():
 
                 from check_verified_profiles import check_verified_profiles
                 check_verified_profiles(browser, base, output, failures, PostgresIntegration.dsn)
+                from check_hall_of_fame import check_hall_of_fame
+                check_hall_of_fame(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_user_profiles import check_user_profiles
                 check_user_profiles(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_admin_users import check_admin_users
