@@ -1605,7 +1605,7 @@ def get_campaign_report(
             timeline = connection.execute(
                 """SELECT event_type,created_at FROM (
                        SELECT id,event_type,created_at FROM audit_events
-                       WHERE campaign_id=%s AND event_type=ANY(%s::text[])
+                       WHERE campaign_id=%s AND event_type = ANY(%s::text[])
                        UNION ALL
                        SELECT id,'campaign_approved_by_ai' AS event_type,created_at FROM ai_moderation_events
                        WHERE campaign_id=%s AND decision='approved'

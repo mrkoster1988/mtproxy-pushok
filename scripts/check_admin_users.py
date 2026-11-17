@@ -37,14 +37,14 @@ def check_admin_users(browser,base,output,failures,dsn):
         card=admin.locator('.campaign-tile').filter(has_text='Кампания из каталога');card.get_by_role('link',name='Открыть кампанию Кампания из каталога').click();expect(admin.locator('#queue')).to_contain_text('Кампания из каталога')
         go(admin,'profile');admin.get_by_role('link',name='Пользователи',exact=True).click()
         admin.get_by_label('Поиск пользователей',exact=True).fill('@directory_advertiser');admin.locator('.directory-search button[type=submit]').click()
-        row=admin.locator('.directory-user:not(.ai-agent-card)');expect(row).to_have_count(1);expect(row).to_contain_text('Последний вход:')
+        row=admin.locator('.user-directory .directory-user');expect(row).to_have_count(1);expect(row).to_contain_text('Последний вход:')
         row.get_by_role('link',name='Открыть профиль пользователя').click();expect(admin.locator('.profile-wallet')).to_contain_text('123,45')
         admin.get_by_role('button',name='Назад',exact=True).click();expect(admin.locator('[data-page=users]')).to_be_visible()
         for width in (320,390):
             admin.set_viewport_size({'width':width,'height':844});assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         for width in (320,390):
             admin.set_viewport_size({'width':width,'height':844})
-            for card in admin.locator('.directory-user:not(.ai-agent-card)').all():
+            for card in admin.locator('.user-directory .directory-user').all():
                 identity=card.locator('.user-summary').bounding_box();badge=card.locator(':scope > .person-role').bounding_box()
                 assert badge['x']>=identity['x']+identity['width']+6
                 assert abs(badge['y']+badge['height']-identity['y']-identity['height'])<2

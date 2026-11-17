@@ -36,7 +36,7 @@ def check_unified_controls(browser,base,output,failures,dsn):
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         help_button=area.get_by_role('button',name='Пояснения: Управление балансами',exact=True);expect(area.locator('.block-help')).to_be_hidden();help_button.click();expect(area.locator('.block-help')).to_be_visible();expect(area).to_have_attribute('open','');help_button.click()
         field.fill('@controls_user');search.click();expect(area.get_by_role('button',name='Открыть баланс',exact=True)).to_be_visible()
-        review=page.locator('[data-wallet-section=review]');review.locator(':scope>summary').click();expect(review.locator('.wallet-topup-review')).to_be_visible();expect(review.locator('.wallet-payment-details')).to_be_visible();expect(review.locator('.wallet-review details')).to_have_count(0)
+        review=page.locator('[data-wallet-section=review]');review.locator(':scope>summary').click();expect(review.locator('.wallet-topup-review').filter(has_text='@controls_user')).to_be_visible();expect(review.locator('.wallet-topup-review').filter(has_text='@controls_user').locator('.wallet-payment-details')).to_be_visible();expect(review.locator('.wallet-review details')).to_have_count(0)
         history=page.locator('[data-wallet-section=history]');history.locator(':scope>summary').click();expect(history.locator('.wallet-entry')).to_have_count(5)
         page.set_viewport_size({'width':390,'height':844});assert history.bounding_box()['height']<640
         history.screenshot(path=str(output/'controls-history-390.png'));review.screenshot(path=str(output/'controls-payments-390.png'));area.screenshot(path=str(output/'controls-balance-search-390.png'))

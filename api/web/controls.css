@@ -29,3 +29,5 @@
 .approval-automation-summary h3{font-size:14px;line-height:1.4}.approval-automation-summary{margin:0}.approval-automation-summary .block-help{margin-bottom:0}.wallet-entry>time{line-height:1.4}
 
 .cabinet-mode .block-info{width:44px;height:44px;min-width:44px;min-height:44px}.approval-card>.moderation-decision:empty{display:none}
+
+.role-actions:empty,.inline-actions:empty,.actions:empty{display:none!important}
