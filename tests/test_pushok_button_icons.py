@@ -29,8 +29,8 @@ class TestButtonIcons(unittest.TestCase):
                 self.assertEqual(configured_icons(), {})
                 self.assertEqual(decorate({"text": "Ок"}, "advertise"), {"text": "Ок"})
 
-    def test_real_bot_keyboard_retains_callback_and_links(self):
-        from bot.main import keyboard, CHANNEL_URL
+    def test_single_button_uses_its_icon_without_requiring_removed_actions(self):
+        from bot.main import keyboard
         with patch.dict(os.environ, {
             "PUSHOK_BUTTON_ICONS_ENABLED": "1",
             "PUSHOK_BUTTON_EMOJI_JSON": '{"advertise":"123456789012","channels":"123456789013"}',
@@ -38,10 +38,10 @@ class TestButtonIcons(unittest.TestCase):
         }):
             rows = keyboard()["inline_keyboard"]
         self.assertEqual(rows[0][0]["callback_data"], "advertise")
-        self.assertNotIn("icon_custom_emoji_id", rows[0][0])
-        channel = next(b for row in rows for b in row if b.get("url") == CHANNEL_URL)
-        self.assertNotIn("icon_custom_emoji_id", channel)
-        self.assertNotIn("icon_custom_emoji_id", rows[1][0])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows[0]), 1)
+        self.assertEqual(rows[0][0]["icon_custom_emoji_id"], "123456789012")
+        self.assertEqual(rows[0][0]["style"], "success")
 
     def test_all_six_actions_preserve_complete_keyboard_and_payment_buttons(self):
         from bot.main import keyboard, campaign_payment_keyboard
@@ -51,6 +51,10 @@ class TestButtonIcons(unittest.TestCase):
                "PUSHOK_BUTTON_ICONS_ENABLED": "0", "PUSHOK_BUTTON_EMOJI_JSON": json.dumps(mapping)}
         with patch.dict(os.environ, env):
             baseline = keyboard()
+            self.assertEqual(baseline['inline_keyboard'], [[{
+                'text': '📢 Разместить рекламу', 'style': 'success',
+                'web_app': {'url': env['PUSHOK_MINIAPP_URL'] + '#/create'},
+            }]])
             campaign = {"campaign_id": str(uuid4()), "moderation_status": "approved",
                         "payment_status": "awaiting_payment", "placement_status": "not_scheduled",
                         "stars_price_xtr": 100}
@@ -59,7 +63,7 @@ class TestButtonIcons(unittest.TestCase):
                                  for row in payment_baseline["inline_keyboard"] for b in row), 1)
             os.environ["PUSHOK_BUTTON_ICONS_ENABLED"] = "1"
             decorated = keyboard()
-            self.assertEqual({b["icon_custom_emoji_id"] for row in decorated["inline_keyboard"] for b in row}, {v for k,v in mapping.items() if k not in ("miniapp","tariffs")})
+            self.assertEqual({b["icon_custom_emoji_id"] for row in decorated["inline_keyboard"] for b in row}, {mapping["advertise"]})
             for row in decorated["inline_keyboard"]:
                 for button in row:
                     button.pop("icon_custom_emoji_id")

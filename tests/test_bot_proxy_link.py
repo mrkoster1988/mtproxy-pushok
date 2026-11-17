@@ -28,7 +28,7 @@ class ProxyLinkTests(unittest.TestCase):
         p = patch('publish_proxy_link.os.fchown')
         p.start(); self.addCleanup(p.stop)
 
-    def test_config_to_welcome_and_button_without_admin_data(self):
+    def test_config_to_welcome_and_single_advertise_button_without_admin_data(self):
         self.assertTrue(publish_proxy_link(self.root, self.env))
         url = proxy_link.current_proxy_url()
         self.assertIn('server=proxy.example.org&port=8443&secret=dd' + 'a' * 32, url)
@@ -39,11 +39,11 @@ class ProxyLinkTests(unittest.TestCase):
         payload, _ = main.response_for(update)
         self.assertIn(url, payload['text'])
         self.assertNotIn('разрабатывается', payload['text'])
-        self.assertTrue(any(b.get('url') == url for row in payload['reply_markup']['inline_keyboard'] for b in row))
-        rows=payload['reply_markup']['inline_keyboard']
-        self.assertEqual(rows[0][0]['style'],'danger')
-        self.assertFalse(any(b.get('callback_data')=='tariffs' for row in rows for b in row))
-        self.assertEqual([b.get('url') or b.get('callback_data') for b in rows[-1]],[main.CHANNEL_URL,'help'])
+        rows = payload['reply_markup']['inline_keyboard']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows[0]), 1)
+        self.assertEqual(rows[0][0]['style'], 'success')
+        self.assertEqual(rows[0][0]['callback_data'], 'advertise')
         calls = []
         nav = Navigation(lambda token, method, body: calls.append((method, body)) or {'message_id': len(calls)})
         nav.deliver('fixture', update, payload)
