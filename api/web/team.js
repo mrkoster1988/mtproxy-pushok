@@ -15,7 +15,7 @@ window.pushokTeam=(()=>{
   const fields=el('fieldset'),title=el('legend','Права пользователя'),select=el('select'),selectLabel=el('label','Роль пользователя'),hint=el('p',undefined,'muted'),feedback=el('p',undefined,'muted'),actions=el('div',undefined,'role-actions');
   select.setAttribute('aria-label','Роль пользователя');for(const role of ['advertiser','operator',...(me.role==='admin'?['admin']:[])])option(select,role,roles[role]);select.value=user.role;selectLabel.append(select);
   const descriptions={advertiser:'Собственные каналы, заявки и оплаты.',operator:'Модерация, назначение операторов и блокировка пользователей. Без управления администраторами и чужими балансами.',admin:'Полный доступ к настройкам, ролям и балансам пользователей.'};
-  const save=el('button','Сохранить права');save.type='submit';save.className='primary';
+  const save=window.pushokViews.iconAction(el('button'),'check','Сохранить права');save.type='submit';save.className='primary';
   const cancel=button('Отмена',()=>close()),block=button('',async()=>{
    if(!current())return;const blocked=!user.blocked_at;
    if(!confirm((blocked?'Заблокировать':'Разблокировать')+' доступ пользователю '+window.pushokUsers.caption(user)+'?'+(blocked?' Вход в кабинет и действия через бота будут закрыты. Баланс и оплаченные кампании сохранятся.':'')))return;
@@ -23,8 +23,9 @@ window.pushokTeam=(()=>{
    try{await api('/admin/team/access',{method:'PUT',body:{telegram_user_id:user.telegram_user_id,blocked}});if(!current())return;user.blocked_at=blocked?new Date().toISOString():null;paint();close();notice(blocked?'Пользователь заблокирован.':'Доступ восстановлен. Пользователю нужно войти заново.',true);}
    catch(e){if(current())feedback.textContent=e.message;}finally{fields.disabled=false;}
   });
+  window.pushokViews.iconAction(cancel,'back','Отмена');
   block.className='role-block';feedback.setAttribute('role','status');
-  function update(){hint.textContent=descriptions[select.value];save.disabled=select.value===user.role;block.textContent=user.blocked_at?'Разблокировать':'Заблокировать';}
+  function update(){hint.textContent=descriptions[select.value];save.disabled=select.value===user.role;window.pushokViews.iconAction(block,'power',user.blocked_at?'Разблокировать':'Заблокировать');}
   function close(){editor.hidden=true;badge.setAttribute('aria-expanded','false');badge.focus({preventScroll:true});}
   badge.addEventListener('click',()=>{if(!current())return;if(!editor.hidden){close();return;}select.value=user.role;feedback.textContent='';update();editor.hidden=false;badge.setAttribute('aria-expanded','true');select.focus({preventScroll:true});editor.scrollIntoView({block:'nearest'});});
   select.addEventListener('change',update);editor.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();}});

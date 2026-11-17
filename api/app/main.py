@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.67",
+    version="1.68",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -642,6 +642,8 @@ def create_campaign(
 ) -> CampaignResponse:
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            from .community import require_verified
+            require_verified(connection,user["id"])
             row = connection.execute(
                 """
                 INSERT INTO campaigns (
@@ -3154,3 +3156,6 @@ app.include_router(verified_profiles_router(lambda: DATABASE_URL, get_current_us
 
 from .hall_of_fame import router_for as hall_router
 app.include_router(hall_router(lambda: DATABASE_URL, get_current_user, require_admin))
+
+from .community import router_for as community_router
+app.include_router(community_router(lambda: DATABASE_URL,get_current_user))

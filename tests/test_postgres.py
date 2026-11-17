@@ -58,6 +58,7 @@ def _approved_test_postgres():
 @unittest.skipUnless(_approved_test_postgres(),
     "Только тестовый PostgreSQL с PUSHOK_TEST_DB_ALLOWED=1 и TEST_ADMIN_DSN")
 class PostgresIntegration(unittest.TestCase):
+    verified_fixture = True  # Сценарии заказов выполняются от подтверждённых пользователей.
     @classmethod
     def setUpClass(cls):
         cls.admin_dsn = os.environ["TEST_ADMIN_DSN"]
@@ -84,6 +85,13 @@ class PostgresIntegration(unittest.TestCase):
         with psycopg.connect(cls.dsn) as conn:
             for migration in sorted((ROOT / "database").glob("*.sql")):
                 conn.execute(migration.read_text())
+        if getattr(cls,'verified_fixture',False):
+            # Только тестовые данные. Реальная верификация проверяется отдельным набором.
+            with psycopg.connect(cls.dsn) as conn:
+                conn.execute("""CREATE FUNCTION fixture_verified_user() RETURNS trigger LANGUAGE plpgsql AS $$
+                    BEGIN INSERT INTO verified_profiles(user_id,phone_number,phone_verified_at)
+                    VALUES(NEW.id,'+79990000000',now()); RETURN NEW; END $$;
+                    CREATE TRIGGER fixture_verified_user AFTER INSERT ON users FOR EACH ROW EXECUTE FUNCTION fixture_verified_user()""")
         cls.client = TestClient(main.app)
         cls.channel_lookup_fixture = patch('app.public_channels.lookup', side_effect=public_channel_fixture)
         cls.channel_lookup_fixture.start()

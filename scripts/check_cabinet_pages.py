@@ -1462,6 +1462,7 @@ def main():
                 # Главная показывает тот же серверный остаток; ошибка API не превращается в ноль.
                 go(advertiser,'dashboard')
                 expect(advertiser.locator('#dashboard-wallet')).to_have_count(0)
+                expect(advertiser.locator('.home-leaders')).to_have_attribute('aria-busy','false')
                 # Регрессия видео: задержанный ответ не меняет геометрию и DOM карточек.
                 expect(advertiser.locator('#dashboard-referral .referral-overview')).to_have_attribute('aria-busy','false')
                 advertiser.evaluate("""() => {
@@ -1617,8 +1618,8 @@ def main():
                 expect(advertiser.get_by_label('Автоматически оплачивать мои одобренные заявки',exact=True)).not_to_be_checked()
                 # Персональный подарок и реальная выгрузка журнала активаций.
                 go(outsider,'profile')
-                expect(outsider.locator('.profile-identity')).to_contain_text('Telegram ID: 99116003')
-                outsider.get_by_text('Сведения об аккаунте',exact=True).click()
+                expect(outsider.locator('.profile-personal')).to_contain_text('Telegram ID: 99116003')
+                outsider.locator('.profile-personal>summary').click()
                 expect(outsider.get_by_role('button',name='Скопировать ID',exact=True)).to_be_visible()
                 go(admin,'wallet')
                 open_wallet_tools(admin)

@@ -211,6 +211,8 @@ def create_bot_campaign_draft(
                 (payload.telegram_user_id,),
             ).fetchone()
             if user['blocked_at'] is not None:raise HTTPException(403,'user_blocked')
+            from .community import require_verified
+            require_verified(connection,user['id'])
             connection.execute(
                 """
                 INSERT INTO sponsor_channels (owner_user_id, telegram_url, title)

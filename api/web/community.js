@@ -1,0 +1,53 @@
+'use strict';
+window.pushokCommunity=(()=>{
+ const cache=new Map();let session='',activeAt=Date.now(),returnRoute='hall';
+ const names=u=>[u.first_name,u.last_name].filter(Boolean).join(' ')||u.username||'Участник';
+ const v=()=>window.pushokViews;
+ async function person(id){if(session!==token){cache.clear();session=token;}const old=cache.get(id);if(old&&Date.now()-old.at<60000)return old.promise;const promise=api('/community/users/'+id);cache.set(id,{at:Date.now(),promise});try{return await promise;}catch(e){cache.delete(id);throw e;}}
+ function decorate(node,id){
+  if(!id)return;node.removeAttribute('aria-hidden');node.setAttribute('role','link');node.tabIndex=0;node.setAttribute('aria-label','Открыть профиль');
+  const go=e=>{e.preventDefault();e.stopPropagation();returnRoute=location.hash.replace(/^#\/?/,'')||'dashboard';window.pushokProfiles.setBackRoute(returnRoute);window.cabinet.go(id===me?.id?'profile':['admin','operator'].includes(me?.role)?'user/'+id:'member/'+id);};
+  node.addEventListener('click',go);node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')go(e);});
+  node.dataset.userId=id;updateAvatar(node,id);
+ }
+ function updateAvatar(node,id){
+  const s=token;void person(id).then(data=>{if(s!==token)return;
+   if(!node.dataset.hallRank){node.classList.remove('hall-frame','hall-gold','hall-silver','hall-bronze','hall-teal');window.pushokHall.frame(node,data.frame_rank);}
+   node.classList.toggle('user-online',data.online===true);
+   if(data.online!==null)node.title=data.online?'В приложении сейчас':'Не в сети';
+   node.classList.toggle('birthday-avatar',data.birthday_today);if(data.birthday_today)node.title='Сегодня день рождения';
+  }).catch(()=>{});
+ }
+
+ async function show(target,id){const s=token;target.replaceChildren(el('p','Загрузка…','muted'));try{const u=await person(id);if(s!==token||!target.isConnected)return;
+   const card=el('section',undefined,'profile-identity user-identity public-person'),row=el('div',undefined,'person-line'),copy=el('div',undefined,'person-copy');copy.append(el('strong',names(u),'person-name'));if(u.phone_verified)copy.firstChild.append(window.pushokVerification.badge());
+   if(u.online!==null)copy.append(el('small',u.online?'Онлайн в приложении':'Не в сети','muted'));
+   row.append(v().userAvatar(id,names(u)),copy);card.append(row);const role=el('span',u.is_owner?'Владелец':{admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[u.role],'profile-role');role.dataset.role=u.role;card.append(role);target.replaceChildren(card);
+  }catch(e){if(s===token)target.replaceChildren(el('p',e.message,'empty'));}}
+ function invited(id,count){const box=el('details',undefined,'panel profile-invited-block'),head=el('summary'),list=el('div',undefined,'invitees');head.append(v().icon('users'),el('span','Приглашено'),el('strong',String(count)));box.append(head,list);let loaded=false,page=0,busy=false;const s=token;
+  async function load(){if(busy)return;busy=true;try{const data=await api('/community/users/'+id+'/invited?page='+page);if(s!==token||!box.isConnected)return;
+   list.querySelector('.invite-more')?.remove();if(!data.items.length&&!page)list.append(el('p','Пока никого','muted'));
+   for(const u of data.items){const row=el('div',undefined,'person-line invitee');row.append(v().userAvatar(u.id,names(u)),el('span',names(u)));list.append(row);}
+   loaded=true;if(data.more){const next=v().iconAction(button('',()=>{page++;void load();}),'chevron','Ещё приглашённые');next.classList.add('invite-more');list.append(next);}
+  }catch(e){list.replaceChildren(el('p',e.message,'muted'),button('Повторить',load));}finally{busy=false;}}
+  box.addEventListener('toggle',()=>{if(box.open&&!loaded)void load();});return box;
+ }
+ async function leaders(target){const s=token;target.setAttribute('aria-busy','true');try{const data=await Promise.all(['invited','paid_referrals','spend','paid_campaigns'].map(metric=>api('/hall?kind=month&metric='+metric)));if(s!==token||!target.isConnected)return;
+  const key=JSON.stringify(data.map(d=>d.rows.find(r=>r.rank===1)?.user_id));if(target.dataset.leaders===key)return;target.dataset.leaders=key;const ids=new Set();target.replaceChildren();for(const d of data){const row=d.rows.find(r=>r.rank===1);if(!row||ids.has(row.user_id))continue;ids.add(row.user_id);const avatar=v().userAvatar(row.user_id,row.first_name||'Участник');window.pushokHall.frame(avatar,1);target.append(avatar);}target.hidden=!ids.size;
+ }catch{target.hidden=true;}finally{target.setAttribute('aria-busy','false');}}
+ function ownerTools(target,uid,data,reload){if(!me?.is_owner)return;
+  const box=el('details',undefined,'owner-personal-tools'),head=el('summary');head.append(v().icon('edit'));head.title='Изменить или перенести сведения';head.setAttribute('aria-label',head.title);box.append(head);target.append(box);
+  const form=el('form'),phone=el('input'),birthday=el('input'),year=el('input');phone.value=data.phone_number||'';phone.placeholder='+79991234567';birthday.placeholder='ДД.ММ';birthday.value=data.birthday?[data.birthday.day,data.birthday.month].map(x=>String(x).padStart(2,'0')).join('.'):'';year.type='number';year.value=data.birthday?.year||'';year.placeholder='Необязательно';
+  for(const [label,input] of [['Телефон',phone],['День и месяц',birthday],['Год',year]]){const l=el('label',label);l.append(input);form.append(l);}
+  const save=v().iconAction(el('button'),'check','Сохранить сведения');save.type='submit';const status=el('p',undefined,'muted');status.setAttribute('role','status');form.append(save,status);box.append(form);
+  form.onsubmit=async e=>{e.preventDefault();save.disabled=true;try{let b=null;if(birthday.value){const parts=birthday.value.split('.');b={day:Number(parts[0]),month:Number(parts[1]),year:year.value?Number(year.value):null};}await api('/community/users/'+uid+'/personal',{method:'PUT',body:{phone_number:phone.value.trim()||null,birthday:b}});await reload();}catch(err){status.textContent=err.message;}finally{save.disabled=false;}};
+  const transfer=el('form'),dest=el('input');dest.inputMode='numeric';dest.required=true;dest.pattern='[0-9]+';const l=el('label','Telegram ID нового аккаунта');l.append(dest);transfer.append(l,el('small','Только личные сведения. Новый аккаунт должен уже войти в приложение и не иметь заполненных сведений. Баланс и кампании остаются на старом аккаунте.','muted'));
+  const move=v().iconAction(el('button'),'share','Перенести сведения');move.type='submit';transfer.append(move);box.append(transfer);
+  transfer.onsubmit=async e=>{e.preventDefault();if(!confirm('Перенести личные сведения на Telegram ID '+dest.value+'? Старый аккаунт потеряет верификацию.'))return;move.disabled=true;try{await api('/community/users/'+uid+'/personal/transfer',{method:'POST',body:{target_telegram_id:Number(dest.value)}});await reload();}catch(err){status.textContent=err.message;}finally{move.disabled=false;}};
+ }
+ for(const event of ['pointerdown','keydown','touchstart'])document.addEventListener(event,()=>{activeAt=Date.now();},{passive:true});
+ async function heartbeat(){if(!token||!me||me.is_owner||document.hidden||Date.now()-activeAt>120000)return;try{await api('/community/presence',{method:'POST'});}catch{}}
+ setInterval(()=>{void heartbeat();if(!document.hidden&&token)document.querySelectorAll('.user-avatar[data-user-id]').forEach(n=>{if(n.getClientRects().length)updateAvatar(n,n.dataset.userId);});},60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){activeAt=Date.now();void heartbeat();}});setTimeout(heartbeat,3000);
+ Object.assign(errors,{personal_details_locked:'Сведения уже сохранены. Изменить их может только владелец.',phone_verification_required:'Перед созданием кампании подтвердите номер в профиле.',personal_transfer_target_filled:'У нового аккаунта уже есть личные сведения.',personal_transfer_empty:'Нет сведений для переноса.',personal_transfer_same_user:'Выберите другой аккаунт.'});
+ return {decorate,show,invited,leaders,ownerTools,backRoute:()=>returnRoute};
+})();

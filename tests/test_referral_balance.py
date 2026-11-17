@@ -26,6 +26,7 @@ class ReferralSettingsValidation(unittest.TestCase):
 
 @unittest.skipUnless(fixture._approved_test_postgres(), 'Нужен отдельный тестовый PostgreSQL')
 class ReferralBalanceIntegration(unittest.TestCase):
+    verified_fixture = True
     setUpClass = classmethod(fixture.PostgresIntegration.setUpClass.__func__)
     tearDownClass = classmethod(fixture.PostgresIntegration.tearDownClass.__func__)
     request = fixture.PostgresIntegration.request
