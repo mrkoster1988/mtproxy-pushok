@@ -45,7 +45,7 @@ window.pushokAI=(()=>{
    const keyState=el('p',saved.source==='invalid'?'Не удалось прочитать настройки. Введите ключ заново.':saved.key_saved?(saved.source==='environment'?'Используется ключ из настроек сервера.':'Ключ хранится на сервере.'):'Ключ ещё не добавлен.','muted');fields.append(keyState);
    const help=window.pushokViews.disclosure('Как работает ИИ',[
     el('p','ИИ предлагает тематику по названию, описанию и доступным публичным публикациям канала. Результат можно изменить или оставить поле пустым.','muted'),
-    el('p','Запросы OpenAI API, включая проверку, оплачиваются в вашем API-проекте. Личные данные пользователей и закрытые переписки не передаются. Если сервис недоступен, работают подсказки по ключевым словам.','muted')
+    el('p','Запросы OpenAI API, включая проверку, оплачиваются в вашем API-проекте. Сведения из профилей пользователей и закрытые переписки не передаются. Если сервис недоступен, работают подсказки по ключевым словам.','muted')
    ],'inline-help');
    const link=el('a','Получить ключ OpenAI API ↗');link.href='https://platform.openai.com/api-keys';link.target='_blank';link.rel='noopener noreferrer';help.append(link);
    const status=el('p',saved.checked_at?'Последняя успешная проверка: '+date(saved.checked_at):'Подключение ещё не проверено.','ai-settings-status');status.id='channel-ai-status';status.setAttribute('role','status');status.setAttribute('aria-live','polite');
@@ -55,7 +55,7 @@ window.pushokAI=(()=>{
    form.addEventListener('input',()=>{dirty=true;status.textContent='Есть несохранённые изменения.';});
    function payload(){const body={enabled:enabled.checked,model:model.value.trim(),revision:saved.revision};if(key.value.trim())body.key=key.value.trim();return body;}
    async function perform(kind){
-    if(busy||!valid()||!form.reportValidity())return;
+    if(busy||!valid()||(kind!=='remove'&&!form.reportValidity()))return;
     const body=kind==='remove'?{enabled:false,model:saved.model,revision:saved.revision,clear_key:true}:payload();
     if(kind==='remove'&&!window.confirm('Отключить ИИ и удалить сохранённый ключ? Для подключения потребуется ввести ключ снова.'))return;
     busy=true;fields.disabled=true;reload.hidden=true;status.textContent=kind==='check'?'Проверяем ключ и модель…':body.enabled?'Проверяем и сохраняем…':'Сохраняем…';

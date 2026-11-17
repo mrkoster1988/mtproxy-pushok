@@ -51,6 +51,8 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output):
             assert admin.locator('#'+name).bounding_box()['height']>=44
         if width==390:panel.screenshot(path=str(output/'47-channel-ai-settings.png'))
     admin.set_viewport_size({'width':390,'height':844})
+    # Удаление сохранённого ключа не зависит от ошибок в несохранённом черновике.
+    admin.locator('#channel-ai-model').fill('')
     admin.once('dialog',lambda dialog:dialog.accept())
     admin.locator('#channel-ai-remove').click()
     expect(panel.locator('.ai-state')).to_have_text('Выключен')
