@@ -85,6 +85,8 @@ def check_moderation_layout(browser, base, output, failures, dsn):
             }
             const steps=[...card.querySelectorAll('.approval-progress li')].map(n=>n.getBoundingClientRect());
             if(steps.some(r=>Math.abs(r.y-steps[0].y)>1))throw Error('Перенос этапов');
+            const finish=card.querySelector('.approval-progress li:last-child>span:last-child');
+            if(finish.getBoundingClientRect().height>parseFloat(getComputedStyle(finish).lineHeight)+1)throw Error('Разорвано название последнего этапа');
         }''')
         for action in card.locator('button.icon-action:visible').all():
             assert action.get_attribute('aria-label')
