@@ -84,6 +84,7 @@ window.pushokControls=(()=>{
   if(initialQuery||alwaysSearch)search.focus();else focusOption(list.querySelector('[aria-selected=true]:not(:disabled)')||options()[0]);
  }
  function enhance(){queued=false;
+  fieldActions($('tariff-admin-select'),[$('tariff-admin-new')].filter(Boolean));
   for(const select of document.querySelectorAll('select')){if(connected.has(select)||select.hidden||select.multiple||select.size>1||select.id==='order-topic')continue;connected.add(select);select.classList.add('pushok-select');select.setAttribute('aria-haspopup','dialog');select.setAttribute('aria-expanded','false');
    select.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();open(select);});select.addEventListener('mousedown',e=>e.preventDefault());select.addEventListener('click',e=>{e.preventDefault();if(active?.select!==select)open(select);});
    select.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||(e.altKey&&!['ArrowDown','ArrowUp'].includes(e.key)))return;if(['Enter',' ','ArrowDown','ArrowUp','F4'].includes(e.key)){e.preventDefault();open(select);}else if(e.key.length===1){e.preventDefault();open(select,{query:e.key});}});
