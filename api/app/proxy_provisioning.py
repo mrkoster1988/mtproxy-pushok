@@ -37,6 +37,32 @@ READINESS = {
 }
 
 
+def queue_report(raw):
+    """В публичном отчёте только счётчики, без заявок, каналов и секретов."""
+    try:
+        fields = ('node_count', 'campaign_count', 'delayed_count', 'max_delay_seconds', 'wait_minutes')
+        result = {key: raw[key] for key in fields}
+        if any(type(value) is not int or value < 0 for value in result.values()):
+            return None
+        if (result['node_count'] > 1000000 or not 0 <= result['delayed_count'] <= result['campaign_count'] <= 100
+                or result['max_delay_seconds'] > 315537897600 or not 90 <= result['wait_minutes'] <= 10080
+                or type(raw['limited']) is not bool):
+            return None
+        if ((not result['node_count'] or not result['campaign_count']) and
+                (result['delayed_count'] or result['max_delay_seconds'])):
+            return None
+        if bool(result['delayed_count']) != (result['max_delay_seconds'] >= result['wait_minutes']*60):
+            return None
+        result['limited'] = raw['limited']
+        # Причина выводится из проверенных чисел, а не из произвольного текста агента.
+        result['reason'] = ('no_nodes' if not result['node_count'] else
+                            'no_campaigns' if not result['campaign_count'] else
+                            'delayed' if result['delayed_count'] else 'below_threshold')
+        return result
+    except (KeyError, TypeError):
+        return None
+
+
 def readiness_report(policy_revision=None):
     from . import control
     raw = control.read('proxy-readiness.json', {})
@@ -54,6 +80,7 @@ def readiness_report(policy_revision=None):
                       current_policy=policy_revision is not None and raw.get('policy_revision')==str(policy_revision))
         if raw.get('source') in ('manual', 'scheduled'):
             result['source'] = raw['source']
+        result['queue'] = queue_report(raw.get('queue')) if checks['api'] == 'ready' else None
         retry = datetime.fromisoformat(raw.get('retry_at', '')) if raw.get('retry_at') else None
         if retry and checks['telegram']=='telegram_flood_wait' and 0 < (retry-datetime.now(timezone.utc)).total_seconds() <= 2147483648:
             result['retry_at'] = retry.isoformat()
@@ -89,7 +116,7 @@ def public(conn):
         n.name,n.host,n.port,n.status FROM proxy_provisioning_jobs j
         JOIN proxy_nodes n ON n.id=j.proxy_node_id ORDER BY j.created_at DESC LIMIT 20''').fetchall()
     agent = control.read('proxy-provisioner.json',{})
-    if not isinstance(agent,dict) or agent.get('code') not in ERRORS | {'disabled','ready','waiting','provisioning','active','agent_busy','no_demand','limit_reached','daily_limit','evaluation_cooldown','ai_unavailable','retry_later'}:
+    if not isinstance(agent,dict) or agent.get('code') not in ERRORS | {'disabled','ready','waiting','wait','provisioning','active','agent_busy','no_demand','limit_reached','daily_limit','evaluation_cooldown','ai_unavailable','retry_later'}:
         agent = {}
     try:
         age = (datetime.now(timezone.utc)-datetime.fromisoformat(agent['checked_at'])).total_seconds()
@@ -155,41 +182,56 @@ def router_for(dsn, require_owner):
     return router
 
 
-def demand(conn, host, minutes, aliases=()):
-    """Только задержка из-за занятых слотов. Ошибки канала не создают спрос."""
+def queue_summary(conn, host, minutes, aliases=()):
+    """Та же очередь для диагностики и решения. Только задержка из-за слотов."""
     nodes = conn.execute('''SELECT id FROM proxy_nodes WHERE host=ANY(%s) AND status='active'
         AND archived_at IS NULL AND (target_engine IS NULL OR target_engine='official_mtproxy')''', ([host,*aliases],)).fetchall()
-    if not nodes:
-        return 0
     now = datetime.now(timezone.utc)
     campaigns = conn.execute('''SELECT c.* FROM campaigns c JOIN sponsor_channels ch ON ch.id=c.channel_id
         WHERE c.moderation_status='approved' AND c.payment_status='verified'
         AND NOT c.auto_schedule_paused AND c.archived_at IS NULL AND ch.archived_at IS NULL
         AND ch.telegram_channel_id IS NOT NULL
+        AND (c.requested_start_at IS NULL OR c.requested_start_at <= %s)
         AND (c.placement_status='not_scheduled' OR (c.placement_status='scheduled' AND c.auto_schedule_managed))
         AND NOT EXISTS(SELECT 1 FROM placement_observations o WHERE o.campaign_id=c.id)
         AND NOT EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied')
         AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.channel_id=c.channel_id
             AND j.phase<>'done' AND j.error_code IS NOT NULL)
-        ORDER BY c.created_at,c.id LIMIT 100''').fetchall()
-    delayed = 0
-    for campaign in campaigns:
+        ORDER BY c.created_at,c.id LIMIT 101''', (now + timedelta(hours=24),)).fetchall()
+    result = dict(node_count=len(nodes), campaign_count=min(len(campaigns), 100),
+                  delayed_count=0, max_delay_seconds=0, wait_minutes=minutes, limited=len(campaigns)>100)
+    if not nodes:
+        return queue_report(result)
+    node_ids = [node['id'] for node in nodes]
+    # Один снимок занятости вместо отдельного SQL-запроса для каждой пары узел/заявка.
+    rows = conn.execute('''SELECT proxy_node_id,id AS campaign_id,scheduled_start_at AS left_at,
+        scheduled_end_at AS right_at FROM campaigns
+        WHERE proxy_node_id=ANY(%s) AND placement_status IN ('scheduled','active')
+        UNION ALL SELECT proxy_node_id,campaign_id,starts_at,ends_at FROM slot_holds
+        WHERE proxy_node_id=ANY(%s) AND expires_at>now()''', (node_ids, node_ids)).fetchall()
+    occupied = {node_id: [] for node_id in node_ids}
+    for row in rows:
+        occupied[row['proxy_node_id']].append(row)
+    for campaign in campaigns[:100]:
         start = max(now, campaign['requested_start_at'] or now)
-        # Не расширяем сеть под далёкие будущие заявки.
-        if start > now + timedelta(hours=24):
-            continue
         slots = []
         for node in nodes:
-            occupied = conn.execute('''SELECT scheduled_start_at,scheduled_end_at FROM campaigns
-                WHERE proxy_node_id=%s AND id<>%s AND placement_status IN ('scheduled','active')
-                UNION ALL SELECT starts_at,ends_at FROM slot_holds
-                WHERE proxy_node_id=%s AND campaign_id<>%s AND expires_at>now()''',
-                (node['id'],campaign['id'],node['id'],campaign['id'])).fetchall()
             slots.append(earliest_gap(start,timedelta(seconds=campaign['duration_seconds_snapshot']),
-                [(r['scheduled_start_at'],r['scheduled_end_at']) for r in occupied]))
-        if min(slots) - start >= timedelta(minutes=minutes):
-            delayed += 1
-    return delayed
+                [(r['left_at'],r['right_at']) for r in occupied[node['id']] if r['campaign_id'] != campaign['id']]))
+        delay = min(slots) - start
+        result['max_delay_seconds'] = max(result['max_delay_seconds'], int(delay.total_seconds()))
+        if delay >= timedelta(minutes=minutes):
+            result['delayed_count'] += 1
+    return queue_report(result)
+
+
+def demand(conn, host, minutes, aliases=()):
+    return queue_summary(conn, host, minutes, aliases)['delayed_count']
+
+
+def host_aliases(request):
+    alias = request.get('primary_host')
+    return [alias] if isinstance(alias, str) and re.fullmatch('[a-zA-Z0-9.-]{1,253}', alias) else []
 
 
 def advise(metrics, config):
@@ -238,6 +280,7 @@ def handle(conn, request):
                     'daily_limit' if any(datetime.now(timezone.utc)-j['created_at']<timedelta(days=1) for j in jobs) else 'ready')
         reserved = conn.execute('SELECT port FROM proxy_nodes WHERE host=%s', (host,)).fetchall()
         return dict(first_port=cfg['first_port'], max_instances=cfg['max_instances'], capacity=capacity,
+                    queue=queue_summary(conn, host, cfg['wait_minutes'], host_aliases(request)),
                     policy_revision=str(cfg['revision']),
                     reserved_ports=[r['port'] for r in reserved],
                     policy='disabled' if not cfg['enabled'] else 'ai_unavailable' if not ai_ready else
@@ -342,8 +385,7 @@ def handle(conn, request):
         conn.execute("UPDATE proxy_provisioning_settings SET evaluated_at=now(),decision='checking' WHERE singleton")
         # Короткий запрос модели проходит после сохранения ограничения частоты.
         conn.commit()
-        alias = request.get('primary_host')
-        aliases = [alias] if isinstance(alias,str) and re.fullmatch('[a-zA-Z0-9.-]{1,253}',alias) else []
+        aliases = host_aliases(request)
         delayed = demand(conn,host,cfg['wait_minutes'],aliases)
         config = channel_ai_connection.active('proxy_provisioning')
         decision = 'no_demand'
@@ -357,8 +399,10 @@ def handle(conn, request):
         current = configuration(conn)
         if current['revision'] != cfg['revision'] or not allowed(conn,current) or config != channel_ai_connection.active('proxy_provisioning'):
             return {'state':'wait','reason':'policy_changed'}
+        if decision == 'create_proxy' and not demand(conn,host,cfg['wait_minutes'],aliases):
+            decision = 'no_demand'
         conn.execute('UPDATE proxy_provisioning_settings SET decision=%s WHERE singleton',(decision,))
-        if decision != 'create_proxy' or not demand(conn,host,cfg['wait_minutes'],aliases):
+        if decision != 'create_proxy':
             return {'state':'wait','reason':decision}
         if conn.execute("SELECT 1 FROM proxy_provisioning_jobs WHERE state<>'active' OR created_at>now()-interval '1 day'").fetchone():
             return {'state':'wait'}

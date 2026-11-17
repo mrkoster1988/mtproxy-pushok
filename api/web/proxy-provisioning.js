@@ -1,10 +1,11 @@
 'use strict';
 window.pushokProvisioning=(()=>{
  let generation=0,controller=null,dirty=false,busy=false,session='';
- const labels={disabled:'Выключено',no_demand:'Свободных слотов достаточно',waiting:'Ожидаем проверку очереди',
+ const labels={disabled:'Выключено',no_demand:'Дополнительный прокси пока не требуется',waiting:'Ожидаем проверку очереди',
+  wait:'ИИ решил подождать следующей оценки очереди',
   provisioning:'Готовим новый прокси',active:'Прокси создан',ready:'Агент готов',
   limit_reached:'Достигнут лимит или требуется проверка ошибки',daily_limit:'Не более одного нового прокси в сутки',
-  evaluation_cooldown:'Следующая оценка очереди — через 15 минут',ai_unavailable:'ИИ не ответил — повторим позже',
+  evaluation_cooldown:'Ожидаем следующую оценку очереди',ai_unavailable:'ИИ не ответил — повторим позже',
   resources_low:'Недостаточно свободных ресурсов VPS',owner_unavailable:'Подключите аккаунт владельца Telegram',
   port_busy:'Порт занят',host_unavailable:'Проверьте установку агента на VPS',
   registration_uncertain:'Telegram не подтвердил создание. Проверьте /myproxies перед повтором.',
@@ -63,6 +64,25 @@ window.pushokProvisioning=(()=>{
   help.append(summary,el('p','Команда обновит отчёт без создания прокси и обращения к ИИ или Telegram.','muted'),el('code','sudo python3 /opt/mtproxy-pushok/scripts/proxy_provisioner.py check'));
   card.append(help);return card;
  }
+ function queueView(report,saved){
+  const card=el('section',undefined,'proxy-readiness');card.id='proxy-queue';card.append(el('h4','Очередь кампаний'));
+  const queue=report?.queue;
+  if(!report?.recent||!report.current_policy||report.checks.api!=='ready'||!queue||queue.wait_minutes!==saved.wait_minutes){
+   card.append(el('p','Ожидаем свежую проверку очереди.','muted'));return card;
+  }
+  const reasons={no_nodes:'На этом VPS нет активного узла для оценки очереди.',
+   no_campaigns:'Нет подходящих заявок на ближайшие 24 часа.',
+   below_threshold:queue.max_delay_seconds===0?'Подходящие заявки помещаются в свободные слоты.':'Задержка очереди ниже порога автосоздания.',
+   delayed:'Задержка достигла порога для рассмотрения нового прокси.'};
+  card.append(el('p',reasons[queue.reason],'muted'));
+  const details=el('details'),summary=el('summary','Расчёт очереди');details.append(summary);
+  details.append(el('p','Проверено заявок: '+queue.campaign_count+' · Активных узлов VPS: '+queue.node_count,'muted'));
+  details.append(el('p','Заявок с задержкой от '+queue.wait_minutes+' мин: '+queue.delayed_count,'muted'));
+  if(queue.node_count&&queue.campaign_count)details.append(el('p','Наибольшая задержка: '+Math.floor(queue.max_delay_seconds/60)+' мин','muted'));
+  if(queue.limited)details.append(el('p','Показан расчёт первых 100 подходящих заявок; очередь больше этого списка.','muted'));
+  details.append(el('p','Проверено: '+date(report.checked_at),'muted'),el('p','Учитываются одобренные и оплаченные заявки с подтверждённым каналом. Заявки на паузе, с ошибкой привязки или уже начатым показом исключены. Создание также зависит от разрешений, ресурсов и лимитов.','muted'));
+  card.append(details);return card;
+ }
  function reset(){generation++;controller?.abort();controller=null;dirty=false;busy=false;session='';$('proxy-provisioning-settings')?.replaceChildren();}
  async function load(force=false){
   const host=$('proxy-provisioning-settings');if(!host||!me?.is_owner){reset();return;}
@@ -90,6 +110,10 @@ window.pushokProvisioning=(()=>{
    status.textContent=!saved.enabled?'Автоматическое создание выключено в настройках.':!saved.ai_ready?'В настройках ИИ выше включите разрешение на создание прокси.':!agent?.recent?'Нет свежего отчёта. Ожидаем проверку агента.':!agent.current_policy||agent.code==='disabled'?'Настройки сохранены. Ожидаем проверку новых настроек агентом.':labels[agent.code]||'Проверьте состояние подготовки.';
    if(agent?.checked_at)content.append(el('p','Последний ответ агента: '+date(agent.checked_at),'muted'));
    if(agent?.recent&&agent.retry_at)content.append(el('p','Telegram: следующая попытка после '+date(agent.retry_at),'muted'));
+   if(agent?.recent&&agent.current_policy&&agent.code==='evaluation_cooldown'){
+    const next=Date.parse(saved.evaluated_at)+15*60*1000;
+    if(Number.isFinite(next)&&next>Date.now())content.append(el('p','Следующая оценка — не раньше '+date(new Date(next).toISOString()),'muted'));
+   }
    const actions=el('div',undefined,'ai-settings-actions'),save=el('button','Сохранить','primary'),refresh=el('button','Обновить');save.type='submit';save.id='proxy-provisioning-save';refresh.type='button';refresh.addEventListener('click',()=>load(true));actions.append(save,refresh);fields.append(actions);form.append(fields);
    form.addEventListener('input',()=>{dirty=true;status.textContent='Есть несохранённые изменения.';});
    form.addEventListener('submit',async event=>{
@@ -101,7 +125,7 @@ window.pushokProvisioning=(()=>{
     }catch(error){if(valid())status.textContent=error.code==='provisioning_ai_required'?'Сначала включите ИИ и разрешение на создание прокси.':error.code==='provisioning_changed'?'Настройки изменились в другом окне. Нажмите «Обновить».':'Не удалось сохранить настройки.';}
     finally{if(valid()){busy=false;fields.disabled=false;}}
    });
-   content.append(info,form,status,readinessView(saved.readiness,saved));
+   content.append(info,form,status,queueView(saved.readiness,saved),readinessView(saved.readiness,saved));
    const jobs=el('div',undefined,'proxy-provisioning-jobs');
    for(const job of saved.jobs){
     const card=el('article',undefined,'proxy-provisioning-job');

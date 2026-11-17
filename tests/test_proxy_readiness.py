@@ -24,6 +24,7 @@ class ReadinessTests(unittest.TestCase):
         self.owner = dict(enabled=True, helper_available=True, session_saved=True, state='connected')
         self.exchange = self.start(patch.object(host, 'exchange', return_value=self.cfg))
         self.start(patch.object(host, 'primary_host', return_value='8.8.8.8'))
+        self.start(patch.object(host, 'primary_alias', return_value='8.8.8.8'))
         self.resources = self.start(patch.object(host, 'resource_ready', return_value=True))
         self.ports = self.start(patch.object(host, 'free_port', return_value=True))
         self.native = self.start(patch.object(readiness, 'native_ready', return_value=True))
@@ -44,8 +45,25 @@ class ReadinessTests(unittest.TestCase):
         self.assertEqual(report['source'],'scheduled')
         self.assertLessEqual(datetime.fromisoformat(report['started_at']),datetime.fromisoformat(report['checked_at']))
         self.assertNotIn('private', json.dumps(report)); self.assertNotIn('secret', json.dumps(report))
-        self.exchange.assert_called_once_with(dict(action='inspect', host='8.8.8.8'))
+        self.exchange.assert_called_once_with(dict(action='inspect', host='8.8.8.8', primary_host='8.8.8.8'))
         self.telegram.assert_not_called(); self.provision.assert_not_called(); self.commands.assert_not_called()
+
+    def test_queue_snapshot_preserves_counts_but_not_private_fields(self):
+        self.cfg['queue']=dict(node_count=2,campaign_count=3,delayed_count=1,max_delay_seconds=7500,wait_minutes=120,limited=False,secret='private-token',reason='private-text')
+        with patch.object(host,'primary_alias',return_value='proxy.example.org'):
+            report=readiness.inspect(host)
+        self.assertEqual(self.exchange.call_args.args[0]['primary_host'],'proxy.example.org')
+        self.assertNotIn('private',json.dumps(report))
+        with patch('app.control.read',return_value=report):
+            exposed=api.readiness_report(self.cfg['policy_revision'])
+        self.assertEqual(exposed['queue']['reason'],'delayed')
+        self.assertEqual(exposed['queue']['delayed_count'],1)
+
+    def test_queue_malformed_counters_never_become_a_valid_explanation(self):
+        valid=dict(node_count=1,campaign_count=1,delayed_count=0,max_delay_seconds=0,wait_minutes=120,limited=False)
+        self.assertEqual(api.queue_report(valid|{'reason':'secret','token':'private'})['reason'],'below_threshold')
+        for raw in (None,[],{},valid|{'node_count':True},valid|{'delayed_count':2},valid|{'campaign_count':101},valid|{'max_delay_seconds':-1},valid|{'limited':'no'},valid|{'wait_minutes':0}):
+            self.assertIsNone(api.queue_report(raw),raw)
 
     def test_multiple_failures_are_reported_independently_without_traceback_secrets(self):
         self.native.return_value=False; self.timers.return_value=False; self.resources.return_value=False

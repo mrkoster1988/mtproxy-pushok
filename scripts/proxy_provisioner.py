@@ -54,9 +54,13 @@ def private_read(path):
         return stream.read(8193)
 
 
-def primary_host():
+def primary_alias():
     cfg = parse_env(private_read(BASE/'mtproxy.env'))
-    host = str(ipaddress.IPv4Address(socket.gethostbyname(cfg['MT_PROXY_HOST'])))
+    return cfg['MT_PROXY_HOST'].lower()
+
+
+def primary_host():
+    host = str(ipaddress.IPv4Address(socket.gethostbyname(primary_alias())))
     if not ipaddress.ip_address(host).is_global:
         raise ValueError('invalid_host')
     return host
