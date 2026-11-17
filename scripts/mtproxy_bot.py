@@ -10,10 +10,31 @@ class BotProtocolError(Exception):
 
 
 def username(value):
-    match = re.fullmatch(r'(?:https://t\.me/|@)?([A-Za-z][A-Za-z0-9_]{3,31})/?', value.strip())
+    match = re.fullmatch(r'(?:https://(?:t\.me|telegram\.me)/|@)?([A-Za-z][A-Za-z0-9_]{3,31})/?', value.strip(), re.I)
     if not match:
         raise BotProtocolError('public_channel_required')
     return match[1].lower()
+
+
+async def resolve_channel(client, target):
+    """Проверяем тип и все активные имена; ошибки не маскируются под ожидание."""
+    try:
+        channel = await client.get_entity('@' + target)
+    except Exception as exc:
+        # Сетевые ошибки и FloodWait сохраняют отдельную обработку worker.
+        if isinstance(exc, ValueError) or type(exc).__name__ in ('UsernameInvalidError', 'UsernameNotOccupiedError'):
+            raise BotProtocolError('channel_not_found') from None
+        if type(exc).__name__ in ('ChannelPrivateError', 'ChannelInvalidError'):
+            raise BotProtocolError('channel_access_denied') from None
+        raise
+    if not getattr(channel, 'broadcast', False):
+        raise BotProtocolError('channel_not_broadcast')
+    active = {str(getattr(channel, 'username', '') or '').lower()}
+    active.update(str(item.username).lower() for item in (getattr(channel, 'usernames', None) or [])
+                  if getattr(item, 'active', False))
+    if target not in active:
+        raise BotProtocolError('channel_username_mismatch')
+    return channel
 
 
 def text(message):
@@ -145,19 +166,20 @@ class MTProxyDialog:
         return await self.click(*matches[0])
 
     async def prepare(self, request):
-        target = username(request['channel_url'])
-        channel = await self.client.get_entity('@' + target)
-        if (not getattr(channel, 'broadcast', False) or
-                str(getattr(channel, 'username', '')).lower() != target):
-            raise BotProtocolError('public_channel_required')
+        try:
+            target = username(request['channel_url'])
+        except BotProtocolError:
+            raise BotProtocolError('channel_link_invalid') from None
+        channel = await resolve_channel(self.client, target)
         if request.get('telegram_channel_id') and request['telegram_channel_id'] != channel.id:
             raise BotProtocolError('target_changed')
         card = await self.select(request['hosts'], request['port'])
         tag = card_tag(card, request['hosts'], request['port'])
+        matches = await self.matches_promotion(card, target, channel.id)
         if request['action'] == 'bind':
             if tag != request['expected_tag']:
                 raise BotProtocolError('tag_changed')
-            if promoted_channel(card) != target:
+            if not matches:
                 choices = [b for b in buttons(card) if b.text.strip().lower() in
                            ('set promotion', 'изменить продвижение', 'задать продвижение')]
                 if len(choices) != 1:
@@ -168,7 +190,24 @@ class MTProxyDialog:
                 await self.send('https://t.me/' + target)
             # Повторное открытие карточки обязательно, даже после "Success".
             card = await self.select(request['hosts'], request['port'])
-            if card_tag(card, request['hosts'], request['port']) != tag or promoted_channel(card) != target:
+            if card_tag(card, request['hosts'], request['port']) != tag:
                 raise BotProtocolError('binding_not_verified')
-        return {'tag': tag, 'channel_username': promoted_channel(card),
+            matches = await self.matches_promotion(card, target, channel.id)
+            if not matches:
+                raise BotProtocolError('binding_not_verified')
+        return {'tag': tag, 'channel_username': target if matches else None,
                 'telegram_channel_id': channel.id, 'bot_message_id': card.id}
+
+    async def matches_promotion(self, card, target, channel_id):
+        shown = promoted_channel(card)
+        if shown == target:
+            return True
+        if not shown:
+            return False
+        # Бот может показать основное имя вместо дополнительного. Одного
+        # совпадения названий недостаточно: сверяем числовой ID через Telegram.
+        try:
+            channel = await resolve_channel(self.client, shown)
+        except BotProtocolError:
+            return False
+        return channel.id == channel_id

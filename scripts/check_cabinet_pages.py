@@ -459,6 +459,24 @@ def main():
                     expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=ready]')).to_contain_text('Подтверждения применения текущего плана пока нет')
                     expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Применение текущего плана не подтверждено')
                     expect(draft_tag).to_have_value('d' * 32)
+                    # Отказ проверки канала не должен выглядеть как работающий запуск.
+                    with psycopg.connect(PostgresIntegration.dsn) as connection:
+                        connection.execute('''INSERT INTO telegram_binding_jobs(proxy_node_id,campaign_id,channel_id,channel_url,node_host,node_port,error_code,retry_at)
+                            VALUES(%s,%s,%s,'https://t.me/example_public_channel',%s,%s,'channel_not_broadcast',now()+interval '5 minutes')''',
+                            (fixture['id'],campaign_id,fixture['channel_id'],fixture['host'],fixture['port']))
+                    report_path.write_text(json.dumps(dict(report,code='telegram_binding_pending')))
+                    admin.get_by_role('button',name='Обновить состояние подключения',exact=True).click()
+                    binding_card=admin.locator('.binding-status').filter(has_text='По ссылке находится не канал')
+                    expect(binding_card).to_contain_text('https://t.me/example_public_channel')
+                    expect(binding_card).to_contain_text('Telegram вернул группу или личный аккаунт')
+                    expect(admin.locator('#promotion-agent-report')).to_contain_text('По ссылке находится не канал')
+                    for width in (320,390):
+                        admin.set_viewport_size({'width':width,'height':844})
+                        binding_card.scroll_into_view_if_needed()
+                        assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                    admin.screenshot(path=str(output/'48-binding-channel-error-mobile.png'))
+                    with psycopg.connect(PostgresIntegration.dsn) as connection:
+                        connection.execute('DELETE FROM telegram_binding_jobs WHERE proxy_node_id=%s',(fixture['id'],))
                     admin.set_viewport_size({'width': 1440, 'height': 1000})
                 # ACK агента автоматически активирует кампанию, без формы проверки.
                 refresh(operator)
