@@ -27,14 +27,21 @@ def check_campaign_assistant_ui(new_page, go, output, dsn):
         # Открытие панели само не вызывает платный анализ.
         response={'summary':'<img src=x onerror="window.aiInjected=true"> Нужна проверка публикаций.',
                   'checks':['Проверьте описание канала.'],'next_steps':['Выберите решение в форме.'],
-                  'advertiser_message':'Уточните, пожалуйста, описание канала перед проверкой.'}
+                  'advertiser_message':'Уточните, пожалуйста, описание канала перед проверкой.',
+                  'content_review':{'assessment':'flagged','evidence':[{'source':'post_1','quote':'18+'}]}}
+        post='Описание: <img src=x onerror="window.aiInjected=true"> Материалы 18+, проверьте контекст.'
         raw=json.dumps({'choices':[{'finish_reason':'stop','message':{'content':json.dumps(response)}}]}).encode()
-        with patch.object(topics,'read_url',return_value=raw) as transport:
+        with patch.object(topics,'read_url',return_value=raw) as transport,patch.object(topics,'public_posts',return_value=[post]):
             transport.assert_not_called()
             panel.get_by_role('button',name='Разобрать заявку',exact=True).click()
             expect(panel.locator('.assistant-output')).to_contain_text('Рекомендации ИИ')
             assert transport.call_count==1
             assert page.evaluate('window.aiInjected') is None
+            expect(panel.locator('img')).to_have_count(0)
+            expect(panel.locator('.assistant-content-review')).to_contain_text('Нужна проверка 18+')
+            expect(panel.locator('.assistant-content-review')).to_contain_text('Фото и видео не анализировались')
+            panel.get_by_text('На чём основан вывод',exact=True).click()
+            expect(panel.locator('blockquote')).to_contain_text('<img src=x')
             expect(panel.locator('img')).to_have_count(0)
             panel.get_by_role('button',name='Вставить в комментарий',exact=True).click()
             comment=page.get_by_label('Комментарий рекламодателю',exact=True)
@@ -48,10 +55,26 @@ def check_campaign_assistant_ui(new_page, go, output, dsn):
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width
                 for button in panel.locator('button').all():assert button.bounding_box()['height']>=44
                 if width==390:panel.screenshot(path=str(output/'48-campaign-assistant.png'))
+        # Без публикаций не показываем «признаки не выявлены», даже если модель так ответила.
+        clean=response|{'content_review':{'assessment':'not_detected','evidence':[]}}
+        raw=json.dumps({'choices':[{'finish_reason':'stop','message':{'content':json.dumps(clean)}}]}).encode()
+        with patch.object(topics,'read_url',return_value=raw),patch.object(topics,'public_posts',return_value=[]):
+            panel.get_by_role('button',name='Разобрать заявку',exact=True).click()
+            expect(panel.locator('.assistant-content-review')).to_contain_text('Недостаточно данных для вывода')
+            expect(panel.locator('.assistant-content-review')).not_to_contain_text('Признаки 18+ не выявлены')
+        with patch.object(topics,'read_url',return_value=raw),patch.object(topics,'public_posts',return_value=['Обучение: сводные таблицы Excel и формулы.']):
+            panel.get_by_role('button',name='Разобрать заявку',exact=True).click()
+            expect(panel.locator('.assistant-content-review')).to_contain_text('Признаки 18+ не выявлены')
+            expect(panel.locator('.assistant-content-review')).to_contain_text('не распространяется на остальные публикации')
+        with patch.object(topics,'read_url',side_effect=URLError('private-secret')),patch.object(topics,'public_posts',return_value=['Новости о маркировке 18+, без взрослых материалов.']):
+            panel.get_by_role('button',name='Разобрать заявку',exact=True).click()
+            expect(panel.locator('.assistant-content-review')).to_contain_text('Проверка маркеров')
+            expect(panel.locator('.assistant-content-review')).to_contain_text('проверьте контекст')
         with patch.object(topics,'read_url',side_effect=URLError('private-secret')):
             panel.get_by_role('button',name='Проверить запуск',exact=True).click()
             expect(panel.locator('.assistant-output')).to_contain_text('Проверки без ИИ')
             expect(panel.locator('.assistant-output')).not_to_contain_text('private-secret')
+            expect(panel.locator('.assistant-content-review')).to_have_count(0)
         # Поздний ответ после выхода игнорируется, даже если fetch не поддержал abort.
         page.evaluate('''() => {window.__assistantFetch=window.fetch;
             window.fetch=(url,options)=>String(url).endsWith('/ai-analysis')
@@ -65,7 +88,7 @@ def check_campaign_assistant_ui(new_page, go, output, dsn):
         assert 'LATE-PRIVATE-RESULT' not in page.locator('body').inner_text()
         with psycopg.connect(dsn) as conn:
             assert conn.execute('SELECT moderation_status FROM campaigns WHERE id=%s',(cid,)).fetchone()[0]=='pending'
-        print('PASS: campaign assistant — real API, drafts, no mutations, fallback, logout, responsive layout')
+        print('PASS: campaign assistant — real API, grounded 18+ review, missing texts, drafts, no mutations, fallback, logout, responsive layout')
     finally:
         page.context.close()
         if old is None:(control.root()/settings.FILE).unlink(missing_ok=True)
