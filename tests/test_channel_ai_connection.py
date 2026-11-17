@@ -157,3 +157,21 @@ class AIConnectionTests(unittest.TestCase):
         import cabinet_backup
         self.assertEqual(cabinet_backup.CONFIG['.control/'+connection.FILE],connection.FILE)
         self.assertIn(connection.FILE,cabinet_backup.ALLOWED)
+
+    def test_capability_permissions_are_persisted_preserved_and_can_be_revoked(self):
+        saved=self.save({**self.body,'capabilities':['launch_diagnostics','campaign_review']})
+        self.assertIsNone(connection.active())
+        self.assertEqual(connection.active('campaign_review'),(self.key,'gpt-4.1-mini'))
+        self.assertEqual(saved['capabilities'],['campaign_review','launch_diagnostics'])
+        saved=self.save({**self.body,'revision':saved['revision'],'key':''})
+        self.assertEqual(saved['capabilities'],['campaign_review','launch_diagnostics'])
+        saved=self.save({**self.body,'revision':saved['revision'],'capabilities':[]})
+        self.assertIsNone(connection.active('campaign_review'))
+        self.assertEqual(saved['capabilities'],[])
+        self.assertEqual(self.client.put(self.path,json={**self.body,'revision':saved['revision'],'capabilities':['change_balance']}).status_code,422)
+
+    def test_invalid_stored_permissions_fail_closed(self):
+        saved=self.save()
+        control.write(connection.FILE,{**connection.current(),'capabilities':['change_balance']})
+        self.assertIsNone(connection.active('campaign_review'))
+        self.assertEqual(connection.current()['source'],'invalid')

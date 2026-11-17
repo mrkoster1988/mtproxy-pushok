@@ -24,6 +24,8 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output):
     expect(panel.locator('.ai-state')).to_have_text('Выключен')
     admin.locator('#channel-ai-key').fill(key)
     admin.locator('#channel-ai-enabled').check()
+    admin.locator('#channel-ai-cap-campaign_review').check()
+    admin.locator('#channel-ai-cap-launch_diagnostics').check()
     admin.evaluate('window.pushokAI.load()')
     expect(admin.locator('#channel-ai-key')).to_have_value(key)
     with patch.object(suggest,'read_url',side_effect=HTTPError('https://api.openai.com',401,'ignored',{},None)):
@@ -41,6 +43,9 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output):
         expect(admin.locator('#channel-ai-key')).to_have_value('')
         expect(admin.locator('#channel-ai-status')).to_contain_text('Подключение проверено')
         assert connection.active()==(key,'gpt-4.1-mini')
+        assert connection.active('campaign_review')==(key,'gpt-4.1-mini')
+        assert connection.active('launch_diagnostics')==(key,'gpt-4.1-mini')
+        expect(admin.locator('#channel-ai-cap-campaign_review')).to_be_checked()
     assert key not in admin.evaluate('JSON.stringify({...localStorage,...sessionStorage})')
     assert key not in admin.evaluate('document.documentElement.outerHTML')
     for width in (320,390,768,1280):
