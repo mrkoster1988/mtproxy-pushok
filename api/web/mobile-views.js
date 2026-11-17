@@ -94,11 +94,11 @@ window.pushokViews=(()=>{
   input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();search.click();}});
   input.form?.addEventListener('reset',()=>{checker.reset();autoTitle='';});return checker;
  }
- function userAvatar(id,name=''){
+ function userAvatar(id,name='',hall=false){
   const fallback=avatar('user');fallback.classList.add('user-avatar');
   const initials=name.trim().split(/\s+/).filter(Boolean).slice(0,2).map(s=>Array.from(s)[0]).join('').toUpperCase();
   if(initials)fallback.textContent=initials;fallback.setAttribute('aria-hidden','true');
-  return loadAvatar(fallback,id?'users/'+encodeURIComponent(id)+'/avatar':'','user:'+id,'');
+  return loadAvatar(fallback,id?(hall?'hall/avatar/'+encodeURIComponent(id):'users/'+encodeURIComponent(id)+'/avatar'):'',(hall?'hall:':'user:')+id,'');
  }
  function loadAvatar(fallback,path,key,alt){
   if(!path||!token)return fallback;const scope=token+'|'+me?.role;if(logoSession!==scope){clearLogos();logoSession=scope;}
@@ -199,7 +199,7 @@ window.pushokViews=(()=>{
   const overview=el('div',undefined,'profile-overview');target.append(overview);
   if(location.hash.startsWith('#/profile'))void window.pushokProfiles.ownOverview(overview);
   window.pushokVerification.profile(target);
-  const groups=[['Мой кабинет',[['channels','channel','Мои каналы'],['reports','chart','Отчёты'],['growth','gift','Бонусы и подарки']]]];
+  const groups=[['Мой кабинет',[['channels','channel','Мои каналы'],['reports','chart','Отчёты'],['growth','gift','Бонусы и подарки'],['hall','star','Доска почёта']]]];
   if(['admin','operator'].includes(me.role)){
    const admin=[['moderation','moderation','Модерация'],['sponsors','server','Узлы и спонсоры']];
    admin.unshift(['users','users','Пользователи']);

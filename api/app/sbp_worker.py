@@ -117,6 +117,11 @@ def main():
             result = {'status': 'database_unavailable'}
         if args.apply:
             try:
+                from .hall_of_fame import service_once as hall_once
+                result['hall'] = hall_once(os.environ['DATABASE_URL'])
+            except (HTTPException, psycopg.Error):
+                result['hall'] = {'status': 'retry'}
+            try:
                 from .wallet_worker import service_once as wallet_once
                 result['wallet'] = wallet_once(os.environ['DATABASE_URL'], limit=args.limit)
             except psycopg.Error:

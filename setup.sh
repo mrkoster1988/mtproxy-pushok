@@ -429,6 +429,7 @@ EOF
     database/050_verified_profiles.sql
     database/051_birthday_profile_sync.sql
     database/052_campaign_topics.sql
+    database/053_hall_of_fame.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"

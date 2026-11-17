@@ -3140,3 +3140,6 @@ def set_home_banner(data: home_banner.Banner, admin=Depends(require_admin)):
 
 from .verified_profiles import router_for as verified_profiles_router
 app.include_router(verified_profiles_router(lambda: DATABASE_URL, get_current_user, require_admin))
+
+from .hall_of_fame import router_for as hall_router
+app.include_router(hall_router(lambda: DATABASE_URL, get_current_user, require_admin))
