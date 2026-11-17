@@ -116,7 +116,7 @@
   layout.append(body);page.append(layout);pages[name]=page;content[name]=body;stage.append(page);
  });
  // Постоянная справка не занимает экран настроек; статусы сервера остаются на виду.
- document.querySelectorAll('#settings-payments>p.muted:not([id]),#settings-payments .settings-method>p.muted:not([id]),#settings-tariffs .tariff-builder>p.muted:not([id]),#settings-system>.core-health>p:not([id]),#loading-title-fields>p.muted').forEach(p=>{const help=window.pushokViews.disclosure('Подробнее',[]);p.before(help);help.append(p);});
+ document.querySelectorAll('#settings-payments>p.muted:not([id]),#settings-payments .settings-method>p.muted:not([id]),#settings-tariffs .tariff-builder>p.muted:not([id]),#settings-system>.core-health>p:not([id]),#loading-title-fields>p.muted').forEach(p=>p.setAttribute('data-note',''));
  const updatePanel=$('software-updates');
  const updateNotice=el('section',undefined,'update-notice');updateNotice.id='software-update-notice';updateNotice.hidden=true;updateNotice.setAttribute('aria-label','Обновление приложения');updateNotice.setAttribute('role','status');
  const updateNoticeText=el('span');updateNoticeText.id='software-update-notice-text';const updateNoticeLink=link('Открыть обновления','profile/updates');updateNoticeLink.addEventListener('click',event=>{event.preventDefault();go('profile/updates');});updateNotice.append(updateNoticeText,updateNoticeLink);bar.after(updateNotice);

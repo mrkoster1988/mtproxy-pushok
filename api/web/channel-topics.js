@@ -34,11 +34,8 @@ window.pushokTopics={create({locked,onChange}){
  retry.addEventListener('click',()=>{if(channel)void detect();else status.textContent='Сначала укажите публичный канал.';});
  function install(){
   const v=window.pushokViews;select.hidden=true;select.tabIndex=-1;
-  trigger=button('',()=>{sync();query.value='';draw();dialog.showModal();query.focus();});trigger.className='topic-trigger';trigger.setAttribute('aria-label','Тематика канала');trigger.setAttribute('aria-haspopup','dialog');trigger.append(v.icon('channel'),el('span'),v.icon('chevron'));select.after(trigger);
-  const dialog=el('dialog',undefined,'topic-dialog'),head=el('div',undefined,'topic-dialog-heading'),query=el('input'),items=el('div',undefined,'topic-options');dialog.setAttribute('aria-label','Выбор тематики канала');query.type='search';query.placeholder='Найти тематику';query.setAttribute('aria-label','Найти тематику');
-  head.append(el('h2','Тематика канала'),v.iconAction(button('',()=>dialog.close()),'close','Закрыть выбор тематики'));dialog.append(head,query,items);document.body.append(dialog);
-  function draw(){items.replaceChildren();const q=query.value.toLocaleLowerCase('ru');for(const o of select.options){if(q&&!o.textContent.toLocaleLowerCase('ru').includes(q))continue;const b=button(o.textContent,()=>{if(locked())return;select.value=o.value;select.dispatchEvent(new Event('change',{bubbles:true}));dialog.close();});b.className='topic-option';b.setAttribute('aria-pressed',String(o.value===select.value));if(o.value===select.value)b.append(v.icon('check'));items.append(b);}if(!items.children.length)items.append(el('p','Ничего не найдено','muted'));}
-  query.addEventListener('input',draw);dialog.addEventListener('click',e=>{if(e.target===dialog)dialog.close();});dialog.addEventListener('close',()=>trigger.focus({preventScroll:true}));window.addEventListener('hashchange',()=>dialog.close());new MutationObserver(sync).observe(select,{attributes:true,attributeFilter:['disabled']});sync();
+  trigger=el('button');trigger.type='button';trigger.addEventListener('click',()=>{if(!locked())window.pushokControls.open(select,{trigger,title:'Тематика канала',alwaysSearch:true,searchLabel:'Найти тематику',closeLabel:'Закрыть выбор тематики'});});trigger.className='topic-trigger';trigger.setAttribute('aria-label','Тематика канала');trigger.setAttribute('aria-haspopup','dialog');trigger.setAttribute('aria-expanded','false');trigger.append(v.icon('channel'),el('span'),v.icon('chevron'));select.after(trigger);
+  new MutationObserver(sync).observe(select,{attributes:true,attributeFilter:['disabled']});sync();
  }
  if(!window.pushokViews)document.addEventListener('DOMContentLoaded',install,{once:true});else install();
  select.form.addEventListener('reset',reset);

@@ -29,7 +29,19 @@ def check_unified_controls(browser,base,output,failures,dsn):
         select.click();dialog=page.get_by_role('dialog');expect(dialog).to_be_visible();dialog.get_by_role('option',name='Оператор',exact=True).click();expect(select).to_have_value('operator');expect(dialog).to_have_count(0)
         select.focus();select.press('ArrowDown');expect(page.get_by_role('dialog')).to_be_visible();page.keyboard.press('Home');page.keyboard.press('Enter');expect(select).to_have_value('');expect(page.get_by_role('dialog')).to_have_count(0)
         select.click();page.screenshot(path=str(output/'controls-select-390.png'));page.keyboard.press('Escape');expect(select).to_be_focused()
-        go('wallet');area=page.locator('[data-wallet-section=admin]');area.locator(':scope>summary').click()
+        # Открытый список следует за живым полем, а блокировка родителя закрывает его.
+        select.click();select.evaluate("s=>s.add(new Option('Новый вариант','new'))")
+        expect(page.get_by_role('dialog').get_by_role('option',name='Новый вариант',exact=True)).to_be_visible()
+        select.evaluate("s=>s.lastElementChild.remove()")
+        expect(page.get_by_role('dialog').get_by_role('option',name='Новый вариант',exact=True)).to_have_count(0)
+        select.evaluate("s=>s.disabled=true");expect(page.get_by_role('dialog')).to_have_count(0)
+        select.evaluate("s=>s.disabled=false");select.focus();page.keyboard.type('test-no-results')
+        expect(page.get_by_role('dialog').get_by_role('status')).to_have_text('Ничего не найдено')
+        page.get_by_role('searchbox',name='Поиск по вариантам').fill('Оператор');page.keyboard.press('ArrowDown');page.keyboard.press('Enter');expect(select).to_have_value('operator')
+        go('wallet');area=page.locator('[data-wallet-section=admin]')
+        # Справка должна читаться с первого нажатия, даже если раздел закрыт.
+        help_button=area.get_by_role('button',name='Пояснения: Управление балансами',exact=True)
+        help_button.click();expect(area.locator('.block-help')).to_be_visible();expect(area).to_have_attribute('open','');help_button.click()
         field=area.get_by_label('Пользователь: @никнейм или ID',exact=True);search=area.get_by_role('button',name='Найти пользователя',exact=True)
         for width in (320,390,768):
             page.set_viewport_size({'width':width,'height':844});a,b=field.bounding_box(),search.bounding_box();assert b['x']>=a['x']+a['width']+7;assert abs(a['y']+a['height']/2-b['y']-b['height']/2)<2
@@ -43,5 +55,39 @@ def check_unified_controls(browser,base,output,failures,dsn):
         go('moderation/'+str(cid));expect(page.locator('.ai-decision')).to_have_text('Одобрено: Агент ИИ');expect(page.locator('.assistant-saved')).to_contain_text('Образовательный канал');expect(page.locator('.campaign-assistant')).to_have_attribute('open','')
         expect(page.locator('.campaign-assistant a[href*="management"]')).to_have_count(0)
         page.locator('.ai-decision a').click();expect(page.locator('.ai-agent-stats')).to_contain_text('Одобрено');expect(page.locator('.ai-topic-table')).to_contain_text('Образование');page.screenshot(path=str(output/'controls-ai-profile-390.png'),full_page=True)
+        # Нажатие на собственную карточку агента не меняет путь возврата к заявке.
+        page.locator('.ai-agent-profile .ai-agent-card .person-name').click()
+        assert page.evaluate('pushokProfiles.backRoute()')=='moderation/'+str(cid)
+        # Сбой старого запроса не подменяет уже открытый профиль рекламодателя.
+        pending=[]
+        page.route('**/api/v1/users/ai-agent/profile',lambda r:pending.append(r))
+        page.evaluate("""uid=>{const target=document.querySelector('.ai-agent-profile');pushokProfiles.show(target,'ai-agent');cabinet.go('user/'+uid);} """,str(member))
+        expect(page.locator('[data-page=user] .profile-identity')).to_contain_text('Тестовый пользователь')
+        assert pending
+        with page.expect_response(lambda r:r.url.endswith('/users/ai-agent/profile')):
+            pending[0].fulfill(status=503,json={'detail':'test_unavailable'})
+        page.evaluate('() => new Promise(resolve => requestAnimationFrame(resolve))')
+        expect(page.locator('[data-page=user] .profile-identity')).to_be_visible()
+        page.unroute('**/api/v1/users/ai-agent/profile')
+        # Кнопка сохранения не перепрыгивает через обязательные подтверждения.
+        from ui_test_helpers import open_management
+        open_management(page,'technical')
+        save=page.locator('#launch-check-save')
+        assert save.evaluate("b=>Boolean(document.querySelector('#launch-check-vps').compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING)")
+        assert save.evaluate("b=>Boolean(document.querySelector('#launch-check-steps').compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING)")
+        # Тематика использует тот же диалог, поиск и навигацию стрелками.
+        go('create');topic=page.get_by_role('button',name='Тематика канала',exact=True)
+        topic.click();dialog=page.get_by_role('dialog',name='Тематика канала',exact=True)
+        expect(dialog).to_have_class('select-dialog');query=dialog.get_by_role('searchbox',name='Найти тематику')
+        query.fill('Образование');page.keyboard.press('ArrowDown');page.keyboard.press('Enter')
+        expect(topic).to_contain_text('Образование');expect(topic).to_be_focused();expect(page.locator('#order-topic')).to_have_value('education')
+        topic.click();page.locator('#campaign-form fieldset').first.evaluate('f=>f.disabled=true')
+        expect(page.get_by_role('dialog')).to_have_count(0)
+        page.locator('#campaign-form fieldset').first.evaluate('f=>f.disabled=false')
+        for width in (320,390,768):
+            page.set_viewport_size({'width':width,'height':600});topic.click()
+            dialog=page.get_by_role('dialog');box=dialog.bounding_box()
+            assert box['x']>=0 and box['x']+box['width']<=width+1 and box['y']+box['height']<=601
+            page.screenshot(path=str(output/f'controls-topic-{width}.png'));page.keyboard.press('Escape')
         assert not failures,failures
     finally:context.close()
