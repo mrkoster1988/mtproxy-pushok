@@ -1,12 +1,14 @@
 """Админка ИИ с настоящим API/хранилищем; подменяется только OpenAI."""
 import json
+from uuid import uuid4
 from unittest.mock import patch
 from urllib.error import HTTPError
 from playwright.sync_api import expect
+import psycopg
 from app import channel_ai_connection as connection, channel_topic_suggestions as suggest
 
 
-def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output):
+def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output, dsn):
     key='sk-local-ui-test-only-private-key'
     reply=json.dumps({'choices':[{'finish_reason':'stop','message':{'content':json.dumps({'topic':'education','confident':True})}}]}).encode()
     connection._checks.clear();suggest._ai_calls.clear()
@@ -68,12 +70,34 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output):
     admin.locator('#proxy-provisioning-save').click()
     expect(provision.locator('.ai-state')).to_have_text('Включено')
     expect(admin.locator('#proxy-provisioning-wait')).to_have_value('180')
+    node_id,job_id=uuid4(),uuid4()
+    owner_id=admin.evaluate('me.id')
+    with psycopg.connect(dsn) as conn:
+        conn.execute("INSERT INTO proxy_nodes(id,name,host,port,status) VALUES(%s,'MTProxy · Авто 9443','8.8.4.4',9443,'paused')",(node_id,))
+        conn.execute("""INSERT INTO proxy_provisioning_jobs(id,proxy_node_id,owner_id,policy_revision,state,attempts,error_code,retry_at)
+            SELECT %s,%s,%s,revision,'failed',5,'telegram_flood_wait',now()+interval '1 hour' FROM proxy_provisioning_settings""",(job_id,node_id,owner_id))
+    admin.evaluate('window.pushokProvisioning.load(true)')
+    provision.locator('summary').click()
+    expect(provision.get_by_role('button',name='Пауза Telegram',exact=True)).to_be_disabled()
+    expect(provision).to_contain_text('Повтор не раньше:')
+    expect(provision).to_contain_text('После паузы обновите состояние')
+    assert admin.evaluate("async id=>(await fetch('/api/v1/admin/proxy-provisioning/'+id+'/retry',{method:'POST',headers:{Authorization:'Bearer '+token}})).status",str(job_id))==409
     for width in (320,390,768,1280):
         admin.set_viewport_size({'width':width,'height':844})
         provision.scroll_into_view_if_needed()
         assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width
         assert admin.locator('#proxy-provisioning-save').bounding_box()['height']>=44
         if width==390:provision.screenshot(path=str(output/'54-proxy-provisioning.png'))
+    with psycopg.connect(dsn) as conn:
+        conn.execute("UPDATE proxy_provisioning_jobs SET retry_at=now()-interval '1 second' WHERE id=%s",(job_id,))
+    admin.evaluate('window.pushokProvisioning.load(true)')
+    provision.locator('summary').click()
+    provision.get_by_role('button',name='Продолжить подготовку',exact=True).click()
+    expect(provision).to_contain_text('Подготовка · попыток: 0')
+    with psycopg.connect(dsn) as conn:
+        assert conn.execute('SELECT state,attempts FROM proxy_provisioning_jobs WHERE id=%s',(job_id,)).fetchone()==('pending',0)
+        conn.execute('DELETE FROM proxy_provisioning_jobs WHERE id=%s',(job_id,))
+        conn.execute('DELETE FROM proxy_nodes WHERE id=%s',(node_id,))
     admin.locator('#proxy-provisioning-enabled').uncheck()
     admin.locator('#proxy-provisioning-save').click()
     expect(provision.locator('.ai-state')).to_have_text('Выключено')

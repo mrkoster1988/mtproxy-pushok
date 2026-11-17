@@ -7,11 +7,12 @@ import os
 import sys
 
 from mtproxy_bot import MTProxyDialog, BotProtocolError
-from telegram_owner import PrivateState, DEFAULT_STATE, DEVICE_NAME, TELETHON_VERSION, OwnerError, call, record_health
+from telegram_owner import PrivateState, DEFAULT_STATE, DEVICE_NAME, TELETHON_VERSION, OwnerError, TelegramCooldown, call, record_health
 
 
 async def run(client, existing, request, state):
     try:
+        state.require_available(existing['user_id'])
         await call(client.connect())
         me = await call(client.get_me())
         if me is None:
@@ -30,6 +31,10 @@ async def run(client, existing, request, state):
         result = await asyncio.wait_for(dialog.register(request,state) if request.get('action')=='register'
                                         else dialog.prepare(request), 100)
         return dict(result, owner_telegram_id=me.id)
+    except Exception as exc:
+        if type(exc).__name__ == 'FloodWaitError':
+            raise TelegramCooldown(state.defer_telegram(existing['user_id'], exc.seconds)) from None
+        raise
     finally:
         try:
             await asyncio.wait_for(client.disconnect(), 5)
@@ -69,7 +74,7 @@ def main():
         print(json.dumps(dict(ok=True, **result)))
     except Exception as exc:
         code = str(exc) if isinstance(exc, (BotProtocolError, OwnerError)) else 'telegram_unavailable'
-        delay = 300
+        delay = exc.retry_seconds if isinstance(exc, TelegramCooldown) else 300
         if type(exc).__name__ == 'FloodWaitError':
             code, delay = 'telegram_flood_wait', max(300, int(exc.seconds))
         # Никаких сырых сообщений Telegram, телефонных номеров или сессий.

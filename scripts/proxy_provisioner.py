@@ -27,7 +27,8 @@ UNITS = Path('/etc/systemd/system')
 class ProvisionError(RuntimeError):
     def __init__(self, code, retry_seconds=900):
         super().__init__(code)
-        self.retry_seconds = max(900,min(604800,retry_seconds)) if type(retry_seconds) is int else 900
+        ceiling = 2147483647 if code=='telegram_flood_wait' else 604800
+        self.retry_seconds = max(900,min(ceiling,retry_seconds)) if type(retry_seconds) is int else 900
 
 
 def identity(value):
@@ -210,8 +211,87 @@ def ready(cfg):
 
 
 def stop_instance(node_id):
-    for name in ('mtproxy-pushok-auto-agent@'+node_id+'.timer',unit(node_id)):
+    identity(node_id)
+    names = ('mtproxy-pushok-auto-agent@'+node_id+'.timer',unit(node_id),
+             'mtproxy-pushok-auto-agent@'+node_id+'.service')
+    for name in names:
         subprocess.run(['systemctl','disable','--now',name],capture_output=True,timeout=45)
+    for name in names:
+        result = subprocess.run(['systemctl','show',name,'--property=LoadState,ActiveState'],
+                                capture_output=True,text=True,timeout=45)
+        values = dict(line.split('=',1) for line in result.stdout.splitlines() if '=' in line)
+        missing = values.get('LoadState')=='not-found' and result.returncode in (0,1)
+        if (result.returncode!=0 and not missing) or values.get('ActiveState') not in ('inactive','failed'):
+            raise RuntimeError('start_failed')
+    (ROOT/'.control'/('proxy-link-'+node_id+'.json')).unlink(missing_ok=True)
+
+
+def receipt_path(node_id):
+    return INSTANCES/identity(node_id)/'completion.json'
+
+
+def save_receipt(job, tag):
+    path = receipt_path(job['node_id'])
+    atomic(path,json.dumps({'job_id':identity(job['job_id']),'tag':tag}))
+    fd = os.open(path.parent,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def prepared(cfg):
+    if not ready(cfg):
+        return False
+    try:
+        command('systemctl','is-active','--quiet','mtproxy-pushok-auto-agent@'+cfg['node_id']+'.timer')
+        return True
+    except (OSError,subprocess.SubprocessError):
+        return False
+
+
+def reconcile(host):
+    """Под общей блокировкой хоста завершаем ACK или убираем только не принятый БД узел."""
+    if not INSTANCES.exists():
+        return
+    if INSTANCES.is_symlink() or INSTANCES.stat().st_uid!=0 or INSTANCES.stat().st_mode & 0o077:
+        raise ValueError('unsafe_config')
+    for directory in sorted(INSTANCES.iterdir()):
+        if directory.name.startswith('.provision-'):
+            continue
+        cfg = read_instance(identity(directory.name))
+        result = exchange(dict(action='recover',host=host,node_id=cfg['node_id'],port=cfg['port']))
+        path = receipt_path(cfg['node_id'])
+        if result.get('state')=='active':
+            # Даже если настройки уже выключены, принятый БД экземпляр сохраняется.
+            path.unlink(missing_ok=True)
+            continue
+        if result.get('state') not in ('pending','blocked'):
+            raise ProvisionError('recovery_pending')  # Нет подтверждения — не останавливаем.
+        job_id = identity(result['job_id'])
+        if result['state']=='pending' and path.exists() and prepared(cfg):
+            receipt = json.loads(private_read(path))
+            import re
+            if (set(receipt)!={'job_id','tag'} or receipt['job_id']!=job_id
+                    or not isinstance(receipt['tag'],str) or not re.fullmatch('[a-f0-9]{32}',receipt['tag'])
+                    or receipt['tag']=='0'*32):
+                raise ValueError('invalid_receipt')
+            completed = exchange(dict(action='complete',host=host,job_id=job_id,tag=receipt['tag'],ready=True))
+            if not completed.get('accepted'):
+                if completed.get('reason') in ('registration_conflict','tag_not_verified'):
+                    stop_instance(cfg['node_id'])
+                    path.unlink(missing_ok=True)
+                    if not exchange(dict(action='failed',host=host,job_id=job_id,code=completed['reason'])).get('accepted'):
+                        raise ProvisionError('recovery_pending')
+                    continue
+                raise ProvisionError('recovery_pending')
+            path.unlink(missing_ok=True)
+            continue
+        # После kill/reboot до финального ACK не оставляем незарегистрированную службу.
+        stop_instance(cfg['node_id'])
+        path.unlink(missing_ok=True)
+        if not exchange(dict(action='interrupted',host=host,job_id=job_id)).get('accepted'):
+            raise ProvisionError('recovery_pending')
 
 
 def provision(job):
@@ -241,14 +321,15 @@ def provision(job):
         command('systemctl','enable','--now','mtproxy-pushok-auto-agent@'+cfg['node_id']+'.timer')
         if not ready(cfg):
             raise RuntimeError('start_failed')
+        save_receipt(job,reply['tag'])
     except Exception:
         stop_instance(cfg['node_id'])
         raise
     # Не останавливаем готовую службу при потере ответа: БД могла принять ACK.
     result = exchange(dict(action='complete',host=cfg['host'],job_id=job['job_id'],tag=reply['tag'],ready=True))
     if not result.get('accepted'):
-        stop_instance(cfg['node_id'])
-        raise RuntimeError('policy_changed')
+        raise ProvisionError('recovery_pending')
+    receipt_path(cfg['node_id']).unlink(missing_ok=True)
 
 
 def tick(status=None):
@@ -263,7 +344,13 @@ def tick(status=None):
     host = primary_host()
     with open('/run/lock/pushok-provisioner.lock','w') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        with lock_file('host-lock') as update_lock:
+            fcntl.flock(update_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            reconcile(host)
         cfg = exchange(dict(action='settings',host=host))
+        if cfg.get('state')=='wait':
+            status['code'] = 'agent_busy'
+            return
         if cfg.get('enabled') is not True:
             status['code'] = 'disabled'
             return
@@ -271,8 +358,13 @@ def tick(status=None):
                 or type(cfg.get('max_instances')) is not int or not 1<=cfg['max_instances']<=3):
             raise ValueError('invalid_host_policy')
         owner = connection_status()
-        if not owner['enabled'] or not owner['helper_available'] or not owner['session_saved'] or owner['state']=='revoked':
+        if (not owner['enabled'] or not owner['helper_available'] or not owner['session_saved']
+                or owner['state'] not in ('connected','session_saved','unavailable')):
             status['code'] = 'owner_unavailable'
+            return
+        if owner.get('retry_seconds',0)>0:
+            from datetime import datetime, timedelta, timezone
+            status.update(code='telegram_flood_wait',retry_at=(datetime.now(timezone.utc)+timedelta(seconds=owner['retry_seconds'])).isoformat())
             return
         if not resource_ready():
             status['code'] = 'resources_low'
@@ -291,6 +383,10 @@ def tick(status=None):
                 provision(job)
                 status['code'] = 'active'
             except Exception as exc:
+                if receipt_path(job['node_id']).exists():
+                    # После потери ACK не записываем ложную ошибку/исчерпание попыток.
+                    status['code'] = 'recovery_pending'
+                    return
                 code = str(exc) if isinstance(exc,RuntimeError) else 'host_unavailable'
                 exchange(dict(action='failed',host=host,job_id=job['job_id'],code=code,
                               retry_seconds=getattr(exc,'retry_seconds',900)))
@@ -305,7 +401,10 @@ def publish_report(status):
         code = 'host_unavailable'
     path = ROOT/'.control'/'proxy-provisioner.json'
     try:
-        atomic(path,json.dumps(dict(code=code,checked_at=datetime.now(timezone.utc).isoformat())))
+        report = dict(code=code,checked_at=datetime.now(timezone.utc).isoformat())
+        if isinstance(status.get('retry_at'),str):
+            report['retry_at'] = status['retry_at']
+        atomic(path,json.dumps(report))
         os.chown(path,10001,10001)
     except OSError:
         pass
@@ -341,6 +440,8 @@ if __name__=='__main__':
             raise ValueError('invalid_arguments')
     except BlockingIOError:
         status['code'] = 'agent_busy'
+    except ProvisionError as exc:
+        status['code'] = str(exc)
     except Exception as exc:
         # Никогда не выводим argv процесса, secret или диалог Telegram.
         print('proxy_provisioner_failed: '+type(exc).__name__,file=sys.stderr)

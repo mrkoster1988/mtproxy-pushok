@@ -32,6 +32,7 @@ def connection_status():
             if not saved:
                 return result
             result.update(state='session_saved', session_saved=True)
+            result['retry_seconds'] = state.cooldown(saved['user_id'])
             try:
                 health = state.read_file('health.json')
                 checked = datetime.fromisoformat(health['checked_at']) if health else None
@@ -74,7 +75,8 @@ def tick(agent, request):
         return
     connection = connection_status()
     if (not connection['enabled'] or not connection['helper_available']
-            or connection['state'] not in ('connected', 'session_saved', 'unavailable')):
+            or connection['state'] not in ('connected', 'session_saved', 'unavailable')
+            or connection.get('retry_seconds', 0) > 0):
         return
     job = agent.exchange(dict(request, action='owner_claim'))
     if job.get('state') != 'job':

@@ -164,6 +164,73 @@ class ProvisioningIntegration(unittest.TestCase):
         self.request('PUT','/admin/proxy-provisioning',422,json=body|{'max_instances':1000})
         self.request('PUT','/admin/proxy-provisioning',409,json=body|{'revision':str(uuid4())})
 
+    def test_manual_retry_cannot_shorten_telegram_pause_even_after_settings_change(self):
+        job=self.call()
+        self.call(action='failed',job_id=job['job_id'],code='telegram_flood_wait',retry_seconds=900000)
+        before=self.execute('SELECT * FROM proxy_provisioning_jobs')[0]
+        self.assertGreater((before['retry_at']-before['updated_at']).total_seconds(),899990)
+        self.execute('UPDATE proxy_provisioning_settings SET revision=gen_random_uuid()')
+        self.request('POST','/admin/proxy-provisioning/'+job['job_id']+'/retry',409)
+        after=self.execute('SELECT * FROM proxy_provisioning_jobs')[0]
+        self.assertEqual(before,after)
+        self.execute("UPDATE proxy_provisioning_jobs SET retry_at=now()-interval '1 second'")
+        self.request('POST','/admin/proxy-provisioning/'+job['job_id']+'/retry')
+        self.assertEqual(self.call()['node_id'],job['node_id'])
+
+    def test_complete_is_idempotent_and_recovery_works_with_automation_disabled(self):
+        job=self.call()
+        complete=dict(action='complete',job_id=job['job_id'],tag='f'*32,ready=True)
+        self.assertTrue(self.call(**complete)['accepted'])
+        self.execute('UPDATE proxy_provisioning_settings SET enabled=false')
+        self.assertTrue(self.call(**complete)['accepted'])
+        self.assertFalse(self.call(**(complete|{'tag':'e'*32}))['accepted'])
+        self.assertEqual(self.call(action='recover',node_id=job['node_id'],port=job['port'])['state'],'active')
+        self.assertFalse(self.call(action='interrupted',job_id=job['job_id'])['accepted'])
+        self.assertEqual(self.execute("SELECT count(*) AS n FROM audit_events WHERE event_type='proxy_created_by_ai' AND details_json->>'node_id'=%s",job['node_id'])[0]['n'],1)
+
+    def test_pending_recovery_checks_endpoint_policy_and_terminal_attempt(self):
+        job=self.call()
+        recover=dict(action='recover',node_id=job['node_id'],port=job['port'])
+        self.assertEqual(self.call(**recover)['state'],'pending')
+        self.assertEqual(self.call(**(recover|{'port':1}))['state'],'unknown')
+        self.assertEqual(self.call(**(recover|{'host':'1.1.1.1'}))['state'],'unknown')
+        self.execute('UPDATE proxy_provisioning_jobs SET attempts=5')
+        self.assertTrue(self.call(action='interrupted',job_id=job['job_id'])['accepted'])
+        row=self.execute('SELECT * FROM proxy_provisioning_jobs')[0]
+        self.assertEqual((row['state'],row['error_code']),('failed','preparation_interrupted'))
+        self.assertEqual(self.call(**recover)['state'],'blocked')
+
+    def test_disabled_pending_job_can_be_cleaned_but_never_activated(self):
+        job=self.call()
+        self.execute('UPDATE proxy_provisioning_settings SET enabled=false')
+        self.assertEqual(self.call(action='recover',node_id=job['node_id'],port=job['port'])['state'],'blocked')
+        self.assertFalse(self.call(action='complete',job_id=job['job_id'],tag='a'*32,ready=True)['accepted'])
+        self.assertTrue(self.call(action='interrupted',job_id=job['job_id'])['accepted'])
+        row=self.execute('SELECT * FROM proxy_provisioning_jobs')[0]
+        self.assertEqual((row['state'],row['error_code']),('failed','policy_changed'))
+
+    def test_kill_before_manifest_on_last_attempt_does_not_leave_pending_forever(self):
+        self.call()
+        self.execute("UPDATE proxy_provisioning_jobs SET attempts=5,retry_at=now()-interval '1 second'")
+        self.assertEqual(self.call()['reason'],'preparation_interrupted')
+        self.assertEqual(self.execute('SELECT state FROM proxy_provisioning_jobs')[0]['state'],'failed')
+
+    def test_manually_activated_node_is_not_eligible_for_interrupted_cleanup(self):
+        job=self.call()
+        self.execute("UPDATE proxy_nodes SET status='active' WHERE id=%s",job['node_id'])
+        self.assertEqual(self.call(action='recover',node_id=job['node_id'],port=job['port'])['state'],'unknown')
+        self.assertFalse(self.call(action='interrupted',job_id=job['job_id'])['accepted'])
+        self.addCleanup(lambda:self.execute('UPDATE campaigns SET proxy_node_id=%s WHERE id=%s',self.node,self.blocker))
+        self.execute('UPDATE campaigns SET proxy_node_id=%s WHERE id=%s',job['node_id'],self.blocker)
+        self.execute("UPDATE proxy_nodes SET status='paused' WHERE id=%s",job['node_id'])
+        self.assertEqual(self.call(action='recover',node_id=job['node_id'],port=job['port'])['state'],'unknown')
+
+    def test_duplicate_tag_is_explicit_failure_for_recovery(self):
+        job=self.call()
+        self.execute("INSERT INTO proxy_sponsor_registrations(proxy_node_id,engine,ad_tag,registered_by_user_id) VALUES(%s,'official_mtproxy',%s,%s)",self.node,'e'*32,self.admin)
+        self.assertEqual(self.call(action='complete',job_id=job['job_id'],tag='e'*32,ready=True),{'accepted':False,'reason':'registration_conflict'})
+        self.assertEqual(self.execute('SELECT state FROM proxy_provisioning_jobs')[0]['state'],'pending')
+
 
 class ProvisionerHostTests(unittest.TestCase):
     def setUp(self):
@@ -197,6 +264,7 @@ class ProvisionerHostTests(unittest.TestCase):
     def test_flood_wait_is_never_shortened(self):
         self.assertEqual(host.ProvisionError('telegram_flood_wait',3600).retry_seconds,3600)
         self.assertEqual(host.ProvisionError('telegram_flood_wait',-1).retry_seconds,900)
+        self.assertEqual(host.ProvisionError('telegram_flood_wait',900000).retry_seconds,900000)
 
     def test_stopped_additional_proxy_is_not_published_even_when_schedule_is_idle(self):
         import promotion_agent as agent
@@ -231,10 +299,11 @@ class ProvisionerHostTests(unittest.TestCase):
             return {'accepted':True}
         with patch.object(host,'create_instance',return_value=self.cfg),patch.object(host,'install_instance'),\
              patch.object(host,'ready',return_value=True),patch.object(host,'exchange',side_effect=exchange),\
-             patch.object(host,'command'),patch.object(host,'stop_instance') as stop,\
+             patch.object(host,'command'),patch.object(host,'save_receipt') as receipt,patch.object(host,'stop_instance') as stop,\
              patch('automatic_binding.helper',return_value={'ok':True,'tag':'a'*32}):
             with self.assertRaises(OSError):host.provision(self.job)
         stop.assert_not_called()
+        receipt.assert_called_once_with(self.job,'a'*32)
 
     def test_service_is_bounded_and_never_installs_model_commands(self):
         with patch.object(host,'BINARY',Mock(is_file=lambda:True)),patch.object(host,'ROOT',Path('/opt/mtproxy-pushok')),\

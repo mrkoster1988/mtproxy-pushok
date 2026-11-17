@@ -6,11 +6,13 @@ import fcntl
 import getpass
 import json
 import logging
+import math
 import os
 from pathlib import Path
 import re
 import stat
 import sys
+import time
 import uuid
 import warnings
 from datetime import datetime, timezone
@@ -23,6 +25,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class OwnerError(Exception):
     pass
+
+
+class TelegramCooldown(OwnerError):
+    def __init__(self, seconds):
+        super().__init__('telegram_flood_wait')
+        self.retry_seconds = seconds
 
 
 class PrivateState:
@@ -111,6 +119,28 @@ class PrivateState:
     def save(self, data):
         self.save_file('owner.json', data)
 
+    def cooldown(self, user_id):
+        """Общая пауза аккаунта переживает перезапуск и смену задания."""
+        data = self.read_file('telegram-cooldown.json')
+        if data is None:
+            return 0
+        if (type(data.get('user_id')) is not int or type(data.get('not_before')) is not int
+                or not 0 < data['not_before'] < 253402300799):
+            raise OwnerError('invalid_state')
+        return max(0, math.ceil(data['not_before'] - time.time())) if data['user_id'] == user_id else 0
+
+    def require_available(self, user_id):
+        remaining = self.cooldown(user_id)
+        if remaining:
+            raise TelegramCooldown(remaining)
+
+    def defer_telegram(self, user_id, seconds):
+        # Telegram задаёт секунды int32. Не сокращаем длинный FloodWait до суток/недели.
+        seconds = seconds if type(seconds) is int and 0 <= seconds <= 2147483647 else 300
+        delay = max(300, seconds, self.cooldown(user_id))
+        self.save_file('telegram-cooldown.json', {'user_id':user_id, 'not_before':math.ceil(time.time())+delay})
+        return self.cooldown(user_id)
+
     def automatic_enabled(self):
         try:
             fd = os.open('automatic.enabled', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
@@ -193,6 +223,8 @@ async def operate(client, action, state, credentials, existing, errors, ask=hidd
     new_login = False
     persisted = False
     try:
+        if existing and action != 'disconnect':
+            state.require_available(existing['user_id'])
         await call(client.connect())
         # is_user_authorized() в SDK скрывает любой RPCError как False, включая
         # временный сбой. get_me() возвращает None только при UnauthorizedError.
@@ -226,8 +258,10 @@ async def operate(client, action, state, credentials, existing, errors, ask=hidd
         return {"state": "connected", "telegram_user_id": me.id,
                 "username": getattr(me, "username", None), "mtproxy_bot_available": True,
                 "tag_ownership_verified": False, "automatic_binding_enabled": False}
-    except Exception:
-        if existing:
+    except Exception as exc:
+        if existing and type(exc).__name__ == 'FloodWaitError':
+            raise TelegramCooldown(state.defer_telegram(existing['user_id'], exc.seconds)) from None
+        if existing and not isinstance(exc, TelegramCooldown):
             record_health(state, {'state': 'unavailable'})
         raise
     finally:
@@ -247,6 +281,7 @@ async def operate(client, action, state, credentials, existing, errors, ask=hidd
 
 
 MESSAGES = {
+    'telegram_flood_wait': 'Telegram назначил паузу. Она сохранена; автоматика продолжит после её окончания.',
     "unsafe_state_permissions": "Каталог авторизации должен принадлежать текущему пользователю и иметь права 0700, файлы — 0600.",
     "state_inside_repository": "Каталог авторизации должен находиться вне исходного кода проекта.",
     "connection_busy": "Другой процесс уже работает с подключением. Дождитесь его завершения.",
@@ -338,6 +373,8 @@ def main():
     except Exception as exc:
         if isinstance(exc, OwnerError):
             print(MESSAGES.get(str(exc), "Нужна библиотека Telethon==" + TELETHON_VERSION + "."))
+            if isinstance(exc, TelegramCooldown):
+                print('До следующей попытки, секунд: ' + str(exc.retry_seconds))
         else:
             # RPC-текст может содержать данные пользователя; показываем только тип.
             print("Операция не выполнена: " + type(exc).__name__)
