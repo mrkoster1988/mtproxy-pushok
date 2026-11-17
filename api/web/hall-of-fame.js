@@ -1,6 +1,7 @@
 'use strict';
 window.pushokHall=(()=>{
  const kinds={week:'Неделя',month:'Месяц',year:'Год'},titles={invited:'Приглашённые',paid_referrals:'Платящие приглашённые',spend_rub:'Расходы · ₽',spend_xtr:'Расходы · Stars',paid_campaigns:'Оплаченные кампании'};
+ const date=d=>new Date(d).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'});
  const fmt=n=>Number(n).toLocaleString('ru-RU'),month=d=>new Date(d).toLocaleDateString('ru-RU',{month:'long',year:'numeric',timeZone:'Europe/Moscow'});
  function frame(node,rank){if(!node||!rank)return;node.classList.add('hall-frame',rank===1?'hall-gold':rank===2?'hall-silver':rank===3?'hall-bronze':'hall-teal');node.title='Место '+rank;}
  function medals(target,data){
@@ -43,7 +44,7 @@ window.pushokHall=(()=>{
    function paint(){previousKind=period.value;previousMetric=metric.value;grid.replaceChildren();for(let i=0;i<10;i++){const label=el('label','Место '+(i+1)),input=el('input');input.type='number';input.min=0;input.max=1000000;input.step='0.01';input.value=(rewards[previousKind]?.[previousMetric]?.[i]||0)/100;label.append(input);grid.append(label);}}
    period.onchange=metric.onchange=()=>{persist();paint();};paint();const submit=el('button','Сохранить настройки','primary');submit.type='submit';const status=el('p',undefined,'muted');status.setAttribute('role','status');
    form.append(el('small','Награды — в бонусных рублях. 0 означает без награды. Новые правила действуют со следующей недели, месяца или года; правила текущих периодов сохраняются.','muted'),submit,status);
-   form.onsubmit=async e=>{e.preventDefault();persist();submit.disabled=true;try{await api('/hall/admin/settings',{method:'PUT',body:JSON.stringify({top_size:Number(size.value),rewards})});if(valid())status.textContent='Сохранено для следующих периодов.';}catch(err){if(valid())status.textContent=err.message;}finally{submit.disabled=false;}};box.append(form);
+   form.onsubmit=async e=>{e.preventDefault();persist();submit.disabled=true;try{await api('/hall/admin/settings',{method:'PUT',body:{top_size:Number(size.value),rewards}});if(valid())status.textContent='Сохранено для следующих периодов.';}catch(err){if(valid())status.textContent=err.message;}finally{submit.disabled=false;}};box.append(form);
    const history=el('details');history.append(el('summary','История итогов и начислений'));for(const p of data.history)history.append(el('p',kinds[p.kind]+' · '+date(p.starts_at)+' · '+(p.closed_at?'Закрыт':'Текущий')+' · '+p.places+' мест · '+fmt(p.bonus/100)+' бонусных ₽'));box.append(history);
   }catch(e){if(valid())target.replaceChildren(el('p',e.message,'muted'),button('Повторить',()=>adminPanel(target,valid)));}
  }

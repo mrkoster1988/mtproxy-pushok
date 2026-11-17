@@ -180,7 +180,7 @@ def router_for(dsn,current_user,require_admin):
     def admin(user=Depends(require_admin)):
         def read(conn):
             cfg=conn.execute('SELECT top_size,rewards,started_at FROM hall_settings WHERE singleton').fetchone()
-            totals=conn.execute('''SELECT count(DISTINCT user_id) winners,count(*) awards,coalesce(sum(bonus_amount),0) bonus
+            totals=conn.execute('''SELECT count(DISTINCT user_id) FILTER(WHERE rank<=3) winners,count(*) FILTER(WHERE bonus_amount>0) awards,coalesce(sum(bonus_amount),0) bonus
                 FROM hall_results''').fetchone()
             history=conn.execute('''SELECT p.id,p.kind,p.starts_at,p.ends_at,p.closed_at,count(r.user_id) places,
                 coalesce(sum(r.bonus_amount),0) bonus FROM hall_periods p LEFT JOIN hall_results r ON r.period_id=p.id
