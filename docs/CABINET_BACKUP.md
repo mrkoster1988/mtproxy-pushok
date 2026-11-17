@@ -49,6 +49,7 @@ sudo python3 scripts/cabinet_backup.py drill /opt/mtproxy-pushok/.backups/cabine
 | database.dump | PostgreSQL custom-format dump |
 | proofs.tar | Чеки и каталог placement-evidence из стандартного именованного тома |
 | config.env | Копия `.env`, включая секреты |
+| github-access-private.json | Токен чтения закрытого GitHub, если настроен; после переноса VPS повторите `setup.sh --repository-access` |
 | compose.yaml | Основной Compose |
 | compose.override.yaml | Override, если он есть |
 | Caddyfile | Конфигурация Caddy, если она есть |

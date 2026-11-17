@@ -16,33 +16,32 @@
 
 Не передавайте токен в чат, командную строку, GitHub или скриншот. В мастере он вводится скрыто; при вводе символов не видно.
 
-## 2. Одна команда
+## 2. Установка с доступом к GitHub
+
+Для закрытого репозитория нужен GitHub fine-grained token только на `mrkoster1988/mtproxy-pushok`: `Contents: Read-only` и `Actions: Read-only`. [Права, хранение токена и переход существующего VPS](PRIVATE_REPOSITORY.md).
 
 Вставьте в SSH-терминал под root целиком:
 
 ```bash
-bash -c 'set -e; test "$(id -u)" -eq 0 || { echo "Сначала войдите как root: sudo -i"; exit 1; }; test ! -e /opt/mtproxy-pushok || { echo "Каталог /opt/mtproxy-pushok уже существует. Используйте раздел повторного запуска инструкции."; exit 1; }; apt-get update; apt-get install -y git ca-certificates python3 util-linux; git clone --branch main --single-branch https://github.com/mrkoster1988/mtproxy-pushok.git /opt/mtproxy-pushok; cd /opt/mtproxy-pushok; exec bash setup.sh'
+bash -c 'set -e; test "$(id -u)" -eq 0 || { echo "Сначала sudo -i"; exit 1; }; test ! -e /opt/mtproxy-pushok || { echo "Каталог уже существует: используйте инструкцию обновления"; exit 1; }; apt-get update; apt-get -o DPkg::Lock::Timeout=600 install -y git ca-certificates python3 util-linux; git -c credential.helper= -c credential.username=x-access-token clone --branch release/stable --single-branch https://github.com/mrkoster1988/mtproxy-pushok.git /opt/mtproxy-pushok; cd /opt/mtproxy-pushok; bash setup.sh --repository-access; exec bash setup.sh'
 ```
 
-Команда обновляет список пакетов, устанавливает Git, сертификаты, Python 3 и util-linux (flock), скачивает проект с GitHub в `/opt/mtproxy-pushok` и открывает мастер `setup.sh`. Она не требует заранее загружать install-файл на VPS. При наличии каталога останавливается, не удаляя его. Полное обновление Ubuntu и перезагрузка этой командой не выполняются.
+Команда устанавливает Git, сертификаты, Python 3 и util-linux, получает опубликованную ветку `release/stable`, настраивает доступ к будущим обновлениям и открывает мастер. В запросе Git `Password` вводится токен, не пароль учётной записи; затем токен вводится повторно в скрытом запросе настройки. Он не включается в командную строку, URL или Git config.
 
-Затем мастер, после вашего подтверждения, устанавливает необходимые компоненты: Docker/Compose для кабинета, PostgreSQL, API, бота, Caddy при выборе нового HTTPS; для классического MTProxy — компилятор, OpenSSL/zlib и systemd-службу. Пароли БД и внутренние секреты создаются автоматически. Отдельные драйверы не нужны.
+Существующий каталог не перезаписывается. При ошибке скачивания или проверки доступа команда останавливается до запуска мастера. Полное обновление Ubuntu и перезагрузка не выполняются.
 
-При выборе существующего Docker нужен работающий Compose plugin; мастер не переустанавливает его автоматически при конфликте пакетов. Если загрузка GitHub недоступна, установка остановится — сервисы не будут объявлены запущенными.
+Далее мастер после подтверждения устанавливает выбранные компоненты: Docker/Compose, PostgreSQL, API, бота и Caddy для нового HTTPS; для классического MTProxy — компилятор, OpenSSL/zlib и systemd-службу. Пароли БД и внутренние секреты создаются автоматически. При существующем Docker нужен работающий Compose plugin.
 
-### Полные ссылки на файлы установщика
+### Только классический MTProxy
 
-- **Только классический MTProxy — install.sh:** [https://raw.githubusercontent.com/mrkoster1988/mtproxy-pushok/main/install.sh](https://raw.githubusercontent.com/mrkoster1988/mtproxy-pushok/main/install.sh).
-- **Полный мастер — setup.sh:** [https://raw.githubusercontent.com/mrkoster1988/mtproxy-pushok/main/setup.sh](https://raw.githubusercontent.com/mrkoster1988/mtproxy-pushok/main/setup.sh). Для запуска ему нужен **весь репозиторий**, поэтому используйте команду клонирования выше.
-- [Скачать весь проект ZIP](https://github.com/mrkoster1988/mtproxy-pushok/archive/refs/heads/main.zip) · [Посмотреть код install.sh](https://github.com/mrkoster1988/mtproxy-pushok/blob/main/install.sh).
-
-Если требуется только отдельный прокси, полная команда скачивания и запуска:
+После авторизованного скачивания проекта выполните из его каталога:
 
 ```bash
-curl --fail --location --show-error https://raw.githubusercontent.com/mrkoster1988/mtproxy-pushok/main/install.sh -o mtproxy-pushok-install.sh && sudo bash mtproxy-pushok-install.sh
+cd /opt/mtproxy-pushok
+bash install.sh
 ```
 
-Нужен `curl`; при его отсутствии на Ubuntu установите пакет `curl`. Скрипт запускается только после успешной загрузки. Кабинет, бота и Mini App эта команда не устанавливает. Команда `sudo bash install.sh` без скачивания работает только из каталога, где файл уже существует.
+Этот скрипт устанавливает только прокси. Кабинет, бота и Mini App устанавливает `setup.sh`. Анонимные ссылки `raw.githubusercontent.com` для закрытого репозитория не используются.
 
 ## 3. Готовые ответы: чистый VPS, обычный Telegram
 
@@ -108,7 +107,7 @@ systemctl is-active mtproxy-pushok.service
 5. Используйте Telegram-ссылку прокси, которую напечатает классический установщик. Она содержит секрет доступа — не включайте её в общий диагностический вывод.
 6. Если TAG отсутствовал, зарегистрируйте прокси через @MTProxyBot, получите тег и добавьте его через `sudo bash install.sh` из каталога проекта. Повторный запуск меняет конфигурацию/перезапускает существующий прокси. После изменения отдельно проверьте показ канала в независимом Telegram-клиенте.
 
-«Контейнер запущен» не подтверждает живую доставку сообщений, оплату или спонсорский показ. Автоматическое переключение спонсоров ещё не завершено; ручное применение тега не считать автоматическим запуском кампании.
+«Контейнер запущен» не подтверждает живую доставку сообщений, оплату или спонсорский показ. Автоматизация применяется отдельным агентом после настройки; ручное применение тега не считать подтверждённым автоматическим запуском кампании.
 
 При проблеме готовности:
 
@@ -141,11 +140,12 @@ bash setup.sh
 
 Для изменения только кабинета выбирайте **2** в самом первом вопросе — это не запускает установщик прокси повторно. При найденной `.env` выберите **1**, чтобы сохранить настройки и обновить сервисы, либо **4** для запуска бота из сохранённых настроек. Вариант 4 требует уже сохранённых корректных токена, имени и внутреннего секрета.
 
-Перед загрузкой новой версии сделайте резервную копию БД, `.env`, конфигурации прокси и приватных файлов по [STAGING.md](STAGING.md). Затем, если рабочая копия чистая:
+Перед первым обновлением из закрытого GitHub настройте [доступ VPS](PRIVATE_REPOSITORY.md). Перед загрузкой новой версии сделайте резервную копию БД, `.env`, конфигурации прокси и приватных файлов по [STAGING.md](STAGING.md). Затем, если рабочая копия чистая:
 
 ```bash
 cd /opt/mtproxy-pushok
-git pull --ff-only origin main
+git fetch --no-tags https://github.com/mrkoster1988/mtproxy-pushok.git refs/heads/release/stable
+git merge --ff-only FETCH_HEAD
 bash setup.sh
 ```
 

@@ -8,6 +8,7 @@ backups
 
 .build/
 .backups/
+.control/
 **/*.session
 **/*.session-journal
 **/*.session-wal
