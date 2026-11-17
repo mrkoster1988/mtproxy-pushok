@@ -280,11 +280,14 @@ def main(status=None):
         # Обновление кабинета может идти долго: истёкший тег снимается до ожидания.
         status['code'] = 'restore_failed'
         restore_pending_or_expired()
-        from updater import lock_file
+        from proxy_locks import runtime_lock, RuntimeBusy
         status['code'] = 'waiting_update'
-        with lock_file('host-lock') as update_lock:
-            fcntl.flock(update_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-            tick(status)
+        try:
+            with runtime_lock():
+                tick(status)
+        except RuntimeBusy as exc:
+            status['code'] = exc.code
+            raise
 
 
 def flush_failure_notice():

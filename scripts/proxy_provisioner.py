@@ -344,7 +344,7 @@ def provision(job):
 def tick(status=None):
     status = status if status is not None else {}
     from automatic_binding import connection_status
-    from updater import lock_file
+    from proxy_locks import runtime_lock
     if os.geteuid()!=0:
         raise RuntimeError('root_required')
     if not (BASE/'mtproxy.env').exists():
@@ -353,42 +353,39 @@ def tick(status=None):
     host = primary_host()
     with open('/run/lock/pushok-provisioner.lock','w') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
-        with lock_file('host-lock') as update_lock:
-            fcntl.flock(update_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        with runtime_lock(wait_seconds=30):
             reconcile(host)
-        cfg = exchange(dict(action='settings',host=host))
-        status['policy_revision'] = cfg.get('policy_revision')
-        if cfg.get('state')=='wait':
-            status['code'] = 'agent_busy'
-            return
-        if cfg.get('enabled') is not True:
-            status['code'] = 'disabled'
-            return
-        if (type(cfg.get('first_port')) is not int or not 1024<=cfg['first_port']<=65533
-                or type(cfg.get('max_instances')) is not int or not 1<=cfg['max_instances']<=3):
-            raise ValueError('invalid_host_policy')
-        owner = connection_status()
-        if (not owner['enabled'] or not owner['helper_available'] or not owner['session_saved']
-                or owner['state'] not in ('connected','session_saved','unavailable')):
-            status['code'] = 'owner_unavailable'
-            return
-        if owner.get('retry_seconds',0)>0:
-            from datetime import datetime, timedelta, timezone
-            status.update(code='telegram_flood_wait',retry_at=(datetime.now(timezone.utc)+timedelta(seconds=owner['retry_seconds'])).isoformat())
-            return
-        if not resource_ready():
-            status['code'] = 'resources_low'
-            return
-        from proxy_readiness import native_ready, timers_ready
-        if not native_ready(BASE, BINARY):
-            status['code'] = 'native_unavailable'
-            return
-        if not timers_ready():
-            status['code'] = 'timer_unavailable'
-            return
-        ports = [p for p in range(cfg['first_port'],cfg['first_port']+cfg['max_instances']) if free_port(p)]
-        with lock_file('host-lock') as update_lock:
-            fcntl.flock(update_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            cfg = exchange(dict(action='settings',host=host))
+            status['policy_revision'] = cfg.get('policy_revision')
+            if cfg.get('state')=='wait':
+                status['code'] = 'agent_busy'
+                return
+            if cfg.get('enabled') is not True:
+                status['code'] = 'disabled'
+                return
+            if (type(cfg.get('first_port')) is not int or not 1024<=cfg['first_port']<=65533
+                    or type(cfg.get('max_instances')) is not int or not 1<=cfg['max_instances']<=3):
+                raise ValueError('invalid_host_policy')
+            owner = connection_status()
+            if (not owner['enabled'] or not owner['helper_available'] or not owner['session_saved']
+                    or owner['state'] not in ('connected','session_saved','unavailable')):
+                status['code'] = 'owner_unavailable'
+                return
+            if owner.get('retry_seconds',0)>0:
+                from datetime import datetime, timedelta, timezone
+                status.update(code='telegram_flood_wait',retry_at=(datetime.now(timezone.utc)+timedelta(seconds=owner['retry_seconds'])).isoformat())
+                return
+            if not resource_ready():
+                status['code'] = 'resources_low'
+                return
+            from proxy_readiness import native_ready, timers_ready
+            if not native_ready(BASE, BINARY):
+                status['code'] = 'native_unavailable'
+                return
+            if not timers_ready():
+                status['code'] = 'timer_unavailable'
+                return
+            ports = [p for p in range(cfg['first_port'],cfg['first_port']+cfg['max_instances']) if free_port(p)]
             primary = parse_env(private_read(BASE/'mtproxy.env'))['MT_PROXY_HOST'].lower()
             job = exchange(dict(action='claim',host=host,primary_host=primary,resources_ok=True,free_ports=ports))
             if job.get('state')!='provision':
