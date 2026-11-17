@@ -99,6 +99,9 @@ def router_for(dsn, current_user, require_owner):
     def save(data: Settings, response: Response, owner=Depends(require_owner)):
         response.headers.update(PRIVATE)
         def write(conn):
+            from .proxy_provisioning import LOCK
+            # Не резервируем порт одновременно с созданием нового узла.
+            conn.execute('SELECT pg_advisory_xact_lock(%s)', (LOCK,))
             cfg = conn.execute('SELECT * FROM proxy_gateway_settings WHERE singleton FOR UPDATE').fetchone()
             if cfg['revision'] != data.revision:
                 raise HTTPException(409, 'gateway_settings_changed')

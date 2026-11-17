@@ -1,4 +1,4 @@
-"""Ограниченное расширение сети: ИИ выбирает действие, хост исполняет фиксированный план."""
+"""Ограниченное расширение сети по очереди или явной настройке первого резерва."""
 import ipaddress
 import json
 import re
@@ -92,6 +92,7 @@ def readiness_report(policy_revision=None):
 class Settings(BaseModel):
     model_config = ConfigDict(extra='forbid')
     enabled: bool = Field(strict=True)
+    reserve_enabled: bool = Field(default=False, strict=True)
     max_instances: int = Field(ge=1, le=3, strict=True)
     wait_minutes: int = Field(ge=90, le=10080, strict=True)
     first_port: int = Field(ge=1024, le=65533, strict=True)
@@ -99,7 +100,7 @@ class Settings(BaseModel):
 
     @model_validator(mode='after')
     def reserved_ports(self):
-        if set(range(self.first_port,self.first_port+self.max_instances)) & {20000,20001,20002}:
+        if set(range(self.first_port,self.first_port+self.max_instances)) & {19999,20000,20001,20002}:
             raise ValueError('reserved_stats_port')
         return self
 
@@ -112,7 +113,7 @@ def public(conn):
     from . import control
     cfg = dict(configuration(conn))
     cfg.pop('updated_by')
-    jobs = conn.execute('''SELECT j.id,j.state,j.attempts,j.retry_at,j.error_code,j.created_at,
+    jobs = conn.execute('''SELECT j.id,j.state,j.reason,j.attempts,j.retry_at,j.error_code,j.created_at,
         n.name,n.host,n.port,n.status FROM proxy_provisioning_jobs j
         JOIN proxy_nodes n ON n.id=j.proxy_node_id ORDER BY j.created_at DESC LIMIT 20''').fetchall()
     agent = control.read('proxy-provisioner.json',{})
@@ -150,10 +151,10 @@ def router_for(dsn, require_owner):
                 raise HTTPException(409, 'provisioning_changed')
             if data.enabled and not channel_ai_connection.active('proxy_provisioning'):
                 raise HTTPException(409, 'provisioning_ai_required')
-            conn.execute('''UPDATE proxy_provisioning_settings SET enabled=%s,max_instances=%s,
+            conn.execute('''UPDATE proxy_provisioning_settings SET enabled=%s,reserve_enabled=%s,max_instances=%s,
                 wait_minutes=%s,first_port=%s,revision=%s,updated_by=%s,updated_at=now(),
                 evaluated_at=NULL,decision=%s WHERE singleton''',
-                (data.enabled,data.max_instances,data.wait_minutes,data.first_port,uuid4(),owner['id'],
+                (data.enabled,data.reserve_enabled,data.max_instances,data.wait_minutes,data.first_port,uuid4(),owner['id'],
                  'waiting' if data.enabled else 'disabled'))
             conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'proxy_provisioning_settings',%s::jsonb)",
                          (owner['id'],json.dumps(data.model_dump(mode='json'))))
@@ -258,7 +259,17 @@ def advise(metrics, config):
 
 def allowed(conn, cfg):
     return bool(cfg['enabled'] and channel_ai_connection.active('proxy_provisioning') and cfg['updated_by']
-        and conn.execute("SELECT 1 FROM users WHERE id=%s AND is_owner AND role='admin'",(cfg['updated_by'],)).fetchone())
+        and conn.execute("SELECT 1 FROM users WHERE id=%s AND is_owner AND role='admin' AND blocked_at IS NULL",(cfg['updated_by'],)).fetchone())
+
+
+def reserved_ports(conn, host, aliases=()):
+    from .proxy_gateway import TOPICS
+    ports = {r['port'] for r in conn.execute('SELECT port FROM proxy_nodes WHERE host=ANY(%s)', ([host,*aliases],))}
+    ports.update((19999,20000,20001,20002))
+    gateway = conn.execute('SELECT * FROM proxy_gateway_settings WHERE singleton').fetchone()
+    if gateway['enabled']:
+        ports.update(range(gateway['port'],gateway['port']+(len(TOPICS) if gateway['interests_enabled'] else 0)+1))
+    return ports
 
 
 def handle(conn, request):
@@ -272,17 +283,16 @@ def handle(conn, request):
         cfg = conn.execute('SELECT * FROM proxy_provisioning_settings WHERE singleton').fetchone()
         ai_ready = bool(channel_ai_connection.active('proxy_provisioning'))
         owner_ready = bool(cfg['updated_by'] and conn.execute(
-            "SELECT 1 FROM users WHERE id=%s AND is_owner AND role='admin'", (cfg['updated_by'],)).fetchone())
+            "SELECT 1 FROM users WHERE id=%s AND is_owner AND role='admin' AND blocked_at IS NULL", (cfg['updated_by'],)).fetchone())
         jobs = conn.execute('SELECT state,created_at FROM proxy_provisioning_jobs').fetchall()
         capacity = ('preparation_pending' if any(j['state']=='pending' for j in jobs) else
                     'preparation_failed' if any(j['state']=='failed' for j in jobs) else
                     'instance_limit' if len(jobs)>=cfg['max_instances'] else
                     'daily_limit' if any(datetime.now(timezone.utc)-j['created_at']<timedelta(days=1) for j in jobs) else 'ready')
-        reserved = conn.execute('SELECT port FROM proxy_nodes WHERE host=%s', (host,)).fetchall()
         return dict(first_port=cfg['first_port'], max_instances=cfg['max_instances'], capacity=capacity,
                     queue=queue_summary(conn, host, cfg['wait_minutes'], host_aliases(request)),
                     policy_revision=str(cfg['revision']),
-                    reserved_ports=[r['port'] for r in reserved],
+                    reserved_ports=sorted(reserved_ports(conn,host,host_aliases(request))),
                     policy='disabled' if not cfg['enabled'] else 'ai_unavailable' if not ai_ready else
                            'owner_unavailable' if not owner_ready else 'ready')
     if not conn.execute('SELECT pg_try_advisory_xact_lock(%s) AS ok',(LOCK,)).fetchone()['ok']:
@@ -359,7 +369,8 @@ def handle(conn, request):
             (job['proxy_node_id'],tag,job['owner_id']))
         conn.execute("UPDATE proxy_nodes SET status='active',updated_at=now() WHERE id=%s",(job['proxy_node_id'],))
         conn.execute("UPDATE proxy_provisioning_jobs SET state='active',error_code=NULL,updated_at=now() WHERE id=%s",(job['id'],))
-        conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'proxy_created_by_ai',jsonb_build_object('node_id',%s::text))",(job['owner_id'],str(job['proxy_node_id'])))
+        event = 'proxy_created_for_reserve' if job['reason']=='reserve' else 'proxy_created_by_ai'
+        conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,%s,jsonb_build_object('node_id',%s::text))",(job['owner_id'],event,str(job['proxy_node_id'])))
         return {'accepted':True}
     if request['action'] != 'claim':
         raise ValueError('invalid_action')
@@ -380,41 +391,48 @@ def handle(conn, request):
         now = datetime.now(timezone.utc)
         if count['last'] and now-count['last'] < timedelta(days=1):
             return {'state':'wait','reason':'daily_limit'}
-        if cfg['evaluated_at'] and now-cfg['evaluated_at'] < timedelta(minutes=15):
-            return {'state':'wait','reason':'evaluation_cooldown'}
-        conn.execute("UPDATE proxy_provisioning_settings SET evaluated_at=now(),decision='checking' WHERE singleton")
-        # Короткий запрос модели проходит после сохранения ограничения частоты.
-        conn.commit()
-        aliases = host_aliases(request)
-        delayed = demand(conn,host,cfg['wait_minutes'],aliases)
-        config = channel_ai_connection.active('proxy_provisioning')
-        decision = 'no_demand'
-        if delayed and config and request.get('resources_ok') is True:
-            try:
-                decision = advise({'delayed_campaigns':delayed,'wait_minutes':cfg['wait_minutes'],
-                    'extra_instances':count['n'],'maximum':cfg['max_instances'],'resources_available':True},config)
-            except (OSError,ValueError,TypeError,KeyError,IndexError):
-                decision = 'ai_unavailable'
-        conn.execute('SELECT pg_advisory_xact_lock(%s)',(LOCK,))
-        current = configuration(conn)
-        if current['revision'] != cfg['revision'] or not allowed(conn,current) or config != channel_ai_connection.active('proxy_provisioning'):
-            return {'state':'wait','reason':'policy_changed'}
-        if decision == 'create_proxy' and not demand(conn,host,cfg['wait_minutes'],aliases):
+        # Резерв — явное решение владельца. Не вызываем модель и не отпускаем
+        # общую блокировку до записи задания: два агента не создадут два резерва.
+        reason = 'reserve' if cfg['reserve_enabled'] and count['n']==0 else 'demand'
+        if reason == 'reserve':
+            conn.execute("UPDATE proxy_provisioning_settings SET decision='create_reserve' WHERE singleton")
+        else:
+            if cfg['evaluated_at'] and now-cfg['evaluated_at'] < timedelta(minutes=15):
+                return {'state':'wait','reason':'evaluation_cooldown'}
+            conn.execute("UPDATE proxy_provisioning_settings SET evaluated_at=now(),decision='checking' WHERE singleton")
+            # Короткий запрос модели проходит после сохранения ограничения частоты.
+            conn.commit()
+            aliases = host_aliases(request)
+            delayed = demand(conn,host,cfg['wait_minutes'],aliases)
+            config = channel_ai_connection.active('proxy_provisioning')
             decision = 'no_demand'
-        conn.execute('UPDATE proxy_provisioning_settings SET decision=%s WHERE singleton',(decision,))
-        if decision != 'create_proxy':
-            return {'state':'wait','reason':decision}
+            if delayed and config and request.get('resources_ok') is True:
+                try:
+                    decision = advise({'delayed_campaigns':delayed,'wait_minutes':cfg['wait_minutes'],
+                        'extra_instances':count['n'],'maximum':cfg['max_instances'],'resources_available':True},config)
+                except (OSError,ValueError,TypeError,KeyError,IndexError):
+                    decision = 'ai_unavailable'
+            conn.execute('SELECT pg_advisory_xact_lock(%s)',(LOCK,))
+            current = configuration(conn)
+            if current['revision'] != cfg['revision'] or not allowed(conn,current) or config != channel_ai_connection.active('proxy_provisioning'):
+                return {'state':'wait','reason':'policy_changed'}
+            if decision == 'create_proxy' and not demand(conn,host,cfg['wait_minutes'],aliases):
+                decision = 'no_demand'
+            conn.execute('UPDATE proxy_provisioning_settings SET decision=%s WHERE singleton',(decision,))
+            if decision != 'create_proxy':
+                return {'state':'wait','reason':decision}
         if conn.execute("SELECT 1 FROM proxy_provisioning_jobs WHERE state<>'active' OR created_at>now()-interval '1 day'").fetchone():
             return {'state':'wait'}
         ports = request.get('free_ports',[])
+        reserved = reserved_ports(conn,host,host_aliases(request))
         port = next((p for p in range(cfg['first_port'],cfg['first_port']+cfg['max_instances'])
-            if type(p) is int and p in ports and not conn.execute('SELECT 1 FROM proxy_nodes WHERE host=%s AND port=%s',(host,p)).fetchone()),None)
+            if p in ports and p not in reserved),None)
         if not port:
             return {'state':'wait','reason':'port_busy'}
         node_id = uuid4()
         conn.execute("INSERT INTO proxy_nodes(id,name,host,port,status,target_engine,engine_selection_mode) VALUES(%s,%s,%s,%s,'paused','official_mtproxy','auto')",(node_id,'MTProxy · Авто '+str(port),host,port))
-        job = conn.execute('''INSERT INTO proxy_provisioning_jobs(proxy_node_id,owner_id,policy_revision)
-            VALUES(%s,%s,%s) RETURNING *''',(node_id,cfg['updated_by'],cfg['revision'])).fetchone() | {'host':host,'port':port}
+        job = conn.execute('''INSERT INTO proxy_provisioning_jobs(proxy_node_id,owner_id,policy_revision,reason)
+            VALUES(%s,%s,%s,%s) RETURNING *''',(node_id,cfg['updated_by'],cfg['revision'],reason)).fetchone() | {'host':host,'port':port}
     conn.execute("UPDATE proxy_provisioning_jobs SET attempts=attempts+1,error_code=NULL,retry_at=now()+interval '15 minutes',updated_at=now() WHERE id=%s",(job['id'],))
     return {'state':'provision','job_id':str(job['id']),'node_id':str(job['proxy_node_id']),
             'host':host,'port':job['port']}
