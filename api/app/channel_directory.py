@@ -9,8 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from . import channel_logos as logos
 from .public_channels import reference
 from . import public_channels
+from . import channel_topics, channel_topic_suggestions
 
 _requests = OrderedDict()
+_topic_requests = OrderedDict()
 
 
 def lookup(value):
@@ -20,16 +22,28 @@ def lookup(value):
 def router_for(dsn, current_user):
     router = APIRouter()
 
-    def throttle(uid):
+    def throttle(uid, requests=None):
+        requests = _requests if requests is None else requests
         now = time.monotonic()
         with logos._lock:
-            recent = [t for t in _requests.get(uid, []) if now - t < 60]
+            recent = [t for t in requests.get(uid, []) if now - t < 60]
             if len(recent) >= 30:
                 raise HTTPException(429, 'channel_lookup_rate_limit')
-            _requests[uid] = recent + [now]
-            _requests.move_to_end(uid)
-            while len(_requests) > 512:
-                _requests.popitem(last=False)
+            requests[uid] = recent + [now]
+            requests.move_to_end(uid)
+            while len(requests) > 512:
+                requests.popitem(last=False)
+
+    @router.get('/api/v1/channel-topics')
+    def topics(user=Depends(current_user)):
+        return {'topics':[{'id':key, 'label':label} for key, label, _ in channel_topics.CATALOG]}
+
+    @router.get('/api/v1/channel-topics/suggest')
+    def suggest_topic(response: Response, query: str = Query(min_length=4, max_length=255), user=Depends(current_user)):
+        # Необязательный анализ не расходует лимит обязательной проверки канала.
+        throttle(user['id'], _topic_requests)
+        response.headers['Cache-Control'] = 'private, no-store'
+        return channel_topic_suggestions.suggest(query)
 
     @router.get('/api/v1/channel-preview')
     def preview(response: Response, query: str = Query(min_length=4, max_length=255), user=Depends(current_user)):

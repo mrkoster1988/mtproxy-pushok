@@ -51,10 +51,11 @@ from .sbp_webhook import router as sbp_webhook_router
 from .sbp_provider import SBPProviderError
 from .sbp_reconcile import SBPReconcileError
 from .sbp_verification import SBPVerificationError
+from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.58",
+    version="1.59",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -181,6 +182,7 @@ class ChannelResponse(BaseModel):
 class CampaignCreate(BaseModel):
     channel_id: UUID
     tariff_id: UUID
+    topic: Topic | None = None
     requested_start_at: datetime | None = None
 
     @field_validator("requested_start_at")
@@ -205,6 +207,7 @@ class OrderSubmission(BaseModel):
     expected_duration_seconds: int = Field(gt=0)
     promo_code: str | None = Field(default=None, max_length=48)
     quote_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    topic: Topic | None = None
     requested_start_at: datetime | None = None
 
     @model_validator(mode="after")
@@ -217,6 +220,8 @@ class OrderSubmission(BaseModel):
 
 
 class CampaignResponse(BaseModel):
+    topic: Topic | None = None
+    topic_label: str | None = None
     id: UUID
     channel_id: UUID
     tariff_id: UUID
@@ -434,6 +439,7 @@ def _campaign_response(row: dict[str, Any]) -> CampaignResponse:
             ("proof", row.get("payment_status") == "proof_submitted"),
             ("payment", row.get("has_pending_payment", False)),
         ) if pending]
+    row["topic_label"] = topic_label(row.get("topic"))
     return CampaignResponse(**row)
 
 
@@ -634,10 +640,10 @@ def create_campaign(
                 INSERT INTO campaigns (
                     advertiser_user_id, channel_id, tariff_id,
                     tariff_name_snapshot, duration_seconds_snapshot,
-                    price_kopecks_snapshot, currency_snapshot, requested_start_at, purchase_surface
+                    price_kopecks_snapshot, currency_snapshot, requested_start_at, purchase_surface, topic
                 )
                 SELECT %s, c.id, t.id, t.name, t.duration_seconds,
-                       t.price_kopecks, t.currency, %s, %s
+                       t.price_kopecks, t.currency, %s, %s, %s
                 FROM sponsor_channels AS c
                 JOIN tariffs AS t ON t.id = %s AND t.is_active = TRUE AND t.archived_at IS NULL
                   AND (NOT t.admin_only OR %s)
@@ -646,9 +652,9 @@ def create_campaign(
                           duration_seconds_snapshot, price_kopecks_snapshot,
                           currency_snapshot, moderation_status, payment_status,
                           placement_status, requested_start_at, scheduled_start_at,
-                          scheduled_end_at, moderator_comment
+                          scheduled_end_at, moderator_comment, topic
                 """,
-                (user["id"], payload.requested_start_at, user.get("login_surface", "web"), payload.tariff_id,
+                (user["id"], payload.requested_start_at, user.get("login_surface", "web"), payload.topic, payload.tariff_id,
                  user["role"] == "admin", payload.channel_id, user["id"]),
             ).fetchone()
     except InsufficientPrivilege as exc:
@@ -680,7 +686,7 @@ def list_campaigns(
                 SELECT sc.title AS channel_title, sc.telegram_url AS channel_url,
                        c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
                        c.duration_seconds_snapshot, c.price_kopecks_snapshot, c.base_price_kopecks_snapshot, c.stars_price_snapshot,
-                       c.growth_offer_name, c.discount_percent_snapshot,
+                       c.growth_offer_name, c.discount_percent_snapshot, c.topic,
                        c.currency_snapshot, c.moderation_status, c.payment_status,
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
                        c.scheduled_end_at, c.moderator_comment,
@@ -1562,7 +1568,7 @@ def get_campaign_report(
                 """SELECT c.id, sc.title AS channel_title, sc.telegram_url AS channel_url,
                           c.tariff_name_snapshot, c.duration_seconds_snapshot,
                           c.price_kopecks_snapshot, c.base_price_kopecks_snapshot, c.stars_price_snapshot,
-                       c.growth_offer_name, c.discount_percent_snapshot, c.currency_snapshot,
+                       c.growth_offer_name, c.discount_percent_snapshot, c.topic, c.currency_snapshot,
                           c.moderation_status, c.payment_status, c.placement_status,
                           c.requested_start_at, c.scheduled_start_at, c.scheduled_end_at
                    FROM campaigns AS c
@@ -1786,7 +1792,7 @@ def list_operator_campaigns(
                               AND pa.status IN ('created','pending')) AS has_pending_payment,
                        c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
                        c.duration_seconds_snapshot, c.price_kopecks_snapshot, c.base_price_kopecks_snapshot, c.stars_price_snapshot,
-                       c.growth_offer_name, c.discount_percent_snapshot,
+                       c.growth_offer_name, c.discount_percent_snapshot, c.topic,
                        c.currency_snapshot, c.moderation_status, c.payment_status,
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
                        c.scheduled_end_at, c.moderator_comment,

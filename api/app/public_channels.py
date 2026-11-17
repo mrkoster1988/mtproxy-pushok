@@ -100,7 +100,8 @@ def lookup(value, *, fresh=False, expected_id=None):
     if expected_id is not None and chat['id'] != expected_id:
         raise HTTPException(422, 'channel_identity_changed')
     return dict(title=str(chat.get('title') or '@' + username)[:255], username=username,
-                telegram_url='https://t.me/' + username, telegram_channel_id=chat['id'])
+                telegram_url='https://t.me/' + username, telegram_channel_id=chat['id'],
+                description=chat.get('description', '')[:2000] if isinstance(chat.get('description', ''), str) else '')
 
 
 def owned_snapshot(dsn, user_id, *, channel_id=None, campaign_id=None):

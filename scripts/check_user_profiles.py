@@ -87,9 +87,13 @@ def check_user_profiles(browser, base, output, failures, dsn):
             expect(card.locator('.user-avatar')).not_to_have_text('')
             # Запоздалый профиль после выхода не возвращает персональные данные в DOM.
             held=[]
-            admin.route('**/api/v1/users/*/profile?*',lambda route:held.append(route))
+            def hold_profile(route):
+                held.append(route)
+                admin.evaluate('window.__profileRequestHeld=true')
+            admin.route('**/api/v1/users/*/profile?*',hold_profile)
             card.get_by_role('link',name='Открыть профиль рекламодателя').click()
             admin.wait_for_function("document.querySelector('[data-page=user]').textContent.includes('Загрузка профиля')")
+            admin.wait_for_function('window.__profileRequestHeld===true')
             assert held, 'Profile request must be held before logout'
             admin.locator('#logout').evaluate('(button)=>button.click()')
             for route in held:route.fulfill(json={'user':{'first_name':'LATE_PRIVATE'},'counts':{}})
