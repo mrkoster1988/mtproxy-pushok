@@ -12,7 +12,23 @@ ERRORS = {
     'set_promotion_button_missing', 'channel_prompt_not_verified', 'binding_not_verified',
     'telegram_unavailable', 'telegram_flood_wait', 'owner_helper_unavailable', 'target_changed',
     'tag_used_by_other_node', 'node_busy',
+    'channel_link_invalid', 'channel_not_found', 'channel_access_denied',
+    'channel_not_broadcast', 'channel_username_mismatch',
 }
+
+CHANNEL_ERRORS = {
+    'public_channel_required': ('Канал не прошёл проверку', 'Обновлённый агент уточнит причину при следующей попытке. Проверьте ссылку на канал в заявке.'),
+    'channel_link_invalid': ('Неверная ссылка на канал', 'Нужна ссылка вида https://t.me/username или https://telegram.me/username. Ссылка на отдельный пост или приглашение не подходит.'),
+    'channel_not_found': ('Telegram не нашёл этот канал', 'Проверьте точный @username: канал мог сменить адрес или стать закрытым.'),
+    'channel_access_denied': ('Аккаунту владельца недоступен канал', 'Проверьте доступ к каналу из подключённого аккаунта Telegram.'),
+    'channel_not_broadcast': ('По ссылке находится не канал', 'Telegram вернул группу или личный аккаунт. Для спонсорства нужна ссылка на публичный канал.'),
+    'channel_username_mismatch': ('Адрес канала не подтверждён', 'Указанный @username отсутствует среди активных имён канала. Проверьте его текущую публичную ссылку.'),
+}
+
+
+def channel_feedback(code):
+    title, action = CHANNEL_ERRORS[code]
+    return {'title': title, 'next_action': action}
 
 
 def resolve(conn, request):
@@ -60,10 +76,11 @@ def busy(conn, node_id):
 
 
 def public_status(conn):
-    return conn.execute('''SELECT j.proxy_node_id,n.name,j.campaign_id,ch.title AS channel_title,j.phase,j.retry_at,
+    rows = conn.execute('''SELECT j.proxy_node_id,n.name,j.campaign_id,ch.title AS channel_title,j.channel_url,j.phase,j.retry_at,
         j.verified_at,j.error_code,j.updated_at FROM telegram_binding_jobs j
         JOIN proxy_nodes n ON n.id=j.proxy_node_id
         JOIN sponsor_channels ch ON ch.id=j.channel_id WHERE n.archived_at IS NULL ORDER BY n.name''').fetchall()
+    return [dict(row, **channel_feedback(row['error_code'])) if row['error_code'] in CHANNEL_ERRORS else row for row in rows]
 
 
 def preparation_improves_slot(conn, campaign, node_id):

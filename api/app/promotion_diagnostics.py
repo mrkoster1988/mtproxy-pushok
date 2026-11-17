@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 from .promotion_report import read_report
 from .promotion_runtime import confirmation, node_plan
+from .telegram_binding import CHANNEL_ERRORS, channel_feedback
 
 
 # Только фиксированные тексты: исключения, команды и рекламные теги не публикуются.
@@ -80,10 +81,13 @@ def diagnostics(conn):
     now = datetime.now(timezone.utc)
     report = read_report(now)
     nodes = conn.execute('''SELECT n.id,n.name,n.host,n.port,n.status,n.archived_at,n.target_engine,
-        r.campaign_id,r.state,r.checked_at,r.plan_revision
+        r.campaign_id,r.state,r.checked_at,r.plan_revision,
+        j.phase AS binding_phase,j.error_code AS binding_error_code,j.retry_at AS binding_retry_at
         FROM proxy_nodes n LEFT JOIN promotion_runtime r ON r.proxy_node_id=n.id
+        LEFT JOIN telegram_binding_jobs j ON j.proxy_node_id=n.id AND j.phase<>'done'
         WHERE n.archived_at IS NULL ORDER BY n.name,n.id''').fetchall()
     items = []
+    agent = describe_report(report)
     for node in nodes:
         plan = node_plan(conn, node)
         confirmed = confirmation(conn, node, node, now=now, plan=plan, report=report)
@@ -91,7 +95,26 @@ def diagnostics(conn):
         item = {'node_id': str(node['id']), 'name': node['name'], 'host': node['host'],
                 'port': node['port'], 'plan_title': describe(plan['reason'])['title'],
                 **describe(code), **confirmed}
+        if code == 'telegram_binding_pending' and node.get('binding_phase'):
+            error = node.get('binding_error_code')
+            if error:
+                detail = channel_feedback(error) if error in CHANNEL_ERRORS else {
+                    'title': 'Автопривязка ожидает повтора после ошибки',
+                    'next_action': 'Причина и время следующей попытки указаны в блоке «Автоприменение».',
+                }
+            elif node['binding_phase'] == 'propagating':
+                detail = {'title': 'Привязка проверена — ожидаем обновления Telegram',
+                          'next_action': 'После паузы агент повторно проверит привязку и назначит полный период рекламы.'}
+            else:
+                detail = {'title': 'Проверяем канал и регистрацию прокси' if node['binding_phase']=='inspect' else 'Привязываем канал в Telegram',
+                          'next_action': 'Подготовка ещё не завершена. Полный период рекламы будет назначен после подтверждения привязки.'}
+            item.update(detail, retry_at=node.get('binding_retry_at'))
+            # Свежий отчёт о незавершённой подготовке не выдаём за текущую работу,
+            # если очередь уже записала ошибку или ожидание распространения.
+            if (agent.get('recent') and report.get('code') == 'telegram_binding_pending'
+                    and report.get('node_id') == str(node['id'])):
+                agent.update(detail, retry_at=node.get('binding_retry_at'))
         if plan.get('next_start_at'):
             item['next_start_at'] = plan['next_start_at']
         items.append(item)
-    return {'agent': describe_report(report), 'nodes': items, 'display_verified': False}
+    return {'agent': agent, 'nodes': items, 'display_verified': False}

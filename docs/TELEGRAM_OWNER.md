@@ -89,3 +89,17 @@ sudo bash /opt/mtproxy-pushok/scripts/connect_telegram_owner.sh disable
 Источники: [получение api_id](https://core.telegram.org/api/obtaining_api_id), [вход Telethon](https://docs.telethon.dev/en/stable/basic/signing-in.html), [хранение сессий](https://docs.telethon.dev/en/stable/concepts/sessions.html).
 
 Дополнительно: [регистрация MTProxy](https://core.telegram.org/proxy), [управление спонсором в документации telemt](https://github.com/telemt/telemt/blob/main/docs/FAQ.en.md), [кнопки Telethon](https://docs.telethon.dev/en/stable/modules/custom.html#telethon.tl.custom.message.Message.click).
+
+## Проверка канала (v1.50)
+
+Свежий зелёный статус аккаунта означает доступ к сессии владельца, но не успешную проверку канала. Смотрите карточку очереди ниже: там указана точная ссылка из заявки и причина остановки.
+
+- «По ссылке находится не канал»: Telegram вернул группу или пользователя. Нужен именно публичный канал.
+- «Telegram не нашёл этот канал»: проверьте @username и доступность канала.
+- «Адрес канала не подтверждён»: имя не совпадает ни с основным, ни с активными дополнительными именами.
+- «Неверная ссылка на канал»: используйте https://t.me/username или https://telegram.me/username; приглашения и ссылки на посты не подходят.
+- «Привязка проверена — ожидаем обновления Telegram»: это часовая пауза после подтверждения, а не ошибка. Период рекламы ещё не запущен.
+
+Активные дополнительные имена обрабатываются по полям `channel.usernames` / `username.active` Telegram API. Если бот показывает основное имя, агент сверяет числовой ID, а не название канала. См. https://core.telegram.org/constructor/channel и https://core.telegram.org/constructor/username.
+
+После обновления повторный вход не нужен: существующая очередь проверяется в указанное время. Старая общая ошибка «Канал не прошёл проверку» уточнится при следующем обращении агента к Telegram. Само обновление не подтверждает успешную живую привязку.

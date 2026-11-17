@@ -250,7 +250,15 @@
    const autoStatus=el('div',undefined,'cards');autoStatus.setAttribute('aria-live','polite');
    const phaseTitles={inspect:'Проверяем регистрацию прокси',bind:'Привязываем канал в Telegram',propagating:'Ожидаем обновления Telegram',done:'Привязка проверена'};
    const errorTitles={not_connected:'Нужно подключить аккаунт владельца',revoked:'Подключение отозвано — войдите заново',automation_disabled:'Автопривязка выключена',proxy_not_found:'Прокси не найден в аккаунте владельца',proxy_ambiguous:'В @MTProxyBot несколько записей этого адреса',telegram_flood_wait:'Telegram попросил подождать',target_changed:'Заявка или канал изменились',binding_not_verified:'Бот пока не подтвердил привязку',owner_helper_unavailable:'Служба подключения пока недоступна',account_mismatch:'Подключён другой аккаунт владельца',connection_busy:'Аккаунт занят другой проверкой',public_channel_required:'Нужен доступный публичный канал',tag_changed:'Тег в Telegram изменился',telegram_unavailable:'Telegram временно недоступен',bot_response_timeout:'Бот не ответил вовремя',ambiguous_bot_response:'Ответ бота неоднозначен',proxy_identity_not_verified:'Адрес прокси не подтверждён',tag_not_verified:'Не удалось прочитать тег',set_promotion_button_missing:'Формат кнопок @MTProxyBot изменился',channel_prompt_not_verified:'Бот не подтвердил запрос канала'};
-   for(const item of data.telegram_automation||[]){const row=el('div',undefined,'card binding-status');row.append(el('h3',item.channel_title||item.name),el('small',item.name,'muted'),el('p',item.error_code?(errorTitles[item.error_code]||'Формат ответа Telegram требует проверки'):(phaseTitles[item.phase]||'Проверяем состояние')));if(item.phase!=='done')row.append(el('p','Повтор не раньше: '+date(item.retry_at),'muted'));autoStatus.append(row);}
+   for(const item of data.telegram_automation||[]){
+    const row=el('div',undefined,'card binding-status');
+    const title=item.title||(item.error_code?(errorTitles[item.error_code]||'Формат ответа Telegram требует проверки'):(phaseTitles[item.phase]||'Проверяем состояние'));
+    row.append(el('h3',item.channel_title||item.name),el('small',item.name,'muted'),el('p',title));
+    if(item.channel_url)row.append(el('p',item.channel_url,'muted'));
+    if(item.next_action)row.append(el('p',item.next_action,'muted'));
+    if(item.phase!=='done')row.append(el('p',(item.phase==='propagating'&&!item.error_code?'Проверка после обновления Telegram: ':'Повтор не раньше: ')+date(item.retry_at),'muted'));
+    autoStatus.append(row);
+   }
    if(!autoStatus.childElementCount)autoStatus.append(el('p','Автоматические привязки ещё не запускались. Агент берёт одобренные и оплаченные заявки, когда подходит время подготовки.','muted'));
    const commandText='sudo bash /opt/mtproxy-pushok/scripts/connect_telegram_owner.sh enable',command=el('code',commandText);
    const copyCommand=button('Скопировать команду',async()=>{await navigator.clipboard.writeText(commandText);notice('Команда скопирована. Выполните её в терминале VPS.',true);});copyCommand.prepend(window.pushokViews.icon('copy'));
