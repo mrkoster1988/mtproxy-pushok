@@ -1558,6 +1558,8 @@ def main():
                 check_mobile_polish(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_gift_sharing import check_gift_sharing
                 check_gift_sharing(browser,base,output,failures,PostgresIntegration.dsn)
+                from check_campaign_analytics import check_campaign_analytics
+                check_campaign_analytics(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_application_licenses import check_application_licenses
                 check_application_licenses(browser,base,output,failures,PostgresIntegration.dsn)
                 assert not failures, failures

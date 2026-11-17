@@ -19,6 +19,7 @@ from .delivery_inbox import DeliveryInbox
 from .button_icons import decorate, configured_icons, without_button_icons, icon_rejection
 from .button_styles import with_button_styles
 from .proxy_link import current_proxy_url
+from .campaign_analytics import member_payload
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
@@ -668,9 +669,14 @@ def run():
         try:
             updates = telegram_call(token, "getUpdates", {
                 "offset": offset, "timeout": 25,
-                "allowed_updates": ["message", "callback_query", "pre_checkout_query"]})
+                "allowed_updates": ["message", "callback_query", "pre_checkout_query", "chat_member"]})
             for update in updates:
                 next_offset = update["update_id"] + 1
+                join=member_payload(update)
+                if join and ready:
+                    _internal_api("analytics/join",join)
+                    offset=next_offset
+                    continue
                 if process_stars_update(update, token):
                     navigation.incoming(token, update)
                     offset = next_offset
