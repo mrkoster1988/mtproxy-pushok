@@ -166,7 +166,7 @@
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);bottomNav.append(a);
  });
  shell.append(bottomNav);
- const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.classList.add('flat-section');const campaignIntro=el('div',undefined,'dashboard-campaign-intro');campaignIntro.append(el('p','Продвигайте свой канал'));summary.append(campaignIntro,summaryRows);content.dashboard.append(summary);
+ const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.classList.add('flat-section','dashboard-campaigns');summary.append(summaryRows);content.dashboard.append(summary);
  const summaryHeading=el('div',undefined,'section-heading');summaryHeading.append(summary.querySelector('h2'),link('Все →','campaigns'));summary.prepend(summaryHeading);
 
  const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);content.dashboard.append(dashboardReferral,dashboardHelp);

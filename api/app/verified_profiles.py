@@ -4,10 +4,14 @@
 Номер приходит только от доверенного транспорта Bot API после явного запроса.
 """
 import calendar
+import json
+import os
 import re
 from datetime import date, datetime
 from uuid import UUID
 from zoneinfo import ZoneInfo
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, build_opener, ProxyHandler
 
 import psycopg
 from psycopg.rows import dict_row
@@ -16,7 +20,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .bot_stars import authorize
 from .wallet_ledger import post
-from .telegram_environment import environment_name
+from .telegram_environment import environment_name, bot_api_url
+from .channel_logos import NoRedirect
 
 CONSENT = 'phone-birthday-v1'
 MOSCOW = ZoneInfo('Europe/Moscow')
@@ -85,15 +90,37 @@ class Finish(BaseModel):
 
 def private_profile(conn, uid):
     row = conn.execute('''SELECT phone_number,phone_verified_at,birth_day,birth_month,birth_year,
-        birthday_source,birthday_opt_in FROM verified_profiles WHERE user_id=%s AND telegram_environment=%s''', (uid, environment_name())).fetchone()
+        birthday_source,birthday_opt_in,birthday_sync_state,birthday_sync_checked_at
+        FROM verified_profiles WHERE user_id=%s AND telegram_environment=%s''', (uid, environment_name())).fetchone()
     if not row:
         return dict(phone_number=None, phone_verified_at=None, phone_verified=False,
-                    birthday=None, birthday_source=None, birthday_opt_in=False)
+                    birthday=None, birthday_source=None, birthday_opt_in=False,
+                    birthday_sync_state=None, birthday_sync_checked_at=None)
     birthday = (dict(day=row.pop('birth_day'), month=row.pop('birth_month'), year=row.pop('birth_year'))
                 if row['birth_day'] is not None else None)
     for key in ('birth_day', 'birth_month', 'birth_year'):
         row.pop(key, None)
     return dict(row, birthday=birthday, phone_verified=row['phone_verified_at'] is not None)
+
+
+def telegram_birthday(telegram_user_id):
+    """Только собственный private chat; токен и полный ответ не выходят из сервера."""
+    token = os.getenv('TELEGRAM_BOT_TOKEN', '')
+    if not token or token.startswith('REPLACE_'):
+        raise RuntimeError('telegram_not_configured')
+    request = Request(bot_api_url(token, 'getChat'),
+                      data=json.dumps({'chat_id': telegram_user_id}).encode(),
+                      headers={'Content-Type': 'application/json'}, method='POST')
+    with build_opener(ProxyHandler({}), NoRedirect()).open(request, timeout=3) as reply:
+        raw = reply.read(65537)
+    if len(raw) > 65536:
+        raise ValueError('telegram_response_too_large')
+    response = json.loads(raw)
+    chat = response.get('result') if isinstance(response, dict) and response.get('ok') is True else None
+    if not isinstance(chat, dict) or chat.get('type') != 'private' or chat.get('id') != telegram_user_id:
+        raise ValueError('telegram_profile_unavailable')
+    value = chat.get('birthdate')
+    return Birthday.model_validate(value) if value is not None else None
 
 
 def request_contact(conn, uid, opt_in):
@@ -138,7 +165,9 @@ def save_contact(conn, payload):
     if payload.birthday and intent['birthday_opt_in']:
         b = payload.birthday
         conn.execute('''UPDATE verified_profiles SET birth_day=%s,birth_month=%s,birth_year=%s,
-            birthday_source='telegram' WHERE user_id=%s AND telegram_environment=%s AND birthday_source IS DISTINCT FROM 'manual' ''',
+            birthday_source='telegram',birthday_sync_state='imported',birthday_sync_checked_at=now()
+            WHERE user_id=%s AND telegram_environment=%s AND birthday_source IS DISTINCT FROM 'manual'
+            AND birthday_sync_state IS DISTINCT FROM 'manual' ''',
             (b.day, b.month, b.year, uid, environment_name()))
     conn.execute('DELETE FROM phone_verification_requests WHERE user_id=%s AND telegram_environment=%s', (uid, environment_name()))
     return dict(verified=True)
@@ -220,15 +249,48 @@ def router_for(dsn, current_user, require_admin):
         def save(conn):
             b = payload.birthday
             conn.execute('''INSERT INTO verified_profiles(user_id,birth_day,birth_month,birth_year,birthday_source,
-                birthday_opt_in,consent_version,consent_at,telegram_environment) VALUES(%s,%s,%s,%s,%s,%s,%s,now(),%s)
+                birthday_opt_in,consent_version,consent_at,telegram_environment,birthday_sync_state,birthday_sync_checked_at)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,now(),%s,'manual',now())
                 ON CONFLICT(user_id,telegram_environment) DO UPDATE SET birth_day=EXCLUDED.birth_day,birth_month=EXCLUDED.birth_month,
                 birth_year=EXCLUDED.birth_year,birthday_source=EXCLUDED.birthday_source,
                 birthday_opt_in=EXCLUDED.birthday_opt_in,consent_version=EXCLUDED.consent_version,
-                consent_at=now(),updated_at=now()''',
+                consent_at=now(),updated_at=now(),birthday_sync_state='manual',birthday_sync_checked_at=now()''',
                 (user['id'], b.day if b else None, b.month if b else None, b.year if b else None,
                  'manual' if b else None, payload.birthday_opt_in, CONSENT, environment_name()))
             return private_profile(conn, user['id'])
         return db(save)
+
+    @router.post('/me/birthday/sync')
+    def sync_birthday(response: Response, user=Depends(current_user)):
+        response.headers['Cache-Control'] = 'private, no-store'
+        uid, environment = user['id'], environment_name()
+        # Короткая отдельная транзакция: сеть не удерживает блокировку профиля.
+        claimed = db(lambda conn: conn.execute('''UPDATE verified_profiles
+            SET birthday_sync_state='pending',birthday_sync_checked_at=now()
+            WHERE user_id=%s AND telegram_environment=%s AND phone_verified_at IS NOT NULL
+            AND birthday_opt_in AND birth_day IS NULL AND birthday_source IS DISTINCT FROM 'manual'
+            AND birthday_sync_state IS DISTINCT FROM 'manual'
+            AND (birthday_sync_checked_at IS NULL OR birthday_sync_checked_at<now()-interval '1 minute')
+            RETURNING birthday_sync_checked_at''', (uid, environment)).fetchone())
+        if not claimed:
+            return db(lambda conn: private_profile(conn, uid))
+        try:
+            birthday = telegram_birthday(user['telegram_user_id'])
+            state = 'imported' if birthday else 'unavailable'
+        except (HTTPError, URLError, OSError, RuntimeError, ValueError):
+            birthday, state = None, 'failed'
+
+        def finish(conn):
+            conn.execute('''UPDATE verified_profiles SET birth_day=%s,birth_month=%s,birth_year=%s,
+                birthday_source=%s,birthday_sync_state=%s,updated_at=now()
+                WHERE user_id=%s AND telegram_environment=%s AND birthday_sync_state='pending'
+                AND birthday_sync_checked_at=%s AND birthday_opt_in AND birth_day IS NULL
+                AND phone_verified_at IS NOT NULL AND birthday_source IS DISTINCT FROM 'manual' ''',
+                (birthday.day if birthday else None, birthday.month if birthday else None,
+                 birthday.year if birthday else None, 'telegram' if birthday else None, state,
+                 uid, environment, claimed['birthday_sync_checked_at']))
+            return private_profile(conn, uid)
+        return db(finish)
 
     @router.get('/admin/birthday-settings')
     def get_settings(response: Response, admin=Depends(require_admin)):

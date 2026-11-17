@@ -21,6 +21,7 @@ from test_miniapp_auth import signed_data
 
 def check_verified_profiles(browser, base, output, failures, dsn):
     from app import main as api
+    from app import verified_profiles as verified
     tg = 99881521
     context = browser.new_context(viewport={'width': 390, 'height': 844}, reduced_motion='reduce')
     context.add_init_script("window.__nativeEvents=[];window.TelegramWebviewProxy={postEvent(name,data){__nativeEvents.push({name,data:JSON.parse(data||'{}')});}};")
@@ -54,16 +55,15 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             expect(card.get_by_role('button', name='Подтвердить номер', exact=True)).to_be_enabled()
             expect(card.locator('.verification-status')).to_contain_text('Ожидание остановлено')
             expect(card.get_by_role('link', name='Подтвердить через бота')).to_be_visible()
-            page.clock.install()
             card.get_by_role('button', name='Подтвердить номер', exact=True).click()
             page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===3")
             page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
             expect(card.locator('.verification-status')).to_contain_text('Ждём подтверждения бота')
-            page.clock.fast_forward(13000)
-            expect(card.locator('.verification-status')).to_contain_text('Бот пока не подтвердил')
+            expect(card.locator('.verification-status')).to_contain_text('Бот пока не подтвердил', timeout=20000)
             expect(card.get_by_role('button', name='Подтвердить номер', exact=True)).to_be_enabled()
             expect(card.locator('.phone-verified-badge')).to_have_count(0)
             # Соединение, которое не отвечает, прерывается по AbortSignal.
+            page.clock.install()
             page.evaluate("""() => {
               window.__realFetch=window.fetch;
               window.fetch=(url,options)=>String(url).endsWith('/me/verification/request')?
@@ -91,14 +91,34 @@ def check_verified_profiles(browser, base, output, failures, dsn):
                 reply = verification_response({'update_id': 99881521, 'message': {
                     'from': {'id': tg}, 'chat': {'id': tg, 'type': 'private'}, 'date': int(time.time()),
                     'contact': {'user_id': tg, 'phone_number': '+79990001122'}}},
-                    bot._internal_api, lambda method,payload: {'birthdate': {'day': 11, 'month': 11}})
+                    bot._internal_api, lambda method,payload: {})  # Номер пришёл без даты.
             assert 'Номер подтверждён' in reply['text']
-            expect(card.locator('.phone-verified-badge')).to_have_count(1, timeout=10000)
-            page.evaluate("window.cabinet.go('profile')")
+            expect(card).to_be_hidden(timeout=10000)
+            expect(card).to_be_empty()
+            dashboard = page.locator('[data-page=dashboard]')
+            expect(dashboard.get_by_text('Продвигайте свой канал', exact=True)).to_have_count(0)
+            expect(dashboard.locator('.dashboard-promote-channel')).to_be_visible()
+            empty = dashboard.locator('.dashboard-campaigns .empty-state')
+            expect(empty).to_have_css('background-color', 'rgb(16, 40, 59)')
+            expect(empty).to_have_css('border-top-style', 'solid')
+            expect(empty.locator('a[href="#/create"]')).to_be_hidden()
+            for width in (320, 390):
+                page.set_viewport_size({'width': width, 'height': 844})
+                assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                page.screenshot(path=str(output/f'home-clean-{width}.png'))
+            with patch.object(verified, 'telegram_birthday', return_value=None) as lookup:
+                page.evaluate("window.cabinet.go('profile')")
+                expect(page.locator('.profile-personal')).to_contain_text('Telegram не передал дату рождения')
+                lookup.assert_called_once_with(tg)
             personal = page.locator('.profile-personal')
             expect(personal.locator('.profile-phone')).to_contain_text('+79990001122')
             expect(page.locator('.profile-identity .phone-verified-badge')).to_have_count(1)
-            expect(personal.get_by_label('День', exact=True)).to_have_value('11')
+            expect(personal.get_by_label('День', exact=True)).to_have_value('')
+            with psycopg.connect(dsn) as conn:
+                conn.execute("UPDATE verified_profiles SET birthday_sync_checked_at=now()-interval '2 minutes'")
+            with patch.object(verified, 'telegram_birthday', return_value=verified.Birthday(day=11, month=11)):
+                personal.get_by_role('button', name='Взять из Telegram', exact=True).click()
+                expect(personal.get_by_label('День', exact=True)).to_have_value('11')
             expect(personal).to_contain_text('Добавлено из профиля Telegram')
             personal.get_by_label('День', exact=True).fill('29')
             personal.get_by_label('Месяц', exact=True).select_option('2')
