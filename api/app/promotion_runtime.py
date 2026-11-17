@@ -146,7 +146,7 @@ def confirmation(conn, node, runtime, *, now=None, plan=None, report=_UNREAD_REP
     fresh = bool(checked_at and 0 <= (now - checked_at).total_seconds() < 120)
     # Диагностика передаёт один снимок плана и отчёта для всех карточек.
     if report is _UNREAD_REPORT:
-        report = read_report(now)
+        report = read_report(now, node['id'] if node else None)
     recent = bool(node and fresh and report and report['recent']
                   and report.get('node_id') == str(node['id'])
                   and report['checked_at'] >= checked_at)

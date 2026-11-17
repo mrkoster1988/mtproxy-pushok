@@ -149,7 +149,7 @@ class MTProxyDialog:
         await button.click()
         return await self.fresh(after, message.id, before)
 
-    async def select(self, hosts, port):
+    async def select(self, hosts, port, *, allow_missing=False):
         message = await self.send('/myproxies')
         matches, pages = [], set()
         wanted_hosts = {h.lower() for h in hosts}
@@ -173,15 +173,74 @@ class MTProxyDialog:
             message = await self.click(message, next_buttons[0])
         else:
             raise BotProtocolError('proxy_list_too_long')
-        if len(matches) != 1:
-            raise BotProtocolError('proxy_not_found' if not matches else 'proxy_ambiguous')
-        message, button, listed_tag = matches[0]
-        card = await self.click(message, button)
-        # Совпадения IP недостаточно: порт и тег подтверждаем по открытой
-        # карточке до Set promotion. Несколько кандидатов не выбираем наугад.
-        if listed_tag and card_tag(card, hosts, port) != listed_tag:
-            raise BotProtocolError('tag_changed')
+        if not matches:
+            raise BotProtocolError('proxy_not_found')
+        # Несколько портов одного IP: проверяем карточки, не меняя продвижение.
+        if (len(matches) > 8 or (len(matches)>1 and
+                (any(tag is None for _,_,tag in matches) or len({tag for _,_,tag in matches}) != len(matches)))):
+            raise BotProtocolError('proxy_ambiguous')
+        verified = []
+        for message, button, listed_tag in matches:
+            card = await self.click(message, button)
+            shown = endpoints(text(card)+'\n'+'\n'.join(urls(card)))
+            if not shown & wanted:
+                if (len(matches)>1 or allow_missing) and shown and all(h in wanted_hosts and p != port for h,p in shown):
+                    continue
+                raise BotProtocolError('proxy_identity_not_verified')
+            if listed_tag and card_tag(card,hosts,port) != listed_tag:
+                raise BotProtocolError('tag_changed')
+            verified.append((message,button,card))
+        if len(verified) != 1:
+            raise BotProtocolError('proxy_not_found' if not verified else 'proxy_ambiguous')
+        message,button,card = verified[0]
+        if len(matches)>1:
+            previous = card_tag(card,hosts,port)
+            card = await self.click(message,button)
+            if card_tag(card,hosts,port) != previous:
+                raise BotProtocolError('tag_changed')
         return card
+
+    async def register(self, request, state):
+        """Никаких повторов /newproxy после неопределённого исхода отправки."""
+        import ipaddress
+        from uuid import UUID
+        host = str(ipaddress.IPv4Address(request['host']))
+        port, secret = request['port'], request['secret']
+        if not ipaddress.ip_address(host).is_global or type(port) is not int or not 1024<=port<=65535:
+            raise BotProtocolError('proxy_identity_not_verified')
+        if not isinstance(secret,str) or not re.fullmatch('[a-f0-9]{32}',secret):
+            raise BotProtocolError('registration_secret_mismatch')
+        marker = 'registration-'+str(UUID(request['node_id']))+'.json'
+        previous = state.read_file(marker)
+        identity = {'host':host,'port':port}
+        if previous and any(previous.get(k)!=v for k,v in identity.items()):
+            raise BotProtocolError('proxy_identity_not_verified')
+        try:
+            card = await self.select([host],port,allow_missing=True)
+        except BotProtocolError as exc:
+            if str(exc) != 'proxy_not_found':
+                raise
+            if previous:
+                raise BotProtocolError('registration_uncertain') from None
+            prompt = await self.send('/newproxy')
+            if not re.search(r'(?is)(?:ip|address|адрес).*(?:port|порт)',text(prompt)):
+                raise BotProtocolError('registration_prompt_invalid')
+            prompt = await self.send(f'{host}:{port}')
+            if not re.search(r'(?is)(?:send|enter|пришл|отправ|укаж).*(?:secret|секрет)',text(prompt)):
+                raise BotProtocolError('registration_prompt_invalid')
+            # Сохраняем намерение ДО финальной отправки. При обрыве — только чтение.
+            state.save_file(marker,identity)
+            await self.send(secret)
+            card = await self.select([host],port,allow_missing=True)
+        secrets = set(re.findall(r'(?i)secret\s*[:=]\s*[`\s]*([a-f0-9]{32})(?![a-f0-9])',text(card)))
+        for url in urls(card)+re.findall(r'(?:https?://t\.me/proxy\?[^\s<>]+|tg://proxy\?[^\s<>]+)',text(card)):
+            values = parse_qs(urlparse(url).query).get('secret',[])
+            secrets.update(v[2:] if v.startswith('dd') and len(v)==34 else v for v in values)
+        if {s.lower() for s in secrets} != {secret}:
+            raise BotProtocolError('registration_secret_mismatch')
+        tag = card_tag(card,[host],port)
+        state.save_file(marker,dict(identity,tag=tag))
+        return {'tag':tag,'bot_message_id':card.id}
 
     async def prepare(self, request):
         try:

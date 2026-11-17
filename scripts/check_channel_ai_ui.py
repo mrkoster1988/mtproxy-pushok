@@ -19,6 +19,7 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output):
             }return results;
         }''')
         assert statuses==[403,403,403],statuses
+        assert page.evaluate("async()=> (await fetch('/api/v1/admin/proxy-provisioning',{headers:{Authorization:'Bearer '+token}})).status")==403
     panel=admin.locator('#channel-ai-settings')
     expect(panel.locator('#channel-ai-key')).to_be_visible()
     expect(panel.locator('.ai-state')).to_have_text('Выключен')
@@ -26,6 +27,7 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output):
     admin.locator('#channel-ai-enabled').check()
     admin.locator('#channel-ai-cap-campaign_review').check()
     admin.locator('#channel-ai-cap-launch_diagnostics').check()
+    admin.locator('#channel-ai-cap-proxy_provisioning').check()
     admin.evaluate('window.pushokAI.load()')
     expect(admin.locator('#channel-ai-key')).to_have_value(key)
     with patch.object(suggest,'read_url',side_effect=HTTPError('https://api.openai.com',401,'ignored',{},None)):
@@ -45,6 +47,7 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output):
         assert connection.active()==(key,'gpt-4.1-mini')
         assert connection.active('campaign_review')==(key,'gpt-4.1-mini')
         assert connection.active('launch_diagnostics')==(key,'gpt-4.1-mini')
+        assert connection.active('proxy_provisioning')==(key,'gpt-4.1-mini')
         expect(admin.locator('#channel-ai-cap-campaign_review')).to_be_checked()
     assert key not in admin.evaluate('JSON.stringify({...localStorage,...sessionStorage})')
     assert key not in admin.evaluate('document.documentElement.outerHTML')
@@ -55,6 +58,25 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output):
         for name in ('channel-ai-check','channel-ai-save'):
             assert admin.locator('#'+name).bounding_box()['height']>=44
         if width==390:panel.screenshot(path=str(output/'47-channel-ai-settings.png'))
+    admin.set_viewport_size({'width':390,'height':844})
+    admin.evaluate('window.pushokProvisioning.load(true)')
+    provision=admin.locator('#proxy-provisioning-card')
+    provision.locator('summary').click()
+    admin.locator('#proxy-provisioning-enabled').check()
+    admin.locator('#proxy-provisioning-max').fill('2')
+    admin.locator('#proxy-provisioning-wait').fill('180')
+    admin.locator('#proxy-provisioning-save').click()
+    expect(provision.locator('.ai-state')).to_have_text('Включено')
+    expect(admin.locator('#proxy-provisioning-wait')).to_have_value('180')
+    for width in (320,390,768,1280):
+        admin.set_viewport_size({'width':width,'height':844})
+        provision.scroll_into_view_if_needed()
+        assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width
+        assert admin.locator('#proxy-provisioning-save').bounding_box()['height']>=44
+        if width==390:provision.screenshot(path=str(output/'54-proxy-provisioning.png'))
+    admin.locator('#proxy-provisioning-enabled').uncheck()
+    admin.locator('#proxy-provisioning-save').click()
+    expect(provision.locator('.ai-state')).to_have_text('Выключено')
     admin.set_viewport_size({'width':390,'height':844})
     # Удаление сохранённого ключа не зависит от ошибок в несохранённом черновике.
     admin.locator('#channel-ai-model').fill('')
@@ -77,5 +99,6 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output):
         isolated.wait_for_function('Boolean(window.__aiResolve)')
         isolated.evaluate('''() => {window.cabinet.logout();window.__aiResolve(new Response(JSON.stringify({enabled:true,key_saved:true,model:'gpt-4.1-mini',revision:'old'}),{headers:{'Content-Type':'application/json'}}));window.fetch=window.__aiFetch;}''')
         expect(isolated.locator('#channel-ai-settings')).to_be_empty()
+        expect(isolated.locator('#proxy-provisioning-settings')).to_be_empty()
         assert key not in isolated.evaluate('document.documentElement.outerHTML')
     finally:isolated.context.close()

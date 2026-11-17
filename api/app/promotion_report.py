@@ -27,10 +27,16 @@ def owner_fields(data, now):
     return result
 
 
-def read_report(now=None):
+def read_report(now=None, node_id=None):
     now = now or datetime.now(timezone.utc)
     try:
-        fd = os.open(control.root() / 'promotion-agent.json', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        path = control.root() / 'promotion-agent.json'
+        if node_id is not None:
+            from uuid import UUID
+            candidate = control.root() / ('promotion-agent-'+str(UUID(str(node_id)))+'.json')
+            if candidate.exists():
+                path = candidate
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(fd, 'r') as source:
             info = os.fstat(source.fileno())
             if not stat.S_ISREG(info.st_mode) or info.st_size > 8192:
