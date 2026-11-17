@@ -112,6 +112,41 @@ class ProvisioningIntegration(unittest.TestCase):
         self.execute('UPDATE proxy_provisioning_settings SET enabled=false')
         self.assertEqual(self.call(action='inspect')['policy'],'disabled')
 
+    def test_reports_from_previous_policy_remain_outdated_even_when_written_after_save(self):
+        from datetime import datetime,timezone
+        for name in ('proxy-provisioner.json','proxy-readiness.json'):
+            self.addCleanup(lambda name=name:(control.root()/name).unlink(missing_ok=True))
+        saved=self.request('GET','/admin/proxy-provisioning')
+        body={key:saved[key] for key in ('enabled','max_instances','wait_minutes','first_port','revision')}
+        disabled=self.request('PUT','/admin/proxy-provisioning',json=body|{'enabled':False})
+        cfg=self.call(action='settings')
+        self.assertFalse(cfg['enabled']); self.assertEqual(cfg['policy_revision'],disabled['revision'])
+        enabled=self.request('PUT','/admin/proxy-provisioning',json=body|{'revision':disabled['revision']})
+        agent=dict(code='disabled',checked_at=datetime.now(timezone.utc).isoformat(),policy_revision=disabled['revision'])
+        readiness=dict(schema=1,checked_at=agent['checked_at'],policy_revision=disabled['revision'],
+                       checks={key:'ready' for key in provision.READINESS})
+        readiness['checks']['policy']='disabled'
+        control.write('proxy-provisioner.json',agent); control.write('proxy-readiness.json',readiness)
+        current=self.request('GET','/admin/proxy-provisioning')
+        self.assertTrue(current['enabled'])
+        for report in ('agent','readiness'):
+            self.assertTrue(current[report]['recent']); self.assertFalse(current[report]['current_policy'])
+        agent.update(code='no_demand',policy_revision=enabled['revision'])
+        readiness.update(policy_revision=enabled['revision']); readiness['checks']['policy']='ready'
+        control.write('proxy-provisioner.json',agent); control.write('proxy-readiness.json',readiness)
+        current=self.request('GET','/admin/proxy-provisioning')
+        self.assertTrue(current['agent']['current_policy']); self.assertTrue(current['readiness']['current_policy'])
+        self.assertEqual(self.call(action='inspect')['policy_revision'],enabled['revision'])
+        self.assertEqual(self.execute('SELECT count(*) AS n FROM proxy_provisioning_jobs')[0]['n'],0)
+        self.advice.assert_not_called()
+
+    def test_unversioned_report_cannot_confirm_new_settings(self):
+        from datetime import datetime,timezone
+        self.addCleanup(lambda:(control.root()/'proxy-provisioner.json').unlink(missing_ok=True))
+        control.write('proxy-provisioner.json',dict(code='ready',checked_at=datetime.now(timezone.utc).isoformat()))
+        report=self.request('GET','/admin/proxy-provisioning')['agent']
+        self.assertTrue(report['recent']); self.assertFalse(report['current_policy'])
+
     def test_unpaid_paused_rejected_unknown_or_distant_channel_do_not_create(self):
         for change in ("payment_status='awaiting_payment'","moderation_status='rejected'","auto_schedule_paused=true", "requested_start_at=now()+interval '2 days'"):
             self.execute('UPDATE campaigns SET '+change+' WHERE id=%s',self.target)

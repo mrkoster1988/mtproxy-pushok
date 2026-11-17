@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]/'scripts'))
 import proxy_provisioner as host
@@ -18,7 +19,7 @@ from app import proxy_provisioning as api
 
 class ReadinessTests(unittest.TestCase):
     def setUp(self):
-        self.cfg = dict(first_port=9443, max_instances=2, policy='ready', capacity='ready', reserved_ports=[])
+        self.cfg = dict(first_port=9443, max_instances=2, policy='ready', capacity='ready', reserved_ports=[],policy_revision=str(uuid4()))
         self.owner = dict(enabled=True, helper_available=True, session_saved=True, state='connected')
         self.exchange = self.start(patch.object(host, 'exchange', return_value=self.cfg))
         self.start(patch.object(host, 'primary_host', return_value='8.8.8.8'))
@@ -38,6 +39,7 @@ class ReadinessTests(unittest.TestCase):
         self.owner.update(username='private-name', phone='private-phone', session='secret')
         report = readiness.inspect(host)
         self.assertEqual(report['checks'], {key:'ready' for key in api.READINESS})
+        self.assertEqual(report['policy_revision'],self.cfg['policy_revision'])
         self.assertNotIn('private', json.dumps(report)); self.assertNotIn('secret', json.dumps(report))
         self.exchange.assert_called_once_with(dict(action='inspect', host='8.8.8.8'))
         self.telegram.assert_not_called(); self.provision.assert_not_called(); self.commands.assert_not_called()
@@ -95,7 +97,7 @@ class ReadinessTests(unittest.TestCase):
     def test_missing_runtime_stops_before_claim_but_after_recovery(self):
         with tempfile.TemporaryDirectory() as temp:
             base=Path(temp); (base/'mtproxy.env').write_text('MT_PROXY_HOST=8.8.8.8\n')
-            self.exchange.return_value=dict(enabled=True, first_port=9443, max_instances=2)
+            self.exchange.return_value=dict(enabled=True, first_port=9443, max_instances=2,policy_revision=self.cfg['policy_revision'])
             for failed, expected in ((self.native, 'native_unavailable'), (self.timers, 'timer_unavailable')):
                 self.native.return_value=True; self.timers.return_value=True; failed.return_value=False
                 self.exchange.reset_mock()
@@ -105,6 +107,7 @@ class ReadinessTests(unittest.TestCase):
                      patch.object(host, 'reconcile') as reconcile:
                     status={}; host.tick(status)
                 self.assertEqual(status['code'], expected); reconcile.assert_called_once()
+                self.assertEqual(status['policy_revision'],self.cfg['policy_revision'])
                 self.assertEqual([c.args[0]['action'] for c in self.exchange.call_args_list], ['settings'])
         self.provision.assert_not_called(); self.telegram.assert_not_called()
 
@@ -142,10 +145,12 @@ class RuntimeProbeTests(unittest.TestCase):
             self.assertTrue(all(c.args[0][:2]==['systemctl','show'] for c in run.call_args_list))
 
     def test_api_report_whitelist_and_freshness(self):
-        report=dict(schema=1, checked_at=datetime.now(timezone.utc).isoformat(), checks={k:'ready' for k in api.READINESS}, secret='private')
+        revision=str(uuid4())
+        report=dict(schema=1, checked_at=datetime.now(timezone.utc).isoformat(), checks={k:'ready' for k in api.READINESS}, secret='private',policy_revision=revision)
         with patch('app.control.read',return_value=report):
-            public=api.readiness_report()
+            public=api.readiness_report(revision)
             self.assertTrue(public['recent']); self.assertNotIn('secret',public)
+            self.assertTrue(public['current_policy']); self.assertFalse(api.readiness_report(str(uuid4()))['current_policy'])
             report['checked_at']=(datetime.now(timezone.utc)-timedelta(minutes=12)).isoformat()
             self.assertFalse(api.readiness_report()['recent'])
             for bad in ('tomorrow', datetime.now().isoformat(), (datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()):
@@ -154,3 +159,13 @@ class RuntimeProbeTests(unittest.TestCase):
             report['checks']['host']='secret-token'; self.assertIsNone(api.readiness_report())
         for malformed in ([],None,{}, {'schema':1,'checks':[]}):
             with patch('app.control.read',return_value=malformed):self.assertIsNone(api.readiness_report())
+
+    def test_execution_report_preserves_only_valid_policy_revision(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp); (root/'.control').mkdir()
+            for revision in (str(uuid4()),'secret-in-error',None):
+                with patch.object(host,'ROOT',root),patch.object(host.os,'chown'):
+                    host.publish_report(dict(code='disabled',policy_revision=revision))
+                report=json.loads((root/'.control'/'proxy-provisioner.json').read_text())
+                if revision and revision!='secret-in-error':self.assertEqual(report['policy_revision'],revision)
+                else:self.assertNotIn('policy_revision',report)

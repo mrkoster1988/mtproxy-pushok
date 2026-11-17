@@ -78,6 +78,12 @@ def inspect(host):
                     or any(type(p) is not int or not 1 <= p <= 65535 for p in cfg['reserved_ports'])):
                 raise ValueError('invalid_readiness')
             checks.update(api='ready', policy=cfg['policy'], capacity=cfg['capacity'])
+            revision = cfg.get('policy_revision')
+            if isinstance(revision, str):
+                try:
+                    report['policy_revision'] = host.identity(revision)
+                except ValueError:
+                    pass
             if cfg['capacity'] == 'preparation_pending':
                 checks['ports'] = 'preparation_pending'
             elif cfg['capacity'] == 'instance_limit':
