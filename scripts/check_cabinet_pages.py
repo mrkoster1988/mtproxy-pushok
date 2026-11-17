@@ -32,6 +32,7 @@ def main():
     parser.add_argument("--sponsors-only", action="store_true", help="Полный сценарий страницы спонсоров")
     parser.add_argument("--interface-only", action="store_true")
     parser.add_argument("--management-only", action="store_true")
+    parser.add_argument("--moderation-only", action="store_true")
     parser.add_argument("--campaign-cards-only", action="store_true", help="Карточки кампаний во всех разделах")
     parser.add_argument("--verification-only", action="store_true", help="Подтверждение контакта, профиль и настройки подарка")
     parser.add_argument("--ai-only", action="store_true", help="Подключение ИИ, хранение ключа и роли")
@@ -163,6 +164,12 @@ def main():
                         page.locator('#refresh').click()
                     expect(page.locator('#refresh')).to_be_enabled()
 
+                if args.moderation_only:
+                    from check_moderation_layout import check_moderation_layout
+                    check_moderation_layout(browser,base,output,failures,PostgresIntegration.dsn)
+                    if failures:raise AssertionError(failures)
+                    print('PASS: moderation layout, expanded panels, actions and roles')
+                    return
                 if args.campaign_cards_only:
                     from check_campaign_cards import check_campaign_cards
                     check_campaign_cards(browser, base, output, failures, PostgresIntegration.dsn)
@@ -1129,7 +1136,7 @@ def main():
                 expect(advertiser.locator('#notice')).to_contain_text('Изменения сохранены')
                 advertiser.locator('summary').filter(has_text='Изменить или удалить заявку').click()
                 advertiser.once('dialog',lambda dialog:dialog.accept())
-                advertiser.get_by_role('button',name='🗑️ Удалить',exact=True).click()
+                advertiser.get_by_role('button',name='Удалить',exact=True).click()
                 expect(advertiser.locator('#notice')).to_contain_text('Объект перемещён')
                 go(advertiser,'archive')
                 advertiser.get_by_role('button',name='Восстановить',exact=True).click()
@@ -1169,7 +1176,7 @@ def main():
                 expect(archive_card).to_contain_text('Ожидаем оплату')
                 archive_card.locator('summary').filter(has_text='Изменить или удалить заявку').click()
                 admin.once('dialog',lambda dialog:dialog.accept())
-                delete_archive=archive_card.get_by_role('button',name='🗑️ Удалить',exact=True)
+                delete_archive=archive_card.get_by_role('button',name='Удалить',exact=True)
                 expect(delete_archive).to_be_visible()
                 expect(delete_archive).to_be_enabled()
                 # После DELETE карточка исчезает до завершения pointer-action Playwright.
@@ -1191,7 +1198,7 @@ def main():
                 expect(pending_row).to_contain_text('Счёт ещё не закрыт')
                 pending_row.get_by_role('link',name='Открыть для завершения').click()
                 expect(archive_card).to_contain_text('Заявка уже удалена')
-                expect(archive_card.get_by_role('button',name='🗑️ Удалить',exact=True)).to_have_count(0)
+                expect(archive_card.get_by_role('button',name='Удалить',exact=True)).to_have_count(0)
                 expect(archive_card.get_by_role('button',name='Назначить слот',exact=True)).to_have_count(0)
                 for width in (320,390):
                     admin.set_viewport_size({'width':width,'height':844})
@@ -1698,6 +1705,8 @@ def main():
                 admin.set_viewport_size({'width':390,'height':1500})
                 personal_row.evaluate('(node) => scrollTo(0, node.getBoundingClientRect().top + scrollY - 140)')
                 personal_row.screenshot(path=str(output/'45-personal-gift-report-mobile.png'))
+                from check_moderation_layout import check_moderation_layout
+                check_moderation_layout(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_management_navigation import check_management_navigation
                 check_management_navigation(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_campaign_cards import check_campaign_cards
