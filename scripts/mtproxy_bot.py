@@ -107,7 +107,15 @@ def buttons(message):
     for row in getattr(message, 'buttons', None) or []:
         for button in row:
             # Не нажимаем URL, login, запрос телефона, платежи или другие типы.
-            if type(button.button).__name__ in ('KeyboardButtonCallback', 'KeyboardButton'):
+            original = button.button
+            kind = type(original).__name__
+            action = getattr(original, 'type', None)
+            # Telethon 1.45: тип действия теперь вложен в KeyboardInlineButton
+            # или KeyboardButton. Проверять только внешний класс небезопасно.
+            callback = ((kind == 'KeyboardInlineButton' and type(action).__name__ == 'InlineButtonTypeCallback')
+                        or (kind == 'KeyboardButtonCallback' and action is None))
+            plain = kind == 'KeyboardButton' and (action is None or type(action).__name__ == 'ButtonTypeDefault')
+            if plain or (callback and not getattr(action if action is not None else original, 'requires_password', False)):
                 yield button
 
 

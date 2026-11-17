@@ -17,6 +17,7 @@ ERRORS = {
 }
 
 CHANNEL_ERRORS = {
+    'proxy_not_found': ('Прокси не найден в аккаунте владельца', 'Откройте @MTProxyBot → /myproxies в подключённом аккаунте и сверьте адрес и порт узла. Если тег уже связан с нужным каналом, сохраните его в «Ручной привязке готового тега».'),
     'public_channel_required': ('Канал не прошёл проверку', 'Обновлённый агент уточнит причину при следующей попытке. Проверьте ссылку на канал в заявке.'),
     'channel_link_invalid': ('Неверная ссылка на канал', 'Нужна ссылка вида https://t.me/username или https://telegram.me/username. Ссылка на отдельный пост или приглашение не подходит.'),
     'channel_not_found': ('Telegram не нашёл этот канал', 'Проверьте точный @username: канал мог сменить адрес или стать закрытым.'),
@@ -139,6 +140,15 @@ def handle(conn, request):
                 LIMIT 20 FOR UPDATE OF c SKIP LOCKED''').fetchall()
             candidate = next((c for c in candidates if preparation_improves_slot(conn,c,node['id'])),None)
             if not candidate:
+                # Ручная связь уже готова для ожидающей кампании на этом узле.
+                # Дадим планировщику назначить слот, не захватывая узел новой
+                # проверкой канала по умолчанию сразу после ручного сохранения.
+                if candidates and conn.execute('''SELECT 1 FROM channel_promotion_bindings b
+                    JOIN sponsor_channels ch ON ch.id=b.channel_id
+                    WHERE b.proxy_node_id=%s AND b.channel_id=ANY(%s)
+                      AND b.channel_url=ch.telegram_url AND (b.node_host,b.node_port)=(%s,%s)
+                    LIMIT 1''', (node['id'], [c['channel_id'] for c in candidates], node['host'], node['port'])).fetchone():
+                    return {'state': 'wait'}
                 candidate = conn.execute('''SELECT NULL AS id,ch.id AS channel_id,ch.telegram_url
                     FROM default_sponsor_settings s JOIN sponsor_channels ch ON ch.id=s.channel_id
                     WHERE s.singleton=true AND ch.archived_at IS NULL AND NOT EXISTS(

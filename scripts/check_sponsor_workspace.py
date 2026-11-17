@@ -181,6 +181,11 @@ def check_sponsor_workspace(browser, base, output, failures, dsn):
         registration.get_by_role('button', name='Сохранить регистрацию', exact=True).click()
         expect(admin.locator('#sponsor-registration')).to_contain_text('окончанием cccc')
         manual = admin.locator('#sponsor-manual-binding')
+        # Ошибка проверки канала по умолчанию раньше навсегда блокировала
+        # ручную привязку другого канала на том же узле.
+        with psycopg.connect(dsn) as conn:
+            conn.execute('''INSERT INTO telegram_binding_jobs(proxy_node_id,channel_id,channel_url,node_host,node_port,error_code)
+                VALUES(%s,%s,'https://t.me/full_sponsors_two','second-workspace.example.org',8443,'proxy_not_found')''', (new_node, other_channel))
         manual.locator('summary').click()
         manual.locator('[name=node]').select_option(new_node)
         manual.locator('[name=channel]').select_option(str(channel))
@@ -201,6 +206,13 @@ def check_sponsor_workspace(browser, base, output, failures, dsn):
         manual.locator('[name=tag]').focus()
         manual.get_by_role('button', name='Включить для канала', exact=True).scroll_into_view_if_needed()
         assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+        busy_failure = lambda route: route.fulfill(status=409, json={'detail': 'promotion_binding_busy'}) if route.request.method == 'PUT' else route.continue_()
+        admin.route('**/api/v1/admin/promotion-bindings', busy_failure)
+        manual.get_by_role('button', name='Включить для канала', exact=True).click()
+        expect(manual.locator('.form-feedback')).to_contain_text('ожидает подтверждения Telegram')
+        expect(manual.locator('[name=tag]')).to_have_value('d' * 32)
+        expect(manual.locator('[name=confirmed]')).to_be_checked()
+        admin.unroute('**/api/v1/admin/promotion-bindings', busy_failure)
         admin.route('**/api/v1/admin/promotion-bindings', write_failure)
         manual.get_by_role('button', name='Включить для канала', exact=True).click()
         expect(manual.locator('.form-feedback')).to_have_attribute('data-tone', 'error')
@@ -212,6 +224,8 @@ def check_sponsor_workspace(browser, base, output, failures, dsn):
         saved = admin.locator('.sponsor-binding').filter(has_text='Новости puShok')
         expect(saved).to_contain_text('dddd')
         expect(manual.locator('[name=tag]')).to_have_value('')
+        with psycopg.connect(dsn) as conn:
+            assert conn.execute('SELECT 1 FROM telegram_binding_jobs WHERE proxy_node_id=%s', (new_node,)).fetchone() is None
         snapshot(admin, 'saved-binding', admin.locator('#promotion-automation'))
         # Команды копируются кнопками без вывода их в основную карточку.
         admin.locator('.owner-connect>summary').click()

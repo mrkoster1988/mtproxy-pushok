@@ -41,6 +41,84 @@ class BindingQueueTests(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             conn.execute("UPDATE telegram_binding_jobs SET retry_at=now()-interval '1 second',verified_at=now()-interval '1 hour' WHERE id=%s",(job,))
 
+    def save_manual(self, expected=200, **changes):
+        fixture.main.app.dependency_overrides[fixture.main.get_current_user] = lambda: dict(id=self.f['admin'], role='admin')
+        self.addCleanup(fixture.main.app.dependency_overrides.clear)
+        return self.request('PUT', '/admin/promotion-bindings', expected,
+            json=dict(dict(node_id=str(self.node['id']), channel_id=str(self.f['channel']),
+                           ad_tag=self.tag, telegram_binding_confirmed=True), **changes))
+
+    def test_manual_binding_replaces_failed_inspection_and_rejects_stale_worker(self):
+        job = self.claim()
+        self.exchange('owner_error', job_id=job, code='proxy_not_found')
+        self.assertTrue(self.save_manual()['saved'])
+        for action in ('owner_authorize', 'owner_verified', 'owner_error'):
+            self.assertFalse(self.exchange(action, job_id=job, code='proxy_not_found', **self.proof)['accepted'])
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            self.assertIsNone(conn.execute('SELECT 1 FROM telegram_binding_jobs WHERE id=%s', (job,)).fetchone())
+            saved = conn.execute('SELECT * FROM channel_promotion_bindings WHERE proxy_node_id=%s', (self.node['id'],)).fetchone()
+            self.assertEqual(saved['confirmed_by'], self.f['admin'])
+            audit = conn.execute("SELECT details_json FROM audit_events WHERE event_type='promotion_binding_confirmed' AND details_json->>'replaced_inspection_id'=%s", (job,)).fetchone()
+            self.assertIsNotNone(audit)
+            self.assertNotIn(self.tag, str(audit))
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            self.assertEqual(promotion_runtime.node_plan(conn, self.node)['state'], 'apply')
+
+    def test_manual_binding_cannot_interrupt_running_or_uncertain_external_change(self):
+        job = self.claim()
+        self.assertEqual(self.save_manual(409)['detail'], 'promotion_binding_busy')
+        self.authorize(job)
+        self.exchange('owner_error', job_id=job, code='bot_response_timeout')
+        self.assertEqual(self.save_manual(409)['detail'], 'promotion_binding_busy')
+        self.exchange('owner_verified', job_id=job, **self.proof)
+        self.exchange('owner_error', job_id=job, code='telegram_unavailable')
+        self.assertEqual(self.save_manual(409)['detail'], 'promotion_binding_busy')
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT phase FROM telegram_binding_jobs WHERE id=%s', (job,)).fetchone()[0], 'propagating')
+            self.assertIsNone(conn.execute('SELECT 1 FROM channel_promotion_bindings WHERE proxy_node_id=%s', (self.node['id'],)).fetchone())
+
+    def test_failed_manual_save_preserves_inspection_and_duplicate_tag_has_code(self):
+        job = self.claim()
+        self.exchange('owner_error', job_id=job, code='proxy_not_found')
+        other = self._management_fixture()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('''INSERT INTO channel_promotion_bindings(proxy_node_id,channel_id,channel_url,node_host,node_port,ad_tag,confirmed_by)
+                SELECT id,%s,'https://t.me/other_channel',host,port,%s,%s FROM proxy_nodes WHERE id=%s''',
+                (other['channel'], self.tag, other['admin'], other['node']))
+        self.assertEqual(self.save_manual(409)['detail'], 'promotion_tag_already_bound')
+        self.assertEqual(self.save_manual(422, telegram_binding_confirmed=False)['detail'], 'telegram_binding_confirmation_required')
+        self.save_manual(404, channel_id=str(uuid4()))
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT phase,error_code FROM telegram_binding_jobs WHERE id=%s', (job,)).fetchone(), ('inspect', 'proxy_not_found'))
+
+    def test_manual_save_waits_for_scheduler_lock_without_changing_job(self):
+        job = self.claim()
+        self.exchange('owner_error', job_id=job, code='proxy_not_found')
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('SELECT pg_advisory_xact_lock(736102482)')
+            self.assertEqual(self.save_manual(409)['detail'], 'promotion_binding_scheduler_busy')
+            self.assertEqual(conn.execute('SELECT phase FROM telegram_binding_jobs WHERE id=%s', (job,)).fetchone()[0], 'inspect')
+        self.assertTrue(self.save_manual()['saved'])
+
+    def test_manual_channel_is_not_immediately_blocked_by_default_sponsor(self):
+        other = self._management_fixture()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('INSERT INTO default_sponsor_settings(singleton,channel_id,updated_by) VALUES(true,%s,%s) ON CONFLICT(singleton) DO UPDATE SET channel_id=EXCLUDED.channel_id', (other['channel'], self.f['admin']))
+            job = conn.execute('''INSERT INTO telegram_binding_jobs(proxy_node_id,channel_id,channel_url,node_host,node_port,error_code)
+                VALUES(%s,%s,'https://t.me/default_channel',%s,%s,'proxy_not_found') RETURNING id''', (self.node['id'], other['channel'], self.node['host'], self.node['port'])).fetchone()[0]
+        def cleanup():
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute('DELETE FROM default_sponsor_settings')
+        self.addCleanup(cleanup)
+        self.save_manual()
+        # До прохода планировщика агент не должен вновь заблокировать узел.
+        self.assertEqual(self.exchange('owner_claim')['state'], 'wait')
+        self.assertFalse(self.exchange('owner_authorize', job_id=str(job), **self.proof)['accepted'])
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            self.assertEqual(promotion_runtime.node_plan(conn, self.node)['state'], 'apply')
+
     def test_verified_binding_reassigns_full_period_and_duplicate_is_harmless(self):
         auto_schedule.service_once(self.dsn)
         job=self.claim();self.assertEqual(job,self.claim())
