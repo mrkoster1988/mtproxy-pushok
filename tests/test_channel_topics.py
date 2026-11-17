@@ -4,7 +4,7 @@ import json
 import os
 import unittest
 from unittest.mock import patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 from urllib.error import URLError
 
 import psycopg
@@ -29,6 +29,42 @@ class TopicSuggestions(unittest.TestCase):
         self.assertIsNone(topics.keywords('Моя жизнь', 'Добро пожаловать!', []))
         self.assertIsNone(topics.keywords('Кино музыка спорт фитнес', '', []))
         self.assertIsNone(topics.keywords('Шины', 'Машинально запомнили', []))
+
+    def test_adult_topic_recognizes_explicit_metadata_without_posts(self):
+        for title, description in (
+                ('+18 Only sex stickers😈😉❤️',''), ('18+ Sex stickers',''),
+                ('🔞 Эротика',''), ('NSFW erotic stickers',''),
+                ('18 + Для взрослых','Эротические стикеры'), ('Эротика и порно','')):
+            with self.subTest(title=title):
+                self.assertEqual(topics.keywords(title,description,[]),'adult')
+        for title in ('Новости 18+', 'Урок 18 + упражнения', '18+ Sex education',
+                      'Сексуальное здоровье 18+: секс и отношения', 'Sex education', 'Sussex news', 'Секс сексом'):
+            with self.subTest(title=title):
+                self.assertNotEqual(topics.keywords(title,'',[]),'adult')
+        self.assertEqual(topics.keywords('Уроки Excel','Обучение',['18+ Sex stickers']),'education')
+        self.assertEqual(topics.keywords('Подборки','',['18+ Sex stickers','🔞 Эротика каждый день']),'adult')
+
+    def test_form_and_catalog_offer_the_same_topics(self):
+        from html.parser import HTMLParser
+        class Options(HTMLParser):
+            def __init__(self):super().__init__();self.inside=False;self.values=set()
+            def handle_starttag(self, tag, attrs):
+                attrs=dict(attrs)
+                if tag=='select':self.inside=attrs.get('id')=='order-topic'
+                if tag=='option' and self.inside and attrs.get('value'):self.values.add(attrs['value'])
+            def handle_endtag(self, tag):
+                if tag=='select':self.inside=False
+        parser=Options();parser.feed((fixture.ROOT/'api/web/index.html').read_text())
+        self.assertEqual(parser.values,set(topics.LABELS))
+
+    def test_explicit_adult_metadata_skips_posts_and_ai_even_when_enabled(self):
+        chat={'title':'+18 Only sex stickers😈😉❤️','description':'','username':'onlysexstickers','telegram_channel_id':-100}
+        for config in (None,('key','model')):
+            suggest._cache.clear()
+            with patch.object(suggest.public_channels,'lookup',return_value=chat), patch.object(suggest,'public_posts') as posts, patch.object(suggest,'ai_config',return_value=config), patch.object(suggest,'ai_topic') as ai:
+                result=suggest.suggest('@onlysexstickers')
+                self.assertEqual(result,dict(topic='adult',label='18+ · Для взрослых',engine='rules',basis='metadata',posts_count=0))
+                posts.assert_not_called();ai.assert_not_called()
 
     def test_public_html_extracts_only_own_posts_without_preview_or_scripts(self):
         parser=suggest.PublicPosts('example')
@@ -106,20 +142,28 @@ class TopicIntegration(unittest.TestCase):
         return dict(request_id=str(uuid4()),channel_id=str(self.channel),tariff_id=str(self.tariff),expected_price_kopecks=30000,expected_duration_seconds=86400,**kw)
 
     def test_optional_topic_and_invalid_values(self):
-        for extra in ({},{'topic':None},{'topic':'education'}):
+        for extra in ({},{'topic':None},{'topic':'education'},{'topic':'adult'}):
             result=self.request('POST','/orders',201,json=self.payload(**extra))
             self.assertEqual(result['topic'],extra.get('topic'))
             self.assertEqual(result['topic_label'],topics.label(extra.get('topic')))
         for value in ('unknown','',[],123):self.request('POST','/orders',422,json=self.payload(topic=value))
 
     def test_topic_is_per_campaign_and_visible_to_operator_and_owner(self):
-        first=self.request('POST','/orders',201,json=self.payload(topic='technology'))
+        first=self.request('POST','/orders',201,json=self.payload(topic='adult'))
         self.request('POST','/orders',201,json=self.payload(topic='education'))
         rows=self.request('GET','/campaigns',200)
-        self.assertEqual(next(r for r in rows if r['id']==first['id'])['topic_label'],'IT и технологии')
+        self.assertEqual(next(r for r in rows if r['id']==first['id'])['topic_label'],'18+ · Для взрослых')
         self.actor={'id':self.admin,'role':'admin'}
         rows=self.request('GET','/operator/campaigns',200)
-        self.assertEqual(next(r for r in rows if r['id']==first['id'])['topic'],'technology')
+        self.assertEqual(next(r for r in rows if r['id']==first['id'])['topic'],'adult')
+
+    def test_adult_migration_is_repeatable_and_preserves_existing_topics(self):
+        rows=[self.request('POST','/orders',201,json=self.payload(topic=value)) for value in ('adult','education',None)]
+        with psycopg.connect(self.dsn) as conn:
+            sql=(fixture.ROOT/'database/055_adult_channel_topic.sql').read_text()
+            conn.execute(sql);conn.execute(sql)
+            saved=dict(conn.execute('SELECT id,topic FROM campaigns').fetchall())
+        for row in rows:self.assertEqual(saved[UUID(row['id'])],row['topic'])
 
     def test_replay_preserves_topic_and_rejects_changed_selection(self):
         body=self.payload(topic='education')

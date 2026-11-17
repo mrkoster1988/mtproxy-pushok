@@ -9,7 +9,9 @@ def check_channel_topics_ui(page, output):
     detect=page.locator('#order-topic-detect')
 
     def suggestion(route):
-        route.fulfill(json={'topic':'education','label':'Образование','engine':'rules','basis':'posts','posts_count':4})
+        adult='onlysexstickers' in route.request.url
+        route.fulfill(json={'topic':'adult' if adult else 'education','label':'18+ · Для взрослых' if adult else 'Образование',
+                            'engine':'rules','basis':'metadata' if adult else 'posts','posts_count':0 if adult else 4})
 
     page.route('**/api/v1/channel-topics/suggest?*',suggestion)
     try:
@@ -47,6 +49,13 @@ def check_channel_topics_ui(page, output):
         page.evaluate('''() => {window.__topicResolve(new Response(JSON.stringify({topic:'education',engine:'ai',basis:'posts'}),{headers:{'Content-Type':'application/json'}}));window.fetch=window.__topicFetch;}''')
         expect(select).to_have_value('business')
         expect(status).to_contain_text('Выбрано вами')
+        source.fill('@onlysexstickers')
+        expect(select).to_have_value('adult')
+        expect(status).to_contain_text('18+ · Для взрослых')
+        expect(page.locator('#order-summary')).to_contain_text('18+ · Для взрослых')
+        select.select_option('health')
+        page.evaluate('window.pushokOrder.summary()')
+        expect(select).to_have_value('health')
         # Смена канала очищает выбор и начинает новый независимый анализ.
         source.fill('@next_topic_demo')
         expect(select).to_have_value('education')

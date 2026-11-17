@@ -28,6 +28,7 @@ class Topic(str, Enum):
     agriculture = 'agriculture'
     shopping = 'shopping'
     lifestyle = 'lifestyle'
+    adult = 'adult'
     other = 'other'
 
 
@@ -57,6 +58,7 @@ CATALOG = [
     ('agriculture', 'Сельское хозяйство', 'сельск фермер агро урожай растениевод животновод'),
     ('shopping', 'Покупки и товары', 'покупк товар скидк распродаж маркетплейс wildberries ozon'),
     ('lifestyle', 'Личный блог и образ жизни', 'личный блог повседневн моя жизнь образ жизни саморазвити'),
+    ('adult', '18+ · Для взрослых', ''),
     ('other', 'Другое', ''),
 ]
 LABELS = {key: label for key, label, _ in CATALOG}
@@ -66,8 +68,27 @@ def label(topic):
     return LABELS.get(topic)
 
 
+def adult_signals(text):
+    """Возрастная маркировка вместе с сексуальной тематикой, а не число 18."""
+    text = text.casefold().replace('ё', 'е')
+    age = bool(re.search(r'(?<!\w)(?:18\s*\+|\+\s*18)(?!\d)|🔞|\bnsfw\b', text))
+    groups = {'sex':r'sex|sexy|sexual|секс(?:а|е|у|ом)?',
+              'porn':r'porn(?:o|ography|ographic)?|порно\w*',
+              'erotica':r'erotic(?:a)?|эроти\w*', 'hentai':r'hentai|хентай\w*', 'xxx':r'xxx'}
+    terms = {key for key, pattern in groups.items() if re.search(r'\b(?:' + pattern + r')\b', text)}
+    education = re.search(r'\b(?:sex(?:ual)? education|sexual health|sexology|сексологи\w*|'
+                          r'полов\w+ (?:воспитани|просвещени)\w*|сексуальн\w+ здоровь\w*)\b', text)
+    if education and terms <= {'sex'}:
+        return False
+    return bool(age and terms or len(terms) >= 2)
+
+
 def keywords(title, description, posts):
     """Консервативная подсказка без ИИ: две разные тематические подсказки минимум."""
+    # Явное описание самого канала важнее одной посторонней рекламы в публикации.
+    # Одна отметка 18+ у новостей или слово sex в медицинском тексте недостаточны.
+    if adult_signals(title + ' ' + description) or sum(adult_signals(post) for post in posts) >= 2:
+        return 'adult'
     texts = [title, description, *posts]
     normalized = [re.sub(r'[^\w]+', ' ', text.lower().replace('ё', 'е')) for text in texts]
     scores = []

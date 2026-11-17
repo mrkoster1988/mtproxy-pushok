@@ -45,9 +45,12 @@ window.pushokAI=(()=>{
    const keyState=el('p',saved.source==='invalid'?'Не удалось прочитать настройки. Введите ключ заново.':saved.key_saved?(saved.source==='environment'?'Используется ключ из настроек сервера.':'Ключ хранится на сервере.'):'Ключ ещё не добавлен.','muted');fields.append(keyState);
    const help=window.pushokViews.disclosure('Как работает ИИ',[
     el('p','ИИ предлагает тематику по названию, описанию и доступным публичным публикациям канала. Результат можно изменить или оставить поле пустым.','muted'),
+    el('p','Уже есть ChatGPT? Здесь нужен ключ OpenAI API, а не ссылка на профиль. Откройте API Platform с тем же аккаунтом, создайте ключ и вставьте его в поле ниже. Нажмите «Проверить», включите определение тематики и нажмите «Сохранить».','muted'),
+    el('p','У подходящих подписок ChatGPT Pro и Business доступны API-кредиты. Проверьте льготу в ChatGPT → Настройки → Оплата или в Billing на API Platform и активируйте её для своей API-организации. Наличие подписки само по себе не подключает кабинет.','muted'),
     el('p','Запросы OpenAI API, включая проверку, оплачиваются в вашем API-проекте. Сведения из профилей пользователей и закрытые переписки не передаются. Если сервис недоступен, работают подсказки по ключевым словам.','muted')
    ],'inline-help');
    const link=el('a','Получить ключ OpenAI API ↗');link.href='https://platform.openai.com/api-keys';link.target='_blank';link.rel='noopener noreferrer';help.append(link);
+   const credits=el('a','API-кредиты подписки ChatGPT ↗');credits.href='https://developers.openai.com/api/docs/guides/chatgpt-api-credits';credits.target='_blank';credits.rel='noopener noreferrer';const creditsRow=el('p');creditsRow.append(credits);help.append(creditsRow);
    const status=el('p',saved.checked_at?'Последняя успешная проверка: '+date(saved.checked_at):'Подключение ещё не проверено.','ai-settings-status');status.id='channel-ai-status';status.setAttribute('role','status');status.setAttribute('aria-live','polite');
    const actions=el('div',undefined,'ai-settings-actions'),check=el('button','Проверить'),save=el('button','Сохранить','primary');check.type='button';check.id='channel-ai-check';save.type='submit';save.id='channel-ai-save';actions.append(check,save);fields.append(actions);
    const remove=el('button','Отключить и удалить ключ','ai-remove danger-text');remove.type='button';remove.id='channel-ai-remove';remove.hidden=!saved.key_saved;fields.append(remove);
