@@ -680,7 +680,7 @@ def run():
                     continue
                 if ready:
                     verified = verification_response(update, _internal_api,
-                        lambda method, payload: raw_telegram_call(token, method, payload))
+                        lambda method, payload: raw_telegram_call(token, method, payload, timeout=3))
                     if verified is not None:
                         raw_telegram_call(token, "sendMessage", verified)
                         offset = next_offset

@@ -1,10 +1,18 @@
 """Native contact popup is simulated; proof still passes the real private API and SQL."""
+import io
 import json
 import os
+import sys
 import time
+from pathlib import Path
 from urllib.parse import urlencode
 from uuid import uuid4
 from unittest.mock import patch
+from urllib.parse import urlsplit
+from urllib.error import HTTPError
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from bot import main as bot
+from bot.verified_profiles import verification_response
 
 import psycopg
 from playwright.sync_api import expect
@@ -41,12 +49,50 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
             expect(card.locator('.verification-status')).to_contain_text('Ждём подтверждения бота')
             expect(card.locator('.phone-verified-badge')).to_have_count(0)  # Client callback cannot grant a badge.
-            result = page.request.post(base+'/api/v1/internal/bot/verification/contact',
-                headers={'X-Bot-Secret': 'e'*64, 'X-Pushok-Telegram-Environment': 'production'},
-                data={'telegram_user_id': tg, 'contact_user_id': tg, 'chat_id': tg, 'private_chat': True,
-                      'phone_number': '+79990001122', 'update_id': 99881521, 'message_date': int(time.time()),
-                      'birthday': {'day': 11, 'month': 11}})
-            assert result.ok, result.text()
+            # Остановить ожидание можно без выхода; отсутствие бота не держит кнопку минуту.
+            card.get_by_role('button', name='Отменить ожидание').click()
+            expect(card.get_by_role('button', name='Подтвердить номер', exact=True)).to_be_enabled()
+            expect(card.locator('.verification-status')).to_contain_text('Ожидание остановлено')
+            expect(card.get_by_role('link', name='Подтвердить через бота')).to_be_visible()
+            page.clock.install()
+            card.get_by_role('button', name='Подтвердить номер', exact=True).click()
+            page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===3")
+            page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
+            expect(card.locator('.verification-status')).to_contain_text('Ждём подтверждения бота')
+            page.clock.fast_forward(13000)
+            expect(card.locator('.verification-status')).to_contain_text('Бот пока не подтвердил')
+            expect(card.get_by_role('button', name='Подтвердить номер', exact=True)).to_be_enabled()
+            expect(card.locator('.phone-verified-badge')).to_have_count(0)
+            # Соединение, которое не отвечает, прерывается по AbortSignal.
+            page.evaluate("""() => {
+              window.__realFetch=window.fetch;
+              window.fetch=(url,options)=>String(url).endsWith('/me/verification/request')?
+                new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('timeout')),{once:true})):
+                window.__realFetch(url,options);
+            }""")
+            card.get_by_role('button', name='Подтвердить номер', exact=True).click()
+            expect(card.locator('.verification-status')).to_contain_text('Подготавливаем запрос')
+            page.clock.fast_forward(9000)
+            expect(card.locator('.verification-status')).to_contain_text('Нет связи с сервером')
+            expect(card.get_by_role('button', name='Подтвердить номер', exact=True)).to_be_enabled()
+            page.evaluate('window.fetch=window.__realFetch')
+            card.screenshot(path=str(output/'verification-recovery-390.png'))
+            card.get_by_role('button', name='Подтвердить номер', exact=True).click()
+            page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===4")
+            page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
+            # Контакт идёт через обработчик бота и настоящий конструктор HTTP-запроса.
+            def bridge(request, **kwargs):
+                response = page.request.post(base+urlsplit(request.full_url).path,
+                    headers=dict(request.header_items()), data=request.data)
+                if not response.ok:
+                    raise HTTPError(request.full_url, response.status, 'test response', {}, io.BytesIO(response.body()))
+                return io.BytesIO(response.body())
+            with patch.object(bot, 'urlopen', side_effect=bridge):
+                reply = verification_response({'update_id': 99881521, 'message': {
+                    'from': {'id': tg}, 'chat': {'id': tg, 'type': 'private'}, 'date': int(time.time()),
+                    'contact': {'user_id': tg, 'phone_number': '+79990001122'}}},
+                    bot._internal_api, lambda method,payload: {'birthdate': {'day': 11, 'month': 11}})
+            assert 'Номер подтверждён' in reply['text']
             expect(card.locator('.phone-verified-badge')).to_have_count(1, timeout=10000)
             page.evaluate("window.cabinet.go('profile')")
             personal = page.locator('.profile-personal')

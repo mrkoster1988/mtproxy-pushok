@@ -1,6 +1,6 @@
 'use strict';
 window.pushokVerification=(()=>{
- let profileNode=null,profileUser=null,pollEpoch=0;
+ let profileNode=null,profileUser=null,pollEpoch=0,activeAttempt=null;
  const title='Номер подтверждён в puShok';
  Object.assign(errors,{verification_request_expired:'Запрос истёк. Нажмите «Подтвердить номер» ещё раз.',own_telegram_contact_required:'Отправьте свой контакт кнопкой Telegram.',phone_invalid:'Telegram передал некорректный номер. Повторите подтверждение.'});
  function badge(){
@@ -16,8 +16,26 @@ window.pushokVerification=(()=>{
   if(!/^[A-Za-z0-9_]{5,32}$/.test(username||''))return null;
   const a=el('a','Подтвердить через бота','verification-bot-link');a.href='https://t.me/'+username+'?start=verify';a.target='_blank';a.rel='noopener noreferrer';return a;
  }
- async function refreshStatus(session=token){
-  const data=await api('/me/verification');if(session!==token||!me)return false;
+ // Ограничиваем сетевое ожидание; закрытие/отмена не оставляют запросы висеть.
+ async function request(path,options={},signal,timeoutMs=8000){
+  const controller=new AbortController(),abort=()=>controller.abort();
+  if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
+  const timer=setTimeout(abort,timeoutMs);
+  try{return await api(path,{...options,signal:controller.signal});}
+  finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
+ }
+ function pause(ms,signal){return new Promise(resolve=>{
+  const finish=()=>{clearTimeout(timer);signal.removeEventListener('abort',finish);resolve();};
+  const timer=setTimeout(finish,ms);if(signal.aborted)finish();else signal.addEventListener('abort',finish,{once:true});
+ });}
+ function askContact(app,signal){return new Promise(resolve=>{
+  let done=false;const finish=value=>{if(done)return;done=true;clearTimeout(timer);signal.removeEventListener('abort',abort);resolve(value);};
+  const abort=()=>finish(false),timer=setTimeout(abort,30000);
+  if(signal.aborted)return abort();signal.addEventListener('abort',abort,{once:true});
+  try{app.requestContact(finish);}catch{finish(false);}
+ });}
+ async function refreshStatus(session=token,signal,timeoutMs=8000){
+  const data=await request('/me/verification',{},signal,timeoutMs);if(session!==token||!me)return false;
   if(data.phone_verified!==Boolean(me.phone_verified)){me.phone_verified=data.phone_verified;profileNode=null;window.cabinet.sync(ownCampaigns);}
   return data.phone_verified;
  }
@@ -34,26 +52,36 @@ window.pushokVerification=(()=>{
   const help=el('details',undefined,'verification-consent');help.append(el('summary','Какие сведения сохранятся'),el('p','Ваш номер будет виден вам и администратору. Доступную дату рождения из Telegram используем для поздравлений и ежегодного бонуса по условиям puShok. Год рождения необязателен. Это подтверждение номера внутри puShok.'));card.append(help);
   const consent=optIn(true),status=el('p',undefined,'verification-status');status.setAttribute('role','status');card.append(consent.node);
   const actions=el('div',undefined,'verification-actions');
-  const confirm=button('Подтвердить номер',async()=>{
-   const session=token;await api('/me/verification/request',{method:'POST',body:{birthday_opt_in:consent.input.checked}});if(session!==token)return;
-   const app=window.Telegram?.WebApp;
-   if(!miniAppMode||!app?.requestContact||!app.isVersionAtLeast?.('6.9')){
-    status.textContent='Откройте бота и передайте свой контакт кнопкой Telegram.';fallback.hidden=false;return;
-   }
-   status.textContent='Разрешите Telegram передать ваш номер.';
-   const sent=await new Promise(resolve=>{let done=false;const finish=value=>{if(done)return;done=true;clearTimeout(timeout);resolve(value);};const timeout=setTimeout(()=>finish(false),60000);try{app.requestContact(finish);}catch{finish(false);}});
-   if(session!==token)return;
-   if(!sent){status.textContent='Номер не передан. Можно повторить подтверждение.';return;}
-   status.textContent='Telegram передал контакт. Ждём подтверждения бота…';
-   const epoch=++pollEpoch;
-   for(let attempt=0;attempt<30&&epoch===pollEpoch&&session===token;attempt++){
-    try{if(await refreshStatus(session)){notice('Номер подтверждён. Данные сохранены в профиле.',true);return;}}catch{status.textContent='Проверяем подтверждение. Если бот недоступен, повторите проверку позже.';}
-    await new Promise(resolve=>setTimeout(resolve,2000));
-   }
-   if(session===token&&epoch===pollEpoch)status.textContent='Бот ещё не подтвердил контакт. Нажмите «Проверить статус» позже; галочка появится после проверки.';
-  });confirm.classList.add('primary');actions.append(confirm);
-  actions.append(button('Проверить статус',async()=>{status.textContent=await refreshStatus()?'Номер подтверждён.':'Подтверждение ещё не получено. Передайте свой номер кнопкой Telegram.';}));
   const fallback=el('div');fallback.hidden=Boolean(miniAppMode&&window.Telegram?.WebApp?.requestContact);const link=botLink();fallback.append(link||el('p','Откройте бота puShok и отправьте /verify.'));
+  const cancel=button('Отменить ожидание',()=>{activeAttempt?.abort();pollEpoch++;cancel.hidden=true;status.textContent='Ожидание остановлено. Можно проверить статус или подтвердить номер через бота.';fallback.hidden=false;});cancel.hidden=true;
+  const confirm=button('Подтвердить номер',async()=>{
+   activeAttempt?.abort();const controller=new AbortController();activeAttempt=controller;
+   const signal=controller.signal,session=token,epoch=++pollEpoch;
+   const valid=()=>session===token&&epoch===pollEpoch&&!signal.aborted;
+   cancel.hidden=false;status.textContent='Подготавливаем запрос…';
+   try{
+    await request('/me/verification/request',{method:'POST',body:{birthday_opt_in:consent.input.checked}},signal);if(!valid())return;
+    const app=window.Telegram?.WebApp;
+    if(!miniAppMode||!app?.requestContact||!app.isVersionAtLeast?.('6.9')){
+     status.textContent='Откройте бота и передайте свой контакт кнопкой Telegram.';fallback.hidden=false;return;
+    }
+    status.textContent='Разрешите Telegram передать ваш номер.';
+    const sent=await askContact(app,signal);if(!valid())return;
+    if(!sent){status.textContent='Номер не передан. Можно повторить подтверждение.';fallback.hidden=false;return;}
+    status.textContent='Telegram передал контакт. Ждём подтверждения бота…';
+    const deadline=Date.now()+12000;
+    while(valid()&&Date.now()<deadline){
+     if(await refreshStatus(session,signal,Math.min(8000,deadline-Date.now()))){if(valid())notice('Номер подтверждён. Данные сохранены в профиле.',true);return;}
+     await pause(Math.min(2000,Math.max(0,deadline-Date.now())),signal);
+    }
+    if(valid()){status.textContent='Бот пока не подтвердил контакт. Проверьте статус позже или подтвердите номер через бота.';fallback.hidden=false;}
+   }catch(e){if(valid()){status.textContent=e.message+' Проверьте статус или подтвердите номер через бота.';fallback.hidden=false;}}
+   finally{if(activeAttempt===controller){activeAttempt=null;cancel.hidden=true;}}
+  });confirm.classList.add('primary');actions.append(confirm);
+  actions.append(button('Проверить статус',async()=>{
+   const session=token;try{const verified=await refreshStatus(session);if(session===token){status.textContent=verified?'Номер подтверждён.':'Подтверждение ещё не получено. Проверьте ответ бота.';fallback.hidden=verified;}}
+   catch(e){if(session===token){status.textContent=e.message;fallback.hidden=false;}}
+  }),cancel);
   card.append(actions,fallback,status);
  }
  function readOnly(data){
@@ -108,6 +136,6 @@ window.pushokVerification=(()=>{
   const save=el('button','Сохранить'),status=el('p',undefined,'verification-status');save.type='submit';status.setAttribute('role','status');form.append(save,status);
   form.addEventListener('submit',async event=>{event.preventDefault();if(save.disabled)return;save.disabled=true;try{await api('/admin/birthday-settings',{method:'PUT',body:{congratulations_enabled:enabled.checked,bonus_amount:Math.round(Number(amount.value)*100)}});if(session===token)status.textContent='Настройки сохранены.';}catch(e){if(session===token)status.textContent=e.message;}finally{save.disabled=false;}});
  }
- function reset(){pollEpoch++;profileNode=null;profileUser=null;document.querySelectorAll('#birthday-settings,#dashboard-verification').forEach(n=>{n.replaceChildren();delete n.dataset.state;});}
+ function reset(){activeAttempt?.abort();activeAttempt=null;pollEpoch++;profileNode=null;profileUser=null;document.querySelectorAll('#birthday-settings,#dashboard-verification').forEach(n=>{n.replaceChildren();delete n.dataset.state;});}
  return {badge,home,profile,readOnly,settings,reset};
 })();
