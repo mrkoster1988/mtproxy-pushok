@@ -21,6 +21,9 @@ window.pushokProvisioning=(()=>{
   native_unavailable:'Файлы MTProxy отсутствуют или недоступны. Выполните восстановление установки на VPS.',
   timer_unavailable:'Таймеры автоматики остановлены. Восстановите хостовый агент.',
   api_unavailable:'Агент не получил настройки из базы. Проверьте службу кабинета.',
+  api_timeout:'Кабинет не ответил за 45 секунд. Проверка повторится автоматически.',
+  api_invalid_response:'Ответ кабинета не распознан. Обновите кабинет и хостовый агент вместе.',
+  port_check_failed:'Не удалось проверить локальные порты. Настройки кабинета получены.',
   unknown:'Пока не проверено',instance_limit:'Все разрешённые экземпляры уже созданы',
   preparation_pending:'Продолжается подготовка ранее созданного экземпляра',
   preparation_failed:'Сначала завершите подготовку с ошибкой в списке ниже'};
@@ -30,11 +33,13 @@ window.pushokProvisioning=(()=>{
   const policy=report?.checks?.policy;
   const policyMatches=!saved.enabled?policy==='disabled':saved.ai_ready?!['disabled','ai_unavailable'].includes(policy):policy==='ai_unavailable';
   const matching=report?.current_policy===true&&policyMatches;
-  const fresh=report?.recent===true&&matching;
-  const pending=report?.recent===true&&!matching;
-  const title=!report?'Проверка ещё не получена':!report.recent?'Проверка устарела':pending?'Ожидаем проверку новых настроек':Object.values(report.checks).every(v=>v==='ready')?'Предварительные проверки пройдены':'Есть ограничения для запуска';
+  const backendFailed=report&&report.checks.api!=='ready';
+  const fresh=report?.recent===true&&(matching||backendFailed);
+  const pending=report?.recent===true&&!matching&&!backendFailed;
+  const title=!report?'Проверка ещё не получена':!report.recent?'Проверка устарела':backendFailed?'Проверка кабинета не завершена':pending?'Ожидаем проверку новых настроек':Object.values(report.checks).every(v=>v==='ready')?'Предварительные проверки пройдены':'Есть ограничения для запуска';
   card.append(el('p',title,'muted'));
   if(report?.checked_at)card.append(el('p','Последняя проверка: '+date(report.checked_at),'muted'));
+  if(report?.source)card.append(el('p',report.source==='manual'?'Источник: ручная проверка на сервере':'Источник: проверка по расписанию','muted'));
   if(!fresh)card.append(el('p','Агент проверяет VPS автоматически каждые 5 минут. Нажмите «Обновить», чтобы получить новый отчёт.','muted'));
   if(pending)card.append(el('p','Изменения сохранены. Агент ещё не подтвердил проверку текущих настроек.','muted'));
   const names={host:'Адрес VPS',native:'Файлы MTProxy',timers:'Запуск по расписанию',telegram:'Сессия Telegram',resources:'Ресурсы VPS',api:'Связь с кабинетом',policy:'Разрешение ИИ',ports:'Порты',capacity:'Лимит экземпляров'};
@@ -47,6 +52,7 @@ window.pushokProvisioning=(()=>{
    if(passed)row.classList.add('is-ready');
    const text=awaiting?'Ожидаем нового отчёта':code==='ready'?(!fresh?'Проверено ранее':key==='telegram'?'Сессия сохранена · без запроса в Telegram':'Проверено'):
     key==='policy'&&code==='ai_unavailable'?'Включите подключение ИИ и разрешение на создание прокси.':
+    key==='api'&&code==='agent_busy'?'Агент занят обслуживанием. Проверка повторится автоматически.':
     labels[code]||'Пока не проверено';
    row.append(heading,el('span',text,'muted'));list.append(row);
   }

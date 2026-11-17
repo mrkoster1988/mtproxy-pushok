@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 import sys
 import tempfile
+import subprocess
 import unittest
 from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
@@ -40,6 +41,8 @@ class ReadinessTests(unittest.TestCase):
         report = readiness.inspect(host)
         self.assertEqual(report['checks'], {key:'ready' for key in api.READINESS})
         self.assertEqual(report['policy_revision'],self.cfg['policy_revision'])
+        self.assertEqual(report['source'],'scheduled')
+        self.assertLessEqual(datetime.fromisoformat(report['started_at']),datetime.fromisoformat(report['checked_at']))
         self.assertNotIn('private', json.dumps(report)); self.assertNotIn('secret', json.dumps(report))
         self.exchange.assert_called_once_with(dict(action='inspect', host='8.8.8.8'))
         self.telegram.assert_not_called(); self.provision.assert_not_called(); self.commands.assert_not_called()
@@ -78,21 +81,46 @@ class ReadinessTests(unittest.TestCase):
         self.ports.assert_not_called()
 
     def test_invalid_policy_cannot_expand_port_scan(self):
-        for values in ({'max_instances':99999}, {'first_port':True}, {'policy':'<secret>'}, {'reserved_ports':['secret']}):
-            with patch.object(host, 'exchange', return_value=self.cfg|values):
+        for response in (None, [], self.cfg|{'max_instances':99999}, self.cfg|{'first_port':True},
+                         self.cfg|{'policy':'<secret>'}, self.cfg|{'reserved_ports':['secret']}):
+            with patch.object(host, 'exchange', return_value=response):
                 result=readiness.inspect(host)
-            self.assertEqual(result['checks']['api'], 'api_unavailable')
+            self.assertEqual(result['checks']['api'], 'api_invalid_response')
         self.ports.assert_not_called()
+
+    def test_exchange_failures_are_distinct_and_do_not_leak_command_output(self):
+        for error, code in ((BlockingIOError('private'),'agent_busy'),
+                            (subprocess.TimeoutExpired(['secret command'],45,output='private'),'api_timeout'),
+                            (ValueError('private response'),'api_invalid_response'),
+                            (subprocess.CalledProcessError(1,['secret command'],stderr='private'),'api_unavailable')):
+            self.exchange.side_effect=error
+            result=readiness.inspect(host,source='manual')
+            self.assertEqual(result['checks']['api'],code)
+            self.assertEqual(result['source'],'manual')
+            self.assertEqual(result['checks']['policy'],'unknown')
+            self.assertNotIn('private',json.dumps(result)); self.assertNotIn('secret',json.dumps(result))
+        self.ports.assert_not_called(); self.telegram.assert_not_called(); self.provision.assert_not_called()
+
+    def test_port_failure_does_not_discard_successful_database_check(self):
+        self.ports.side_effect=RuntimeError('private socket details')
+        result=readiness.inspect(host)
+        self.assertEqual(result['checks']['api'],'ready')
+        self.assertEqual(result['checks']['policy'],'ready')
+        self.assertEqual(result['checks']['capacity'],'ready')
+        self.assertEqual(result['checks']['ports'],'port_check_failed')
+        self.assertEqual(result['policy_revision'],self.cfg['policy_revision'])
+        self.assertNotIn('private',json.dumps(result))
 
     def test_cli_check_publishes_report_and_exits_without_tick_or_reconciliation(self):
         for code, expected in (('ready', 0), ('native_unavailable', 2)):
             report={'checks':{'native':code}}
             with patch.object(host.os, 'geteuid', return_value=0), patch.object(host.sys, 'argv', ['proxy_provisioner.py', 'check']), \
-                 patch.object(readiness, 'inspect', return_value=report), patch.object(readiness, 'publish') as publish, \
+                 patch.object(readiness, 'inspect', return_value=report) as inspect, patch.object(readiness, 'publish') as publish, \
                  patch.object(host, 'tick') as tick, patch.object(host, 'reconcile') as reconcile, patch('sys.stdout', new_callable=io.StringIO) as output:
                 self.assertEqual(host.main(), expected)
                 self.assertEqual(json.loads(output.getvalue()), report)
             publish.assert_called_once_with(host, report); tick.assert_not_called(); reconcile.assert_not_called()
+            inspect.assert_called_once_with(host,source='manual')
 
     def test_missing_runtime_stops_before_claim_but_after_recovery(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -122,6 +150,50 @@ class ReadinessTests(unittest.TestCase):
 
 
 class RuntimeProbeTests(unittest.TestCase):
+    def test_diagnostics_respects_update_lock_without_starting_docker(self):
+        import updater
+        with tempfile.TemporaryDirectory() as temp, patch.object(updater,'CONTROL',Path(temp)), \
+             patch.object(host.subprocess,'run',return_value=NS(stdout='{}')) as run:
+            with updater.lock_file('host-lock') as lock:
+                host.fcntl.flock(lock,host.fcntl.LOCK_EX|host.fcntl.LOCK_NB)
+                with self.assertRaises(BlockingIOError):host.exchange(dict(action='inspect',host='8.8.8.8'))
+                run.assert_not_called()
+            self.assertEqual(host.exchange(dict(action='inspect',host='8.8.8.8')), {})
+            self.assertEqual(run.call_args.args[0][0],sys.executable)
+            self.assertEqual(json.loads(run.call_args.kwargs['input'])['action'],'inspect')
+
+    def test_older_slow_report_cannot_replace_newer_manual_check(self):
+        now=datetime.now(timezone.utc)
+        recent=dict(schema=1,source='manual',started_at=(now-timedelta(seconds=2)).isoformat(),
+                    checked_at=(now-timedelta(seconds=1)).isoformat(),checks={k:'ready' for k in api.READINESS})
+        slow=recent|dict(source='scheduled',started_at=(now-timedelta(seconds=40)).isoformat(),checked_at=now.isoformat(),
+                         checks=recent['checks']|dict(api='api_timeout'))
+        with tempfile.TemporaryDirectory() as temp, patch.object(readiness.os,'fchown') as chown:
+            root=Path(temp); (root/'.control').mkdir(); publisher=NS(ROOT=root)
+            self.assertTrue(readiness.publish(publisher,recent))
+            self.assertFalse(readiness.publish(publisher,slow))
+            path=root/'.control/proxy-readiness.json'
+            self.assertEqual(json.loads(path.read_text()),recent)
+            self.assertEqual(path.stat().st_mode&0o777,0o600)
+            chown.assert_called_once()
+            newer=slow|dict(started_at=now.isoformat())
+            self.assertTrue(readiness.publish(publisher,newer))
+            self.assertEqual(json.loads(path.read_text()),newer) # Настоящий новый сбой не скрываем.
+
+    def test_publish_replaces_broken_legacy_report_but_rejects_invalid_times(self):
+        now=datetime.now(timezone.utc)
+        report=dict(schema=1,checked_at=now.isoformat(),checks={k:'ready' for k in api.READINESS})
+        with tempfile.TemporaryDirectory() as temp, patch.object(readiness.os,'fchown'):
+            root=Path(temp); (root/'.control').mkdir(); path=root/'.control/proxy-readiness.json'
+            path.write_text('{broken')
+            self.assertTrue(readiness.publish(NS(ROOT=root),report))
+            older=report|dict(started_at=(now-timedelta(seconds=1)).isoformat())
+            self.assertFalse(readiness.publish(NS(ROOT=root),older))
+            for invalid in (None,'tomorrow',datetime.now().isoformat(),(now+timedelta(hours=1)).isoformat()):
+                with self.assertRaises((ValueError,TypeError)):
+                    readiness.publish(NS(ROOT=root),report|dict(started_at=invalid))
+            self.assertEqual(json.loads(path.read_text()),report)
+
     def test_native_check_rejects_missing_symlink_and_writable_files(self):
         with tempfile.TemporaryDirectory() as temp:
             base=Path(temp); binary=base/'native'
@@ -146,10 +218,13 @@ class RuntimeProbeTests(unittest.TestCase):
 
     def test_api_report_whitelist_and_freshness(self):
         revision=str(uuid4())
-        report=dict(schema=1, checked_at=datetime.now(timezone.utc).isoformat(), checks={k:'ready' for k in api.READINESS}, secret='private',policy_revision=revision)
+        report=dict(schema=1, checked_at=datetime.now(timezone.utc).isoformat(), checks={k:'ready' for k in api.READINESS}, secret='private',policy_revision=revision,source='manual')
         with patch('app.control.read',return_value=report):
             public=api.readiness_report(revision)
             self.assertTrue(public['recent']); self.assertNotIn('secret',public)
+            self.assertEqual(public['source'],'manual')
+            report['source']='private'
+            self.assertNotIn('source',api.readiness_report(revision))
             self.assertTrue(public['current_policy']); self.assertFalse(api.readiness_report(str(uuid4()))['current_policy'])
             report['checked_at']=(datetime.now(timezone.utc)-timedelta(minutes=12)).isoformat()
             self.assertFalse(api.readiness_report()['recent'])
