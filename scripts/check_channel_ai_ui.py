@@ -6,7 +6,8 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from playwright.sync_api import expect
 import psycopg
-from app import channel_ai_connection as connection, channel_topic_suggestions as suggest
+from app import channel_ai_connection as connection, channel_topic_suggestions as suggest, control, proxy_provisioning
+from datetime import datetime, timedelta, timezone
 
 
 def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output, dsn):
@@ -64,13 +65,17 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output, dsn):
     admin.set_viewport_size({'width':390,'height':844})
     admin.evaluate('window.pushokProvisioning.load(true)')
     provision=admin.locator('#proxy-provisioning-card')
-    provision.locator('summary').click()
+    provision.locator(':scope > summary').click()
     admin.locator('#proxy-provisioning-enabled').check()
     admin.locator('#proxy-provisioning-max').fill('2')
     admin.locator('#proxy-provisioning-wait').fill('180')
     admin.locator('#proxy-provisioning-save').click()
     expect(provision.locator('.ai-state')).to_have_text('Включено')
     expect(admin.locator('#proxy-provisioning-wait')).to_have_value('180')
+    report=dict(schema=1, checked_at=datetime.now(timezone.utc).isoformat(), checks={k:'ready' for k in proxy_provisioning.READINESS})
+    report['checks'].update(timers='timer_unavailable',telegram='telegram_flood_wait')
+    report['retry_at']=(datetime.now(timezone.utc)+timedelta(hours=1)).isoformat()
+    control.write('proxy-readiness.json',report)
     node_id,job_id=uuid4(),uuid4()
     owner_id=admin.evaluate('me.id')
     with psycopg.connect(dsn) as conn:
@@ -78,8 +83,14 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output, dsn):
         conn.execute("""INSERT INTO proxy_provisioning_jobs(id,proxy_node_id,owner_id,policy_revision,state,attempts,error_code,retry_at)
             SELECT %s,%s,%s,revision,'failed',5,'telegram_flood_wait',now()+interval '1 hour' FROM proxy_provisioning_settings""",(job_id,node_id,owner_id))
     admin.evaluate('window.pushokProvisioning.load(true)')
-    provision.locator('summary').click()
+    provision.locator(':scope > summary').click()
     expect(provision.get_by_role('button',name='Пауза Telegram',exact=True)).to_be_disabled()
+    readiness=admin.locator('#proxy-readiness')
+    expect(readiness).to_contain_text('Таймеры автоматики остановлены')
+    expect(readiness).to_contain_text('Telegram: повтор после')
+    expect(readiness.locator('li')).to_have_count(9)
+    readiness.locator('summary').click()
+    expect(readiness.locator('code')).to_contain_text('proxy_provisioner.py check')
     expect(provision).to_contain_text('Повтор не раньше:')
     expect(provision).to_contain_text('После паузы обновите состояние')
     assert admin.evaluate("async id=>(await fetch('/api/v1/admin/proxy-provisioning/'+id+'/retry',{method:'POST',headers:{Authorization:'Bearer '+token}})).status",str(job_id))==409
@@ -92,13 +103,20 @@ def check_channel_ai_ui(admin, advertiser, operator, new_page, go, output, dsn):
     with psycopg.connect(dsn) as conn:
         conn.execute("UPDATE proxy_provisioning_jobs SET retry_at=now()-interval '1 second' WHERE id=%s",(job_id,))
     admin.evaluate('window.pushokProvisioning.load(true)')
-    provision.locator('summary').click()
+    provision.locator(':scope > summary').click()
     provision.get_by_role('button',name='Продолжить подготовку',exact=True).click()
     expect(provision).to_contain_text('Подготовка · попыток: 0')
     with psycopg.connect(dsn) as conn:
         assert conn.execute('SELECT state,attempts FROM proxy_provisioning_jobs WHERE id=%s',(job_id,)).fetchone()==('pending',0)
         conn.execute('DELETE FROM proxy_provisioning_jobs WHERE id=%s',(job_id,))
         conn.execute('DELETE FROM proxy_nodes WHERE id=%s',(node_id,))
+    report['checked_at']=(datetime.now(timezone.utc)-timedelta(minutes=12)).isoformat()
+    control.write('proxy-readiness.json',report)
+    admin.evaluate('window.pushokProvisioning.load(true)')
+    provision.locator(':scope > summary').click()
+    expect(admin.locator('#proxy-readiness')).to_contain_text('Проверка устарела')
+    expect(admin.locator('#proxy-readiness .is-ready')).to_have_count(0)
+    (control.root()/'proxy-readiness.json').unlink(missing_ok=True)
     admin.locator('#proxy-provisioning-enabled').uncheck()
     admin.locator('#proxy-provisioning-save').click()
     expect(provision.locator('.ai-state')).to_have_text('Выключено')

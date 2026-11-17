@@ -369,6 +369,13 @@ def tick(status=None):
         if not resource_ready():
             status['code'] = 'resources_low'
             return
+        from proxy_readiness import native_ready, timers_ready
+        if not native_ready(BASE, BINARY):
+            status['code'] = 'native_unavailable'
+            return
+        if not timers_ready():
+            status['code'] = 'timer_unavailable'
+            return
         ports = [p for p in range(cfg['first_port'],cfg['first_port']+cfg['max_instances']) if free_port(p)]
         with lock_file('host-lock') as update_lock:
             fcntl.flock(update_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
@@ -429,10 +436,18 @@ def run_instance(node_id):
     os.execv(str(BINARY),args)
 
 
-if __name__=='__main__':
+def main():
     status = {'code':'host_unavailable'}
     try:
-        if len(sys.argv)==3 and sys.argv[1]=='run':
+        if len(sys.argv)==2 and sys.argv[1]=='check':
+            if os.geteuid()!=0:
+                raise RuntimeError('root_required')
+            from proxy_readiness import inspect, publish
+            report = inspect(sys.modules[__name__])
+            publish(sys.modules[__name__], report)
+            print(json.dumps(report, ensure_ascii=False))
+            return 0 if all(value=='ready' for value in report['checks'].values()) else 2
+        elif len(sys.argv)==3 and sys.argv[1]=='run':
             run_instance(identity(sys.argv[2]))
         elif len(sys.argv)==1:
             tick(status)
@@ -445,7 +460,19 @@ if __name__=='__main__':
     except Exception as exc:
         # Никогда не выводим argv процесса, secret или диалог Telegram.
         print('proxy_provisioner_failed: '+type(exc).__name__,file=sys.stderr)
-        sys.exit(1)
+        return 1
     finally:
         if len(sys.argv)==1:
             publish_report(status)
+            if os.geteuid()==0:
+                try:
+                    from proxy_readiness import inspect, publish
+                    publish(sys.modules[__name__], inspect(sys.modules[__name__]))
+                except Exception:
+                    # Не подменяем последний отчёт ложной готовностью при сбое проверки.
+                    print('proxy_readiness_failed', file=sys.stderr)
+    return 0
+
+
+if __name__=='__main__':
+    sys.exit(main())
