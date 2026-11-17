@@ -71,9 +71,9 @@ def main():
             for i, role in enumerate(("advertiser", "operator", "admin", "outsider")):
                 user_id, session_id = uuid4(), uuid4()
                 connection.execute(
-                    "INSERT INTO users(id,telegram_user_id,role,first_name) VALUES (%s,%s,%s,%s)",
+                    "INSERT INTO users(id,telegram_user_id,role,first_name,is_owner) VALUES (%s,%s,%s,%s,%s)",
                     (user_id, 99116000 + i, "advertiser" if role == "outsider" else role,
-                     "Тест " + role))
+                     "Тест " + role,role == "admin"))
                 connection.execute(
                     "INSERT INTO user_sessions(id,user_id,expires_at) VALUES (%s,%s,now()+interval '1 hour')",
                     (session_id, user_id))
@@ -146,7 +146,7 @@ def main():
                         expect(link.locator('use')).to_have_attribute('href','/assets/pushok-icons.svg#pi-'+icon)
                     privileged=page.evaluate("['admin','operator'].includes(me.role)")
                     routes=page.locator('.mobile-bottom-nav a:visible').evaluate_all('(items)=>items.map(a=>a.dataset.route)')
-                    assert routes==(['dashboard','moderation','campaigns','wallet','profile'] if privileged else ['dashboard','campaigns','wallet','profile'])
+                    assert routes==(['dashboard','moderation','campaigns','wallet','hall','profile'] if privileged else ['dashboard','campaigns','wallet','hall','profile'])
                     if privileged:
                         previous=page.evaluate('location.hash.slice(2)') or 'dashboard'
                         page.locator('.mobile-bottom-nav [data-route=moderation]').click()

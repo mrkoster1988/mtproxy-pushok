@@ -117,7 +117,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v1.64 — мастер настройки" >&2
+echo "MTProxy Pushok v1.65 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
 PROXY_ENGINE=""
@@ -432,11 +432,12 @@ EOF
     database/053_hall_of_fame.sql
     database/054_hall_history_start.sql
     database/055_adult_channel_topic.sql
+    database/056_owner_status.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"
   if [[ -n "$ADMIN_ID" ]]; then
-    printf "INSERT INTO users (telegram_user_id, role) VALUES (%s, 'admin') ON CONFLICT (telegram_user_id) DO UPDATE SET role='admin';\n" "$ADMIN_ID" |
+    printf "BEGIN; UPDATE users SET is_owner=false WHERE is_owner; INSERT INTO users (telegram_user_id, role, is_owner) VALUES (%s, 'admin', true) ON CONFLICT (telegram_user_id) DO UPDATE SET role='admin',is_owner=true; COMMIT;\n" "$ADMIN_ID" |
       compose exec -T db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
   fi
   INSTALL_STAGE="сборка и запуск сервисов"

@@ -5,10 +5,10 @@ window.pushokTeam=(()=>{
  const roles={admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'};
  Object.assign(errors,{user_blocked:'Доступ к кабинету заблокирован. Обратитесь к администратору.',team_admin_protected:'Оператор не может менять права или блокировать администратора.',team_admin_grant_forbidden:'Назначить администратора может только администратор.',team_cannot_block_self:'Нельзя заблокировать собственный аккаунт.'});
  function roleControl(user){
-  const editable=['admin','operator'].includes(me?.role)&&user.id!==me.id&&(me.role==='admin'||user.role!=='admin');
-  const label=()=>roles[user.role]||'Пользователь';
+  const editable=!user.is_owner&&['admin','operator'].includes(me?.role)&&user.id!==me.id&&(me.role==='admin'||user.role!=='admin');
+  const label=()=>user.is_owner?'Владелец':roles[user.role]||'Пользователь';
   const badge=el(editable?'button':'span',undefined,'person-role'+(editable?' role-button':'')),editor=el('form',undefined,'role-editor');editor.hidden=true;
-  function paint(){badge.dataset.role=user.role;badge.replaceChildren(document.createTextNode(label()+(user.blocked_at?' · Заблокирован':'')));badge.classList.toggle('is-blocked',Boolean(user.blocked_at));if(editable){badge.append(window.pushokViews.icon('edit'));badge.setAttribute('aria-label','Изменить права: '+label());}}
+  function paint(){badge.dataset.role=user.is_owner?'owner':user.role;badge.replaceChildren(document.createTextNode(label()+(user.blocked_at?' · Заблокирован':'')));badge.classList.toggle('is-blocked',Boolean(user.blocked_at));if(editable){badge.append(window.pushokViews.icon('edit'));badge.setAttribute('aria-label','Изменить права: '+label());}}
   paint();if(!editable)return {badge,editor};
   badge.type='button';badge.setAttribute('aria-expanded','false');editor.id='role-'+crypto.randomUUID();badge.setAttribute('aria-controls',editor.id);
   const session=token,viewer=me.id,current=()=>session===token&&viewer===me?.id&&badge.isConnected;

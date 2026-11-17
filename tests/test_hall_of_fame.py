@@ -75,7 +75,8 @@ class HallIntegration(unittest.TestCase):
             a,b=hall.bounds('month',dt('2030-01-05'))
             for metric,value in [('spend_rub',10500),('spend_xtr',15),('paid_campaigns',3),('paid_referrals',1),('invited',2)]:
                 rows=hall.scores(conn,metric,a,b,50)
-                self.assertNotIn(self.admin,[r['user_id'] for r in rows])
+                # Administrators now participate; only the installation owner is excluded.
+                if metric=='spend_rub':self.assertIn(self.admin,[r['user_id'] for r in rows])
                 uid=self.owner if metric in ('invited','paid_referrals') else self.friend
                 own=[r for r in rows if r['user_id']==uid]
                 self.assertEqual(len(own),1,metric);self.assertEqual(own[0]['score'],value,metric)
@@ -139,3 +140,31 @@ class HallIntegration(unittest.TestCase):
             self.assertIn('invited',[m['metric'] for m in hall.medal_history(conn,self.owner)])
             self.assertEqual(conn.execute("SELECT count(*) n FROM wallet_entries WHERE user_id=%s AND operation_key LIKE 'hall:%%'",(self.owner,)).fetchone()['n'],0)
             self.assertEqual(hall.counting_start(conn,{'started_at':dt('2030-03-01')}),hall.bounds('month',dt('2030-01-05'))[0])
+
+    def test_owner_excluded_admin_participates_unified_spend_and_own_rank(self):
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            conn.execute('UPDATE users SET is_owner=false WHERE is_owner')
+            conn.execute('UPDATE users SET is_owner=true WHERE id=%s',(self.admin,))
+            self.payment(conn,user=self.admin,amount=99999)
+            conn.execute("UPDATE users SET role='admin' WHERE id=%s",(self.friend,))
+            self.payment(conn,user=self.friend,amount=500)
+            self.payment(conn,user=self.friend,provider='telegram_stars',amount=15)
+            self.payment(conn,user=self.other,amount=20000)
+            a,b=hall.bounds('month',dt('2030-01-05'))
+            rows=hall.scores(conn,'spend',a,b,1,self.friend)
+            self.assertNotIn(self.admin,[r['user_id'] for r in rows])
+            own=next(r for r in rows if r['user_id']==self.friend)
+            self.assertEqual(own['score'],10500);self.assertGreater(own['rank'],1)
+
+    def test_secret_endpoints_require_owner_and_owner_cannot_be_demoted(self):
+        self.actor={'id':self.admin,'role':'admin','is_owner':False}
+        self.request('GET','/admin/sbp/connection',403)
+        self.request('PUT','/admin/channel-ai',403,json={'enabled':False,'model':'gpt-4.1-mini','revision':'environment'})
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE users SET is_owner=false WHERE is_owner')
+            conn.execute('UPDATE users SET is_owner=true WHERE id=%s',(self.admin,))
+            conn.execute("UPDATE users SET role='admin' WHERE id=%s",(self.friend,))
+            tg=conn.execute('SELECT telegram_user_id FROM users WHERE id=%s',(self.admin,)).fetchone()[0]
+        self.actor={'id':self.friend,'role':'admin','is_owner':False}
+        self.request('PUT','/admin/team',403,json={'telegram_user_id':tg,'role':'advertiser'})
+        self.request('PUT','/admin/team/access',403,json={'telegram_user_id':tg,'blocked':True})
