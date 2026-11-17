@@ -6,7 +6,7 @@ window.pushokVerification=(()=>{
  function badge(){
   const wrap=el('span',undefined,'phone-verified-badge');wrap.title=title;wrap.setAttribute('role','img');wrap.setAttribute('aria-label',title);
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
-  const circle=document.createElementNS(svg.namespaceURI,'circle');circle.setAttribute('cx','12');circle.setAttribute('cy','12');circle.setAttribute('r','11');circle.setAttribute('fill','#258bfa');
+  const circle=document.createElementNS(svg.namespaceURI,'path');circle.setAttribute('d','M10.24 2.25Q12.00 1.00 13.76 2.25Q15.52 3.50 17.65 3.86Q19.78 4.22 20.14 6.35Q20.50 8.48 21.75 10.24Q23.00 12.00 21.75 13.76Q20.50 15.52 20.14 17.65Q19.78 19.78 17.65 20.14Q15.52 20.50 13.76 21.75Q12.00 23.00 10.24 21.75Q8.48 20.50 6.35 20.14Q4.22 19.78 3.86 17.65Q3.50 15.52 2.25 13.76Q1.00 12.00 2.25 10.24Q3.50 8.48 3.86 6.35Q4.22 4.22 6.35 3.86Q8.48 3.50 10.24 2.25Z');circle.setAttribute('fill','#32a9f4');
   const check=document.createElementNS(svg.namespaceURI,'path');check.setAttribute('d','m7 12 3 3 7-7');check.setAttribute('fill','none');check.setAttribute('stroke','white');check.setAttribute('stroke-width','2.4');check.setAttribute('stroke-linecap','round');check.setAttribute('stroke-linejoin','round');svg.append(circle,check);wrap.append(svg);return wrap;
  }
  function label(text,input){const node=el('label',text);input.setAttribute('aria-label',text);node.append(input);return node;}
@@ -92,17 +92,17 @@ window.pushokVerification=(()=>{
  function profile(target){
   if(profileNode&&profileUser===me.id){target.append(profileNode);profileSync?.();return;}
   profileSync=null;
-  const uid=me.id,session=token;profileUser=uid;const box=profileNode=el('section',undefined,'verification-card profile-personal');target.append(box);
-  box.append(el('h2','Личные сведения'),el('p','Загружаем сведения…','muted'));
+  const uid=me.id,session=token;profileUser=uid;const box=profileNode=el('details',undefined,'verification-card profile-personal');target.append(box);
+  box.append(el('summary','Личные сведения'),el('p','Загружаем сведения…','muted'));
   const valid=()=>session===token&&me?.id===uid&&profileNode===box;
   async function load(){
-   try{const data=await request('/me/verification');if(!valid())return;paint(data);if(Boolean(me.phone_verified)!==data.phone_verified){me.phone_verified=data.phone_verified;window.cabinet.sync(ownCampaigns);}}catch(e){if(valid())box.replaceChildren(el('h2','Личные сведения'),el('p',e.message,'muted'),button('Повторить',load));}
+   try{const data=await request('/me/verification');if(!valid())return;paint(data);if(Boolean(me.phone_verified)!==data.phone_verified){me.phone_verified=data.phone_verified;window.cabinet.sync(ownCampaigns);}}catch(e){if(valid())box.replaceChildren(el('summary','Личные сведения'),el('p',e.message,'muted'),button('Повторить',load));}
   }
   function paint(data){
-   box.replaceChildren(el('h2','Личные сведения'));
-   const phone=el('div',undefined,'profile-phone');phone.append(el('span','Номер телефона','muted'),el('strong',data.phone_number||'Не подтверждён'));if(data.phone_verified)phone.append(badge());box.append(phone);
+   const summary=el('summary'),heading=el('span','Личные сведения');summary.append(heading);if(data.phone_verified){const state=el('span',undefined,'profile-verified-state');state.append(badge(),el('span','Верифицирован'));state.title=title;summary.append(state);}box.replaceChildren(summary);
+   const phone=el('div',undefined,'profile-phone');phone.append(el('span','Номер телефона','muted'),el('strong',data.phone_number||'Не подтверждён'));box.append(phone);
    if(!data.phone_verified)box.append(button('Подтвердить номер',()=>window.cabinet.go('dashboard')));
-   box.append(el('p','Номер и дата рождения видны только вам и администратору.','muted'));
+   const privacy=el('small','Номер и дата рождения видны только вам и администратору.','profile-privacy muted');box.append(privacy);
    const form=el('form'),fields=el('div',undefined,'birthday-fields'),day=el('input'),month=el('select'),year=el('input');
    day.type='number';day.min='1';day.max='31';day.inputMode='numeric';day.placeholder='День';day.value=data.birthday?.day||'';
    [['','Месяц'],...['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'].map((m,i)=>[String(i+1),m])].forEach(([value,text])=>{const o=el('option',text);o.value=value;month.append(o);});month.value=data.birthday?.month||'';
