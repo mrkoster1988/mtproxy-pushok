@@ -39,8 +39,10 @@ def check_interface(browser,base,output,failures,dsn):
         page.evaluate("window.cabinet.go('settings')");page.locator('#settings-system-tab').click();expect(page.locator('.settings-category')).to_have_count(4)
         assert page.locator('.settings-category[open]').count()==0
         page.evaluate('window.scrollTo(0,0)');page.screenshot(path=str(output/'interface-settings-collapsed-390.png'))
-        open_settings(page);ref=page.locator('#referral-settings');expect(ref.get_by_label('Скидка за приглашённого, %')).to_be_visible()
+        open_settings(page);ref=page.locator('#referral-settings');ref.get_by_label('Награда за приглашённого',exact=True).select_option('coupon');expect(ref.get_by_label('Скидка за приглашённого, %')).to_be_visible()
         for width in (320,390):
             page.set_viewport_size({'width':width,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1');page.screenshot(path=str(output/f'interface-settings-{width}.png'))
         page.evaluate("window.cabinet.go('profile')");expect(page.locator('[data-page=profile] .profile-stats')).to_be_visible();page.locator('[data-page=profile] .profile-personal>summary').click();page.screenshot(path=str(output/'interface-profile-390.png'))
-    finally:ctx.close()
+    finally:
+        ctx.close()
+        with psycopg.connect(dsn) as c:c.execute('DELETE FROM growth_referrals WHERE inviter_user_id=%s',(uid,))

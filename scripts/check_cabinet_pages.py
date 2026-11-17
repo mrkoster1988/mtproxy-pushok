@@ -164,6 +164,13 @@ def main():
                 if args.interface_only:
                     from check_interface import check_interface
                     check_interface(browser,base,output,failures,PostgresIntegration.dsn)
+                    from check_hall_of_fame import check_hall_of_fame
+                    from check_user_profiles import check_user_profiles
+                    from check_admin_users import check_admin_users
+                    from check_channel_layout import check_channel_layout
+                    from check_mobile_polish import check_mobile_polish
+                    for check in (check_hall_of_fame,check_user_profiles,check_admin_users,check_channel_layout,check_mobile_polish):
+                        check(browser,base,output,failures,PostgresIntegration.dsn)
                     if failures:raise AssertionError(failures)
                     print('PASS: compact interface and invite retry')
                     return
