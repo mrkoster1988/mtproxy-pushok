@@ -20,9 +20,9 @@ window.pushokApproval=(()=>{
   const rows=campaigns.filter(c=>c.archived_at);if(!rows.length)return;
   const panel=details('Удалённые: требуют завершения ('+rows.length+')',root);panel.className='archived-review';
   panel.append(el('p','Эти заявки уже удалены из рабочего списка. Здесь остаются только незавершённые платежи и показы.'));
-  for(const c of rows){const row=el('article',undefined,'approval-summary');row.append(el('h3',c.channel_title||'Канал'));
+  for(const c of rows){const row=window.pushokViews.campaignSummary(c,'moderation',{actions:false,openLabel:'Открыть для завершения'});row.classList.add('approval-summary');
    for(const reason of c.archive_pending_actions||[])if(archiveReasons[reason])row.append(el('p',archiveReasons[reason]));
-   row.append(button('Открыть для завершения',()=>route(c.id)));panel.append(row);
+   panel.append(row);
   }
  }
  function advertiser(c){
@@ -40,7 +40,7 @@ window.pushokApproval=(()=>{
   if(!c){
    if(selected)root.append(el('p','Заявка не найдена или недоступна. Обновите список.','empty'));
    if(!list.length)root.append(el('p','Заявок в этой очереди нет.','empty'));
-   for(const item of list){const row=el('article',undefined,'approval-summary');row.append(el('h3',item.channel_title||'Канал'),el('p',(labels[item.moderation_status]||item.moderation_status)+' · '+(item.price_kopecks_snapshot===0?'Бесплатно':labels[item.payment_status])+' · '+(labels[item.placement_status]||item.placement_status)),button('Разобрать заявку',()=>route(item.id)));root.append(row);}
+   for(const item of list){const row=window.pushokViews.campaignSummary(item,'moderation',{actions:false,openLabel:'Разобрать заявку'});row.classList.add('approval-summary');root.append(row);}
    archivedQueue();return;
   }
   const box=el('article',undefined,'approval-card');box.dataset.campaignId=c.id;root.append(box);
@@ -48,21 +48,17 @@ window.pushokApproval=(()=>{
   const choices=campaigns.filter(item=>!item.archived_at||item.id===c.id);
   option(choose,'','Все заявки');for(const item of choices)option(choose,item.id,(item.archived_at?'Удалена · ':'')+(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;choose.hidden=choices.length===1;
   choose.addEventListener('change',()=>{selected=choose.value;window.cabinet.go(selected?'moderation/'+selected:'moderation');});box.append(choose);
-  box.append(el('h2',c.channel_title||'Рекламная заявка'),advertiser(c));
+  box.append(window.pushokViews.campaignSummary(c,'moderation',{actions:false,route:'moderation',openLabel:'Все заявки'}),advertiser(c));
   if(c.moderation_status==='pending'){const aiState=el('small',undefined,'muted');box.append(aiState);const aiSession=token;void api('/community/moderation/'+c.id).then(data=>{if(aiSession!==token||!box.isConnected)return;aiState.textContent=!data.enabled?'Автомодерация ИИ выключена в настройках владельца.':data.check?.reason||'Ожидает автоматической проверки ИИ.';}).catch(()=>{});}
-  if(c.topic_label)box.append(el('p',c.topic_label,'campaign-topic'));
   if(c.archived_at){
    const banner=el('section',undefined,'card approval-archive-notice');banner.setAttribute('role','status');
    banner.append(el('h3','Заявка уже удалена'),el('p','Удалено: '+date(c.archived_at)+'. В рабочей очереди её нет.'));
    for(const reason of c.archive_pending_actions||[])if(archiveReasons[reason])banner.append(el('p',archiveReasons[reason]));
    banner.append(button('К рабочим заявкам',()=>route('')),button('Открыть «Удалённые»',()=>window.cabinet.go('archive')));box.append(banner);
   }
-  if(c.channel_url){try{const url=new URL(c.channel_url);if(url.protocol==='https:'&&['t.me','telegram.me'].includes(url.hostname)){const a=el('a','Открыть канал в Telegram');a.href=url.href;a.target='_blank';a.rel='noopener noreferrer';box.append(a);}}catch{}}
-  box.append(el('p',c.tariff_name_snapshot+' · '+(c.price_kopecks_snapshot===0?'Бесплатно':money(c.price_kopecks_snapshot)),'approval-price'));
   if(me.role==='admin'&&window.pushokCampaignPricing)box.append(window.pushokCampaignPricing.create(c));
   const index=stage(c),progress=el('ol',undefined,'approval-progress');progress.setAttribute('aria-label','Этапы рекламной заявки');
   stages.forEach((title,i)=>{const li=el('li',(i<index?'✓ ':String(i+1)+'. ')+title);if(i===index)li.setAttribute('aria-current','step');if(i<index)li.className='done';progress.append(li);});box.append(progress);
-  const status=el('p',(labels[c.moderation_status]||c.moderation_status)+' · '+(c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status])+' · '+(labels[c.placement_status]||c.placement_status),'approval-status');box.append(status);
   for(const comment of [c.moderator_comment,c.payment_review_comment])if(comment)box.append(el('p',comment));
   let content=el('section',undefined,'approval-current');const feedback=el('p',undefined,'approval-feedback');feedback.setAttribute('role','status');feedback.setAttribute('aria-live','polite');box.append(content,feedback);
   const session=token,user=me.id;let busy=false;

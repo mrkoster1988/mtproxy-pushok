@@ -98,7 +98,9 @@ class CabinetDesignTests(unittest.TestCase):
         self.assertIn(".badge--scheduled", self.css)
 
     def test_js_queue_and_statuses_use_safe_dom(self):
-        self.assertIn("'badge badge--'+c.placement_status", self.js)
+        views = (ROOT / "api/web/mobile-views.js").read_text(encoding="utf-8")
+        self.assertIn("'badge badge--'+value", views)
+        self.assertNotIn("innerHTML", views)
         self.assertIn("$('queue-count').textContent=working.length+' заявок'", self.js)
         self.assertIn("textContent", self.js)
         self.assertNotIn("innerHTML", self.js)

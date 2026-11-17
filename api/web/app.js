@@ -311,15 +311,11 @@ function showCampaignReport(c, box,{refresh=false}={}){
 }
 
 function card(c,op,{compact=false}={}){
- const box=el('article',undefined,'card'),head=el('div',undefined,'cardhead');
- head.append(window.pushokViews.channelAvatar(c.channel_id,c.channel_title||'Канал',c.channel_url),el('h3',(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||'Заявка')+' · '+c.id.slice(0,8)),el('span',labels[c.placement_status]||c.placement_status,'badge badge--'+c.placement_status));box.append(head);
- if(c.topic_label)box.append(el('p',c.topic_label,'campaign-topic'));
- if(c.channel_url){try{const u=new URL(c.channel_url);if(u.protocol==='https:'&&['t.me','telegram.me'].includes(u.hostname)){const link=el('a','Открыть канал');link.href=u.href;link.target='_blank';link.rel='noopener noreferrer';box.append(link);}}catch{}}
- if(!op&&window.pushokViews){box.classList.add('campaign-detail');box.append(window.pushokViews.progress(c),window.pushokViews.statusSteps(c),window.pushokViews.facts(c));if(window.pushokCampaignAnalytics)box.append(window.pushokCampaignAnalytics.panel(c));}
- else{
- const meta=el('div',undefined,'meta');
- [labels[c.moderation_status],(c.price_kopecks_snapshot===0?'Бесплатно':labels[c.payment_status]),c.tariff_name_snapshot+' · '+money(c.price_kopecks_snapshot),'Желаемое начало: '+date(c.requested_start_at),'Назначено: '+date(c.scheduled_start_at)].forEach(t=>meta.append(el('span',t)));box.append(meta);
- }
+ const box=el('section',undefined,'campaign-detail');
+ box.append(window.pushokViews.campaignSummary(c,op?'moderation':'campaign',{actions:false}));
+ const timing=window.pushokViews.disclosure('Этапы и сроки размещения',[window.pushokViews.progress(c),window.pushokViews.facts(c)],'inline-help campaign-timing');
+ box.append(timing);
+ if(!op&&window.pushokCampaignAnalytics)box.append(window.pushokCampaignAnalytics.panel(c));
  if(c.growth_offer_name)box.append(el('p','Скидка: '+c.growth_offer_name+' · '+c.discount_percent_snapshot+'%.'+(miniAppMode?'':' Цена до скидки: '+money(c.base_price_kopecks_snapshot)+'.'),'muted'));
  if(c.moderator_comment)box.append(el('p','Модерация: '+c.moderator_comment));
  if(c.payment_review_comment)box.append(el('p','Проверка оплаты: '+c.payment_review_comment));

@@ -110,21 +110,16 @@ window.pushokProfiles=(()=>{
    for(const [flag,label,count] of [[false,'Текущие',data.counts.current],[true,'Архив',data.counts.archived]]){
     const tab=button(label+' · '+count,()=>{archived=flag;campaignPage=0;return load();});tab.setAttribute('aria-pressed',String(flag===data.archived));tabs.append(tab);
    }
-   campaignSection.append(tabs);const list=el('div',undefined,'profile-list');campaignSection.append(list);
+   campaignSection.append(tabs);const list=el('div',undefined,'mobile-card-list');campaignSection.append(list);
    if(!data.campaigns.length)list.append(el('p',data.archived?'Архив пуст.':'Текущих кампаний нет.','empty'));
    for(const c of data.campaigns){
-    const row=el('article',undefined,'profile-campaign-row'),head=el('div',undefined,'profile-campaign-heading'),copy=el('div');
-    copy.append(el('strong',c.channel_title||'Канал'),el('small','#'+c.id.slice(0,8)+' · '+c.tariff_name_snapshot));
-    let action;
-    if(data.archived)action=button('',()=>showCampaignReport(c,row));
-    else{action=el('a');action.href='#/'+(uid===me.id?'campaign/':'moderation/')+c.id;}
-    views().iconAction(action,data.archived?'chart':'chevron',data.archived?'Отчёт кампании '+c.id.slice(0,8):'Открыть кампанию '+c.id.slice(0,8));
-    head.append(copy,action);row.append(head);
-    const status=el('div',undefined,'profile-statuses');
-    for(const value of [c.moderation_status,c.payment_status,c.placement_status])status.append(el('span',labels[value]||value,'badge badge--'+value));
-    row.append(status);
-    const period=c.scheduled_start_at?'Начало: '+date(c.scheduled_start_at)+(c.scheduled_end_at?' · до '+date(c.scheduled_end_at):''):'Дата ещё не назначена';
-    row.append(el('p',period,'muted'));list.append(row);
+    const row=views().campaignSummary(c,data.archived?'archive':uid===me.id?'campaign':'moderation',{
+     actions:false,
+     openIcon:data.archived?'chart':'chevron',
+     openLabel:data.archived?'Отчёт кампании '+c.id.slice(0,8):'Открыть кампанию '+c.id.slice(0,8),
+     onOpen:data.archived?item=>showCampaignReport(c,item):undefined
+    });
+    row.classList.add('profile-campaign-row');list.append(row);
    }
    pager(campaignSection,data.campaign_page,data.more_campaigns,page=>{campaignPage=page;return load();});
   }

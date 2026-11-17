@@ -45,7 +45,7 @@ def check_automatic_schedule(browser, base, output, failures, dsn):
         row=next(c for c in response.json() if c['id']==str(campaign))
         assert datetime.fromisoformat(row['scheduled_start_at'].replace('Z','+00:00'))==start+timedelta(hours=1)
         assert datetime.fromisoformat(row['scheduled_end_at'].replace('Z','+00:00'))==start+timedelta(hours=2)
-        client.evaluate('refresh()');expect(client.locator('[data-page=campaign] .campaign-steps')).to_contain_text('Запланировано')
+        client.evaluate('refresh()');expect(client.locator('[data-page=campaign] .campaign-steps')).to_contain_text('В очереди')
         assert client.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         client.screenshot(path=str(output/'52-automatic-schedule-client-320.png'))
         staff=launch('admin',390);go(staff,'moderation/'+str(campaign))

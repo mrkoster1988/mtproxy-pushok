@@ -213,14 +213,10 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .profile-overview>p{font-size:12px;margin:0}.profile-overview:empty{display:none}
 .cabinet-mode .profile-section>h2{font-size:16px;margin:0 0 10px}
 .profile-list{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
-.profile-channel-row,.profile-campaign-row{padding:12px;border-bottom:1px solid var(--line-soft);min-width:0}
-.profile-channel-row:last-child,.profile-campaign-row:last-child{border-bottom:0}
+.profile-channel-row{padding:12px;border-bottom:1px solid var(--line-soft);min-width:0}
+.profile-channel-row:last-child{border-bottom:0}
 .profile-channel-row{display:flex;align-items:center;gap:10px}.profile-channel-row>div{min-width:0;overflow-wrap:anywhere;font-size:14px}
-.profile-campaign-heading{display:flex;align-items:center;gap:8px}.profile-campaign-heading>div{flex:1;min-width:0;overflow-wrap:anywhere}
-.profile-campaign-heading strong{display:block;font-size:14px}.profile-campaign-heading small{display:block;font-size:11px;color:var(--muted);margin-top:3px}
-.profile-statuses{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0}.profile-statuses .badge{font-size:10px;padding:3px 6px}
 .cabinet-mode .campaign-detail>.cardhead>.badge{max-width:100%;overflow-wrap:normal}
-.profile-campaign-row>p{font-size:11px;margin:0;line-height:1.5}
 .profile-tabs{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
 .cabinet-mode .profile-tabs button{font-size:12px;min-height:40px;padding:8px 12px}
 .profile-tabs button[aria-pressed=true]{background:var(--mint);color:var(--bg);border-color:var(--mint)}
@@ -418,15 +414,6 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .sponsor-empty>.ui-icon{width:16px;height:16px}.sponsor-empty>span{min-width:0}.sponsor-empty>.icon-action{margin-left:auto;flex:none}
 .sponsor-placement-group>.section-heading{margin:4px 0 0}
 .sponsor-placement-group .count-pill{min-width:24px;padding:3px 7px;font-size:11px;background:var(--surface);color:var(--muted);border:1px solid var(--line)}
-.cabinet-mode .sponsor-placement{padding:14px;margin:0;border-radius:14px}
-.cabinet-mode .sponsor-placement .tile-heading{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:8px;position:relative;padding-right:28px}
-.sponsor-placement .tile-heading>.icon-action{position:absolute;right:-7px;top:0;width:32px;min-width:32px;height:44px;min-height:44px;padding:8px}
-.sponsor-placement .tile-heading>.channel-avatar{width:36px;height:36px;font-size:16px}
-.cabinet-mode .sponsor-placement .tile-heading .tile-title{font-size:14px;line-height:1.35}
-.cabinet-mode .sponsor-placement .campaign-current{font-size:10px;padding:3px 5px;max-width:78px}
-.cabinet-mode .sponsor-placement .tile-period{font-size:12px;margin:10px 0}
-.sponsor-placement-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:9px;border-top:1px solid var(--line-soft);font-size:12px;line-height:1.4}
-.sponsor-placement-footer>span{min-width:0;overflow-wrap:anywhere}.sponsor-placement-footer>strong{color:var(--mint);text-align:right;flex:none}
 .cabinet-mode #promotion-diagnostics{display:grid;gap:12px;padding:12px 14px;background:var(--surface)}
 .sponsor-health{display:flex;align-items:flex-start;gap:9px;min-width:0}.sponsor-health>.ui-icon{width:18px;height:18px;color:#e4b87c;margin-top:1px}
 .sponsor-health-copy{min-width:0}.sponsor-health-copy>strong{font-size:13px;line-height:1.45}.sponsor-health-copy>small{display:block;font-size:11px;margin-top:4px}
@@ -661,3 +648,19 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 
 .directory-user,.user-identity{border-radius:16px!important;border:1px solid var(--line-soft);background:#102b3b}.directory-user{padding:10px 12px!important}.user-identity .person-name{font-size:16px!important}.user-identity .person-handle{font-size:13px!important}
 .hall-podium-person{padding:5px!important;gap:3px!important}.hall-podium-person .user-avatar{width:clamp(28px,9vw,44px)!important;height:clamp(28px,9vw,44px)!important}.hall-podium-person .hall-person strong{font-size:11px;line-height:1.2}.hall-podium-person .hall-value{line-height:1.15;gap:1px}.hall-podium-person .hall-value small{font-size:8px;line-height:1.1}.hall-podium-person:only-child .user-avatar{width:54px!important;height:54px!important}
+
+/* Одна геометрия карточки в списках, модерации, подробностях и архиве. */
+.cabinet-mode .campaign-tile{margin:0;align-self:start;min-width:0}
+.cabinet-mode .archive-list>.campaign-tile{padding:12px}
+.cabinet-mode .campaign-tile>.tile-period{margin:10px 0 12px;font-size:12px;line-height:1.5}
+.cabinet-mode .campaign-tile .tile-heading{margin-bottom:8px;line-height:1.4}
+.cabinet-mode .campaign-tile .channel-avatar{width:36px;height:36px;flex:none;border-radius:50%}
+.cabinet-mode .campaign-tile .campaign-steps-compact{margin:0;padding:10px 0;gap:8px}
+.cabinet-mode .campaign-tile .campaign-steps-compact>div{min-width:0}
+.cabinet-mode .campaign-tile .campaign-steps-compact .badge{white-space:normal;overflow-wrap:anywhere;line-height:1.4}
+.cabinet-mode .campaign-tile>.campaign-tools{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line-soft)}
+.cabinet-mode .campaign-tools>.icon-action{flex:none;width:44px;min-width:44px;height:44px;padding:10px;margin:0}
+.cabinet-mode #queue,.cabinet-mode .archived-review{display:grid;gap:12px}
+.cabinet-mode .approval-card,.cabinet-mode .campaign-detail{display:grid;gap:12px;background:transparent;border:0;border-radius:0;padding:0;margin:0;min-width:0}
+.cabinet-mode .campaign-detail>.actions{margin:0}
+.cabinet-mode .campaign-detail>.campaign-timing{margin:0}
