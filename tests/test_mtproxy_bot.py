@@ -61,6 +61,72 @@ class BotFlowTests(unittest.IsolatedAsyncioTestCase):
         self.dialog=MTProxyDialog(self.client,NS(id=123))
         self.request=dict(action='bind',hosts=[HOST],port=8443,expected_tag=TAG,channel_url='https://t.me/sample_channel')
 
+    async def test_multiple_same_ip_proxies_are_selected_by_verified_port(self):
+        listing=NS(raw_text='Proxies',buttons=[[NS(text=HOST+' '+tag,button=type('KeyboardButtonCallback',(),{})()) for tag in (TAG,'c'*32)]])
+        other=card(tag='c'*32);other.raw_text=other.raw_text.replace('8443','9443')
+        self.dialog.send=AsyncMock(return_value=listing)
+        self.dialog.click=AsyncMock(side_effect=[card(),other,card()])
+        result=await self.dialog.select([HOST],8443)
+        self.assertEqual(card_tag(result,[HOST],8443),TAG)
+        self.assertEqual(self.dialog.click.await_count,3)
+        self.dialog.click=AsyncMock(side_effect=[card(),other])
+        with self.assertRaisesRegex(BotProtocolError,'proxy_not_found'):
+            await self.dialog.select([HOST],10443)
+        self.dialog.click=AsyncMock(side_effect=[card(),card(tag='c'*32)])
+        with self.assertRaisesRegex(BotProtocolError,'proxy_ambiguous'):
+            await self.dialog.select([HOST],8443)
+
+    async def test_registration_uses_existing_instance_without_newproxy(self):
+        from unittest.mock import Mock
+        from uuid import uuid4
+        request=dict(action='register',host='8.8.8.8',port=8443,secret='b'*32,node_id=str(uuid4()))
+        state=Mock(read_file=Mock(return_value=None))
+        self.dialog.select=AsyncMock(return_value=card(host='8.8.8.8'))
+        self.dialog.send=AsyncMock()
+        self.assertEqual((await self.dialog.register(request,state))['tag'],TAG)
+        self.dialog.send.assert_not_called();state.save_file.assert_called_once()
+
+    async def test_registration_records_intent_before_secret_and_verifies_card(self):
+        from unittest.mock import Mock
+        from uuid import uuid4
+        request=dict(action='register',host='8.8.8.8',port=8443,secret='b'*32,node_id=str(uuid4()))
+        state=Mock(read_file=Mock(return_value=None))
+        self.dialog.select=AsyncMock(side_effect=[BotProtocolError('proxy_not_found'),card(host='8.8.8.8')])
+        async def send(value):
+            if value=='/newproxy':return NS(raw_text='Send IP address and port')
+            if value=='8.8.8.8:8443':return NS(raw_text='Send the proxy secret')
+            self.assertEqual(value,'b'*32);state.save_file.assert_called_once()
+            return NS(raw_text='Registered')
+        self.dialog.send=AsyncMock(side_effect=send)
+        self.assertEqual((await self.dialog.register(request,state))['tag'],TAG)
+        self.assertEqual(self.dialog.select.await_count,2)
+
+    async def test_uncertain_registration_never_repeats_newproxy(self):
+        from unittest.mock import Mock
+        from uuid import uuid4
+        request=dict(action='register',host='8.8.8.8',port=8443,secret='b'*32,node_id=str(uuid4()))
+        state=Mock(read_file=Mock(return_value={'host':'8.8.8.8','port':8443}))
+        self.dialog.select=AsyncMock(side_effect=BotProtocolError('proxy_not_found'))
+        self.dialog.send=AsyncMock()
+        with self.assertRaisesRegex(BotProtocolError,'registration_uncertain'):
+            await self.dialog.register(request,state)
+        self.dialog.send.assert_not_called()
+
+    async def test_registration_wrong_secret_and_unrecognised_prompt_are_rejected(self):
+        from unittest.mock import Mock
+        from uuid import uuid4
+        request=dict(action='register',host='8.8.8.8',port=8443,secret='d'*32,node_id=str(uuid4()))
+        state=Mock(read_file=Mock(return_value=None))
+        self.dialog.select=AsyncMock(return_value=card(host='8.8.8.8'))
+        with self.assertRaisesRegex(BotProtocolError,'registration_secret_mismatch'):
+            await self.dialog.register(request,state)
+        state.save_file.assert_not_called()
+        self.dialog.select=AsyncMock(side_effect=BotProtocolError('proxy_not_found'))
+        self.dialog.send=AsyncMock(return_value=NS(raw_text='Send your login code'))
+        with self.assertRaisesRegex(BotProtocolError,'registration_prompt_invalid'):
+            await self.dialog.register(request,state)
+        self.dialog.send.assert_awaited_once_with('/newproxy')
+
     async def test_retry_already_changed_only_reads_and_verifies_fresh_card(self):
         self.dialog.select=AsyncMock(side_effect=[card(),card()])
         self.dialog.click=AsyncMock();self.dialog.send=AsyncMock()
@@ -130,7 +196,7 @@ class BotFlowTests(unittest.IsolatedAsyncioTestCase):
     async def test_host_tag_list_does_not_accept_similar_host_url_or_duplicates(self):
         for labels,kind,code in ((['evil'+HOST+' '+TAG],'KeyboardButtonCallback','proxy_not_found'),
                                  ([HOST+' '+TAG],'KeyboardButtonUrl','proxy_not_found'),
-                                 ([HOST+' '+TAG,HOST+' '+'c'*32],'KeyboardButtonCallback','proxy_ambiguous')):
+                                 ([HOST+' '+TAG,HOST+' '+TAG],'KeyboardButtonCallback','proxy_ambiguous')):
             buttons = [NS(text=value,button=type(kind,(),{})()) for value in labels]
             self.dialog.send=AsyncMock(return_value=NS(raw_text='Proxies',buttons=[buttons]))
             self.dialog.click=AsyncMock()

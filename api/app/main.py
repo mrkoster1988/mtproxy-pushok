@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.66",
+    version="1.67",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -3128,6 +3128,8 @@ app.include_router(channel_directory_router(lambda: DATABASE_URL, get_current_us
 
 from .channel_ai_connection import router_for as channel_ai_router
 app.include_router(channel_ai_router(lambda: DATABASE_URL, require_owner))
+from .proxy_provisioning import router_for as proxy_provisioning_router
+app.include_router(proxy_provisioning_router(lambda: DATABASE_URL, require_owner))
 from .campaign_assistant import router_for as campaign_assistant_router
 app.include_router(campaign_assistant_router(lambda: DATABASE_URL, require_operator, campaign_promotion_status))
 

@@ -65,7 +65,7 @@ class CabinetDesignTests(unittest.TestCase):
         self.assertEqual({url.split('?')[0] for url in self.parser.links}, {
             "/assets/hall-of-fame.js", "/assets/campaign-analytics.js", "/assets/campaign-pricing.js", "/assets/bonus-links.js",
             "/assets/verified-profile.js", "/assets/user-profiles.js", "/assets/users.js", "/assets/application-licenses.js",
-            "/assets/merchant-settings.js", "/assets/channel-ai-settings.js", "/assets/growth.js", "/assets/wallet.js", "/assets/default-sponsor.js", "/assets/team.js", "/assets/styles.css", "/assets/cabinet-reference.css", "/assets/app.js", "/assets/order.js", "/assets/channel-topics.js", "/assets/approval.js", "/assets/campaign-assistant.js", "/assets/management.js", "/assets/pages.js", "/assets/mobile-views.js", "/assets/pushok-pencil.png"
+            "/assets/merchant-settings.js", "/assets/channel-ai-settings.js", "/assets/proxy-provisioning.js", "/assets/growth.js", "/assets/wallet.js", "/assets/default-sponsor.js", "/assets/team.js", "/assets/styles.css", "/assets/cabinet-reference.css", "/assets/app.js", "/assets/order.js", "/assets/channel-topics.js", "/assets/approval.js", "/assets/campaign-assistant.js", "/assets/management.js", "/assets/pages.js", "/assets/mobile-views.js", "/assets/pushok-pencil.png"
         })
         self.assertNotIn("onclick=", self.html)
         self.assertNotIn("onload=", self.html)

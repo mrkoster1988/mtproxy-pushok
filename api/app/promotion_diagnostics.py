@@ -90,7 +90,8 @@ def diagnostics(conn):
     agent = describe_report(report)
     for node in nodes:
         plan = node_plan(conn, node)
-        confirmed = confirmation(conn, node, node, now=now, plan=plan, report=report)
+        node_report = report if report and report.get('node_id')==str(node['id']) else read_report(now,node['id'])
+        confirmed = confirmation(conn, node, node, now=now, plan=plan, report=node_report)
         code = ('default_sponsor' if plan['state']=='default' else 'tag_applied') if confirmed['config_applied'] else plan['reason']
         item = {'node_id': str(node['id']), 'name': node['name'], 'host': node['host'],
                 'port': node['port'], 'plan_title': describe(plan['reason'])['title'],

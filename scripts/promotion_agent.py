@@ -20,6 +20,7 @@ ENV = Path('/etc/mtproxy-pushok/mtproxy.env')
 STATE = Path('/etc/mtproxy-pushok/promotion-state.json')
 STATUS = ROOT / '.control' / 'promotion-agent.json'
 SERVICE = 'mtproxy-pushok.service'
+INSTANCE = None
 TAG = re.compile(r'[0-9a-fA-F]{32}')
 PLAN_CODES = {
     'ready', 'idle', 'default_sponsor', 'default_binding_missing', 'node_not_found', 'node_ambiguous', 'node_paused', 'node_archived',
@@ -269,7 +270,7 @@ def main(status=None):
     info=ENV.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid!=0 or info.st_mode & 0o022:
         raise RuntimeError('unsafe_proxy_env')
-    with open('/run/lock/pushok-promotion.lock','w') as lock:
+    with open('/run/lock/pushok-promotion'+('-'+INSTANCE if INSTANCE else '')+'.lock','w') as lock:
         status['code'] = 'agent_busy'
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         if '--restore' in __import__('sys').argv:
@@ -314,13 +315,30 @@ def run_cycle():
     try:
         main(status)
     finally:
-        publish_proxy_link(ROOT, ENV)
+        if INSTANCE:
+            from proxy_provisioner import ready, read_instance
+            if status.get('code') in {'tag_applied','no_current_campaign','waiting_start','default_binding_missing',
+                                      'binding_missing','telegram_binding_pending','manual_placement_active','period_ended'} and ready(read_instance(INSTANCE)):
+                publish_proxy_link(ROOT, ENV, instance=INSTANCE)
+            elif status.get('code') not in {'agent_busy','waiting_update'}:
+                (ROOT/'.control'/('proxy-link-'+INSTANCE+'.json')).unlink(missing_ok=True)
+        else:
+            publish_proxy_link(ROOT, ENV)
         publish_status(status)
         preserve_failure_notice(status)
         flush_failure_notice()
 
 if __name__=='__main__':
     try:
+        import sys
+        if '--instance' in sys.argv:
+            from proxy_provisioner import identity, read_instance, INSTANCES, unit
+            INSTANCE = identity(sys.argv[sys.argv.index('--instance')+1])
+            read_instance(INSTANCE)
+            ENV = INSTANCES/INSTANCE/'mtproxy.env'
+            STATE = INSTANCES/INSTANCE/'promotion-state.json'
+            STATUS = ROOT/'.control'/('promotion-agent-'+INSTANCE+'.json')
+            SERVICE = unit(INSTANCE)
         run_cycle()
     except BlockingIOError:
         pass
