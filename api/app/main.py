@@ -53,7 +53,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.48",
+    version="1.49",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2912,6 +2912,7 @@ def control_update(admin=Depends(require_admin)):
     return {'queued': True}
 
 from . import emoji_settings, telegram_binding
+from .promotion_report import owner_connection
 
 @app.get('/api/v1/admin/icons', tags=['admin'])
 def icons_settings(admin=Depends(require_admin)):
@@ -2962,6 +2963,7 @@ def promotion_bindings(admin: dict = Depends(require_admin)):
                 WHERE n.archived_at IS NULL AND ch.archived_at IS NULL''').fetchall(),
             'runtime': runtime,
             'telegram_automation': telegram_binding.public_status(conn),
+            'telegram_owner': owner_connection(),
         }
 
 

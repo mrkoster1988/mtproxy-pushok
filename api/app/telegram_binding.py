@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from .auto_schedule import earliest_gap
 
 ERRORS = {
+    'automation_disabled',
     'not_connected', 'revoked', 'connection_busy', 'account_mismatch', 'unexpected_mtproxy_bot',
     'public_channel_required', 'proxy_identity_not_verified', 'tag_not_verified',
     'proxy_not_found', 'proxy_ambiguous', 'proxy_list_loop', 'proxy_list_ambiguous',
@@ -59,9 +60,10 @@ def busy(conn, node_id):
 
 
 def public_status(conn):
-    return conn.execute('''SELECT j.proxy_node_id,n.name,j.campaign_id,j.phase,j.retry_at,
+    return conn.execute('''SELECT j.proxy_node_id,n.name,j.campaign_id,ch.title AS channel_title,j.phase,j.retry_at,
         j.verified_at,j.error_code,j.updated_at FROM telegram_binding_jobs j
-        JOIN proxy_nodes n ON n.id=j.proxy_node_id WHERE n.archived_at IS NULL ORDER BY n.name''').fetchall()
+        JOIN proxy_nodes n ON n.id=j.proxy_node_id
+        JOIN sponsor_channels ch ON ch.id=j.channel_id WHERE n.archived_at IS NULL ORDER BY n.name''').fetchall()
 
 
 def preparation_improves_slot(conn, campaign, node_id):

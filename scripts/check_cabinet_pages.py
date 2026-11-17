@@ -401,6 +401,8 @@ def main():
                 with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'PUSHOK_CONTROL_DIR': directory}):
                     report = dict(code='tag_applied', checked_at=datetime.now(timezone.utc).isoformat(),
                                   node_id=plan['node_id'], plan_revision=plan['revision'])
+                    report['telegram_owner']=dict(state='connected',enabled=True,session_saved=True,helper_available=True,
+                        checked_at=datetime.now(timezone.utc).isoformat(),username='test_owner')
                     report_path = Path(directory) / 'promotion-agent.json'
                     report_path.write_text(json.dumps(report))
                     go(admin, 'sponsors')
@@ -408,6 +410,19 @@ def main():
                     expect(node_card).to_contain_text('Тег применён; показ не проверен')
                     expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Тег применён; показ не проверен')
                     expect(node_card).not_to_contain_text('Дождитесь')
+                    owner_card=admin.locator('#telegram-owner-status')
+                    expect(owner_card).to_contain_text('Автопривязка включена')
+                    expect(owner_card).to_contain_text('@test_owner')
+                    report['telegram_owner']['enabled']=False
+                    report_path.write_text(json.dumps(report))
+                    admin.get_by_role('button',name='Обновить состояние подключения',exact=True).click()
+                    expect(owner_card).to_contain_text('Автопривязка выключена')
+                    admin.get_by_text('Подключение и проверка',exact=True).click()
+                    for width in (320,390):
+                        admin.set_viewport_size({'width':width,'height':844})
+                        owner_card.scroll_into_view_if_needed()
+                        assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                    admin.screenshot(path=str(output/'47-owner-connection-mobile.png'))
                     admin.get_by_text('Ручная привязка готового тега', exact=True).click()
                     draft_tag = admin.get_by_label('Тег этого канала из @MTProxyBot', exact=True)
                     draft_tag.fill('d' * 32)

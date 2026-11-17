@@ -393,4 +393,15 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 
 .cabinet-mode .campaign-detail>.cardhead{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:center;gap:8px;text-align:left;flex-direction:row}.cabinet-mode .campaign-detail>.cardhead>h3{font-size:14px;min-width:0}.cabinet-mode .campaign-detail>.cardhead>.badge{max-width:90px;font-size:10px;text-align:center}
 
+/* Подключение владельца: короткий статус, отдельно команды и очередь каналов. */
+.owner-connection{padding:14px;border:1px solid var(--line);border-radius:14px;margin:14px 0;background:var(--surface)}
+.owner-connection-heading{display:grid;grid-template-columns:22px minmax(0,1fr) 36px;gap:10px;align-items:center}
+.owner-connection-heading h3{margin:0;font-size:15px;line-height:1.4}.owner-connection-heading>.ui-icon{width:22px;height:22px}
+.owner-connection-heading>.icon-action{width:36px;min-height:36px;padding:6px}
+.owner-connection[data-tone=success]{border-color:#2b847c}.owner-connection[data-tone=success] h3{color:var(--mint)}
+.owner-connection[data-tone=warning]{border-color:#a77f4655}.owner-connection[data-tone=warning] h3{color:#f4c78b}
+.owner-connection[data-tone=danger]{border-color:#e44d6155}.owner-connection[data-tone=danger] h3{color:#ff9da8}
+.owner-connection p{margin:8px 0;font-size:13px}.owner-connection>small{display:block;margin-top:5px;font-size:11px}.owner-account{color:var(--mint)}
+.owner-connect{margin:12px 0 18px}.owner-connect code{display:block;white-space:pre-wrap;overflow-wrap:anywhere;padding:10px;background:var(--surface);border:1px solid var(--line);border-radius:8px;font-size:12px;margin:8px 0}.owner-connect button{display:inline-flex;gap:6px;align-items:center}
+.binding-status h3{margin:0 0 4px}.binding-status p{font-size:13px}.binding-status>small{font-size:11px}
 .campaign-analytics{border-top:1px solid var(--line-soft);padding-top:12px;margin:10px 0}.campaign-analytics h4{font-size:14px;margin:0 0 10px}.campaign-analytics-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0}.campaign-analytics-metrics>div{padding:8px;border:1px solid var(--line-soft);border-radius:8px;min-width:0}.campaign-analytics-metrics dt{font-size:10px;color:var(--muted)}.campaign-analytics-metrics dd{margin:5px 0 0;font-size:20px;color:var(--mint);font-weight:650;overflow-wrap:anywhere}.campaign-analytics .analytics-source{font-size:11px;margin:10px 0}.analytics-link{display:flex;align-items:center;gap:8px;font-size:12px}.analytics-days{width:100%;table-layout:fixed;font-size:10px;border-collapse:collapse}.analytics-days :is(th,td){padding:6px 3px;text-align:left;overflow-wrap:anywhere;border-bottom:1px solid var(--line-soft)}.analytics-days caption{text-align:left;padding:6px 0;color:var(--muted)}.analytics-history>summary{font-size:12px;min-height:44px;align-content:center}
