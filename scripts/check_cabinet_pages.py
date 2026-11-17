@@ -38,6 +38,7 @@ def main():
     parser.add_argument("--gateway-only", action="store_true")
     parser.add_argument("--ai-only", action="store_true", help="Подключение ИИ, хранение ключа и роли")
     parser.add_argument("--controls-only", action="store_true")
+    parser.add_argument("--refunds-only", action="store_true", help="Возвраты: реальные API, баланс, история и мобильная форма")
     args = parser.parse_args()
     # main.py captures this setting when imported, before test sessions are issued.
     os.environ["SESSION_SIGNING_KEY"] = "browser-test-only-" * 8
@@ -166,6 +167,11 @@ def main():
                         page.locator('#refresh').click()
                     expect(page.locator('#refresh')).to_be_enabled()
 
+                if args.refunds_only:
+                    from check_campaign_refunds import check_campaign_refunds
+                    check_campaign_refunds(browser, base, output, failures, PostgresIntegration.dsn)
+                    print('PASS: partial/full refunds, wallet totals, reload and mobile widths')
+                    return
                 if args.gateway_only or not any((args.controls_only,args.moderation_only,args.campaign_cards_only,args.management_only,args.interface_only,args.verification_only,args.sponsors_only,args.ai_only)):
                     from check_proxy_gateway_ui import check_proxy_gateway_ui
                     check_proxy_gateway_ui(new_page,go,output,PostgresIntegration.dsn)
@@ -1771,6 +1777,8 @@ def main():
                 check_gift_sharing(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_campaign_analytics import check_campaign_analytics
                 check_campaign_analytics(browser,base,output,failures,PostgresIntegration.dsn)
+                from check_campaign_refunds import check_campaign_refunds
+                check_campaign_refunds(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_sponsor_workspace import check_sponsor_workspace
                 check_sponsor_workspace(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_campaign_assistant_ui import check_campaign_assistant_ui

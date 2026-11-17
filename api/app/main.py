@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.88",
+    version="1.89",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -3178,3 +3178,6 @@ app.include_router(community_router(lambda: DATABASE_URL,get_current_user))
 
 from .proxy_gateway import router_for as proxy_gateway_router
 app.include_router(proxy_gateway_router(lambda: DATABASE_URL, get_current_user, require_owner))
+
+from .refunds import router_for as refunds_router
+app.include_router(refunds_router(lambda: DATABASE_URL, require_admin))

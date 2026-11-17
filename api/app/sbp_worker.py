@@ -131,6 +131,11 @@ def main():
                 result['wallet'] = wallet_once(os.environ['DATABASE_URL'], limit=args.limit)
             except psycopg.Error:
                 result['wallet'] = {'status': 'retry'}
+            try:
+                from .refunds import service_once as refund_once
+                result['refunds'] = refund_once(os.environ['DATABASE_URL'], limit=args.limit)
+            except (HTTPException, psycopg.Error):
+                result['refunds'] = {'status': 'review'}
             if args.once:
                 try:
                     result['slots'] = schedule_once(os.environ['DATABASE_URL'], limit=args.limit)

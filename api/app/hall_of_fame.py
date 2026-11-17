@@ -54,13 +54,13 @@ class Settings(BaseModel):
 
 # Источник денег: подтверждённые реальные оплаты; бонусы и ручные отметки не считаются.
 PAYMENTS = '''WITH payments AS (
- SELECT c.id campaign_id,c.advertiser_user_id user_id,p.currency,p.amount::bigint amount,p.settled_at paid_at, CASE WHEN p.currency='RUB' THEN p.amount ELSE c.price_kopecks_snapshot END::bigint rub_amount
+ SELECT c.id campaign_id,c.advertiser_user_id user_id,p.currency,(p.amount-c.refunded_amount)::bigint amount,p.settled_at paid_at, CASE WHEN p.currency='RUB' THEN p.amount-c.refunded_amount ELSE round(c.price_kopecks_snapshot::numeric*(p.amount-c.refunded_amount)/NULLIF(p.amount,0)) END::bigint rub_amount
  FROM payment_attempts p JOIN campaigns c ON c.id=p.campaign_id
- WHERE p.status='succeeded' AND ((p.provider='telegram_stars' AND NOT p.telegram_test_environment) OR (p.provider='sbp' AND p.sbp_test_mode IS FALSE)) AND c.payment_status='verified'
+ WHERE p.status='succeeded' AND p.amount>c.refunded_amount AND ((p.provider='telegram_stars' AND NOT p.telegram_test_environment) OR (p.provider='sbp' AND p.sbp_test_mode IS FALSE)) AND c.payment_status='verified'
  UNION ALL
- SELECT c.id,c.advertiser_user_id,w.currency,w.cash_amount,w.created_at,CASE WHEN w.currency='RUB' THEN w.cash_amount ELSE round(c.price_kopecks_snapshot::numeric*w.cash_amount/NULLIF(w.cash_amount+w.bonus_amount,0)) END::bigint
+ SELECT c.id,c.advertiser_user_id,w.currency,w.cash_amount-w.refunded_cash,w.created_at,CASE WHEN w.currency='RUB' THEN w.cash_amount-w.refunded_cash ELSE round(c.price_kopecks_snapshot::numeric*(w.cash_amount-w.refunded_cash)/NULLIF(w.cash_amount+w.bonus_amount,0)) END::bigint
  FROM wallet_payments w JOIN campaigns c ON c.id=w.campaign_id
- WHERE w.status='paid' AND w.cash_amount>0 AND c.payment_status='verified'
+ WHERE w.status='paid' AND w.cash_amount>w.refunded_cash AND c.payment_status='verified'
  AND NOT EXISTS(SELECT 1 FROM payment_attempts p WHERE p.campaign_id=c.id AND p.status='succeeded')
 ), eligible AS (SELECT id FROM users WHERE NOT is_owner AND blocked_at IS NULL) '''
 
