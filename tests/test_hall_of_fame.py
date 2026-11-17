@@ -38,11 +38,12 @@ class HallIntegration(unittest.TestCase):
     def setUp(self):
         self.owner,self.friend,self.other,self.admin,self.channel,self.tariff=[uuid4() for _ in range(6)]
         with psycopg.connect(self.dsn) as conn:
-            conn.execute('DELETE FROM hall_results');conn.execute('DELETE FROM hall_periods')
+            conn.execute('DELETE FROM hall_results');conn.execute('DELETE FROM hall_periods');conn.execute('DELETE FROM hall_history_cursor')
+            conn.execute("UPDATE users SET created_at='2030-01-01T00:00:00+03'")
             conn.execute("DELETE FROM growth_referrals WHERE created_at>='2030-01-01'")
-            conn.execute("UPDATE hall_settings SET started_at='2030-01-01T00:00:00+03',top_size=50,rewards=%s",(Jsonb({'month':{'invited':[10000,5000],'spend_rub':[2000]}}),))
+            conn.execute("UPDATE hall_settings SET started_at='2030-01-01T00:00:00+03',rewards_started_at='2030-01-01T00:00:00+03',top_size=50,rewards=%s",(Jsonb({'month':{'invited':[10000,5000],'spend_rub':[2000]}}),))
             for uid,role in ((self.owner,'advertiser'),(self.friend,'advertiser'),(self.other,'advertiser'),(self.admin,'admin')):
-                conn.execute("INSERT INTO users(id,telegram_user_id,role,first_name) VALUES(%s,%s,%s,'Участник')",(uid,int(uid.hex[:12],16),role))
+                conn.execute("INSERT INTO users(id,telegram_user_id,role,first_name,created_at) VALUES(%s,%s,%s,'Участник','2030-01-01T00:00:00+03')",(uid,int(uid.hex[:12],16),role))
             conn.execute("INSERT INTO sponsor_channels(id,owner_user_id,title,telegram_url) VALUES(%s,%s,'Test','https://t.me/hall_test')",(self.channel,self.friend))
             conn.execute("INSERT INTO tariffs(id,name,duration_seconds,price_kopecks) VALUES(%s,'Test',3600,10000)",(self.tariff,))
             for uid in (self.friend,self.other):
@@ -73,7 +74,11 @@ class HallIntegration(unittest.TestCase):
             self.payment(conn,user=self.admin,amount=99999)
             a,b=hall.bounds('month',dt('2030-01-05'))
             for metric,value in [('spend_rub',10500),('spend_xtr',15),('paid_campaigns',3),('paid_referrals',1),('invited',2)]:
-                rows=hall.scores(conn,metric,a,b,50);self.assertEqual(len(rows),1,metric);self.assertEqual(rows[0]['score'],value,metric)
+                rows=hall.scores(conn,metric,a,b,50)
+                self.assertNotIn(self.admin,[r['user_id'] for r in rows])
+                uid=self.owner if metric in ('invited','paid_referrals') else self.friend
+                own=[r for r in rows if r['user_id']==uid]
+                self.assertEqual(len(own),1,metric);self.assertEqual(own[0]['score'],value,metric)
             # Второй платёж в следующем месяце не превращает старого реферала в нового.
             self.payment(conn,at='2030-02-06')
             a,b=hall.bounds('month',dt('2030-02-05'));self.assertEqual(hall.scores(conn,'paid_referrals',a,b,50),[])
@@ -115,3 +120,22 @@ class HallIntegration(unittest.TestCase):
             self.assertEqual(conn.execute('SELECT count(*) n FROM hall_results').fetchone()['n'],0)
             hall.settle(conn,dt('2030-02-02'))
             self.assertEqual(conn.execute("SELECT count(*) n FROM wallet_entries WHERE user_id=%s AND operation_key LIKE 'hall:%%'",(self.owner,)).fetchone()['n'],1)
+
+    def test_history_before_installation_backfills_despite_newer_periods(self):
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            conn.execute("UPDATE hall_settings SET started_at='2030-03-01',rewards_started_at='2030-03-01'")
+            # Более поздний период уже существует до пересчёта истории.
+            a,b=hall.bounds('month',dt('2030-03-05'))
+            conn.execute("INSERT INTO hall_periods(kind,starts_at,ends_at,settings) VALUES('month',%s,%s,%s)",
+                (a,b,Jsonb({'top_size':50,'rewards':{'month':{'invited':[99999]}}})))
+            self.payment(conn)
+            hall.settle(conn,dt('2030-03-05'))
+            hall.settle(conn,dt('2030-03-05'))
+            months=conn.execute("SELECT * FROM hall_periods WHERE kind='month' AND closed_at IS NOT NULL ORDER BY starts_at").fetchall()
+            self.assertEqual(len(months),2)
+            result=conn.execute("SELECT * FROM hall_results WHERE period_id=%s AND metric='invited'",(months[0]['id'],)).fetchone()
+            self.assertEqual(result['user_id'],self.owner);self.assertEqual(result['score'],2)
+            self.assertEqual(result['bonus_amount'],0);self.assertIsNone(result['entry_id'])
+            self.assertIn('invited',[m['metric'] for m in hall.medal_history(conn,self.owner)])
+            self.assertEqual(conn.execute("SELECT count(*) n FROM wallet_entries WHERE user_id=%s AND operation_key LIKE 'hall:%%'",(self.owner,)).fetchone()['n'],0)
+            self.assertEqual(hall.counting_start(conn,{'started_at':dt('2030-03-01')}),hall.bounds('month',dt('2030-01-05'))[0])

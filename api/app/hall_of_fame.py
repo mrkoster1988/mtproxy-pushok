@@ -87,37 +87,63 @@ def scores(conn, metric, start, end, limit):
         WHERE s.score>0 ORDER BY s.score DESC,s.reached_at,s.user_id LIMIT %s''',(start,end,limit)).fetchall()
 
 
+def counting_start(conn, settings):
+    first = conn.execute('SELECT min(created_at) first FROM users').fetchone()['first']
+    return first or settings['started_at']
+
+
 def settle(conn, now=None):
     now = now or datetime.now(timezone.utc)
     if not conn.execute('SELECT pg_try_advisory_xact_lock(782341,158) acquired').fetchone()['acquired']:
         return 0
     settings = conn.execute('SELECT * FROM hall_settings WHERE singleton FOR UPDATE').fetchone()
+    since = counting_start(conn, settings)
+    conn.execute('UPDATE hall_settings SET started_at=%s WHERE singleton', (since,))
     closed = 0
+
+    def ensure(kind, start, end):
+        rewards = {} if end <= settings['rewards_started_at'] else settings['rewards']
+        return conn.execute('''INSERT INTO hall_periods(kind,starts_at,ends_at,settings) VALUES(%s,%s,%s,%s)
+            ON CONFLICT(kind,starts_at) DO UPDATE SET kind=EXCLUDED.kind RETURNING *''',
+            (kind,start,end,Jsonb({'top_size':settings['top_size'],'rewards':rewards}))).fetchone()
+
+    def finish(row):
+        nonlocal closed
+        if row['closed_at'] is not None or row['ends_at'] > now: return
+        cfg=row['settings'];start=row['starts_at'];end=row['ends_at'];kind=row['kind']
+        for metric in METRICS:
+            prizes=cfg['rewards'].get(kind,{}).get(metric,[]) if end>settings['rewards_started_at'] else []
+            for item in scores(conn,metric,max(start,since),end,cfg['top_size']):
+                rank=item['rank'];amount=prizes[rank-1] if rank<=len(prizes) else 0
+                entry=None
+                if amount:
+                    entry=post(conn,item['user_id'],'BONUS',amount,'gift_credit',
+                        f"hall:{row['id']}:{metric}:{item['user_id']}",
+                        f"Доска почёта · {METRICS[metric]} · место {rank} · {start.astimezone(MOSCOW).date()}")['id']
+                conn.execute('''INSERT INTO hall_results(period_id,metric,user_id,rank,score,bonus_amount,entry_id)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s)''',(row['id'],metric,item['user_id'],rank,item['score'],amount,entry))
+        conn.execute('UPDATE hall_periods SET closed_at=%s WHERE id=%s',(now,row['id']))
+        closed+=1
+
     for kind in KINDS:
-        last = conn.execute('SELECT * FROM hall_periods WHERE kind=%s ORDER BY starts_at DESC LIMIT 1',(kind,)).fetchone()
-        start,end = (last['starts_at'],last['ends_at']) if last else bounds(kind,settings['started_at'])
-        # Догоняем простой пакетами, не начисляя ничего за время до установки.
+        # Текущие правила фиксируются сразу, независимо от размера исторического архива.
+        ensure(kind,*bounds(kind,now))
+        for row in conn.execute('''SELECT * FROM hall_periods WHERE kind=%s AND closed_at IS NULL
+                AND ends_at<=%s ORDER BY ends_at LIMIT 24''',(kind,now)).fetchall():
+            finish(row)
+        first,_=bounds(kind,since)
+        cursor=conn.execute('''INSERT INTO hall_history_cursor(kind,next_start) VALUES(%s,%s)
+            ON CONFLICT(kind) DO NOTHING RETURNING next_start''',(kind,first)).fetchone()
+        if not cursor:cursor=conn.execute('SELECT next_start FROM hall_history_cursor WHERE kind=%s',(kind,)).fetchone()
+        start,end=bounds(kind,cursor['next_start'])
+        # Пропуски до уже существующих новых итогов тоже заполняются; повторы не платят снова.
         for _ in range(24):
-            row = conn.execute('''INSERT INTO hall_periods(kind,starts_at,ends_at,settings) VALUES(%s,%s,%s,%s)
-                ON CONFLICT(kind,starts_at) DO UPDATE SET kind=EXCLUDED.kind RETURNING *''',
-                (kind,start,end,Jsonb({'top_size':settings['top_size'],'rewards':settings['rewards']}))).fetchone()
+            if start>now: break
+            row=ensure(kind,start,end)
             if end>now: break
-            if row['closed_at'] is None:
-                cfg=row['settings']
-                for metric in METRICS:
-                    prizes=cfg['rewards'].get(kind,{}).get(metric,[])
-                    for item in scores(conn,metric,max(start,settings['started_at']),end,cfg['top_size']):
-                        rank=item['rank']; amount=prizes[rank-1] if rank<=len(prizes) else 0
-                        entry=None
-                        if amount:
-                            entry=post(conn,item['user_id'],'BONUS',amount,'gift_credit',
-                                f"hall:{row['id']}:{metric}:{item['user_id']}",
-                                f"Доска почёта · {METRICS[metric]} · место {rank} · {start.astimezone(MOSCOW).date()}")['id']
-                        conn.execute('''INSERT INTO hall_results(period_id,metric,user_id,rank,score,bonus_amount,entry_id)
-                            VALUES(%s,%s,%s,%s,%s,%s,%s)''',(row['id'],metric,item['user_id'],rank,item['score'],amount,entry))
-                conn.execute('UPDATE hall_periods SET closed_at=%s WHERE id=%s',(now,row['id']))
-                closed+=1
-            start,end = bounds(kind,end)
+            finish(row)
+            start,end=bounds(kind,end)
+        conn.execute('UPDATE hall_history_cursor SET next_start=%s WHERE kind=%s',(start,kind))
     return closed
 
 
@@ -148,6 +174,7 @@ def router_for(dsn,current_user,require_admin):
         response.headers['Cache-Control']='private, no-store'
         def read(conn):
             cfg=conn.execute('SELECT * FROM hall_settings WHERE singleton').fetchone()
+            cfg['started_at']=counting_start(conn,cfg)
             periods=conn.execute('SELECT id,starts_at,ends_at FROM hall_periods WHERE kind=%s AND closed_at IS NOT NULL ORDER BY starts_at DESC LIMIT 60',(kind,)).fetchall()
             if period_id:
                 period=conn.execute('SELECT * FROM hall_periods WHERE id=%s AND kind=%s AND closed_at IS NOT NULL',(period_id,kind)).fetchone()
@@ -179,7 +206,8 @@ def router_for(dsn,current_user,require_admin):
     @router.get('/admin')
     def admin(user=Depends(require_admin)):
         def read(conn):
-            cfg=conn.execute('SELECT top_size,rewards,started_at FROM hall_settings WHERE singleton').fetchone()
+            cfg=conn.execute('SELECT top_size,rewards,started_at,rewards_started_at FROM hall_settings WHERE singleton').fetchone()
+            cfg['started_at']=counting_start(conn,cfg)
             totals=conn.execute('''SELECT count(DISTINCT user_id) FILTER(WHERE rank<=3) winners,count(*) FILTER(WHERE bonus_amount>0) awards,coalesce(sum(bonus_amount),0) bonus
                 FROM hall_results''').fetchone()
             history=conn.execute('''SELECT p.id,p.kind,p.starts_at,p.ends_at,p.closed_at,count(r.user_id) places,
