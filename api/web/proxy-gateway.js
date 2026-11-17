@@ -67,7 +67,10 @@ window.pushokGateway=(()=>{
   const agent=saved.agent,status=el('p',!agent?'Ожидаем отчёт агента':!agent.current?'Настройки сохранены — ожидаем применения':statuses[agent.code]||'Ожидаем проверку','muted');status.id='proxy-gateway-status';status.setAttribute('role','status');
   const info=el('p','Одна ссылка для доступных узлов этого VPS. При отказе узла следующее соединение пойдёт на резервный. Открытое соединение может прерваться. Для защиты от отказа всего VPS нужен второй сервер.','muted');
   content.append(info,form,status);
-  if(agent?.current&&agent.code==='ready')content.append(el('p','Доступно узлов: '+agent.nodes+' · Исключено: '+agent.excluded,'muted'));
+  if(agent?.current&&agent.code==='ready'){
+   content.append(el('p','Доступно узлов: '+agent.nodes+' · Исключено: '+agent.excluded,'muted'));
+   if(agent.nodes===1)content.append(el('p','Сейчас подключён один узел. Для резерва включите «Подготовить один резервный прокси» в разделе «ИИ · Новые прокси».','muted'));
+  }
   const help=el('details');help.append(el('summary','Первое подключение на VPS'),el('p','После обновления проекта выполните команду один раз. Она установит HAProxy и службу проверки. Основной MTProxy продолжит работать. У провайдера VPS разрешите показанные выше TCP-порты.','muted'),el('code','sudo bash /opt/mtproxy-pushok/scripts/install_proxy_gateway.sh --install-dependency'),el('p','Старые дополнительные экземпляры без общего ключа исключаются. После планового перезапуска они смогут участвовать. Уже сохранённые прямые ссылки остаются прямыми — для единого входа подключитесь заново с главной.','muted'));content.append(help);
   form.onsubmit=e=>{e.preventDefault();void run(async()=>{fields.disabled=true;try{await api('/admin/proxy-gateway',{method:'PUT',body:{enabled:enabled.checked,port:Number(port.value),interests_enabled:interests.checked,revision:saved.revision}});if(current()){dirty=false;await load(true);notice('Настройки сохранены. Агент применит их после проверки.',true);}}finally{fields.disabled=false;}},save);};
   box.append(content);host.replaceChildren(box);

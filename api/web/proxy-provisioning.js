@@ -59,7 +59,7 @@ window.pushokProvisioning=(()=>{
   }
   card.append(list);
   if(fresh&&report.retry_at)card.append(el('p','Telegram: повтор после '+date(report.retry_at),'muted'));
-  card.append(el('p','Готовность VPS не подтверждает регистрацию в Telegram или показ спонсора. Новый прокси создаётся только при очереди и выполнении настроенных условий.','muted'));
+  card.append(el('p','Готовность VPS не подтверждает регистрацию в Telegram или показ спонсора. Новый прокси создаётся для первого резерва или задержанной очереди при выполнении настроенных условий.','muted'));
   const help=el('details'),summary=el('summary','Проверить на сервере');
   help.append(summary,el('p','Команда обновит отчёт без создания прокси и обращения к ИИ или Telegram.','muted'),el('code','sudo python3 /opt/mtproxy-pushok/scripts/proxy_provisioner.py check'));
   card.append(help);return card;
@@ -100,6 +100,9 @@ window.pushokProvisioning=(()=>{
    const content=el('div',undefined,'ai-settings-content'),form=el('form'),fields=el('fieldset');
    const info=el('p','При нехватке слотов ИИ может создать дополнительный экземпляр на этом VPS. Серверы не покупаются. Новые подключения распределяются между готовыми прокси; отдельный порт сам по себе не увеличивает аудиторию.','muted block-note');
    const row=el('label','Разрешить автоматическое создание','ai-switch'),enabled=el('input');enabled.type='checkbox';enabled.id='proxy-provisioning-enabled';enabled.checked=saved.enabled;row.append(enabled);fields.append(row);
+   const reserveRow=el('label','Подготовить один резервный прокси','ai-switch'),reserve=el('input');reserve.type='checkbox';reserve.id='proxy-provisioning-reserve';reserve.checked=saved.reserve_enabled===true;reserveRow.append(reserve);fields.append(reserveRow);
+   fields.append(el('p','Если дополнительных экземпляров ещё нет, агент подготовит первый без ожидания рекламной очереди и решения модели. Нужно разрешение на автоматическое создание. Уже созданный экземпляр учитывается; подготовка с ошибкой продолжается отдельно.','muted'));
+   fields.append(el('p','При включённом едином входе готовый прокси с общим ключом подключится к нему автоматически. Это резерв процесса на том же VPS: новое соединение сможет выбрать другой узел.','muted'));
    function number(label,id,value,min,max){const l=el('label',label),input=el('input');input.type='number';input.id=id;input.value=value;input.min=min;input.max=max;input.step=1;input.required=true;l.append(input);fields.append(l);return input;}
    const maximum=number('Максимум дополнительных экземпляров','proxy-provisioning-max',saved.max_instances,1,3);
    const wait=number('Создавать, если очередь задерживает запуск на минут','proxy-provisioning-wait',saved.wait_minutes,90,10080);
@@ -120,7 +123,7 @@ window.pushokProvisioning=(()=>{
     event.preventDefault();if(busy||!valid()||!form.reportValidity())return;
     busy=true;fields.disabled=true;status.textContent='Сохраняем…';
     try{
-     await api('/admin/proxy-provisioning',{method:'PUT',signal,body:{enabled:enabled.checked,max_instances:Number(maximum.value),wait_minutes:Number(wait.value),first_port:Number(port.value),revision:saved.revision}});
+     await api('/admin/proxy-provisioning',{method:'PUT',signal,body:{enabled:enabled.checked,reserve_enabled:reserve.checked,max_instances:Number(maximum.value),wait_minutes:Number(wait.value),first_port:Number(port.value),revision:saved.revision}});
      if(valid()){busy=false;dirty=false;await load(true);if(ownSession===token&&me?.is_owner){const fresh=$('proxy-provisioning-card');if(fresh)fresh.open=true;}}
     }catch(error){if(valid())status.textContent=error.code==='provisioning_ai_required'?'Сначала включите ИИ и разрешение на создание прокси.':error.code==='provisioning_changed'?'Настройки изменились в другом окне. Нажмите «Обновить».':'Не удалось сохранить настройки.';}
     finally{if(valid()){busy=false;fields.disabled=false;}}
@@ -130,6 +133,7 @@ window.pushokProvisioning=(()=>{
    for(const job of saved.jobs){
     const card=el('article',undefined,'proxy-provisioning-job');
     card.append(el('strong',job.name),el('p',job.host+':'+job.port,'muted'),el('p',job.state==='active'?'Создан · '+(job.status==='active'?'Доступен для размещений':'На паузе'):labels[job.error_code]||'Подготовка · попыток: '+job.attempts,'muted'));
+    if(job.reason==='reserve')card.append(el('p','Причина: подготовка резерва','muted'));
     const cooling=()=>job.error_code==='telegram_flood_wait'&&Date.parse(job.retry_at)>Date.now();
     if(job.state==='pending'||cooling())card.append(el('p','Повтор не раньше: '+date(job.retry_at),'muted'));
     if(job.state!=='active'){

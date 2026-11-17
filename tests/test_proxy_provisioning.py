@@ -59,7 +59,8 @@ class ProvisioningIntegration(unittest.TestCase):
             conn.execute('UPDATE sponsor_channels SET telegram_channel_id=-100123456789 WHERE id=%s',(self.channel,))
             conn.execute("UPDATE campaigns SET payment_status='verified',auto_schedule_paused=false WHERE id=ANY(%s)",([self.target,self.blocker],))
             conn.execute("UPDATE campaigns SET placement_status='active',proxy_node_id=%s,scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '5 hours' WHERE id=%s",(self.node,self.blocker))
-            conn.execute("UPDATE proxy_provisioning_settings SET enabled=true,max_instances=2,wait_minutes=120,first_port=19443,revision=gen_random_uuid(),updated_by=%s,evaluated_at=NULL,decision='waiting'",(self.admin,))
+            conn.execute("UPDATE proxy_provisioning_settings SET enabled=true,reserve_enabled=false,max_instances=2,wait_minutes=120,first_port=19443,revision=gen_random_uuid(),updated_by=%s,evaluated_at=NULL,decision='waiting'",(self.admin,))
+            conn.execute('UPDATE proxy_gateway_settings SET enabled=false')
         control.write(ai.FILE,dict(enabled=True,key='test-private',model='model',revision=str(uuid4()),capabilities=['proxy_provisioning']))
         self.addCleanup(lambda:(control.root()/ai.FILE).unlink(missing_ok=True))
         patcher=patch.object(provision,'advise',return_value='create_proxy');self.advice=patcher.start();self.addCleanup(patcher.stop)
@@ -89,6 +90,93 @@ class ProvisioningIntegration(unittest.TestCase):
         self.execute("UPDATE campaigns SET placement_status='completed' WHERE id=%s",self.blocker)
         self.assertEqual(self.call()['reason'],'no_demand');self.advice.assert_not_called()
         self.assertEqual(self.execute('SELECT count(*) AS n FROM proxy_provisioning_jobs')[0]['n'],0)
+
+    def enable_reserve(self):
+        saved=self.request('GET','/admin/proxy-provisioning')
+        body={key:saved[key] for key in ('enabled','max_instances','wait_minutes','first_port','revision')}
+        current=self.request('PUT','/admin/proxy-provisioning',json=body|{'reserve_enabled':True})
+        self.assertTrue(current['reserve_enabled'])
+        self.execute('UPDATE campaigns SET auto_schedule_paused=true')
+
+    def test_reserve_without_campaigns_requires_verified_registration_and_is_created_once(self):
+        self.enable_reserve()
+        primary=self.execute('SELECT * FROM proxy_nodes WHERE id=%s',self.node)[0]
+        tag=uuid4().hex
+        job=self.call(); self.assertEqual(job['state'],'provision')
+        self.assertEqual(self.execute('SELECT status FROM proxy_nodes WHERE id=%s',job['node_id'])[0]['status'],'paused')
+        self.assertEqual(self.call()['reason'],'retry_later')
+        self.assertFalse(self.call(action='complete',job_id=job['job_id'],ready=False,tag=tag)['accepted'])
+        self.assertTrue(self.call(action='complete',job_id=job['job_id'],ready=True,tag=tag)['accepted'])
+        self.assertTrue(self.call(action='complete',job_id=job['job_id'],ready=True,tag=tag)['accepted'])
+        self.assertEqual(self.call()['reason'],'daily_limit')
+        self.execute("UPDATE proxy_provisioning_jobs SET created_at=now()-interval '2 days'")
+        self.assertEqual(self.call()['reason'],'no_demand')
+        self.assertEqual(self.execute('SELECT count(*) AS n FROM proxy_provisioning_jobs')[0]['n'],1)
+        self.assertEqual(self.request('GET','/admin/proxy-provisioning')['jobs'][0]['reason'],'reserve')
+        self.assertEqual(self.execute("SELECT count(*) AS n FROM audit_events WHERE event_type='proxy_created_for_reserve' AND details_json->>'node_id'=%s",job['node_id'])[0]['n'],1)
+        self.assertEqual(self.execute('SELECT * FROM proxy_nodes WHERE id=%s',self.node)[0],primary)
+        self.advice.assert_not_called()
+
+    def test_reserve_claim_keeps_global_lock_and_does_not_duplicate(self):
+        self.enable_reserve()
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            first=provision.handle(conn,dict(action='claim',host=self.host,resources_ok=True,free_ports=[19443,19444]))
+            self.assertEqual(first['state'],'provision')
+            self.assertEqual(self.call(),{'state':'wait'})
+        self.assertEqual(self.call()['reason'],'retry_later')
+        self.assertEqual(self.execute('SELECT count(*) AS n FROM proxy_provisioning_jobs')[0]['n'],1)
+        self.advice.assert_not_called()
+
+    def test_reserve_preserves_permission_resource_and_retry_guards(self):
+        self.enable_reserve()
+        self.assertEqual(self.call(resources_ok=False)['reason'],'resources_low')
+        self.execute('UPDATE proxy_provisioning_settings SET enabled=false')
+        self.assertEqual(self.call()['state'],'disabled')
+        self.execute('UPDATE proxy_provisioning_settings SET enabled=true')
+        with patch.object(ai,'active',return_value=None):
+            self.assertEqual(self.call()['state'],'disabled')
+        self.execute('UPDATE users SET blocked_at=now() WHERE id=%s',self.admin)
+        self.assertEqual(self.call()['state'],'disabled')
+        self.assertEqual(self.call(action='inspect')['policy'],'owner_unavailable')
+        self.execute('UPDATE users SET blocked_at=NULL WHERE id=%s',self.admin)
+        first=self.call()
+        for attempt in range(1,6):
+            job=first if attempt==1 else self.call()
+            self.assertEqual(job['node_id'],first['node_id'])
+            self.call(action='failed',job_id=job['job_id'],code='telegram_unavailable')
+            self.execute("UPDATE proxy_provisioning_jobs SET retry_at=now()-interval '1 second'")
+        self.assertEqual(self.call()['reason'],'limit_reached')
+        row=self.execute('SELECT * FROM proxy_provisioning_jobs')[0]
+        self.assertEqual((row['reason'],row['attempts'],row['state']),('reserve',5,'failed'))
+        self.advice.assert_not_called()
+
+    def test_reserve_does_not_replace_existing_demand_instance(self):
+        job=self.call(); self.assertEqual(job['state'],'provision')
+        self.assertTrue(self.call(action='complete',job_id=job['job_id'],ready=True,tag='d'*32)['accepted'])
+        self.advice.reset_mock(); self.enable_reserve()
+        self.execute("UPDATE proxy_provisioning_jobs SET created_at=now()-interval '2 days'")
+        self.assertEqual(self.call()['reason'],'no_demand')
+        self.execute('UPDATE proxy_provisioning_settings SET max_instances=1')
+        self.assertEqual(self.call()['reason'],'limit_reached')
+        self.assertEqual(self.execute('SELECT count(*) AS n FROM proxy_provisioning_jobs')[0]['n'],1)
+        self.advice.assert_not_called()
+
+    def test_reserve_skips_gateway_ports_before_gateway_starts(self):
+        self.enable_reserve()
+        self.execute('UPDATE proxy_gateway_settings SET enabled=true,interests_enabled=false,port=19443')
+        self.assertIn(19443,self.call(action='inspect')['reserved_ports'])
+        self.assertEqual(self.call()['port'],19444)
+        self.advice.assert_not_called()
+
+    def test_reserve_cannot_use_topic_or_domain_alias_ports(self):
+        self.enable_reserve()
+        self.execute('UPDATE proxy_gateway_settings SET enabled=true,interests_enabled=true,port=19442')
+        self.assertEqual(self.call()['reason'],'port_busy')
+        self.execute('UPDATE proxy_gateway_settings SET enabled=false')
+        self.execute("UPDATE proxy_nodes SET host='proxy.example.org',port=19443 WHERE id=%s",self.node)
+        self.assertIn(19443,self.call(action='inspect',primary_host='proxy.example.org')['reserved_ports'])
+        self.assertEqual(self.call(primary_host='proxy.example.org')['port'],19444)
+        self.advice.assert_not_called()
 
     def test_queue_explains_delayed_free_empty_and_missing_nodes_without_mutations(self):
         before=self.execute('SELECT * FROM proxy_provisioning_settings')[0]
