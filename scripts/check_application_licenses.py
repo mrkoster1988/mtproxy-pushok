@@ -4,6 +4,8 @@
 Транспорт возвращает настоящий подписанный ответ сервера продавца.
 """
 from io import BytesIO
+from contextvars import ContextVar
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from unittest.mock import patch
@@ -22,6 +24,15 @@ def check_application_licenses(browser,base,output,failures,dsn):
             conn.execute("INSERT INTO users(id,telegram_user_id,first_name,role) VALUES(%s,%s,'Владелец',%s)",(owner,tg if owner==uid else tg+1,role))
             sid=uuid4();conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')",(sid,owner));tokens[role]=main._create_session_token(owner,sid)
     api=TestClient(main.app)
+    # Продавец и покупатель в тесте разделяют процесс. Подмена режима относится
+    # только к запросу TestClient и не затрагивает параллельные запросы браузера.
+    request_mode=ContextVar('license_browser_request_mode',default=None)
+    original_mode=lic.mode
+    def isolated_mode():return request_mode.get() or original_mode()
+    def seller_request(path,**kwargs):
+        selected=request_mode.set('seller')
+        try:return api.post(path,**kwargs)
+        finally:request_mode.reset(selected)
     def launch(role,width):
         ctx=browser.new_context(viewport={'width':width,'height':844},reduced_motion='reduce');contexts.append(ctx)
         ctx.add_init_script('sessionStorage.setItem("pushok-session",'+repr(tokens[role])+')')
@@ -30,11 +41,11 @@ def check_application_licenses(browser,base,output,failures,dsn):
         page.goto(base);expect(page.locator('body')).to_have_attribute('data-cabinet-loaded','true');return page
     def go(page):page.evaluate("window.cabinet.go('license')");return page.locator('[data-page=license]')
     def transport(req,timeout):
-        with patch.dict(os.environ,{'PUSHOK_LICENSE_MODE':'seller'}):r=api.post('/api/v1/license-store/requests',json=json.loads(req.data))
+        r=seller_request('/api/v1/license-store/requests',json=json.loads(req.data))
         assert r.status_code==200,r.text
         return BytesIO(r.content)
     try:
-        with patch.dict(os.environ,{'PUSHOK_LICENSE_MODE':'seller','PUSHOK_TELEGRAM_TEST_ENVIRONMENT':'0','BOT_INTERNAL_SECRET':'e'*64}),patch.object(lic,'stars_invoices_enabled',return_value=True),patch.object(lic.stars_checkout,'credentials',return_value=('123456:synthetic_only_token',123456)),patch.object(lic.stars_checkout,'create_invoice_link',return_value='https://t.me/$app_license_browser'):
+        with patch.object(lic,'mode',side_effect=isolated_mode),patch.dict(os.environ,{'PUSHOK_LICENSE_MODE':'seller','PUSHOK_TELEGRAM_TEST_ENVIRONMENT':'0','BOT_INTERNAL_SECRET':'e'*64}),patch.object(lic,'stars_invoices_enabled',return_value=True),patch.object(lic.stars_checkout,'credentials',return_value=('123456:synthetic_only_token',123456)),patch.object(lic.stars_checkout,'create_invoice_link',return_value='https://t.me/$app_license_browser'):
             staff=launch('admin',390);area=go(staff)
             area.get_by_role('button',name='Добавить тариф',exact=True).click()
             area.get_by_label('Название',exact=True).fill('Для владельца')
@@ -57,6 +68,14 @@ def check_application_licenses(browser,base,output,failures,dsn):
                 opener.return_value.open.side_effect=transport
                 lic.sync(dsn)
                 with psycopg.connect(dsn) as conn:conn.execute('UPDATE app_license_state SET required=true,installation_id=%s',(iid,))
+                # Параллельная загрузка покупателя не должна увидеть режим
+                # продавца во время вложенного обращения к серверу лицензий.
+                def read_client(_):
+                    response=api.get('/api/v1/admin/license',headers={'Authorization':'Bearer '+tokens['admin']})
+                    assert response.status_code==200,response.text
+                    assert response.json()['mode']=='client',response.json()['mode']
+                with ThreadPoolExecutor(max_workers=4) as requests:
+                    list(requests.map(read_client,range(12)))
                 staff.reload();expect(staff.locator('body')).to_have_attribute('data-cabinet-loaded','true');area=go(staff)
                 expect(area).to_contain_text('Нужна покупка или продление')
                 expect(area.get_by_role('button',name='Добавить тариф',exact=True)).to_have_count(0)
@@ -68,10 +87,9 @@ def check_application_licenses(browser,base,output,failures,dsn):
                 assert staff.evaluate('window.licenseInvoiceUrl')=='https://t.me/$app_license_browser'
                 with psycopg.connect(dsn) as conn:order=conn.execute('SELECT id FROM app_license_orders WHERE installation_id=%s ORDER BY created_at DESC',(iid,)).fetchone()[0]
                 data=dict(invoice_payload='license:'+str(order),telegram_user_id=tg,total_amount=100,currency='XTR')
-                with patch.dict(os.environ,{'PUSHOK_LICENSE_MODE':'seller'}):
-                    headers={'X-Pushok-Bot-Secret':'e'*64}
-                    r=api.post('/api/v1/internal/bot/license/precheckout',headers=headers,json=dict(data,query_id='browser-'+str(order)));assert r.status_code==200 and r.json()['ok'],r.text
-                    r=api.post('/api/v1/internal/bot/license/settle',headers=headers,json=dict(data,telegram_payment_charge_id='browser-'+str(order)));assert r.status_code==200 and r.json()['status']=='applied',r.text
+                headers={'X-Pushok-Bot-Secret':'e'*64}
+                r=seller_request('/api/v1/internal/bot/license/precheckout',headers=headers,json=dict(data,query_id='browser-'+str(order)));assert r.status_code==200 and r.json()['ok'],r.text
+                r=seller_request('/api/v1/internal/bot/license/settle',headers=headers,json=dict(data,telegram_payment_charge_id='browser-'+str(order)));assert r.status_code==200 and r.json()['status']=='applied',r.text
                 # Имитируем один проход фонового клиента; интерфейс замечает оплату сам.
                 lic.sync(dsn)
                 expect(area).not_to_contain_text('Нужна покупка или продление',timeout=12000)
@@ -82,6 +100,7 @@ def check_application_licenses(browser,base,output,failures,dsn):
                 staff.screenshot(path=str(output/'58-installation-license-client-390.png'))
                 # Серверная квота работает для всех пользователей одной установки.
                 with psycopg.connect(dsn) as conn:assert conn.execute('SELECT required,envelope IS NOT NULL FROM app_license_state').fetchone()==(True,True)
+                print('PASS: license modes isolated under parallel requests; purchase and activation',flush=True)
     finally:
         with psycopg.connect(dsn) as conn:conn.execute('UPDATE app_license_state SET required=false')
         for ctx in contexts:ctx.close()

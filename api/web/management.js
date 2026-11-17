@@ -18,7 +18,8 @@ window.pushokManagement=(()=>{
  function editor(parent,title,fields,save){
   parent.querySelector('.management-form')?.remove();const form=el('form',undefined,'management-form'),heading=el('h4',title),hint=el('p');hint.setAttribute('role','status');form.append(heading);
   const inputs={};for(const spec of fields){const input=el(spec.type==='textarea'?'textarea':'input');if(spec.type!=='textarea')input.type=spec.type||'text';input.value=spec.value??'';input.required=spec.required!==false;if(spec.min)input.min=spec.min;if(spec.max)input.max=spec.max;inputs[spec.name]=label(form,spec.label,input);}
-  const submit=el('button','Сохранить изменения');submit.type='submit';form.append(submit,button('Отмена',()=>form.remove()),hint);
+  const submit=el('button','Сохранить изменения');submit.type='submit';const cancel=button('Отмена',()=>form.remove());
+  if(parent.classList.contains('node-actions')){submit.setAttribute('aria-label','Сохранить изменения');submit.replaceChildren(window.pushokViews.icon('save'),document.createTextNode('Сохранить'));cancel.prepend(window.pushokViews.icon('close'));const actions=el('div',undefined,'sponsor-form-actions');actions.append(submit,cancel);form.append(actions,hint);}else form.append(submit,cancel,hint);
   form.addEventListener('invalid',e=>{e.preventDefault();hint.textContent='Заполните корректно поле «'+(e.target.getAttribute('aria-label')||'значение')+'».';e.target.focus();},{capture:true});
   form.addEventListener('submit',e=>{e.preventDefault();if(!form.reportValidity()||submit.disabled)return;void run(async()=>{try{await save(inputs);form.remove();await refresh();notice('Изменения сохранены.',true);}catch(error){hint.textContent=error.message;}},submit);});
   parent.append(form);form.scrollIntoView({block:'nearest'});return form;
@@ -69,14 +70,16 @@ window.pushokManagement=(()=>{
   archive(box,'/campaigns/'+c.id,'Убрать заявку из списка? Будущий слот отменится. Активный показ и платежи сохранятся у оператора.',operator?'moderation':'campaigns');return box;
  }
  function nodeActions(n){
-  const box=el('details',undefined,'management-actions');box.append(el('summary','Изменить или удалить узел'));
-  box.append(button('Изменить узел',()=>{
+  const box=el('div',undefined,'node-actions'),controls=el('div',undefined,'node-action-buttons');controls.setAttribute('role','group');controls.setAttribute('aria-label','Действия узла '+n.name);box.append(controls);
+  const edit=button('Изменить узел',()=>{
+   box.querySelector('.node-plan-form')?.remove();
+   if(box.querySelector('.management-form')){box.querySelector('.management-form').remove();return;}
    const f=editor(box,'Запись узла',[
     {name:'name',label:'Название узла',value:n.name},{name:'host',label:'Адрес узла',value:n.host},{name:'port',label:'Порт узла',value:n.port,type:'number',min:1,max:65535}
    ],v=>api('/admin/proxy-nodes/'+n.id,{method:'PATCH',body:{name:v.name.value.trim(),host:v.host.value.trim(),port:Number(v.port.value)}}));
-   f.append(el('p','Изменяется запись в кабинете. Настройка работающего прокси на VPS выполняется отдельно.','muted'));
-  }));
-  archive(box,'/admin/proxy-nodes/'+n.id,'Удалить узел из реестра? Будущие размещения вернутся на подбор. Активные показы сохранятся у оператора; прокси на VPS продолжит работать.','sponsors');return box;
+   f.append(window.pushokViews.disclosure('Что изменится',[el('p','Изменяется запись в кабинете. Настройка прокси на VPS выполняется отдельно.','muted')],'inline-help'));
+  });window.pushokViews.iconAction(edit,'edit','Изменить узел');controls.append(edit);
+  const remove=archive(controls,'/admin/proxy-nodes/'+n.id,'Удалить узел из реестра? Будущие размещения вернутся на подбор. Активные показы сохранятся у оператора; прокси на VPS продолжит работать.','sponsors');window.pushokViews.iconAction(remove,'close','Удалить узел');remove.classList.add('danger-text');return box;
  }
  function local(value){if(!value)return '';const d=new Date(value);return localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
  async function renderArchive(target,selectedId=''){
