@@ -29,9 +29,19 @@ class PublicPosts(HTMLParser):
         super().__init__(convert_charrefs=True)
         self.username, self.stack, self.posts = username, [], []
         self.depth, self.parts = None, []
+        self.messages, self.message, self.message_depth = [], None, None
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        if re.fullmatch(re.escape(self.username) + r'/[0-9]+', attrs.get('data-post',''), re.I):
+            self.message = {'text':'', 'media':False}
+            self.message_depth = len(self.stack)+1
+        if self.message is not None:
+            classes = attrs.get('class','')
+            if (tag in ('video','audio','iframe','canvas') or any(marker in classes for marker in
+                    ('message_photo','message_video','message_roundvideo','message_voice','message_audio',
+                     'message_document','message_sticker','message_poll','message_game','message_link_preview'))):
+                self.message['media'] = True
         if tag == 'br' and self.depth is not None:
             self.parts.append(' ')
         if tag in ('br', 'img', 'hr', 'input', 'meta', 'link', 'source', 'wbr', 'area', 'base', 'embed', 'param', 'track', 'col'):
@@ -50,11 +60,17 @@ class PublicPosts(HTMLParser):
             return
         if self.depth == len(self.stack) and self.stack[-1][0] == tag:
             text = ' '.join(''.join(self.parts).split())[:1200]
+            if self.message is not None:
+                self.message['text'] = text
             if len(text) >= 20 and text not in self.posts:
                 self.posts.append(text)
                 self.posts = self.posts[-8:]
             self.depth, self.parts = None, []
         if self.stack[-1][0] == tag:
+            if self.message is not None and self.message_depth == len(self.stack):
+                self.messages.append(self.message)
+                self.messages = self.messages[-8:]
+                self.message, self.message_depth = None, None
             self.stack.pop()
 
 
@@ -67,17 +83,31 @@ def read_url(request, timeout, limit):
     return raw
 
 
-def public_posts(username):
+def public_parser(username):
     if environment_name() != 'production':
-        return []
+        return None
     try:
         raw = read_url(Request('https://t.me/s/' + public_channels.reference(username),
                               headers={'User-Agent': 'Pushok-ChannelTopics/1.0'}), 2, 524288)
         parser = PublicPosts(username)
         parser.feed(raw.decode('utf-8'))
-        return parser.posts
+        return parser
     except (OSError, ValueError, TypeError):
-        return []
+        return None
+
+
+def public_posts(username):
+    parser = public_parser(username)
+    return parser.posts if parser else []
+
+
+def public_sample(username):
+    """Одна выборка с покрытием: пропущенные медиа нельзя считать проверенными."""
+    parser = public_parser(username)
+    messages = parser.messages if parser else []
+    complete = bool(messages) and parser.message is None and all(
+        not m['media'] and len(m['text']) >= 20 for m in messages)
+    return {'posts':[m['text'] for m in messages if len(m['text']) >= 20], 'fully_textual':complete}
 
 
 def ai_config():

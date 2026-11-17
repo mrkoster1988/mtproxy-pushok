@@ -117,7 +117,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v1.86 — мастер настройки" >&2
+echo "MTProxy Pushok v1.87 — мастер настройки" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
 PROXY_ENGINE=""
@@ -438,6 +438,7 @@ EOF
     database/059_ai_agent_profile.sql
     database/060_proxy_gateway.sql
     database/061_proxy_reserve.sql
+    database/062_owner_migration_recovery.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"

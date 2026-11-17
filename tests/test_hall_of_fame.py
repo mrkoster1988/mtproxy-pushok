@@ -15,6 +15,10 @@ def dt(s): return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
 
 
 class HallCalendar(unittest.TestCase):
+    def test_merged_reward_limits_preserve_valid_legacy_prizes(self):
+        self.assertEqual(hall.Settings(rewards={'month':{'spend':[120000000]}}).rewards['month']['spend'],[120000000])
+        for metric,amount in [('spend',200000001),('invited',100000001)]:
+            with self.assertRaises(ValueError):hall.Settings(rewards={'month':{metric:[amount]}})
     def test_moscow_boundaries(self):
         start,end=hall.bounds('month',dt('2030-01-31T22:00:00'))
         self.assertEqual(start.isoformat(),'2030-02-01T00:00:00+03:00')
@@ -168,3 +172,42 @@ class HallIntegration(unittest.TestCase):
         self.actor={'id':self.friend,'role':'admin','is_owner':False}
         self.request('PUT','/admin/team',403,json={'telegram_user_id':tg,'role':'advertiser'})
         self.request('PUT','/admin/team/access',403,json={'telegram_user_id':tg,'blocked':True})
+
+    def test_legacy_archive_uses_only_frozen_results(self):
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            cid=self.payment(conn,user=self.friend)
+            hall.settle(conn,dt('2030-02-02'))
+            period=conn.execute("SELECT id FROM hall_periods WHERE kind='month' AND starts_at='2030-01-01T00:00:00+03'").fetchone()['id']
+            conn.execute("DELETE FROM hall_results WHERE period_id=%s AND metric='spend'",(period,))
+        url=f'/hall?kind=month&metric=spend&period_id={period}'
+        before=self.request('GET',url)
+        self.assertEqual(before['rows'],[])
+        self.assertEqual(before['legacy_spend']['spend_rub'][0]['score'],10000)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET payment_status='refunded' WHERE id=%s",(cid,))
+            conn.execute('UPDATE users SET blocked_at=now() WHERE id=%s',(self.friend,))
+        with patch.object(hall,'scores',side_effect=AssertionError('Archive must not read live scores')):
+            after=self.request('GET',url)
+        self.assertEqual(after['legacy_spend'],before['legacy_spend'])
+        self.assertEqual(after['rows'],[])
+
+    def test_owner_migration_recovers_blocked_initial_choice_once(self):
+        sql=(fixture.ROOT/'database/062_owner_migration_recovery.sql').read_text()
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            conn.execute('UPDATE users SET is_owner=false WHERE is_owner')
+            conn.execute("UPDATE users SET is_owner=true,blocked_at=now(),created_at='2000-01-01' WHERE id=%s",(self.admin,))
+            conn.execute("UPDATE users SET role='admin',created_at='2001-01-01' WHERE id=%s",(self.friend,))
+            conn.execute(sql)
+            self.assertTrue(conn.execute('SELECT is_owner FROM users WHERE id=%s',(self.friend,)).fetchone()['is_owner'])
+            self.assertIsNotNone(conn.execute('SELECT blocked_at FROM users WHERE id=%s',(self.admin,)).fetchone()['blocked_at'])
+            conn.execute(sql)
+            self.assertEqual(conn.execute("SELECT count(*) n FROM audit_events WHERE actor_user_id=%s AND event_type='owner_migration_recovered'",(self.friend,)).fetchone()['n'],1)
+            conn.execute("UPDATE users SET role='admin',created_at='1999-01-01' WHERE id=%s",(self.other,))
+            conn.execute(sql)
+            self.assertTrue(conn.execute('SELECT is_owner FROM users WHERE id=%s',(self.friend,)).fetchone()['is_owner'])
+        # docker-entrypoint выполняет SQL без внешнего BEGIN; установщик — в транзакции.
+        with psycopg.connect(self.dsn,autocommit=True) as conn:
+            prefix,block=sql.split('DO $$',1)
+            if any(line.strip() and not line.lstrip().startswith('--') for line in prefix.splitlines()):
+                conn.execute(prefix)
+            conn.execute('DO $$'+block)

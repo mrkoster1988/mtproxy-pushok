@@ -67,12 +67,12 @@ class CommunityIntegration(unittest.TestCase):
         self.verify(self.member);body=self.campaign();cid=self.request('POST','/campaigns',201,json=body)['id']
         self.db("UPDATE campaigns SET moderation_status='pending' WHERE id=%s",(cid,))
         config=('not-a-real-key','model');posts=['Обучение таблицам и работе с формулами. Примеры задач и решения для начинающих. '*3]*3
-        with patch.object(ai.settings,'active',return_value=config),patch.object(ai.settings,'current',return_value={'revision':'test'}),patch.object(ai.topics,'public_posts',return_value=posts),patch.object(ai,'classify',return_value=ai.Decision(decision='approve',reason='Образовательный канал')):
+        with patch.object(ai.settings,'active',return_value=config),patch.object(ai.settings,'current',return_value={'revision':'test'}),patch.object(ai.topics,'public_sample',return_value={'posts':posts,'fully_textual':True}),patch.object(ai,'classify',return_value=ai.Decision(decision='approve',reason='Образовательный канал')):
             self.assertEqual(ai.service_once(self.dsn)['approved'],1)
             self.assertEqual(ai.service_once(self.dsn)['approved'],0)
             self.assertEqual(self.db('SELECT moderation_status FROM campaigns WHERE id=%s',(cid,))[0]['moderation_status'],'approved')
             cid2=self.request('POST','/campaigns',201,json=body)['id'];self.db("UPDATE campaigns SET moderation_status='pending' WHERE id=%s",(cid2,))
-            with patch.object(ai.topics,'public_posts',return_value=['18+ порно']*3):self.assertEqual(ai.service_once(self.dsn)['approved'],0)
+            with patch.object(ai.topics,'public_sample',return_value={'posts':['18+ порно']*3,'fully_textual':True}):self.assertEqual(ai.service_once(self.dsn)['approved'],0)
             self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s',(cid2,))[0]['decision'],'review')
             self.db("UPDATE campaigns SET updated_at=clock_timestamp() WHERE id=%s",(cid2,))
             def changed(*args):
@@ -107,3 +107,34 @@ class CommunityIntegration(unittest.TestCase):
         self.db("INSERT INTO audit_events(actor_user_id,campaign_id,event_type) VALUES(%s,%s,'campaign_moderated')",(self.admin,cid))
         self.assertFalse(self.request('GET','/community/moderation/'+cid)['check']['approved_by_agent'])
         self.assertTrue(any(t['topic']=='technology' and t['approved']>=1 for t in self.request('GET','/users/ai-agent/profile')['topics']))
+
+    def test_ai_media_is_manual_and_retries_do_not_starve_new_campaigns(self):
+        self.verify(self.member)
+        old=self.request('POST','/campaigns',201,json=self.campaign())['id']
+        new=self.request('POST','/campaigns',201,json=self.campaign())['id']
+        self.db("UPDATE campaigns SET moderation_status='pending',created_at=now()-interval '1 day' WHERE id=%s",(old,))
+        self.db("UPDATE campaigns SET moderation_status='pending' WHERE id=%s",(new,))
+        self.db("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision,decision,attempted_at)
+            SELECT id,updated_at,'fair','retry',now()-interval '6 minutes' FROM campaigns WHERE id=%s""",(old,))
+        posts=['Подробный урок по электронным таблицам и формулам. '*4]*3
+        with patch.object(ai.settings,'active',return_value=('key','model')),patch.object(ai.settings,'current',return_value={'revision':'fair'}),\
+             patch.object(ai.topics,'public_sample',return_value={'posts':posts,'fully_textual':False}),\
+             patch.object(ai,'classify',return_value=ai.Decision(decision='approve',reason='Обычный канал')) as classify:
+            self.assertEqual(ai.service_once(self.dsn,limit=1)['approved'],0)
+            classify.assert_not_called()
+            self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s',(new,))[0]['decision'],'review')
+            self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s',(old,))[0]['decision'],'retry')
+
+    def test_avatar_frames_share_rankings_and_expire(self):
+        from app import community
+        community._frames.clear()
+        self.addCleanup(community._frames.clear)
+        with patch.object(community,'scores',return_value=[{'user_id':self.member,'rank':1}]) as scores,\
+             patch.object(community.time,'monotonic',return_value=100) as clock:
+            for uid in (self.member,self.friend,self.admin,self.member):
+                profile=self.request('GET',f'/community/users/{uid}')
+                self.assertEqual(profile['frame_rank'],1 if uid==self.member else None)
+            self.assertEqual(scores.call_count,4)
+            clock.return_value=121
+            self.request('GET',f'/community/users/{self.member}')
+            self.assertEqual(scores.call_count,8)

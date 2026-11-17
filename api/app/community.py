@@ -1,6 +1,9 @@
 """Публичная карточка, присутствие и закрытый список приглашённых."""
 from uuid import UUID
+from collections import OrderedDict
 import calendar
+import threading
+import time
 import psycopg
 from psycopg.rows import dict_row
 from fastapi import APIRouter,Depends,HTTPException,Query,Response
@@ -10,6 +13,28 @@ from .hall_of_fame import scores,bounds,METRICS
 from datetime import datetime,timezone
 from pydantic import BaseModel, ConfigDict, Field
 from .channel_logos import user_avatar
+
+_frames = OrderedDict()
+_frames_lock = threading.Lock()
+
+
+def frame_ranks(conn):
+    """Четыре расчёта на месяц/БД раз в 20 секунд, а не на каждый аватар."""
+    start,end=bounds('month',datetime.now(timezone.utc))
+    key=(conn.info.host,conn.info.port,conn.info.dbname,start,environment_name())
+    with _frames_lock:
+        cached=_frames.get(key)
+        if cached and cached[0]>time.monotonic():
+            return cached[1]
+        ranks={}
+        for metric in METRICS:
+            for row in scores(conn,metric,start,end,10):
+                uid=row['user_id']
+                ranks[uid]=min(ranks.get(uid,11),row['rank'])
+        _frames[key]=(time.monotonic()+20,ranks)
+        _frames.move_to_end(key)
+        while len(_frames)>16:_frames.popitem(last=False)
+        return ranks
 
 
 def require_verified(conn,uid):
@@ -26,11 +51,7 @@ def person(conn,uid):
     d=today();birthday=conn.execute('SELECT birth_day,birth_month FROM verified_profiles WHERE user_id=%s AND telegram_environment=%s AND phone_verified_at IS NOT NULL',(uid,environment_name())).fetchone()
     row['phone_verified']=bool(birthday)
     row['birthday_today']=bool(birthday and birthday['birth_month']==d.month and min(birthday['birth_day'] or 32,calendar.monthrange(d.year,d.month)[1])==d.day)
-    start,end=bounds('month',datetime.now(timezone.utc));ranks=[]
-    if not row['is_owner']:
-        for metric in METRICS:
-            ranks.extend(r['rank'] for r in scores(conn,metric,start,end,0,uid))
-    row['frame_rank']=min(ranks) if ranks and min(ranks)<=10 else None
+    row['frame_rank']=None if row['is_owner'] else frame_ranks(conn).get(row['id'])
     return row
 
 
