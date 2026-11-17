@@ -13,6 +13,7 @@ import stat
 import sys
 import uuid
 import warnings
+from datetime import datetime, timezone
 
 TELETHON_VERSION = "1.45.0"
 DEVICE_NAME = "Pushok MTProxy Owner"
@@ -64,9 +65,9 @@ class PrivateState:
                 os.close(fd)
         self.lock = self.directory = None
 
-    def read(self):
+    def read_file(self, name):
         try:
-            fd = os.open("owner.json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
                          dir_fd=self.directory)
         except FileNotFoundError:
             return None
@@ -75,6 +76,14 @@ class PrivateState:
             if os.fstat(stream.fileno()).st_size > 16384:
                 raise OwnerError("invalid_state")
             data = json.load(stream)
+        if not isinstance(data, dict):
+            raise OwnerError('invalid_state')
+        return data
+
+    def read(self):
+        data = self.read_file('owner.json')
+        if data is None:
+            return None
         if (not isinstance(data, dict) or set(data) != {"api_id", "api_hash", "session", "user_id"}
                 or type(data["user_id"]) is not int or data["user_id"] <= 0
                 or not isinstance(data["session"], str) or not 1 <= len(data["session"]) <= 2048):
@@ -82,7 +91,7 @@ class PrivateState:
         validate_credentials(data["api_id"], data["api_hash"])
         return data
 
-    def save(self, data):
+    def save_file(self, name, data):
         temp = ".owner-" + uuid.uuid4().hex
         try:
             fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
@@ -91,7 +100,7 @@ class PrivateState:
                 json.dump(data, stream)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temp, "owner.json", src_dir_fd=self.directory, dst_dir_fd=self.directory)
+            os.replace(temp, name, src_dir_fd=self.directory, dst_dir_fd=self.directory)
             os.fsync(self.directory)
         finally:
             try:
@@ -99,9 +108,38 @@ class PrivateState:
             except FileNotFoundError:
                 pass
 
+    def save(self, data):
+        self.save_file('owner.json', data)
+
+    def automatic_enabled(self):
+        try:
+            fd = os.open('automatic.enabled', os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                         dir_fd=self.directory)
+        except FileNotFoundError:
+            return False
+        try:
+            self.validate(fd)
+            return True
+        finally:
+            os.close(fd)
+
     def remove(self):
         os.unlink("owner.json", dir_fd=self.directory)
         os.fsync(self.directory)
+
+
+def record_health(state, result):
+    """Снимок последней проверки, без сессии, телефона и реквизитов API."""
+    data = {'state': result['state'], 'checked_at': datetime.now(timezone.utc).isoformat()}
+    if data['state'] == 'connected':
+        data['telegram_user_id'] = result['telegram_user_id']
+        name = result.get('username')
+        if isinstance(name, str) and re.fullmatch(r'[A-Za-z0-9_]{1,32}', name):
+            data['username'] = name
+    try:
+        state.save_file('health.json', data)
+    except OSError:
+        pass  # Диагностика не должна прерывать вход или отзыв сессии.
 
 
 def hidden(prompt):
@@ -164,8 +202,10 @@ async def operate(client, action, state, credentials, existing, errors, ask=hidd
             if authorized and not await call(client.log_out()):
                 raise OwnerError("logout_not_confirmed")
             state.remove()
+            record_health(state, {'state': 'not_connected'})
             return {"state": "disconnected", "automatic_binding_enabled": False}
         if existing and not authorized:
+            record_health(state, {'state': 'revoked'})
             return {"state": "revoked", "automatic_binding_enabled": False}
         if not authorized:
             new_login = True
@@ -181,9 +221,15 @@ async def operate(client, action, state, credentials, existing, errors, ask=hidd
         # StringSession хранится только в приватном файле. Никогда не выводим её.
         state.save(dict(credentials, user_id=me.id, session=client.session.save()))
         persisted = True
+        record_health(state, {'state': 'connected', 'telegram_user_id': me.id,
+                              'username': getattr(me, 'username', None)})
         return {"state": "connected", "telegram_user_id": me.id,
                 "username": getattr(me, "username", None), "mtproxy_bot_available": True,
                 "tag_ownership_verified": False, "automatic_binding_enabled": False}
+    except Exception:
+        if existing:
+            record_health(state, {'state': 'unavailable'})
+        raise
     finally:
         try:
             if new_login and not persisted:
@@ -277,7 +323,7 @@ def main():
                 finally:
                     os.close(fd)
                 os.fsync(state.directory)
-            result['automatic_binding_enabled'] = (state.path / 'automatic.enabled').is_file()
+            result['automatic_binding_enabled'] = result['state'] == 'connected' and state.automatic_enabled()
             print(json.dumps(result, ensure_ascii=False, indent=2))
             if result["state"] == "connected":
                 print("Аккаунт подключён. " + ('Агент будет готовить привязки через @MTProxyBot.' if result['automatic_binding_enabled']
