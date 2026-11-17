@@ -54,6 +54,28 @@ def check_unified_controls(browser,base,output,failures,dsn):
         history.screenshot(path=str(output/'controls-history-390.png'));review.screenshot(path=str(output/'controls-payments-390.png'));area.screenshot(path=str(output/'controls-balance-search-390.png'))
         go('moderation/'+str(cid));expect(page.locator('.ai-decision')).to_have_text('Одобрено: Агент ИИ');expect(page.locator('.assistant-saved')).to_contain_text('Образовательный канал');expect(page.locator('.campaign-assistant')).to_have_attribute('open','')
         expect(page.locator('.campaign-assistant a[href*="management"]')).to_have_count(0)
+        # Автозагрузка истории сообщает об ошибке на месте и повторяется без закрытия блока.
+        report_url='**/api/v1/campaigns/'+str(cid)+'/report'
+        page.route(report_url,lambda r:r.fulfill(status=503,json={'detail':'test_unavailable'}))
+        page.locator('summary').filter(has_text='История и документы').click()
+        report=page.locator('.campaign-report')
+        expect(report.get_by_role('status')).to_contain_text('Не удалось загрузить историю и документы.')
+        expect(report).to_have_attribute('aria-busy','false')
+        page.unroute(report_url)
+        report.get_by_role('button',name='Повторить загрузку отчёта',exact=True).click()
+        expect(report).to_contain_text('История действий')
+        page.route(report_url,lambda r:r.fulfill(status=503,json={'detail':'test_unavailable'}))
+        page.get_by_role('button',name='Обновить историю и документы',exact=True).click()
+        expect(report.get_by_role('status')).to_contain_text('Показаны ранее загруженные данные.')
+        expect(report).to_contain_text('История действий')
+        page.unroute(report_url)
+        for width in (320,390,768):
+            page.set_viewport_size({'width':width,'height':844})
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+        report.screenshot(path=str(output/'controls-report-retry-768.png'))
+        report.get_by_role('button',name='Повторить загрузку отчёта',exact=True).click()
+        expect(report.locator('.report-status')).to_have_count(0)
+        page.set_viewport_size({'width':390,'height':844})
         page.locator('.ai-decision a').click();expect(page.locator('.ai-agent-stats')).to_contain_text('Одобрено');expect(page.locator('.ai-topic-table')).to_contain_text('Образование');page.screenshot(path=str(output/'controls-ai-profile-390.png'),full_page=True)
         # Нажатие на собственную карточку агента не меняет путь возврата к заявке.
         page.locator('.ai-agent-profile .ai-agent-card .person-name').click()

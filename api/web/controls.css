@@ -32,5 +32,8 @@
 .cabinet-mode .block-info{width:44px;height:44px;min-width:44px;min-height:44px}.approval-card>.moderation-decision:empty{display:none}
 
 .role-actions:empty,.inline-actions:empty,.actions:empty{display:none!important}
+.campaign-action-tools:empty,.sponsor-form-actions:empty{display:none!important}
+.report-status{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0;font-size:12px}.report-status p{margin:0!important;font-size:12px!important}.report-status button{flex:none;margin:0!important}
+.observation-journal{padding:0!important;border:0!important;background:transparent!important}.observation-journal>h4{font-size:14px;margin:12px 0 4px}.observation-entry{padding:12px 0;border-bottom:1px solid var(--line-soft)}.observation-entry .block-heading>div{display:grid;gap:4px;min-width:0}.observation-entry strong{font-size:13px}.observation-entry time{font-size:11px;color:var(--muted)}.observation-entry p{font-size:12px;margin:8px 0!important;overflow-wrap:anywhere}.observation-entry label{font-size:12px}.observation-entry button{margin:0!important}.observation-entry input[type=file]{font-size:11px;padding:8px;overflow:hidden}
 
 .cabinet-mode .wallet-entry>.wallet-entry-details:not([open]){grid-column:2;grid-row:2;justify-self:end;align-self:center}.wallet-entry>.wallet-entry-details[open]{grid-column:1/-1;grid-row:3}.wallet-entry>.wallet-entry-details>summary{line-height:1.4}.wallet-entry>time{align-self:center}.cabinet-mode .wallet-search-user{display:flex;align-items:center;gap:10px;padding:12px}.wallet-search-user>.user-summary{flex:1;min-width:0}.wallet-search-user>button{margin:0!important;flex:none}

@@ -155,14 +155,18 @@ window.pushokApproval=(()=>{
   if(!c.archived_at&&window.pushokManagement)box.append(window.pushokManagement.campaignActions(c,true));
   const history=details('История и документы',box,'history'),facts=el('dl',undefined,'approval-facts'),tools=el('div',undefined,'campaign-action-tools');tools.setAttribute('role','group');tools.setAttribute('aria-label','Документы заявки');
   for(const [title,value] of [['Номер заявки',c.id],['Желаемое начало',date(c.requested_start_at)]]){const row=el('div');row.append(el('dt',title),el('dd',value));facts.append(row);}
-  history.append(facts,tools);history.parentElement.addEventListener('toggle',()=>{if(history.parentElement.open&&!history.querySelector('.campaign-report'))void showCampaignReport(c,history,{embedded:true}).catch(()=>{});});tools.append(window.pushokViews.iconAction(button('',()=>showCampaignReport(c,history,{refresh:true,embedded:true})),'chart','Отчёт по кампании'));
+  history.append(facts,tools);history.parentElement.addEventListener('toggle',()=>{if(history.parentElement.open&&!history.querySelector('.campaign-report'))void showCampaignReport(c,history,{embedded:true});});tools.append(window.pushokViews.iconAction(button('',()=>showCampaignReport(c,history,{refresh:true,embedded:true})),'refresh','Обновить историю и документы'));
   if(['scheduled','active','completed'].includes(c.placement_status))tools.append(window.pushokViews.iconAction(button('',async()=>{
    const rows=await api('/operator/campaigns/'+c.id+'/display-observations');if(!history.isConnected||session!==token)return;
-   history.querySelector('.observation-panel')?.remove();const panel=el('section',undefined,'observation-panel');history.append(panel);
-   if(!rows.length)panel.append(el('p','Проверок пока нет.'));
-   for(const report of rows){panel.append(el('p',(report.result==='visible'?'Показ виден':'Показ не найден')+' · '+date(report.observed_at)+' · '+report.note));
-    if(report.evidence_id)panel.append(button('Скачать скриншот №'+report.id,()=>download('/operator/campaigns/'+c.id+'/display-observations/'+report.id+'/evidence','sponsor-evidence-'+report.id)));
-    else if(report.observer_user_id===me.id){const input=el('input');input.type='file';input.accept='image/png,image/jpeg';field(panel,'Добавить скриншот к отчёту '+report.id,input);panel.append(button('Прикрепить скриншот №'+report.id,async()=>{if(!input.files[0])throw Error('Выберите PNG или JPEG.');const body=new FormData();body.append('file',input.files[0]);await api('/operator/campaigns/'+c.id+'/display-observations/'+report.id+'/evidence',{method:'POST',body});notice('Скриншот сохранён.',true);}));}
+   history.querySelector('.observation-panel')?.remove();const panel=el('section',undefined,'observation-panel observation-journal');panel.append(el('h4','Журнал проверок'));history.append(panel);
+   if(!rows.length)panel.append(el('p','Проверок пока нет.','muted'));
+   for(const report of rows){const entry=el('article',undefined,'observation-entry'),header=el('div',undefined,'block-heading'),copy=el('div'),at=el('time',date(report.observed_at));at.dateTime=report.observed_at;copy.append(el('strong',report.result==='visible'?'Показ виден':'Показ не найден'),at);header.append(copy);entry.append(header,el('p',report.note));panel.append(entry);
+    const downloadButton=()=>window.pushokViews.iconAction(button('',()=>download('/operator/campaigns/'+c.id+'/display-observations/'+report.id+'/evidence','sponsor-evidence-'+report.id)),'download','Скачать скриншот №'+report.id);
+    if(report.evidence_id)header.append(downloadButton());
+    else if(report.observer_user_id===me.id){const form=el('form'),input=el('input'),feedback=el('p',undefined,'muted');feedback.setAttribute('role','status');input.type='file';input.accept='image/png,image/jpeg';input.required=true;field(form,'Скриншот проверки №'+report.id,input);const upload=window.pushokViews.iconAction(button('',async()=>{
+     if(!form.reportValidity())return;const body=new FormData();body.append('file',input.files[0]);await api('/operator/campaigns/'+c.id+'/display-observations/'+report.id+'/evidence',{method:'POST',body});
+     if(!entry.isConnected||session!==token)return;form.remove();header.append(downloadButton());feedback.textContent='Скриншот сохранён.';
+    }),'upload','Прикрепить скриншот №'+report.id);form.append(upload);entry.append(form,feedback);window.pushokControls.fieldActions(input,[upload]);}
    }
   }),'history','Журнал проверок'));
   if(!c.archived_at)archivedQueue();

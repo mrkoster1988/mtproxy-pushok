@@ -627,6 +627,21 @@ def main():
                 operator.locator('summary').filter(has_text='История и документы').click()
                 operator.get_by_role('button', name='Журнал проверок', exact=True).click()
                 expect(operator.locator('.observation-panel')).to_contain_text('Показ виден')
+                journal=operator.locator('.observation-journal')
+                expect(journal.locator('.observation-entry')).to_have_count(2)
+                attachment=journal.locator('input[type=file]')
+                upload=journal.get_by_role('button',name='Прикрепить скриншот №',exact=False)
+                for width in (320,390,768):
+                    operator.set_viewport_size({'width':width,'height':844})
+                    left,right=attachment.bounding_box(),upload.bounding_box()
+                    assert right['x']>=left['x']+left['width']+7
+                    assert abs(left['y']+left['height']/2-right['y']-right['height']/2)<2
+                    assert operator.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                operator.set_viewport_size({'width':390,'height':844})
+                attachment.set_input_files({'name':'test-journal.png','mimeType':'image/png','buffer':image_bytes.getvalue()})
+                upload.click();expect(journal).to_contain_text('Скриншот сохранён.')
+                expect(journal.locator('input[type=file]')).to_have_count(0)
+                expect(journal.get_by_role('button',name='Скачать скриншот №',exact=False)).to_have_count(2)
                 operator.screenshot(path=str(output / '29-approval-onepage-active.png'), full_page=True)
                 operator.locator('summary').filter(has_text='Ручное завершение и диагностика').click()
                 confirmation = operator.get_by_label('Тег кампании снят; в подключённом Telegram без подписки канал больше не показан как спонсор', exact=True)
