@@ -87,6 +87,7 @@ window.pushokViews=(()=>{
   const checker=channelVerification(result,()=>input.disabled?'':input.value,data=>{
    if(!titleInput.value.trim()||titleInput.value===autoTitle){autoTitle=data.title;titleInput.value=data.title;}
    input.dispatchEvent(new Event('change',{bubbles:true}));
+   input.dispatchEvent(new CustomEvent('pushok:channel-verified',{bubbles:true,detail:data}));
   });input.pushokChannelCheck=checker;
   const search=iconAction(button('',()=>checker.check({force:true}).catch(()=>{})),'search','Проверить канал');line.append(search);
   input.addEventListener('input',()=>{if(titleInput.value===autoTitle)titleInput.value='';autoTitle='';checker.schedule();});
@@ -151,6 +152,7 @@ window.pushokViews=(()=>{
   const a=el('a',title(c),'tile-title');a.href='#/'+(mode==='sponsors'?'moderation/':'campaign/')+c.id;const details=el('small','#'+c.id.slice(0,8)),channelUrl=c.channel_url||channels.find(x=>x.id===c.channel_id)?.telegram_url;
   if(/^https:\/\/t\.me\/[A-Za-z][A-Za-z0-9_]{3,31}\/?$/.test(channelUrl||'')){const channel=el('a',handle(channelUrl),'campaign-channel-link');channel.href=channelUrl;channel.target='_blank';channel.rel='noopener noreferrer';channel.title='Открыть канал в Telegram';details.append(document.createTextNode(' · '),channel);}
   copy.append(a,details);
+  if(c.topic_label)copy.append(el('small',c.topic_label,'campaign-topic'));
   const open=link('',(mode==='sponsors'?'moderation/':'campaign/')+c.id);iconAction(open,'chevron','Открыть кампанию '+title(c));const current=campaignState(c),stateBadge=badge(current[0],current[1]);stateBadge.classList.add('campaign-current');head.append(channelAvatar(c.channel_id,title(c),c.channel_url),copy,stateBadge,open);item.append(head);
   item.append(el('p',c.placement_status==='active'&&c.scheduled_end_at?'До '+date(c.scheduled_end_at):c.scheduled_start_at?'Начало: '+date(c.scheduled_start_at):c.requested_start_at?'Желаемое начало: '+date(c.requested_start_at):'Дата — по согласованию','tile-period'));
   if(mode==='sponsors'){

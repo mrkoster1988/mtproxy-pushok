@@ -17,7 +17,7 @@ class ChannelLookup(unittest.TestCase):
     def test_public_channel_and_alias_without_private_tokens(self):
         with patch.dict(os.environ, {'TELEGRAM_BOT_TOKEN':'12345:fixture'}), patch.object(public_channels, '_telegram_chat', return_value={'id':-100123,'type':'channel','username':'MainChannel','active_usernames':['OtherChannel'],'title':'Мой канал'}) as call:
             data=channel_directory.lookup('@OtherChannel')
-            self.assertEqual(data, {'title':'Мой канал','username':'otherchannel','telegram_url':'https://t.me/otherchannel','telegram_channel_id':-100123})
+            self.assertEqual(data, {'title':'Мой канал','username':'otherchannel','telegram_url':'https://t.me/otherchannel','telegram_channel_id':-100123,'description':''})
             self.assertEqual(channel_directory.lookup('https://t.me/OtherChannel/'),data)
             call.assert_called_once_with('otherchannel')
 

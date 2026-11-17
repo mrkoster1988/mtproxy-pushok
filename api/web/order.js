@@ -5,6 +5,8 @@ window.pushokOrder=(()=>{
  let priceQuote=null,quoteKey=null,quoteEpoch=0;
  let newChannel=false,initialized=false,busy=false,attempt=null,owner=null;
  let selectedChecker=null,selectedValue='';
+ const topic=window.pushokTopics.create({locked:()=>busy||Boolean(attempt),onChange:()=>summary()});
+ form.addEventListener('pushok:channel-verified',event=>topic.verified(event.detail.telegram_url));
  const storageKey=()=> 'pushok-order-pending:'+me.id;
  Object.assign(errors,{order_tariff_changed:'Тариф изменился. Проверьте обновлённую стоимость и длительность перед отправкой.',order_request_conflict:'Параметры сохранённой отправки не совпали. Проверьте список ваших заявок.'});
  function currentKey(){const t=tariffs.find(t=>t.id===$('tariff-select').value);return [me?.id,t?.id,t?.price_kopecks,t?.stars_price_xtr,t?.duration_seconds,$('order-promo').value.trim().toUpperCase()].join(':');}
@@ -32,9 +34,11 @@ window.pushokOrder=(()=>{
  function summary(){
   const tariff=tariffs.find(t=>t.id===$('tariff-select').value);
   const channel=newChannel?($('order-channel-title').value.trim()||$('order-channel-url').value.trim()||'Укажите канал'):channels.find(c=>c.id===$('channel-select').value)?.title||'Выберите канал';
+  topic.context(newChannel?$('order-channel-url').value:channels.find(c=>c.id===$('channel-select').value)?.telegram_url||'');
+  if(attempt)topic.restore(attempt.topic);
   const preview=$('order-selected-preview');if(preview&&window.pushokViews){
-   selectedChecker??=window.pushokViews.channelVerification(preview,()=>newChannel?'':channels.find(c=>c.id===$('channel-select').value)?.telegram_url||'',()=>{
-    const selected=channels.find(c=>c.id===$('channel-select').value),heading=preview.querySelector('strong');if(selected&&heading)heading.textContent=selected.title;
+   selectedChecker??=window.pushokViews.channelVerification(preview,()=>newChannel?'':channels.find(c=>c.id===$('channel-select').value)?.telegram_url||'',data=>{
+    const selected=channels.find(c=>c.id===$('channel-select').value),heading=preview.querySelector('strong');if(selected&&heading)heading.textContent=selected.title;topic.verified(data.telegram_url);
    });
    const value=newChannel?'':channels.find(c=>c.id===$('channel-select').value)?.telegram_url||'';
    if(value!==selectedValue){selectedValue=value;if(value)selectedChecker.schedule();else selectedChecker.reset();}
@@ -46,6 +50,7 @@ window.pushokOrder=(()=>{
   const stars=q?q.stars_price_xtr:tariff?.stars_price_xtr;
   const cost=total===0?'Бесплатно':miniAppMode?(attempt?'Уточняется после отправки':stars>0?stars+' XTR':'Цена Stars не задана'):money(total);
   const rows=[['Канал',channel],['Тариф',tariff?tariff.name+' · '+tariff.duration_seconds/3600+' ч':'Не выбран'],['Стоимость',tariff?cost:'—'],['Начало',start?date(start):'После оплаты, ближайшее свободное время']];
+  if(topic.value())rows.splice(1,0,['Тематика',topic.label()]);
   if(q?.offer_name)rows.push(['Скидка',q.offer_name+' · '+q.discount_percent+'%']);
   if(!miniAppMode&&q?.stars_price_xtr>0)rows.push(['В Telegram Stars',q.stars_price_xtr+' XTR']);
   $('order-summary').replaceChildren(...rows.flatMap(([key,value])=>[el('dt',key),el('dd',value)]));
@@ -54,7 +59,7 @@ window.pushokOrder=(()=>{
  function sync(){
   if(!me)return;
   $('order-promo-section').hidden=false;
-  if(owner!==me.id){owner=me.id;initialized=false;attempt=null;priceQuote=null;quoteKey=null;quoteEpoch++;try{attempt=JSON.parse(sessionStorage.getItem(storageKey())||'null');}catch{}}
+  if(owner!==me.id){topic.reset();owner=me.id;initialized=false;attempt=null;priceQuote=null;quoteKey=null;quoteEpoch++;try{attempt=JSON.parse(sessionStorage.getItem(storageKey())||'null');}catch{}}
   if(!initialized){initialized=true;mode(!channels.length);if(channels.length===1)$('channel-select').value=channels[0].id;}
   if(!attempt&&newChannel&&channels.length&&!$('order-channel-url').value.trim())mode(false);
   mode(newChannel);
@@ -69,6 +74,7 @@ window.pushokOrder=(()=>{
   const t=tariffs.find(t=>t.id===$('tariff-select').value);
   if(!t)throw Error('Выберите доступный тариф.');
   const data={request_id:crypto.randomUUID(),tariff_id:t.id,expected_price_kopecks:priceQuote.price_kopecks,promo_code:$('order-promo').value.trim()||null,quote_revision:priceQuote.revision,expected_duration_seconds:t.duration_seconds,requested_start_at:$('requested-start').value||null};
+  data.topic=topic.value();
   if(newChannel){
    const value=$('order-channel-url').value.trim();
    const match=value.match(/^(?:@|https:\/\/(?:t\.me|telegram\.me)\/)?([a-z][a-z0-9_]{3,31})\/?$/i);
@@ -119,5 +125,5 @@ window.pushokOrder=(()=>{
   $('tariff-select').value=offer.tariff_id;$('order-promo').value=offer.code||'';$('order-promo-section').open=true;
   invalidate();await calculate();
  }
- return {sync,summary,applyOffer,selectChannel(){mode(false);summary();},reset(){selectedChecker?.reset();selectedValue='';$('order-channel-url').pushokChannelCheck?.reset();priceQuote=null;quoteKey=null;quoteEpoch++;owner=null;initialized=false;attempt=null;busy=false;fields.disabled=false;feedback('');}};
+ return {sync,summary,applyOffer,selectChannel(){mode(false);summary();},reset(){topic.reset();selectedChecker?.reset();selectedValue='';$('order-channel-url').pushokChannelCheck?.reset();priceQuote=null;quoteKey=null;quoteEpoch++;owner=null;initialized=false;attempt=null;busy=false;fields.disabled=false;feedback('');}};
 })();

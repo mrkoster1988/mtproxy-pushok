@@ -270,6 +270,8 @@ def main():
                 expect(tariff_help.locator('.field-help')).to_be_hidden()
                 from check_public_channel_ui import check_public_channel_ui
                 check_public_channel_ui(advertiser, output)
+                from check_channel_topics_ui import check_channel_topics_ui
+                check_channel_topics_ui(advertiser, output)
                 advertiser.locator('#order-channel-url').fill('@unsaved_order_channel')
                 go(advertiser, "channels")
                 advertiser.locator('[data-page=channels] .page-heading a').click()
@@ -298,11 +300,13 @@ def main():
                 advertiser.locator('#calendar-from').dispatch_event('change')
                 expect(advertiser.locator('#availability-days button:enabled').first).to_be_visible()
                 advertiser.locator('#availability-days button:enabled').first.click()
+                advertiser.locator('#order-topic').select_option('education')
                 advertiser.locator('#campaign-form button[type=submit]').click()
                 expect(advertiser.locator('#order-result')).to_be_visible()
                 campaign_id = advertiser.evaluate("location.hash.split('/')[2]")
                 go(advertiser, 'campaigns')
                 first_tile = advertiser.locator('#campaigns .campaign-tile')
+                expect(first_tile.locator('.campaign-topic')).to_have_text('Образование')
                 expect(first_tile.locator('.campaign-steps dt')).to_have_text(['Модерация', 'Оплата', 'Размещение'])
                 expect(first_tile.locator('.campaign-tile-facts dt')).to_have_text(['Тариф','Срок','Стоимость'])
                 expect(first_tile.locator('.campaign-current')).to_be_visible()
@@ -326,6 +330,7 @@ def main():
 
                 operator = new_page('operator')
                 go(operator, 'moderation')
+                expect(operator.locator('#queue .campaign-topic')).to_have_text('Образование')
                 operator.get_by_text('Исправления или отказ', exact=True).click()
                 operator.get_by_label('Комментарий рекламодателю', exact=True).fill('Уточните название канала')
                 operator.get_by_role('button', name='Отправить решение', exact=True).click()

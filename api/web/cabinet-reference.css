@@ -555,3 +555,12 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .profile-invited{display:flex;align-items:center;gap:8px;padding:10px 0;font-size:13px;color:var(--muted)}
 .profile-invited svg{width:18px;height:18px;color:var(--accent)}
 .profile-invited strong{margin-left:auto;color:var(--text);font-size:15px}
+
+/* Необязательная тематика: один аккуратный блок, подсказка в потоке формы. */
+.channel-topic-field{margin:16px 0;padding:14px;border:1px solid var(--line);border-radius:14px;min-width:0}
+.channel-topic-field label{display:block;margin:0 0 8px}
+.channel-topic-field select{width:100%;min-width:0}
+.topic-hint{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:8px}
+.topic-hint p{margin:0;font-size:.85rem;line-height:1.45;overflow-wrap:anywhere}
+.topic-hint button{border:0;background:transparent;color:var(--mint);border-radius:0;padding:6px 0;min-height:36px;font-size:.85rem;white-space:normal;text-align:left}
+.campaign-topic{display:block;color:var(--mint);font-size:.8rem;line-height:1.4;overflow-wrap:anywhere;margin:6px 0 0}

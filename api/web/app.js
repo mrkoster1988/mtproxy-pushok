@@ -313,6 +313,7 @@ function showCampaignReport(c, box,{refresh=false}={}){
 function card(c,op,{compact=false}={}){
  const box=el('article',undefined,'card'),head=el('div',undefined,'cardhead');
  head.append(window.pushokViews.channelAvatar(c.channel_id,c.channel_title||'Канал',c.channel_url),el('h3',(c.channel_title||channels.find(x=>x.id===c.channel_id)?.title||'Заявка')+' · '+c.id.slice(0,8)),el('span',labels[c.placement_status]||c.placement_status,'badge badge--'+c.placement_status));box.append(head);
+ if(c.topic_label)box.append(el('p',c.topic_label,'campaign-topic'));
  if(c.channel_url){try{const u=new URL(c.channel_url);if(u.protocol==='https:'&&['t.me','telegram.me'].includes(u.hostname)){const link=el('a','Открыть канал');link.href=u.href;link.target='_blank';link.rel='noopener noreferrer';box.append(link);}}catch{}}
  if(!op&&window.pushokViews){box.classList.add('campaign-detail');box.append(window.pushokViews.progress(c),window.pushokViews.statusSteps(c),window.pushokViews.facts(c));if(window.pushokCampaignAnalytics)box.append(window.pushokCampaignAnalytics.panel(c));}
  else{

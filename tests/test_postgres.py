@@ -87,9 +87,12 @@ class PostgresIntegration(unittest.TestCase):
         cls.client = TestClient(main.app)
         cls.channel_lookup_fixture = patch('app.public_channels.lookup', side_effect=public_channel_fixture)
         cls.channel_lookup_fixture.start()
+        cls.topic_posts_fixture = patch("app.channel_topic_suggestions.public_posts", return_value=[])
+        cls.topic_posts_fixture.start()
 
     @classmethod
     def tearDownClass(cls):
+        cls.topic_posts_fixture.stop()
         cls.channel_lookup_fixture.stop()
         cls.client.close()
         main.app.dependency_overrides.clear()
