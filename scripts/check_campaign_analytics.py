@@ -57,6 +57,11 @@ def check_campaign_analytics(browser,base,output,failures,dsn):
                 r=page.request.post(base+'/api/v1/internal/bot/analytics/join',data=payload,headers={'X-Pushok-Bot-Secret':'e'*64,'X-Pushok-Telegram-Environment':'production'});assert r.ok,r.text()
             area.get_by_role('button',name='Обновить статистику кампании',exact=True).click();expect(area.locator('dd')).to_have_text(['—','1','1','1','100%'])
             area.locator('.analytics-history>summary').click();expect(area.locator('tbody tr')).to_have_count(1)
+            page.evaluate("window.analyticsTable=document.querySelector('.campaign-analytics .analytics-days')")
+            with page.expect_response(lambda r:r.url.endswith('/analytics')):
+                area.get_by_role('button',name='Обновить статистику кампании',exact=True).click()
+            expect(area.locator('.analytics-history')).to_have_attribute('open','')
+            assert page.evaluate("window.analyticsTable===document.querySelector('.campaign-analytics .analytics-days')")
             for width in (320,390,768):
                 page.set_viewport_size({'width':width,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
                 area.screenshot(path=str(output/f'analytics-{width}.png'))

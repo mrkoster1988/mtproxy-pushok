@@ -7,6 +7,7 @@ window.pushokCampaignAnalytics=(()=>{
   const current=n=>n===seq&&token===session&&me?.id===uid&&root.isConnected;
   async function load(){clearTimeout(timer);if(!root.isConnected||session!==token||uid!==me?.id)return;if(document.hidden){timer=setTimeout(load,30000);return;}const n=++seq;
    try{const data=await api('/campaigns/'+c.id+'/analytics');if(!current(n))return;
+    const signature=JSON.stringify(data);if(root.dataset.snapshot===signature)return;const historyOpen=root.querySelector('.analytics-history')?.open,helpOpen=root.querySelector('.analytics-help')?.open;
     root.replaceChildren(el('h4','Статистика кампании'));
     const metrics=el('dl',undefined,'campaign-analytics-metrics');
     for(const [label,value] of [['Охват MTProxy','—'],['Охват ссылки',data.link_views],['Переходы',data.clicks],['Подписки',data.joins],['Конверсия',data.conversion_percent===null?null:data.conversion_percent+'%']]){const cell=el('div');cell.append(el('dt',label),el('dd',value===null?'—':String(value)));metrics.append(cell);}root.append(metrics);
@@ -20,10 +21,10 @@ window.pushokCampaignAnalytics=(()=>{
      el('p','Охват ссылки — браузеры, открывшие страницу ссылки с JavaScript или нажавшие «Открыть канал». Повторные открытия в том же браузере учитываются один раз. Переходы — браузеры, нажавшие эту кнопку. Подписки — новые участники по приглашению, подтверждённые Telegram.'),
      el('p','Конверсия — подписки / переходы × 100%. Это отношение двух агрегатов, а не сопоставление личности подписчика и браузера. Если приглашение переслали напрямую и подписок больше переходов, процент не рассчитывается. Удаление cookie, разные устройства и блокировка скриптов влияют на подсчёт.'),
      el('p','Сбор начинается после подключения. Предыдущие события не восстанавливаются. История хранится за всё время ссылки; в таблице — последние 30 дней с событиями, время московское. IP и Telegram ID в отчёте не сохраняются. Автообновление — каждые 30 секунд, пока открыт экран.')
-    ]);root.append(help);
-    if(data.days?.length){const table=el('table',undefined,'analytics-days'),caption=el('caption','Динамика по дням · МСК'),head=el('tr');for(const label of ['Дата','Охват ссылки','Переходы','Подписки'])head.append(el('th',label));const thead=el('thead');thead.append(head);table.append(caption,thead);const body=el('tbody');for(const d of data.days){const row=el('tr');for(const v of [d.day,d.views,d.clicks,d.joins])row.append(el('td',String(v)));body.append(row);}table.append(body);const more=window.pushokViews.disclosure('Динамика по дням',[table],'analytics-history');root.append(more);}
-    root.append(window.pushokViews.iconAction(button('',load),'refresh','Обновить статистику кампании'));
-   }catch(e){if(current(n)){root.replaceChildren(el('h4','Статистика кампании'),el('p',e.message,'muted'),button('Повторить',load));}}
+    ]);help.classList.add('analytics-help');help.open=Boolean(helpOpen);root.append(help);
+    if(data.days?.length){const table=el('table',undefined,'analytics-days'),caption=el('caption','Динамика по дням · МСК'),head=el('tr');for(const label of ['Дата','Охват ссылки','Переходы','Подписки'])head.append(el('th',label));const thead=el('thead');thead.append(head);table.append(caption,thead);const body=el('tbody');for(const d of data.days){const row=el('tr');for(const v of [d.day,d.views,d.clicks,d.joins])row.append(el('td',String(v)));body.append(row);}table.append(body);const more=window.pushokViews.disclosure('Динамика по дням',[table],'analytics-history');more.open=Boolean(historyOpen);root.append(more);}
+    root.append(window.pushokViews.iconAction(button('',load),'refresh','Обновить статистику кампании'));root.dataset.snapshot=signature;
+   }catch(e){if(current(n)){delete root.dataset.snapshot;root.replaceChildren(el('h4','Статистика кампании'),el('p',e.message,'muted'),button('Повторить',load));}}
    finally{if(current(n))timer=setTimeout(load,30000);}
   }
   // Карточка ещё не прикреплена к документу во время создания.
