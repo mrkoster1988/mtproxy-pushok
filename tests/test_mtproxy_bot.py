@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import AsyncMock
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from mtproxy_bot import MTProxyDialog, BotProtocolError, card_tag, promoted_channel, endpoints, username, resolve_channel
+from mtproxy_bot import MTProxyDialog, BotProtocolError, card_tag, promoted_channel, endpoints, username, resolve_channel, list_proxy
 
 TAG='a'*32
 HOST='proxy.example.org'
@@ -30,6 +30,13 @@ class BotParserTests(unittest.TestCase):
         self.assertIn((HOST,8443),endpoints(f'Address: {HOST}\nPort: 8443'))
         self.assertIn((HOST,8443),endpoints(f'tg://proxy?server={HOST}&port=8443&secret=secret'))
         self.assertNotIn((HOST,8443),endpoints('evil'+HOST+':8443'))
+
+    def test_proxy_list_address_and_tag_without_port(self):
+        self.assertEqual(list_proxy('192.0.2.10 ' + TAG), ('192.0.2.10', TAG))
+        self.assertEqual(list_proxy('  PROXY.example.org ' + TAG.upper()), (HOST, TAG))
+        for label in (HOST, HOST+':8443', HOST+' '+TAG+' extra', HOST+' '+'0'*32,
+                      'https://'+HOST+' '+TAG, HOST+' '+TAG[:-1]):
+            self.assertIsNone(list_proxy(label))
 
     def test_channel_field_not_random_mention_and_utf16_link(self):
         self.assertEqual(promoted_channel(card('Test_Channel')),'test_channel')
@@ -104,6 +111,44 @@ class BotFlowTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(BotProtocolError,'proxy_ambiguous'):
             await self.dialog.select([HOST],8443)
         self.dialog.click.assert_not_called()
+
+    async def test_proxy_list_host_tag_candidate_must_match_full_card(self):
+        button = NS(text=HOST+' '+TAG, button=type('KeyboardButtonCallback',(),{})())
+        listing = NS(raw_text='Here is a list of all the proxies you created:', buttons=[[button]])
+        self.dialog.send=AsyncMock(return_value=listing)
+        self.dialog.click=AsyncMock(return_value=card())
+        self.assertEqual(await self.dialog.select([HOST],8443), self.dialog.click.return_value)
+        self.dialog.click.assert_awaited_once_with(listing,button)
+        for value,code in ((card(host='other.example.org'),'proxy_identity_not_verified'),
+                           (card(tag='c'*32),'tag_changed'),
+                           (NS(raw_text=HOST+':443\nTag: '+TAG,entities=[]),'proxy_identity_not_verified'),
+                           (NS(raw_text='Address: '+HOST+'\nTag: '+TAG,entities=[]),'proxy_identity_not_verified')):
+            self.dialog.click=AsyncMock(return_value=value)
+            with self.assertRaisesRegex(BotProtocolError,'^'+code+'$'):
+                await self.dialog.select([HOST],8443)
+
+    async def test_host_tag_list_does_not_accept_similar_host_url_or_duplicates(self):
+        for labels,kind,code in ((['evil'+HOST+' '+TAG],'KeyboardButtonCallback','proxy_not_found'),
+                                 ([HOST+' '+TAG],'KeyboardButtonUrl','proxy_not_found'),
+                                 ([HOST+' '+TAG,HOST+' '+'c'*32],'KeyboardButtonCallback','proxy_ambiguous')):
+            buttons = [NS(text=value,button=type(kind,(),{})()) for value in labels]
+            self.dialog.send=AsyncMock(return_value=NS(raw_text='Proxies',buttons=[buttons]))
+            self.dialog.click=AsyncMock()
+            with self.assertRaisesRegex(BotProtocolError,'^'+code+'$'):
+                await self.dialog.select([HOST],8443)
+            self.dialog.click.assert_not_called()
+
+    async def test_bind_from_host_tag_listing_reopens_and_verifies_card(self):
+        listing=NS(raw_text='Your proxies',buttons=[[NS(text=HOST+' '+TAG,
+                   button=type('KeyboardButtonCallback',(),{})())]])
+        old=card('old_channel');old.buttons=[[NS(text='Set promotion',button=type('KeyboardButtonCallback',(),{})())]]
+        self.dialog.send=AsyncMock(side_effect=[listing,NS(raw_text='Success'),listing])
+        self.dialog.click=AsyncMock(side_effect=[old,NS(raw_text='Send a public channel link'),card()])
+        result=await self.dialog.prepare(self.request)
+        self.assertEqual(result['tag'],TAG)
+        self.assertEqual(result['channel_username'],'sample_channel')
+        self.assertEqual([c.args[0] for c in self.dialog.send.await_args_list],
+                         ['/myproxies','https://t.me/sample_channel','/myproxies'])
 
     async def test_active_additional_username_and_bot_primary_name_match_by_id(self):
         channel=NS(id=321,broadcast=True,username='primary_channel',

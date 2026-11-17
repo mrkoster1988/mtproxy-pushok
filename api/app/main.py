@@ -54,7 +54,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.55",
+    version="1.56",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -243,6 +243,7 @@ class CampaignResponse(BaseModel):
 
 
 class OperatorCampaignResponse(CampaignResponse):
+    auto_schedule_paused: bool = False
     proxy_node_id: UUID | None = None
     advertiser_user_id: UUID | None = None
     advertiser_first_name: str | None = None
@@ -1774,7 +1775,7 @@ def list_operator_campaigns(
                        u.last_name AS advertiser_last_name,
                        u.username AS advertiser_username,
                        u.telegram_user_id AS advertiser_telegram_user_id,
-                       c.archived_at,
+                       c.archived_at, c.auto_schedule_paused,
                        EXISTS(SELECT 1 FROM payment_attempts pa WHERE pa.campaign_id=c.id
                               AND pa.status IN ('created','pending')) AS has_pending_payment,
                        c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,

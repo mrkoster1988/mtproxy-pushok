@@ -105,8 +105,10 @@ window.pushokApproval=(()=>{
   }else if(c.placement_status==='not_scheduled'){
    void renderPromotionStatus(c,content);
    content.append(el('p','Начало — с выбранного клиентом времени или сразу после освобождения места. Если дата не выбрана — ближайшее доступное время.'));
+   const resume=button('Возобновить автоподбор',()=>perform(()=>post('auto-schedule'),'Автоподбор включён. Расписание обновится автоматически.'));
+   if(c.auto_schedule_paused)content.append(resume);
    content=details('Изменить расписание',content);
-   content.append(button('Возобновить автоподбор',()=>perform(()=>post('auto-schedule'),'Автоподбор включён. Расписание обновится автоматически.')));
+   if(!c.auto_schedule_paused)content.append(resume);
    const block=form('3. Назначьте размещение','Назначить слот',async guard=>{if(new Date(start.value).getTime()<=Date.now())throw Error('Начало уже прошло. Выберите будущее время или нажмите «Через 2 минуты».');const free=await api('/operator/campaigns/'+c.id+'/available-nodes?'+new URLSearchParams({start_at:new Date(start.value).toISOString()}));guard();if(!free.nodes.some(n=>n.id===select.value))throw Error('Узел занят на выбранный период или недоступен. Проверьте свободные узлы и выберите другое время.');await post('schedule',{proxy_node_id:select.value,start_at:new Date(start.value).toISOString()});});
    const select=el('select');select.required=true;option(select,'','Выберите узел');const active=nodes.filter(n=>n.status==='active');active.forEach(n=>option(select,n.id,n.name));if(active.length===1)select.value=active[0].id;field(block.f,'Прокси-узел',select);
    const start=el('input');start.type='datetime-local';start.required=true;const requested=new Date(c.requested_start_at),d=requested.getTime()>Date.now()?requested:new Date(Date.now()+5*60000);start.value=localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');field(block.f,'Начало размещения',start);
