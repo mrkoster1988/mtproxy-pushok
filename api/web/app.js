@@ -303,7 +303,7 @@ function showCampaignReport(c, box,{refresh=false}={}){
   const eventNames={campaign_submitted:'Заявка отправлена',campaign_moderated:'Модерация',campaign_pricing_changed:'Тариф или скидка изменены администратором',
    sbp_invoice_created:'Выставлен счёт СБП',sbp_payment_verified:'СБП подтверждена сервером',sbp_payment_canceled:'СБП отменена',
    payment_proof_submitted:'Чек отправлен',payment_reviewed:'Проверка оплаты',
-   placement_auto_scheduled:'Автоматически назначено',placement_activated_by_agent:'Агент подтвердил запуск',placement_completed_by_agent:'Агент подтвердил завершение',placement_scheduled:'Время назначено',placement_activated_manually:'Оператор активировал',
+   placement_auto_scheduled:'Автоматическое расписание',placement_activated_by_agent:'Агент подтвердил запуск',placement_completed_by_agent:'Агент подтвердил завершение',placement_scheduled:'Время назначено',placement_activated_manually:'Оператор активировал',
    placement_completed_manually:'Оператор завершил'};
   if(data.timeline.length){
    const history=el('ol',undefined,'report-history');
@@ -674,7 +674,7 @@ function renderNodes(){
  $('nodes-list').replaceChildren(...nodes.map(n=>{
   const box=el('div',undefined,'card proxy-node'),head=el('div',undefined,'proxy-node-heading'),copy=el('div');
   box.dataset.nodeId=n.id;copy.append(el('h3',n.name));head.append(window.pushokViews.icon('server'),copy);box.append(head,el('p',n.host+':'+n.port,'proxy-node-address muted'));
-  const meta=el('div',undefined,'proxy-node-meta');meta.append(el('span',n.status==='active'?'В расписании':'На паузе','badge badge--'+(n.status==='active'?'approved':'paused')),el('span',engineTitles[n.target_engine]||'План не выбран','muted'));box.append(meta);
+  const meta=el('div',undefined,'proxy-node-meta');meta.append(el('span',n.status==='active'?'В расписании':'На паузе','badge badge--'+(n.status==='active'?'approved':'paused')),el('span',engineTitles[n.target_engine]||'Движок: автовыбор','muted'));box.append(meta);
   if(me?.role==='admin'){
   const actions=window.pushokManagement?.nodeActions(n)||el('div'),controls=actions.querySelector('.node-action-buttons')||el('div');head.append(controls);box.append(actions);actions.append(...(drafts.get(n.id)||[]));
   const plan=button('Изменить план движка',()=>{

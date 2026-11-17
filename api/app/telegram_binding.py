@@ -1,4 +1,5 @@
 """Host-only очередь внешней привязки. Не HTTP API и не подтверждение показов."""
+import json
 import re
 from datetime import datetime, timedelta, timezone
 from .auto_schedule import earliest_gap
@@ -105,6 +106,47 @@ def preparation_improves_slot(conn, campaign, node_id):
     return not any(available(n['id'],start) <= after_preparation for n in prepared)
 
 
+def release_waiting_forecasts(conn, node):
+    """Убираем взаимную блокировку прогнозов, если текущий канал ещё не подготовлен.
+
+    Все записи заблокированы общей блокировкой планировщика и FOR UPDATE.
+    Ручное, наблюдавшееся или применённое размещение и действующие брони
+    не изменяем. Следующий полный период назначается после готовности тега.
+    """
+    rows = conn.execute('''SELECT c.*,ch.telegram_url,ch.archived_at AS channel_archived,
+        EXISTS(SELECT 1 FROM placement_observations o WHERE o.campaign_id=c.id) AS observed,
+        EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.campaign_id=c.id AND j.phase<>'done') AS preparing,
+        EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied') AS applied
+        FROM campaigns c JOIN sponsor_channels ch ON ch.id=c.channel_id
+        WHERE c.proxy_node_id=%s AND c.placement_status IN ('scheduled','active')
+        ORDER BY c.scheduled_start_at,c.id FOR UPDATE OF c''', (node['id'],)).fetchall()
+    if not rows or any(c['placement_status'] != 'scheduled' or not c['auto_schedule_managed']
+                       or c['auto_schedule_paused'] or c['archived_at'] or c['channel_archived']
+                       or c['observed'] or c['applied'] or c['preparing']
+                       or c['moderation_status'] != 'approved' or c['payment_status'] != 'verified' for c in rows):
+        return False
+    if conn.execute('SELECT 1 FROM slot_holds WHERE proxy_node_id=%s AND expires_at>now() AND ends_at>now()', (node['id'],)).fetchone():
+        return False
+    now = datetime.now(timezone.utc)
+    head = next((c for c in rows if c['scheduled_end_at'] > now), None)
+    if not head or head['scheduled_start_at'] > now + timedelta(hours=1) or (head['requested_start_at'] and head['requested_start_at'] > now + timedelta(hours=1)):
+        return False
+    if conn.execute('''SELECT 1 FROM channel_promotion_bindings b JOIN sponsor_channels ch ON ch.id=b.channel_id
+        WHERE b.proxy_node_id=%s AND b.channel_id=%s AND b.channel_url=ch.telegram_url
+          AND (b.node_host,b.node_port)=(%s,%s)''', (node['id'],head['channel_id'],node['host'],node['port'])).fetchone():
+        return False
+    if not preparation_improves_slot(conn, head, node['id']):
+        return False
+    for campaign in rows:
+        conn.execute('''UPDATE campaigns SET placement_status='not_scheduled',proxy_node_id=NULL,
+            scheduled_start_at=NULL,scheduled_end_at=NULL,auto_schedule_tag_pending=true,updated_at=now()
+            WHERE id=%s''', (campaign['id'],))
+        conn.execute("INSERT INTO audit_events(campaign_id,event_type,details_json) VALUES(%s,'placement_auto_scheduled',%s::jsonb)",
+            (campaign['id'],json.dumps(dict(reason='awaiting_telegram_preparation',previous_node_id=str(node['id']),
+                previous_start_at=campaign['scheduled_start_at'].isoformat(),previous_end_at=campaign['scheduled_end_at'].isoformat()))))
+    return head
+
+
 def handle(conn, request):
     # Та же блокировка, что у планировщика; короткие транзакции, без Telegram внутри.
     if not conn.execute('SELECT pg_try_advisory_xact_lock(736102482) AS ok').fetchone()['ok']:
@@ -124,7 +166,10 @@ def handle(conn, request):
             if not job['due']:
                 return {'state': 'wait'}
         else:
-            if node['status'] != 'active' or node['archived_at'] or node['target_engine'] not in (None, 'official_mtproxy') or busy(conn, node['id']):
+            if node['status'] != 'active' or node['archived_at'] or node['target_engine'] not in (None, 'official_mtproxy'):
+                return {'state': 'wait'}
+            resumed = release_waiting_forecasts(conn, node)
+            if busy(conn, node['id']):
                 return {'state': 'wait'}
             candidates = conn.execute('''SELECT c.id,c.channel_id,ch.telegram_url,c.requested_start_at,c.duration_seconds_snapshot FROM campaigns c
                 JOIN sponsor_channels ch ON ch.id=c.channel_id
@@ -138,7 +183,7 @@ def handle(conn, request):
                   AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.campaign_id=c.id AND j.phase<>'done')
                 ORDER BY COALESCE(c.requested_start_at,c.created_at),c.created_at,c.id
                 LIMIT 20 FOR UPDATE OF c SKIP LOCKED''').fetchall()
-            candidate = next((c for c in candidates if preparation_improves_slot(conn,c,node['id'])),None)
+            candidate = resumed or next((c for c in candidates if preparation_improves_slot(conn,c,node['id'])),None)
             if not candidate:
                 # Ручная связь уже готова для ожидающей кампании на этом узле.
                 # Дадим планировщику назначить слот, не захватывая узел новой

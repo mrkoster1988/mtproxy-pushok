@@ -553,6 +553,8 @@ def main():
                     admin.get_by_role('button', name='Обновить диагностику', exact=True).click()
                     expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=ready]')).to_contain_text('Подтверждения применения текущего плана пока нет')
                     expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Применение текущего плана не подтверждено')
+                    expect(admin.locator('#promotion-automation-runtime [data-runtime-code=ready]')).to_contain_text('Готово к применению')
+                    expect(admin.locator('#promotion-automation-runtime [data-runtime-code=ready]')).to_contain_text('Подтверждения применения текущего плана пока нет')
                     expect(draft_tag).to_have_value('d' * 32)
                     # Отказ проверки канала не должен выглядеть как работающий запуск.
                     with psycopg.connect(PostgresIntegration.dsn) as connection:

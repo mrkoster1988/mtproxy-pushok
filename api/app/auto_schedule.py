@@ -39,9 +39,11 @@ def service_once(dsn, limit=20):
         campaigns = conn.execute("""SELECT * FROM campaigns WHERE archived_at IS NULL
             AND moderation_status='approved' AND payment_status='verified'
             AND placement_status='not_scheduled' AND NOT auto_schedule_paused
+            AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.campaign_id=campaigns.id AND j.phase<>'done')
             AND EXISTS(SELECT 1 FROM sponsor_channels ch WHERE ch.id=campaigns.channel_id AND ch.archived_at IS NULL)
             ORDER BY COALESCE(requested_start_at,created_at),created_at,id LIMIT %s FOR UPDATE SKIP LOCKED""", (limit,)).fetchall()
         nodes = conn.execute("""SELECT id FROM proxy_nodes WHERE status='active' AND archived_at IS NULL
+            AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.proxy_node_id=proxy_nodes.id AND j.phase<>'done')
             AND (target_engine IS NULL OR target_engine='official_mtproxy') ORDER BY id FOR UPDATE""").fetchall()
         # Ранее выданный прогноз мог попасть на узел без тега. Как только
         # появилась подходящая подтверждённая связь, переоцениваем весь период.
@@ -51,6 +53,7 @@ def service_once(dsn, limit=20):
               AND c.payment_status='verified' AND c.placement_status='scheduled'
               AND NOT c.auto_schedule_paused
               AND c.auto_schedule_managed
+              AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.campaign_id=c.id AND j.phase<>'done')
               AND NOT EXISTS(SELECT 1 FROM placement_observations o WHERE o.campaign_id=c.id)
               AND NOT EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied')
               AND EXISTS(SELECT 1 FROM channel_promotion_bindings b
@@ -79,6 +82,7 @@ def service_once(dsn, limit=20):
                 WHERE b.channel_id=%s AND n.status='active' AND n.archived_at IS NULL
                 AND ch.archived_at IS NULL AND b.channel_url=ch.telegram_url
                 AND b.node_host=n.host AND b.node_port=n.port
+                AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.proxy_node_id=n.id AND j.phase<>'done')
                 AND (n.target_engine IS NULL OR n.target_engine='official_mtproxy')
                 FOR SHARE OF b""",(c['channel_id'],)).fetchall()
             prepared_ids = {str(p['proxy_node_id']) for p in prepared}
