@@ -1,6 +1,4 @@
 """Поиск публичного канала по точному username и отчёт по доступному каналу."""
-import os
-import re
 import time
 from collections import OrderedDict
 from uuid import UUID
@@ -9,28 +7,14 @@ import psycopg
 from psycopg.rows import dict_row
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from . import channel_logos as logos
+from .public_channels import reference
+from . import public_channels
 
 _requests = OrderedDict()
 
 
-def reference(value):
-    match = re.fullmatch(r'(?:@|https://(?:t\.me|telegram\.me)/)?([A-Za-z][A-Za-z0-9_]{3,31})/?', value.strip())
-    if not match:
-        raise HTTPException(422, 'invalid_telegram_channel_url')
-    return match[1].lower()
-
-
 def lookup(value):
-    username = reference(value)
-    token = os.getenv('TELEGRAM_BOT_TOKEN', '')
-    if not re.fullmatch(r'\d+:[A-Za-z0-9_-]+', token):
-        raise HTTPException(503, 'channel_lookup_unavailable')
-    chat = logos._cached(token, 'channel-preview:' + username,
-                         lambda: logos._call(token, 'getChat', {'chat_id': '@' + username}))
-    if not chat or not logos.matches_channel(chat, username):
-        raise HTTPException(404, 'channel_lookup_unavailable')
-    return dict(title=str(chat.get('title') or '@' + username)[:255], username=username,
-                telegram_url='https://t.me/' + username)
+    return public_channels.lookup(value)
 
 
 def router_for(dsn, current_user):

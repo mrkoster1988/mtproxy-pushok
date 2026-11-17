@@ -4,6 +4,7 @@ window.pushokOrder=(()=>{
  const form=$('campaign-form'),fields=$('order-fields'),submit=$('order-submit');
  let priceQuote=null,quoteKey=null,quoteEpoch=0;
  let newChannel=false,initialized=false,busy=false,attempt=null,owner=null;
+ let selectedChecker=null,selectedValue='';
  const storageKey=()=> 'pushok-order-pending:'+me.id;
  Object.assign(errors,{order_tariff_changed:'Тариф изменился. Проверьте обновлённую стоимость и длительность перед отправкой.',order_request_conflict:'Параметры сохранённой отправки не совпали. Проверьте список ваших заявок.'});
  function currentKey(){const t=tariffs.find(t=>t.id===$('tariff-select').value);return [me?.id,t?.id,t?.price_kopecks,t?.stars_price_xtr,t?.duration_seconds,$('order-promo').value.trim().toUpperCase()].join(':');}
@@ -21,6 +22,7 @@ window.pushokOrder=(()=>{
  $('order-promo').addEventListener('input',invalidate);
  $('tariff-select').addEventListener('change',()=>{invalidate();void calculate().catch(()=>{});});
  function mode(value){
+  if(value!==newChannel){$('order-channel-url').pushokChannelCheck?.reset();selectedChecker?.reset();selectedValue='';}
   newChannel=value;$('order-new-channel').hidden=!value;$('order-existing').hidden=value;
   $('channel-select').required=!value;$('order-channel-url').required=value;
   $('order-channel-url').disabled=!value;$('order-channel-title').disabled=!value;
@@ -30,7 +32,13 @@ window.pushokOrder=(()=>{
  function summary(){
   const tariff=tariffs.find(t=>t.id===$('tariff-select').value);
   const channel=newChannel?($('order-channel-title').value.trim()||$('order-channel-url').value.trim()||'Укажите канал'):channels.find(c=>c.id===$('channel-select').value)?.title||'Выберите канал';
-  const preview=$('order-selected-preview');if(preview&&window.pushokViews){const selected=channels.find(c=>c.id===$('channel-select').value);preview.hidden=newChannel||!selected;preview.replaceChildren(...(!newChannel&&selected?[window.pushokViews.channelPreview(selected)]:[]));}
+  const preview=$('order-selected-preview');if(preview&&window.pushokViews){
+   selectedChecker??=window.pushokViews.channelVerification(preview,()=>newChannel?'':channels.find(c=>c.id===$('channel-select').value)?.telegram_url||'',()=>{
+    const selected=channels.find(c=>c.id===$('channel-select').value),heading=preview.querySelector('strong');if(selected&&heading)heading.textContent=selected.title;
+   });
+   const value=newChannel?'':channels.find(c=>c.id===$('channel-select').value)?.telegram_url||'';
+   if(value!==selectedValue){selectedValue=value;if(value)selectedChecker.schedule();else selectedChecker.reset();}
+  }
   const start=$('requested-start').value;
   const q=quoteKey===currentKey()?priceQuote:null;
   const total=attempt?attempt.expected_price_kopecks:q?q.price_kopecks:tariff?.price_kopecks;
@@ -69,16 +77,26 @@ window.pushokOrder=(()=>{
   }else data.channel_id=$('channel-select').value;
   return data;
  }
- form.addEventListener('input',summary);form.addEventListener('change',summary);
+ function edited(){if(!busy&&!attempt)feedback('');summary();}
+ form.addEventListener('input',edited);form.addEventListener('change',edited);
  $('order-channel-mode').addEventListener('click',()=>mode(!newChannel));
  form.addEventListener('submit',async event=>{
   event.preventDefault();if(busy)return;
   const session=token,user=me?.id;if(!user)return;
   busy=true;submit.disabled=true;
   try{
-   if(!attempt){if(!priceQuote||quoteKey!==currentKey()){await calculate();if(!priceQuote||quoteKey!==currentKey())return;feedback('Стоимость рассчитана. Проверьте итог и нажмите «Отправить на модерацию».');return;}attempt=payload();sessionStorage.setItem(storageKey(),JSON.stringify(attempt));}
+   if(!attempt){
+    feedback('Проверяем канал…');
+    const selectedAtStart=$('channel-select').value,modeAtStart=newChannel,urlAtStart=$('order-channel-url').value;
+    if(newChannel)await $('order-channel-url').pushokChannelCheck?.check();else await selectedChecker?.check();
+    if(token!==session||me?.id!==user)return;
+    if(modeAtStart!==newChannel||selectedAtStart!==$('channel-select').value||urlAtStart!==$('order-channel-url').value)throw Error('Канал изменился. Проверьте новую ссылку.');
+    if(!priceQuote||quoteKey!==currentKey()){await calculate();if(!priceQuote||quoteKey!==currentKey())return;feedback('Стоимость рассчитана. Проверьте итог и нажмите «Отправить на модерацию».');return;}
+    attempt=payload();sessionStorage.setItem(storageKey(),JSON.stringify(attempt));
+   }
    fields.disabled=true;feedback('Отправляем заявку…');
-   const campaign=await api('/orders',{method:'POST',body:attempt});
+   const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),12000);
+   let campaign;try{campaign=await api('/orders',{method:'POST',body:attempt,signal:controller.signal});}finally{clearTimeout(timeout);}
    if(token!==session||me?.id!==user)return;
    sessionStorage.removeItem(storageKey());attempt=null;feedback('');
    // Результат отображаем сразу, даже если последующее обновление списка прервётся.
@@ -89,7 +107,7 @@ window.pushokOrder=(()=>{
   }catch(error){
    if(token!==session||me?.id!==user)return;
    // Ошибка проверки означает откат транзакции. При потере связи сохраняем исходный ключ.
-   if([400,403,404,409,422].includes(error.status)){attempt=null;priceQuote=null;quoteKey=null;sessionStorage.removeItem(storageKey());try{await refresh();}catch{}}
+   if([400,403,404,409,422].includes(error.status)||['channel_lookup_unavailable','channel_lookup_rate_limit'].includes(error.code)){attempt=null;priceQuote=null;quoteKey=null;sessionStorage.removeItem(storageKey());try{await refresh();}catch{}}
    feedback(error.message+(attempt?' Повторная отправка с тем же ключом безопасна.':''));
   }finally{busy=false;if(me?.id===user){sync();if(!$('order-feedback').hidden)$('order-feedback').scrollIntoView({block:'nearest'});}}
  });
@@ -101,5 +119,5 @@ window.pushokOrder=(()=>{
   $('tariff-select').value=offer.tariff_id;$('order-promo').value=offer.code||'';$('order-promo-section').open=true;
   invalidate();await calculate();
  }
- return {sync,summary,applyOffer,selectChannel(){mode(false);summary();},reset(){priceQuote=null;quoteKey=null;quoteEpoch++;owner=null;initialized=false;attempt=null;busy=false;fields.disabled=false;feedback('');}};
+ return {sync,summary,applyOffer,selectChannel(){mode(false);summary();},reset(){selectedChecker?.reset();selectedValue='';$('order-channel-url').pushokChannelCheck?.reset();priceQuote=null;quoteKey=null;quoteEpoch++;owner=null;initialized=false;attempt=null;busy=false;fields.disabled=false;feedback('');}};
 })();

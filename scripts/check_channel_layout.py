@@ -48,7 +48,7 @@ def check_channel_layout(browser,base,output,failures,dsn):
             page.locator('.screen-back').click();expect(page).to_have_url(base+'/#/channels');expect(card).to_be_visible()
             add.click()
             with patch.object(channel_directory,'lookup',return_value=dict(title='Новый канал',username='layout_channel',telegram_url='https://t.me/layout_channel')):
-                page.locator('#channel-form').get_by_role('button',name='Найти канал',exact=True).click()
+                page.locator('#channel-form').get_by_role('button',name='Проверить канал',exact=True).click()
                 expect(page.locator('#channel-form [name=title]')).to_have_value('Новый канал')
                 page.screenshot(path=str(output/'69-channel-add-390.png'),full_page=True)
                 page.locator('#channel-form button[type=submit]').click()

@@ -24,6 +24,14 @@ os.environ.setdefault("DATABASE_URL", "postgresql://unused")
 from app import main
 
 
+def public_channel_fixture(value, *, fresh=False, expected_id=None):
+    """Только локальные сценарии БД/UI; настоящий getChat проверяется отдельно."""
+    from app.public_channels import reference
+    name = reference(value)
+    return dict(title='@' + name, username=name, telegram_url='https://t.me/' + name,
+                telegram_channel_id=expected_id if expected_id is not None else -1001234567890)
+
+
 def _approved_test_postgres():
     """Интеграция создаёт и удаляет БД; запрещена без явного opt-in.
 
@@ -77,9 +85,12 @@ class PostgresIntegration(unittest.TestCase):
             for migration in sorted((ROOT / "database").glob("*.sql")):
                 conn.execute(migration.read_text())
         cls.client = TestClient(main.app)
+        cls.channel_lookup_fixture = patch('app.public_channels.lookup', side_effect=public_channel_fixture)
+        cls.channel_lookup_fixture.start()
 
     @classmethod
     def tearDownClass(cls):
+        cls.channel_lookup_fixture.stop()
         cls.client.close()
         main.app.dependency_overrides.clear()
         main.DATABASE_URL, main.PAYMENT_PROOFS_DIR, main.PLACEMENT_EVIDENCE_DIR = (

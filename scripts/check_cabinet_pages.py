@@ -268,6 +268,8 @@ def main():
                 tariff_help.locator('summary').click()
                 advertiser.keyboard.press('Escape')
                 expect(tariff_help.locator('.field-help')).to_be_hidden()
+                from check_public_channel_ui import check_public_channel_ui
+                check_public_channel_ui(advertiser, output)
                 advertiser.locator('#order-channel-url').fill('@unsaved_order_channel')
                 go(advertiser, "channels")
                 advertiser.locator('[data-page=channels] .page-heading a').click()
@@ -289,6 +291,7 @@ def main():
                 expect(advertiser.locator('#order-channel-url')).to_have_value('@unsaved_order_channel')
                 advertiser.locator('#order-channel-mode').click()
                 advertiser.locator('#channel-select').select_option(index=1)
+                expect(advertiser.locator('#order-selected-preview')).to_have_attribute('data-state','verified')
                 tomorrow = (datetime.now() + timedelta(days=2)).strftime('%Y-%m-%d')
                 advertiser.locator('#order-date > summary').click()
                 advertiser.locator('#calendar-from').fill(tomorrow)

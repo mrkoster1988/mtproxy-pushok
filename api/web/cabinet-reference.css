@@ -330,6 +330,9 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .cabinet-mode .empty-state h3{margin:0;font-size:13px;line-height:20px}.cabinet-mode .empty-state p,.cabinet-mode .empty-state .ui-button{grid-column:2;margin:0}
 
 .channel-search-result:not([hidden]){margin-bottom:14px}
+.channel-search-result,#order-selected-preview{overflow-wrap:anywhere}
+.channel-check-success{display:flex;align-items:center;gap:6px;color:var(--mint,#35d4c4);font-size:12px;line-height:1.5;margin:8px 0 0}
+.channel-check-error{color:#f2b1b5;font-size:12px;line-height:1.5;margin:8px 0}
 
 /* Канал: единая шапка с действиями и компактная нижняя строка. */
 .cabinet-mode .channel-tile{padding:16px;border-radius:16px;background:linear-gradient(115deg,#122e42,var(--surface));}

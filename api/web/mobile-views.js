@@ -31,23 +31,67 @@ window.pushokViews=(()=>{
  function channelPreview(channel){
   const row=el('div',undefined,'channel-preview'),copy=el('span');copy.append(el('strong',channel.title),el('small',handle(channel.telegram_url),'muted'));row.append(channelAvatar(channel.id,channel.title,channel.telegram_url),copy);return row;
  }
+ Object.assign(errors,{
+  invalid_telegram_channel_url:'Укажите публичный @username или ссылку https://t.me/channel. Пригласительная ссылка не подходит.',
+  channel_lookup_unavailable:'Не удалось проверить канал: Telegram временно недоступен. Повторите проверку.',
+  channel_lookup_rate_limit:'Слишком много проверок. Повторите через минуту.',
+  channel_not_broadcast:'По этой ссылке группа или личный аккаунт. Укажите публичный канал.',
+  channel_public_unavailable:'Канал не найден или недоступен. Проверьте его публичный @username.',
+  channel_identity_changed:'Этот @username теперь принадлежит другому каналу. Обновите канал в списке.',
+  channel_changed_during_check:'Канал изменился во время проверки. Проверьте его ещё раз.'
+ });
+ function channelVerification(result,getValue,onSuccess=()=>{}){
+  let epoch=0,timer=null,controller=null,pending=null,lastValue='',lastSession='',verified=null,verifiedAt=0;
+  result.setAttribute('role','status');result.setAttribute('aria-live','polite');result.hidden=true;
+  function reset(){epoch++;clearTimeout(timer);timer=null;controller?.abort();controller=null;pending=null;verified=null;verifiedAt=0;lastValue='';lastSession='';result.hidden=true;result.replaceChildren();result.removeAttribute('aria-busy');delete result.dataset.state;}
+  function check({force=false}={}){
+   clearTimeout(timer);timer=null;
+   const value=getValue().trim(),session=token;
+   if(value===lastValue&&session===lastSession&&pending)return pending;
+   if(!force&&value===lastValue&&session===lastSession&&verified&&Date.now()-verifiedAt<30000)return Promise.resolve(verified);
+   reset();lastValue=value;lastSession=session;const version=epoch;
+   result.hidden=false;result.dataset.state='checking';result.setAttribute('aria-busy','true');result.replaceChildren(el('p','Проверяем публичность канала…','muted'));
+   const active=new AbortController();controller=active;let timedOut=false;
+   const timeout=setTimeout(()=>{timedOut=true;active.abort();},7000);
+   const current=()=>version===epoch&&session===token&&getValue().trim()===value;
+   pending=(async()=>{
+    try{
+     await Promise.resolve();
+     if(!current())throw Error('Канал изменился. Дождитесь новой проверки.');
+     if(!/^(?:@|https:\/\/(?:t\.me|telegram\.me)\/)?[a-z][a-z0-9_]{3,31}\/?$/i.test(value))throw Error(errors.invalid_telegram_channel_url);
+     const data=await api('/channel-preview?query='+encodeURIComponent(value),{signal:active.signal});
+     if(!current())throw Error('Канал изменился. Дождитесь новой проверки.');
+     verified=data;verifiedAt=Date.now();result.dataset.state='verified';
+     const status=el('p','Публичный канал','channel-check-success');status.prepend(icon('check'));
+     result.replaceChildren(channelPreview(data),status);
+     onSuccess(data);return data;
+    }catch(error){
+     if(current()){verified=null;result.dataset.state='error';result.replaceChildren(el('p',timedOut?errors.channel_lookup_unavailable:error.message,'channel-check-error'));}
+     throw error;
+    }finally{clearTimeout(timeout);if(current()){pending=null;controller=null;result.removeAttribute('aria-busy');}}
+   })();return pending;
+  }
+  function schedule(){
+   const value=getValue().trim();if(value===lastValue&&token===lastSession&&(pending||verified&&Date.now()-verifiedAt<30000))return;
+   reset();if(!value)return;
+   result.hidden=false;result.replaceChildren(el('p','Канал проверится автоматически','muted'));
+   timer=setTimeout(()=>{void check().catch(()=>{});},600);
+  }
+  return {check,schedule,reset};
+ }
  function channelSearch(input,titleInput){
-  Object.assign(errors,{channel_lookup_unavailable:'Telegram не вернул канал. Проверьте @username. Можно заполнить название вручную и отправить на проверку.',channel_lookup_rate_limit:'Слишком много запросов. Повторите через минуту.'});
   input.type='text';input.autocapitalize='none';input.spellcheck=false;
   const line=el('span',undefined,'channel-lookup-line'),result=el('div',undefined,'channel-search-result'),label=input.closest('label');result.setAttribute('role','status');result.hidden=true;
   input.before(line);line.append(input);label.after(result);
-  let epoch=0,autoTitle='';
-  const search=iconAction(button('',async()=>{
-   const value=input.value.trim(),session=token,version=++epoch;result.hidden=false;result.replaceChildren(el('p','Ищем канал…','muted'));
-   try{const data=await api('/channel-preview?query='+encodeURIComponent(value));if(version!==epoch||session!==token||input.value.trim()!==value)return;
-    input.value=data.telegram_url;if(!titleInput.value.trim()||titleInput.value===autoTitle){autoTitle=data.title;titleInput.value=data.title;}
-    result.replaceChildren(channelPreview(data));input.dispatchEvent(new Event('change',{bubbles:true}));
-   }catch(error){if(version===epoch&&session===token)result.replaceChildren(el('p',error.message,'muted'));}
-  }),'search','Найти канал');line.append(search);
-  function clear(){epoch++;result.hidden=true;result.replaceChildren();}
-  input.addEventListener('input',()=>{clear();if(titleInput.value===autoTitle)titleInput.value='';autoTitle='';});
+  let autoTitle='';
+  const checker=channelVerification(result,()=>input.disabled?'':input.value,data=>{
+   if(!titleInput.value.trim()||titleInput.value===autoTitle){autoTitle=data.title;titleInput.value=data.title;}
+   input.dispatchEvent(new Event('change',{bubbles:true}));
+  });input.pushokChannelCheck=checker;
+  const search=iconAction(button('',()=>checker.check({force:true}).catch(()=>{})),'search','Проверить канал');line.append(search);
+  input.addEventListener('input',()=>{if(titleInput.value===autoTitle)titleInput.value='';autoTitle='';checker.schedule();});
   input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();search.click();}});
-  input.form?.addEventListener('reset',()=>{clear();autoTitle='';});return clear;
+  input.form?.addEventListener('reset',()=>{checker.reset();autoTitle='';});return checker;
  }
  function userAvatar(id,name=''){
   const fallback=avatar('user');fallback.classList.add('user-avatar');
@@ -177,5 +221,5 @@ window.pushokViews=(()=>{
    if(!items.length)group.append(emptyLine(emptyText,'campaign'));else{const rows=el('div',undefined,'sponsor-placement-list');items.forEach(c=>rows.append(campaignSummary(c,'sponsors')));group.append(rows);}target.append(group);
   }
  }
- return {emptyLine,clearLogos,channelAvatar,channelPreview,channelSearch,userAvatar,icon,iconAction,disclosure,info,brand,mascot,profileAvatar,statusSteps,progress,facts,campaigns,channelCards,paymentOverview,profile,sponsors};
+ return {emptyLine,clearLogos,channelAvatar,channelPreview,channelSearch,channelVerification,userAvatar,icon,iconAction,disclosure,info,brand,mascot,profileAvatar,statusSteps,progress,facts,campaigns,channelCards,paymentOverview,profile,sponsors};
 })();
