@@ -28,3 +28,26 @@ WantedBy=timers.target
 UNIT
 systemctl daemon-reload
 systemctl enable --now mtproxy-pushok-promotion.timer
+cat > /etc/systemd/system/mtproxy-pushok-provisioner.service <<'UNIT'
+[Unit]
+Description=Pushok bounded automatic proxy provisioning
+After=docker.service network-online.target
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/mtproxy-pushok
+ExecStart=/usr/bin/python3 /opt/mtproxy-pushok/scripts/proxy_provisioner.py
+TimeoutStartSec=300
+UMask=0077
+UNIT
+cat > /etc/systemd/system/mtproxy-pushok-provisioner.timer <<'UNIT'
+[Unit]
+Description=Check Pushok proxy capacity
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=5min
+AccuracySec=10s
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now mtproxy-pushok-provisioner.timer

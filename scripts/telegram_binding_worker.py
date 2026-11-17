@@ -26,7 +26,9 @@ async def run(client, existing, request, state):
             raise OwnerError('unexpected_mtproxy_bot')
         record_health(state, {'state': 'connected', 'telegram_user_id': me.id,
                               'username': getattr(me, 'username', None)})
-        result = await asyncio.wait_for(MTProxyDialog(client, bot).prepare(request), 100)
+        dialog = MTProxyDialog(client, bot)
+        result = await asyncio.wait_for(dialog.register(request,state) if request.get('action')=='register'
+                                        else dialog.prepare(request), 100)
         return dict(result, owner_telegram_id=me.id)
     finally:
         try:
@@ -45,7 +47,7 @@ def main():
         if telethon.__version__ != TELETHON_VERSION:
             raise OwnerError('owner_helper_unavailable')
         request = json.loads(sys.stdin.read(8192))
-        if request.get('action') not in ('inspect','bind'):
+        if request.get('action') not in ('inspect','bind','register'):
             raise OwnerError('owner_helper_unavailable')
         with PrivateState(DEFAULT_STATE) as state:
             # Отключение могло произойти после получения задания агентом.

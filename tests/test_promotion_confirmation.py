@@ -45,6 +45,14 @@ class ConfirmationTests(unittest.TestCase):
         self.assertFalse(result['display_verified'])
         self.assertNotIn('plan_revision', result)
 
+    def test_additional_node_report_is_not_replaced_by_primary_report(self):
+        target=self.path.with_name('promotion-agent-'+self.node_id+'.json')
+        target.write_text(self.path.read_text())
+        self.report(node_id=str(uuid4()),code='apply_failed')
+        self.assertTrue(self.read()['config_applied'])
+        data=json.loads(target.read_text());data['code']='apply_failed';target.write_text(json.dumps(data))
+        self.assertFalse(self.read()['config_applied'])
+
     def test_missing_old_stale_and_future_receipts_are_not_confirmation(self):
         for changes in [dict(plan_revision=None), dict(state='idle'), dict(campaign_id='other'),
                         dict(checked_at=None), dict(checked_at=self.now-timedelta(seconds=120)),

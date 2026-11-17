@@ -89,3 +89,19 @@ class ProxyLinkTests(unittest.TestCase):
         linked.symlink_to(self.env)
         self.assertFalse(publish_proxy_link(self.root, linked))
         self.assertFalse(self.file.exists())
+
+    def test_extra_links_rotate_only_while_agent_confirms_readiness(self):
+        from uuid import uuid4
+        import time
+        node=str(uuid4())
+        publish_proxy_link(self.root,self.env)
+        publish_proxy_link(self.root,self.env,instance=node)
+        extra=self.root/'.control'/('proxy-link-'+node+'.json')
+        data=json.loads(extra.read_text());self.assertGreater(data['expires_at'],time.time())
+        data['url']=data['url'].replace('8443','9443');extra.write_text(json.dumps(data))
+        with patch('secrets.choice',side_effect=lambda choices:choices[-1]):
+            self.assertIn('9443',proxy_link.current_proxy_url())
+            data['expires_at']=time.time()-1;extra.write_text(json.dumps(data))
+            self.assertIn('8443',proxy_link.current_proxy_url())
+            data['expires_at']=time.time()+100000;extra.write_text(json.dumps(data))
+            self.assertIn('8443',proxy_link.current_proxy_url())
