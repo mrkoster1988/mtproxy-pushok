@@ -9,7 +9,7 @@ from playwright.sync_api import expect
 
 
 def check_hall_of_fame(browser,base,output,failures,dsn):
-    from app import main as api,hall_of_fame as hall
+    from app import main as api,hall_of_fame as hall,community
     admin,owner,friend=[uuid4() for _ in range(3)];tokens={}
     start,end=hall.bounds('month',datetime.now(timezone.utc));previous,_=hall.bounds('month',start-timedelta(days=1))
     with psycopg.connect(dsn,row_factory=dict_row) as conn:
@@ -25,6 +25,9 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                 conn.execute("INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days) VALUES(%s,%s,10,90)",(referred,inviter))
         p=conn.execute("INSERT INTO hall_periods(kind,starts_at,ends_at,settings,closed_at) VALUES('month',%s,%s,%s,now()) RETURNING id",(previous,start,Jsonb({'top_size':50,'rewards':{}}))).fetchone()['id']
         conn.execute("INSERT INTO hall_results(period_id,metric,user_id,rank,score) VALUES(%s,'invited',%s,1,8)",(p,owner))
+    # Fixture записывает данные напрямую: начинаем отдельный сценарий без
+    # 20-секундного снимка рейтинга предыдущего браузерного сценария.
+    with community._frames_lock:community._frames.clear()
     contexts=[]
     try:
         with patch('app.community.user_avatar',return_value=None):
@@ -74,3 +77,4 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
             profile.locator('.hall-medals summary').click();expect(profile.locator('.hall-medal')).to_contain_text('#1')
     finally:
         for context in contexts:context.close()
+        with community._frames_lock:community._frames.clear()
