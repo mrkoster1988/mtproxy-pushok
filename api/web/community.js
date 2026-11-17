@@ -6,12 +6,13 @@ window.pushokCommunity=(()=>{
  async function person(id){if(session!==token){cache.clear();session=token;}const old=cache.get(id);if(old&&Date.now()-old.at<60000)return old.promise;const promise=api('/community/users/'+id);cache.set(id,{at:Date.now(),promise});try{return await promise;}catch(e){cache.delete(id);throw e;}}
  function decorate(node,id){
   if(!id)return;node.removeAttribute('aria-hidden');node.setAttribute('role','link');node.tabIndex=0;node.setAttribute('aria-label','Открыть профиль');
-  const go=e=>{e.preventDefault();e.stopPropagation();returnRoute=location.hash.replace(/^#\/?/,'')||'dashboard';window.pushokProfiles.setBackRoute(returnRoute);window.cabinet.go(id===me?.id?'profile':['admin','operator'].includes(me?.role)?'user/'+id:'member/'+id);};
+  const go=e=>{e.preventDefault();e.stopPropagation();const from=location.hash.replace(/^#\/?/,'')||'dashboard';if(!/^(user|member)\//.test(from))returnRoute=from;window.pushokProfiles.setBackRoute(returnRoute);window.cabinet.go(id===me?.id?'profile':['admin','operator'].includes(me?.role)?'user/'+id:'member/'+id);};
   node.addEventListener('click',go);node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')go(e);});
   node.dataset.userId=id;updateAvatar(node,id);
  }
  function updateAvatar(node,id){
   const s=token;void person(id).then(data=>{if(s!==token)return;
+   const copy=node.parentElement?.querySelector('.person-copy,.hall-person');if(copy)copy.dataset.userRole=data.is_owner?'owner':data.role;
    if(!node.dataset.hallRank){node.classList.remove('hall-frame','hall-gold','hall-silver','hall-bronze','hall-teal');window.pushokHall.frame(node,data.frame_rank);}
    node.classList.toggle('user-online',data.online===true);
    if(data.online!==null)node.title=data.online?'В приложении сейчас':'Не в сети';
@@ -20,23 +21,29 @@ window.pushokCommunity=(()=>{
  }
 
  async function show(target,id){const s=token;target.replaceChildren(el('p','Загрузка…','muted'));try{const u=await person(id);if(s!==token||!target.isConnected)return;
-   const card=el('section',undefined,'profile-identity user-identity public-person'),row=el('div',undefined,'person-line'),copy=el('div',undefined,'person-copy');copy.append(el('strong',names(u),'person-name'));if(u.phone_verified)copy.firstChild.append(window.pushokVerification.badge());
+   const card=el('section',undefined,'profile-identity user-identity public-person'),row=el('div',undefined,'person-line'),copy=window.pushokProfiles.names(u,true);copy.replaceChildren();copy.append(el('strong',names(u),'person-name'));if(u.phone_verified)copy.firstChild.append(window.pushokVerification.badge());
    if(u.online!==null)copy.append(el('small',u.online?'Онлайн в приложении':'Не в сети','muted'));
-   row.append(v().userAvatar(id,names(u)),copy);card.append(row);const role=el('span',u.is_owner?'Владелец':{admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[u.role],'profile-role');role.dataset.role=u.role;card.append(role);target.replaceChildren(card);
+   row.append(v().userAvatar(id,names(u)),copy);card.append(row);const role=el('span',u.is_owner?'Владелец':{admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[u.role],'profile-role');role.dataset.role=u.is_owner?'owner':u.role;card.append(role);target.replaceChildren(card);
   }catch(e){if(s===token)target.replaceChildren(el('p',e.message,'empty'));}}
- function invited(id,count){const box=el('details',undefined,'panel profile-invited-block'),head=el('summary'),list=el('div',undefined,'invitees');head.append(v().icon('users'),el('span','Приглашено'),el('strong',String(count)));box.append(head,list);let loaded=false,page=0,busy=false;const s=token;
-  async function load(){if(busy)return;busy=true;try{const data=await api('/community/users/'+id+'/invited?page='+page);if(s!==token||!box.isConnected)return;
-   list.querySelector('.invite-more')?.remove();if(!data.items.length&&!page)list.append(el('p','Пока никого','muted'));
-   for(const u of data.items){const row=el('div',undefined,'person-line invitee');row.append(v().userAvatar(u.id,names(u)),el('span',names(u)));list.append(row);}
-   loaded=true;if(data.more){const next=v().iconAction(button('',()=>{page++;void load();}),'chevron','Ещё приглашённые');next.classList.add('invite-more');list.append(next);}
-  }catch(e){list.replaceChildren(el('p',e.message,'muted'),button('Повторить',load));}finally{busy=false;}}
+ function invited(id,count){
+  const box=el('details',undefined,'panel profile-invited-block'),head=el('summary'),list=el('div',undefined,'invitees'),feedback=el('p',undefined,'invite-feedback'),actions=el('div',undefined,'invite-actions');
+  head.append(v().icon('users'),el('span','Приглашено'),el('strong',String(count)),v().icon('chevron'));feedback.setAttribute('role','status');box.append(head,list,feedback,actions);
+  let loaded=false,nextPage=0,busy=false;const s=token,seen=new Set();
+  const more=v().iconAction(button('',load),'plus','Ещё приглашённые');actions.append(more);actions.hidden=true;
+  async function load(){if(busy||s!==token)return;busy=true;more.disabled=true;feedback.textContent='Загрузка…';box.setAttribute('aria-busy','true');
+   try{const data=await api('/community/users/'+id+'/invited?page='+nextPage);if(s!==token||!box.isConnected)return;
+    for(const u of data.items){if(seen.has(u.id))continue;seen.add(u.id);const row=el('div',undefined,'person-line invitee user-identity');row.append(v().userAvatar(u.id,names(u)),window.pushokProfiles.names(u,true));list.append(row);}
+    loaded=true;nextPage++;feedback.textContent=seen.size?'':'Пока никто не приглашён';actions.hidden=!data.more;v().iconAction(more,'plus','Ещё приглашённые');
+   }catch(e){if(s===token&&box.isConnected){feedback.textContent=e.message;actions.hidden=false;v().iconAction(more,'refresh','Повторить загрузку приглашённых');}}
+   finally{busy=false;more.disabled=false;box.setAttribute('aria-busy','false');}
+  }
   box.addEventListener('toggle',()=>{if(box.open&&!loaded)void load();});return box;
  }
  async function leaders(target){const s=token;target.setAttribute('aria-busy','true');try{const data=await Promise.all(['invited','paid_referrals','spend','paid_campaigns'].map(metric=>api('/hall?kind=month&metric='+metric)));if(s!==token||!target.isConnected)return;
-  const key=JSON.stringify(data.map(d=>d.rows.find(r=>r.rank===1)?.user_id));if(target.dataset.leaders===key)return;target.dataset.leaders=key;const ids=new Set();target.replaceChildren();for(const d of data){const row=d.rows.find(r=>r.rank===1);if(!row||ids.has(row.user_id))continue;ids.add(row.user_id);const avatar=v().userAvatar(row.user_id,row.first_name||'Участник');window.pushokHall.frame(avatar,1);target.append(avatar);}target.hidden=!ids.size;
+  const key=JSON.stringify(data.map(d=>d.rows.find(r=>r.rank===1)?.user_id));if(target.dataset.leaders===key)return;target.dataset.leaders=key;const ids=new Set(),rowNode=el('div',undefined,'home-leader-avatars');target.replaceChildren(el('h2','Лидеры месяца'),rowNode);for(const d of data){const row=d.rows.find(r=>r.rank===1);if(!row||ids.has(row.user_id))continue;ids.add(row.user_id);const avatar=v().userAvatar(row.user_id,row.first_name||'Участник');window.pushokHall.frame(avatar,1);rowNode.append(avatar);}if(!ids.size)rowNode.append(el('span','Первые места пока свободны','muted'));target.hidden=false;
  }catch{target.hidden=true;}finally{target.setAttribute('aria-busy','false');}}
  function ownerTools(target,uid,data,reload){if(!me?.is_owner)return;
-  const box=el('details',undefined,'owner-personal-tools'),head=el('summary');head.append(v().icon('edit'));head.title='Изменить или перенести сведения';head.setAttribute('aria-label',head.title);box.append(head);target.append(box);
+  const box=el('details',undefined,'owner-personal-tools'),head=el('summary');head.append(v().icon('settings'),el('span','Изменить сведения'));head.title='Изменить или перенести сведения';head.setAttribute('aria-label',head.title);box.append(head);target.append(box);
   const form=el('form'),phone=el('input'),birthday=el('input'),year=el('input');phone.value=data.phone_number||'';phone.placeholder='+79991234567';birthday.placeholder='ДД.ММ';birthday.value=data.birthday?[data.birthday.day,data.birthday.month].map(x=>String(x).padStart(2,'0')).join('.'):'';year.type='number';year.value=data.birthday?.year||'';year.placeholder='Необязательно';
   for(const [label,input] of [['Телефон',phone],['День и месяц',birthday],['Год',year]]){const l=el('label',label);l.append(input);form.append(l);}
   const save=v().iconAction(el('button'),'check','Сохранить сведения');save.type='submit';const status=el('p',undefined,'muted');status.setAttribute('role','status');form.append(save,status);box.append(form);

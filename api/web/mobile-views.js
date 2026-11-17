@@ -4,10 +4,10 @@ window.pushokViews=(()=>{
  function icon(name){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.classList.add('ui-icon');
-  const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg?v=152#pi-'+name);svg.append(use);return svg;
+  const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg?v=170#pi-'+name);svg.append(use);return svg;
  }
  // Иконка всегда имеет доступное имя и подпись при наведении.
- function iconAction(node,name,label){node.replaceChildren(icon(name));node.classList.add('icon-action');node.setAttribute('aria-label',label);node.title=label;return node;}
+ function iconAction(node,name,label){if(/^Сохранить/.test(label))name='save';node.replaceChildren(icon(name));node.dataset.actionIcon=name;node.classList.add('icon-action');node.setAttribute('aria-label',label);node.title=label;return node;}
  function disclosure(title,nodes,cls='inline-help'){const d=el('details',undefined,cls),summary=el('summary',title);d.append(summary,...nodes);return d;}
  function info(panel,text,label='О балансе'){
   const heading=panel.querySelector(':scope > h2'),row=el('div',undefined,'panel-heading'),body=el('p',text,'inline-info muted');body.id='info-'+crypto.randomUUID();body.hidden=true;
@@ -183,7 +183,7 @@ window.pushokViews=(()=>{
    head.append(channelAvatar(c.id,c.title,c.telegram_url),copy,window.pushokManagement.channelActions(c,item));item.append(head);
    const count=ownCampaigns.filter(x=>x.channel_id===c.id).length,footer=el('div',undefined,'channel-footer'),counter=el('span',undefined,'channel-count');
    const word=count%100>=11&&count%100<=14?'кампаний':count%10===1?'кампания':[2,3,4].includes(count%10)?'кампании':'кампаний';counter.append(el('strong',String(count)),document.createTextNode(' '+word));counter.title='Текущие кампании';
-   const create=link('Создать кампанию','create',true);create.addEventListener('click',()=>{$('channel-select').value=c.id;window.pushokOrder.selectChannel();});footer.append(counter,create);item.append(footer);
+   const create=iconAction(link('','create',true),'campaign','Продвигать канал');create.addEventListener('click',()=>{$('channel-select').value=c.id;window.pushokOrder.selectChannel();});footer.append(counter,create);item.append(footer);
    target.append(item);
   });
  }

@@ -21,18 +21,24 @@ window.pushokGrowth=(()=>{
  function panel(title){const p=el('section',undefined,'panel');p.append(el('h2',title));return p;}
  function bind(form,fn){form.addEventListener('submit',async e=>{e.preventDefault();const b=form.querySelector('button[type="submit"]');b.disabled=true;try{await fn();notice('Сохранено.',true);await load(target);}catch(err){notice(err.message);}finally{b.disabled=false;}});}
  function save(form,text){const b=el('button',text,'primary');b.type='submit';form.append(b);}
- function adminPanels(root,data,available){
+ function referralPanel(settings,reload){
   const referral=panel('Реферальная программа'),rf=el('form');
-  const enabled=field(rf,'Принимать новые приглашения','checkbox');enabled.checked=data.settings.referrals_enabled;
-  const rewardMode=field(rf,'Награда за приглашённого','select');option(rewardMode,'Купон на скидку','coupon');option(rewardMode,'На бонусный баланс','bonus');rewardMode.value=data.settings.reward_mode;
-  const percent=field(rf,'Скидка за приглашённого, %','number',data.settings.reward_percent,true);percent.min=1;percent.max=100;
-  const days=field(rf,'Срок купона, дней','number',data.settings.reward_days,true);days.min=1;days.max=365;
-  const bonus=field(rf,'Награда на бонусный баланс, ₽','number',(data.settings.reward_bonus_kopecks/100).toFixed(2),true);bonus.min='0.01';bonus.max='10000';bonus.step='0.01';
+  const enabled=field(rf,'Принимать новые приглашения','checkbox');enabled.checked=settings.referrals_enabled;
+  const rewardMode=field(rf,'Награда за приглашённого','select');option(rewardMode,'Купон на скидку','coupon');option(rewardMode,'На бонусный баланс','bonus');rewardMode.value=settings.reward_mode;
+  const percent=field(rf,'Скидка за приглашённого, %','number',settings.reward_percent,true);percent.min=1;percent.max=100;
+  const days=field(rf,'Срок купона, дней','number',settings.reward_days,true);days.min=1;days.max=365;
+  const bonus=field(rf,'Награда на бонусный баланс, ₽','number',(settings.reward_bonus_kopecks/100).toFixed(2),true);bonus.min='0.01';bonus.max='10000';bonus.step='0.01';
   function rewardFields(){const isBonus=rewardMode.value==='bonus';for(const input of [percent,days]){input.disabled=isBonus;input.parentElement.hidden=isBonus;}bonus.disabled=!isBonus;bonus.parentElement.hidden=!isBonus;}
   rewardMode.addEventListener('change',rewardFields);rewardFields();
-  rf.append(el('p','Награда выдаётся один раз после первого оплаченного и завершённого размещения приглашённого. Тип, сумма или условия купона фиксируются при принятии приглашения. Изменения действуют только для новых приглашений. Отключение программы закрывает новые приглашения; уже принятые сохраняют условия.','muted'));
-  rf.append(el('p','Бонусная награда — фиксированная сумма, не процент и не обмен Stars. Бесплатные, тестовые и полностью бонусные оплаты не дают награду. При возврате оплаты награда отменяется; потраченные бонусы образуют задолженность. Бонусы без срока, для рублёвых размещений на сайте; без вывода и перевода другому пользователю.','muted'));
-  save(rf,'Сохранить условия');bind(rf,()=>api('/admin/growth/settings',{method:'PUT',body:{referrals_enabled:enabled.checked,reward_percent:Number(percent.value),reward_days:Number(days.value),reward_mode:rewardMode.value,reward_bonus_kopecks:Math.round(Number(bonus.value)*100)}}));referral.append(rf);root.append(referral);
+  const conditions=el('details',undefined,'personal-help');conditions.append(el('summary','Условия начисления'));rf.append(conditions);
+  conditions.append(el('p','Награда выдаётся один раз после первого оплаченного и завершённого размещения приглашённого. Тип, сумма или условия купона фиксируются при принятии приглашения. Изменения действуют только для новых приглашений. Отключение программы закрывает новые приглашения; уже принятые сохраняют условия.','muted'));
+  conditions.append(el('p','Бонусная награда — фиксированная сумма, не процент и не обмен Stars. Бесплатные, тестовые и полностью бонусные оплаты не дают награду. При возврате оплаты награда отменяется; потраченные бонусы образуют задолженность. Бонусы без срока, для рублёвых размещений на сайте; без вывода и перевода другому пользователю.','muted'));
+  save(rf,'Сохранить условия');bindReferral(rf,()=>api('/admin/growth/settings',{method:'PUT',body:{referrals_enabled:enabled.checked,reward_percent:Number(percent.value),reward_days:Number(days.value),reward_mode:rewardMode.value,reward_bonus_kopecks:Math.round(Number(bonus.value)*100)}}),reload);referral.append(rf);return referral;
+ }
+ async function bindReferral(form,write,reload){form.addEventListener('submit',async e=>{e.preventDefault();const b=form.querySelector('[type=submit]');if(b.disabled)return;b.disabled=true;try{await write();notice('Условия сохранены. Они действуют для новых приглашений.',true);if(reload)await reload();}catch(e){notice(e.message);}finally{b.disabled=false;}});}
+ async function referralSettings(){if(me?.role!=='admin')return;const s=token;const data=await api('/admin/growth');if(s!==token)return;let host=$('referral-settings');if(!host){host=el('div');host.id='referral-settings';$('settings-system').append(host);}if(host.querySelector('form')?.contains(document.activeElement))return;host.replaceChildren(referralPanel(data.settings));}
+ function adminPanels(root,data,available){
+  root.append(referralPanel(data.settings,()=>load(target)));
   if(!offersDeleted){const create=panel('Создать предложение');offerForm(create,available);root.append(create);}
   const list=panel('Предложения и выданные бонусы'),tabs=el('nav',undefined,'bonus-tabs');
   for(const [value,title] of [[false,'Предложения'],[true,'Удалённые предложения']]){const b=button(title,()=>{offersDeleted=value;return load(target);});b.setAttribute('aria-pressed',String(offersDeleted===value));tabs.append(b);}list.append(tabs);
@@ -129,5 +135,5 @@ window.pushokGrowth=(()=>{
    node.replaceChildren(root);
   }catch(e){if(version===epoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить',()=>load(node)));}
  }
- return {load,overview,reset(){offersDeleted=false;epoch++;overviewEpoch++;if(target)target.replaceChildren();target=null;}};
+ return {load,overview,referralSettings,reset(){offersDeleted=false;epoch++;overviewEpoch++;if(target)target.replaceChildren();target=null;}};
 })();

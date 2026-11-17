@@ -4,6 +4,7 @@
 Requires an explicitly approved TEST_ADMIN_DSN and PUSHOK_TEST_DB_ALLOWED=1.
 Sessions are seeded only into a fresh test database; no login bypass is added to API.
 """
+from ui_test_helpers import open_settings
 import argparse
 import base64
 import io
@@ -29,6 +30,7 @@ def main():
     parser.add_argument("--out", type=Path, default=ROOT / ".build/cabinet-pages")
     parser.add_argument("--browser-executable")
     parser.add_argument("--sponsors-only", action="store_true", help="Полный сценарий страницы спонсоров")
+    parser.add_argument("--interface-only", action="store_true")
     parser.add_argument("--verification-only", action="store_true", help="Подтверждение контакта, профиль и настройки подарка")
     parser.add_argument("--ai-only", action="store_true", help="Подключение ИИ, хранение ключа и роли")
     args = parser.parse_args()
@@ -159,6 +161,12 @@ def main():
                         page.locator('#refresh').click()
                     expect(page.locator('#refresh')).to_be_enabled()
 
+                if args.interface_only:
+                    from check_interface import check_interface
+                    check_interface(browser,base,output,failures,PostgresIntegration.dsn)
+                    if failures:raise AssertionError(failures)
+                    print('PASS: compact interface and invite retry')
+                    return
                 if args.verification_only:
                     from check_verified_profiles import check_verified_profiles
                     check_verified_profiles(browser, base, output, failures, PostgresIntegration.dsn)
@@ -173,7 +181,7 @@ def main():
                 if args.ai_only:
                     from check_channel_ai_ui import check_channel_ai_ui
                     admin = new_page('admin',390)
-                    go(admin,'settings');admin.locator('#settings-system-tab').click()
+                    go(admin,'settings');admin.locator('#settings-system-tab').click();open_settings(admin)
                     check_channel_ai_ui(admin,new_page('advertiser'),new_page('operator'),new_page,go,output,PostgresIntegration.dsn)
                     from check_campaign_assistant_ui import check_campaign_assistant_ui
                     check_campaign_assistant_ui(new_page,go,output,PostgresIntegration.dsn)
@@ -285,7 +293,7 @@ def main():
                 check_channel_topics_ui(advertiser, output)
                 advertiser.locator('#order-channel-url').fill('@unsaved_order_channel')
                 go(advertiser, "channels")
-                advertiser.locator('[data-page=channels] .page-heading a').click()
+                advertiser.locator('[data-page=channels] .search-action-row>a').click()
                 expect(advertiser.locator('#channel-form [name=telegram_url]')).to_be_focused()
                 advertiser.locator('#channel-form [name=title]').fill('Тестовый канал')
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://example.org/not-telegram')
@@ -294,7 +302,7 @@ def main():
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://t.me/pushok_browser_test')
                 advertiser.locator('#channel-form button[type=submit]').click()
                 expect(advertiser.locator('[data-page=channels] .channel-manager')).to_contain_text('Тестовый канал')
-                advertiser.locator('[data-page=channels] .page-heading a').click()
+                advertiser.locator('[data-page=channels] .search-action-row>a').click()
                 advertiser.locator('#channel-form [name=title]').fill('Дубликат')
                 advertiser.locator('#channel-form [name=telegram_url]').fill('https://t.me/pushok_browser_test')
                 advertiser.locator('#channel-form button[type=submit]').click()
@@ -311,7 +319,7 @@ def main():
                 advertiser.locator('#calendar-from').dispatch_event('change')
                 expect(advertiser.locator('#availability-days button:enabled').first).to_be_visible()
                 advertiser.locator('#availability-days button:enabled').first.click()
-                advertiser.locator('#order-topic').select_option('education')
+                advertiser.get_by_role('button',name='Тематика канала',exact=True).click();advertiser.get_by_role('button',name='Образование',exact=True).click()
                 advertiser.locator('#campaign-form button[type=submit]').click()
                 expect(advertiser.locator('#order-result')).to_be_visible()
                 campaign_id = advertiser.evaluate("location.hash.split('/')[2]")
@@ -591,7 +599,7 @@ def main():
                 advertiser.screenshot(path=str(output/'completed-archive-mobile.png'),full_page=True)
 
                 go(admin, 'settings')
-                admin.locator('#settings-system-tab').click()
+                admin.locator('#settings-system-tab').click();open_settings(admin)
                 from check_channel_ai_ui import check_channel_ai_ui
                 check_channel_ai_ui(admin, advertiser, operator, new_page, go, output,PostgresIntegration.dsn)
                 expect(admin.locator('#team-fields')).to_be_enabled()
@@ -621,7 +629,7 @@ def main():
                 admin.locator('#default-sponsor-channel').select_option('')
                 admin.locator('#default-sponsor-form button[type=submit]').click()
                 expect(admin.locator('#default-sponsor-status')).to_contain_text('не выбран')
-                admin.locator('#settings-tariffs-tab').click()
+                admin.locator('#settings-tariffs-tab').click();open_settings(admin)
                 expect(admin.locator('#tariff-admin-name')).to_have_value('1 день')
                 admin.locator('#tariff-admin-rub').fill('450.55')
                 admin.locator('#tariff-admin-stars').fill('200')
@@ -696,7 +704,7 @@ def main():
                     with psycopg.connect(PostgresIntegration.dsn) as connection:
                         aid=connection.execute("UPDATE payment_attempts SET sbp_requires_review=true WHERE campaign_id=%s AND provider='sbp' RETURNING id",(sbp_cid,)).fetchone()[0]
                     go(admin,'settings')
-                    admin.locator('#settings-payments-tab').click()
+                    admin.locator('#settings-payments-tab').click();open_settings(admin)
                     review=admin.locator('[data-attempt-id="'+str(aid)+'"]')
                     expect(review).to_contain_text('Ответ провайдера не прошёл проверку')
                     review.get_by_label('Причина повторной сверки',exact=True).fill('short')
@@ -738,7 +746,7 @@ def main():
                         page.locator('#sponsor-diagnostics-details').evaluate('(d) => d.open = false')
                     if route == 'settings':
                         expect(page.locator('#settings-stars-counts')).to_contain_text('Тарифов')
-                        page.locator('#settings-payments-tab').click()
+                        page.locator('#settings-payments-tab').click();open_settings(page)
                     page.evaluate("window.scrollTo({top:0,left:0,behavior:'instant'})")
                     page.wait_for_function('window.scrollY === 0')
                     page.screenshot(path=str(output / (name + '.png')), full_page=True)
@@ -826,10 +834,10 @@ def main():
                         route.abort()
                     mini.route('**/api/v1/orders',lose_order_response)
                     mini.locator('#order-submit').click()
-                    expect(mini.locator('#order-submit')).to_have_text('Проверить отправку')
+                    expect(mini.locator('#order-submit')).to_have_attribute('aria-label','Проверить отправку')
                     mini.unroute('**/api/v1/orders',lose_order_response)
                     mini.reload()
-                    expect(mini.locator('#order-submit')).to_have_text('Проверить отправку')
+                    expect(mini.locator('#order-submit')).to_have_attribute('aria-label','Проверить отправку')
                     mini.locator('#order-submit').click()
                     expect(mini.locator('#order-result')).to_contain_text('Заявка на проверке')
                     assert mini.evaluate("location.hash.split('/')[2]")==lost[0]
@@ -992,7 +1000,7 @@ def main():
                 # v0.051: compact settings, free tariff, and payment control form.
                 go(admin, 'settings')
                 expect(admin.get_by_label('Поиск кампаний', exact=True)).to_be_hidden()
-                admin.locator('#settings-tariffs-tab').click()
+                admin.locator('#settings-tariffs-tab').click();open_settings(admin)
                 admin.locator('#tariff-admin-select').select_option(private_tariff)
                 expect(admin.locator('#tariff-admin-access')).to_be_visible()
                 expect(admin.locator('#tariff-admin-rub')).to_have_attribute('readonly','')
@@ -1024,7 +1032,7 @@ def main():
                 for width in (320,390):
                     admin.set_viewport_size({'width':width,'height':844})
                     admin.locator('#tariff-admin-actions').screenshot(path=str(output/f'tariff-actions-{width}.png'))
-                admin.locator('#settings-payments-tab').click()
+                admin.locator('#settings-payments-tab').click();open_settings(admin)
                 with patch.dict(os.environ, {'PUSHOK_CONTROL_DIR':str(Path(PostgresIntegration.storage.name)/'control'),
                                            'TELEGRAM_BOT_TOKEN':'123456:fixture_token_for_browser'}):
                     admin.locator('#enable-stars').check()
@@ -1044,7 +1052,7 @@ def main():
                     icon_bytes=io.BytesIO();Image.new('RGBA',(48,48),'orange').save(icon_bytes,format='PNG')
                     catalog=[{'id':'123456789','emoji':'🐱','image':'data:image/png;base64,'+base64.b64encode(icon_bytes.getvalue()).decode()}]
                     api.control.write('emoji-catalog.json',catalog)
-                    admin.locator('#settings-system-tab').click()
+                    admin.locator('#settings-system-tab').click();open_settings(admin)
                     with patch.object(api.emoji_settings,'fetch',return_value=catalog):
                         admin.locator('#icons-import').click()
                         expect(admin.locator('.emoji-gallery img')).to_have_count(1)
@@ -1202,7 +1210,7 @@ def main():
                 release_fixture.return_value={**release_fixture.return_value,'state':'available','available_version':'1.05'}
                 admin.locator('#software-check').click()
                 expect(admin.locator('#software-update')).to_be_enabled()
-                expect(admin.locator('#software-update')).to_have_text('Установить v1.05')
+                expect(admin.locator('#software-update')).to_have_attribute('aria-label','Установить v1.05')
                 expect(admin.locator('#software-update-status')).to_contain_text('Последняя установка завершена')
                 expect(admin.locator('#software-available')).to_have_text('v1.05')
                 for width in (390,320):
@@ -1251,7 +1259,7 @@ def main():
 
                 # Constructor creates real free/public and paid/inactive tariffs through the API.
                 go(admin,'settings')
-                admin.locator('#settings-tariffs-tab').click()
+                admin.locator('#settings-tariffs-tab').click();open_settings(admin)
                 admin.locator('#tariff-admin-new').click()
                 expect(admin.locator('#tariff-admin-delete')).to_be_hidden()
                 admin.locator('#tariff-admin-name').fill('Бесплатные два дня')
@@ -1260,8 +1268,8 @@ def main():
                 admin.locator('#tariff-admin-free').check()
                 expect(admin.locator('#tariff-admin-rub')).to_have_value('0.00')
                 expect(admin.locator('#tariff-admin-preview')).to_contain_text('Бесплатно')
-                admin.locator('#settings-payments-tab').click()
-                admin.locator('#settings-tariffs-tab').click()
+                admin.locator('#settings-payments-tab').click();open_settings(admin)
+                admin.locator('#settings-tariffs-tab').click();open_settings(admin)
                 expect(admin.locator('#tariff-admin-name')).to_have_value('Бесплатные два дня')
                 for width in (390,320):
                     admin.set_viewport_size({'width':width,'height':844})
@@ -1302,7 +1310,7 @@ def main():
                 expect(admin.locator('#tariff-admin-select')).to_have_value(paid_tariff['id'])
 
                 # История приёмки: настоящая форма/API, сохранность черновика и отрицательный результат.
-                admin.locator('#settings-system-tab').click()
+                admin.locator('#settings-system-tab').click();open_settings(admin)
                 admin.locator('#launch-refresh').click()
                 expect(admin.locator('#launch-readiness')).to_contain_text('Бесплатный пилот')
                 expect(admin.locator('#launch-readiness')).to_contain_text('Платный запуск')
@@ -1507,17 +1515,17 @@ def main():
                     assert connection.execute('SELECT status FROM wallet_payments WHERE campaign_id=%s',(growth_cid,)).fetchone()[0]=='refunded'
                 # Реферальная награда: настройки через UI, приглашение друга и реальная проводка.
                 go(admin,'growth')
-                admin.get_by_label('Награда за приглашённого',exact=True).select_option('bonus')
-                expect(admin.get_by_label('Скидка за приглашённого, %',exact=True)).to_be_hidden()
-                admin.get_by_label('Награда на бонусный баланс, ₽',exact=True).fill('125.50')
-                admin.get_by_label('Принимать новые приглашения',exact=True).check()
+                admin.locator('[data-page=growth]').get_by_label('Награда за приглашённого',exact=True).select_option('bonus')
+                expect(admin.locator('[data-page=growth]').get_by_label('Скидка за приглашённого, %',exact=True)).to_be_hidden()
+                admin.locator('[data-page=growth]').get_by_label('Награда на бонусный баланс, ₽',exact=True).fill('125.50')
+                admin.locator('[data-page=growth]').get_by_label('Принимать новые приглашения',exact=True).check()
                 # Значения формы уже заполнены: они не подтверждают завершение сохранения.
                 # Другой пользователь должен читать условия после ответа настоящего API.
                 with admin.expect_response(lambda r:r.url.endswith('/api/v1/admin/growth/settings') and r.request.method=='PUT') as referral_saved:
                     admin.get_by_role('button',name='Сохранить условия',exact=True).click()
                 assert referral_saved.value.status==200, referral_saved.value.text()
-                expect(admin.get_by_label('Награда за приглашённого',exact=True)).to_have_value('bonus')
-                expect(admin.get_by_label('Награда на бонусный баланс, ₽',exact=True)).to_have_value('125.50')
+                expect(admin.locator('[data-page=growth]').get_by_label('Награда за приглашённого',exact=True)).to_have_value('bonus')
+                expect(admin.locator('[data-page=growth]').get_by_label('Награда на бонусный баланс, ₽',exact=True)).to_have_value('125.50')
                 go(advertiser,'growth')
                 invite_link=advertiser.locator('[data-page=growth]').get_by_label('Ваша ссылка для друзей',exact=True).get_attribute('href')
                 assert len(invite_link.split('r_')[1])==8
@@ -1598,7 +1606,7 @@ def main():
                     assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
                 advertiser.screenshot(path=str(output/'43-wallet-gift-user-mobile.png'),full_page=True)
                 go(admin,'settings')
-                admin.locator('#settings-payments-tab').click()
+                admin.locator('#settings-payments-tab').click();open_settings(admin)
                 expect(admin.get_by_label('Включить внутренний баланс',exact=True)).to_be_checked()
                 admin.get_by_label('Включить внутренний баланс',exact=True).uncheck()
                 admin.get_by_role('button',name='Сохранить настройку баланса',exact=True).click()
@@ -1670,6 +1678,8 @@ def main():
 
                 from check_verified_profiles import check_verified_profiles
                 check_verified_profiles(browser, base, output, failures, PostgresIntegration.dsn)
+                from check_interface import check_interface
+                check_interface(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_hall_of_fame import check_hall_of_fame
                 check_hall_of_fame(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_user_profiles import check_user_profiles
