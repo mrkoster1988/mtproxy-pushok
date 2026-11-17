@@ -789,7 +789,7 @@ def main():
                     assert mini.evaluate('window.__miniReady&&window.__miniExpanded')
                     assert not mini.evaluate('window.__miniBackVisible')
                     expect(mini.locator('[data-page=dashboard]')).to_be_visible()
-                    expect(mini.locator('.mobile-bottom-nav a:visible')).to_have_count(4)
+                    expect(mini.locator('.mobile-bottom-nav a:visible')).to_have_count(5)
                     expect(mini.locator('.mobile-bottom-nav [data-route=moderation]')).to_be_hidden()
                     mini.locator('.mobile-bottom-nav a[data-route=profile]').click()
                     expect(mini.locator('[data-page=profile]')).to_be_visible()
