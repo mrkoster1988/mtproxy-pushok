@@ -90,6 +90,111 @@ class ProvisioningIntegration(unittest.TestCase):
         self.assertEqual(self.call()['reason'],'no_demand');self.advice.assert_not_called()
         self.assertEqual(self.execute('SELECT count(*) AS n FROM proxy_provisioning_jobs')[0]['n'],0)
 
+    def test_queue_explains_delayed_free_empty_and_missing_nodes_without_mutations(self):
+        before=self.execute('SELECT * FROM proxy_provisioning_settings')[0]
+        report=self.call(action='inspect')['queue']
+        self.assertEqual((report['reason'],report['campaign_count'],report['delayed_count']),('delayed',1,1))
+        self.assertGreater(report['max_delay_seconds'],17000)
+        self.execute("UPDATE campaigns SET placement_status='completed' WHERE id=%s",self.blocker)
+        report=self.call(action='inspect')['queue']
+        self.assertEqual((report['reason'],report['delayed_count'],report['max_delay_seconds']),('below_threshold',0,0))
+        self.execute('UPDATE campaigns SET auto_schedule_paused=true WHERE id=%s',self.target)
+        self.assertEqual(self.call(action='inspect')['queue']['reason'],'no_campaigns')
+        self.execute("UPDATE proxy_nodes SET status='paused' WHERE id=%s",self.node)
+        self.assertEqual(self.call(action='inspect')['queue']['reason'],'no_nodes')
+        self.assertEqual(self.execute('SELECT * FROM proxy_provisioning_settings')[0],before)
+        self.assertEqual(self.execute('SELECT count(*) AS n FROM proxy_provisioning_jobs')[0]['n'],0)
+        self.advice.assert_not_called()
+
+    def test_queue_respects_domain_alias_and_free_second_node(self):
+        self.execute("UPDATE proxy_nodes SET host='proxy.example.org' WHERE id=%s",self.node)
+        report=self.call(action='inspect',primary_host='proxy.example.org')['queue']
+        self.assertEqual((report['node_count'],report['delayed_count']),(1,1))
+        self.execute("INSERT INTO proxy_nodes(id,name,host,port,status,target_engine) VALUES(%s,'Free',%s,19445,'active','official_mtproxy')",uuid4(),self.host)
+        report=self.call(action='inspect',primary_host='proxy.example.org')['queue']
+        self.assertEqual((report['node_count'],report['delayed_count'],report['max_delay_seconds']),(2,0,0))
+
+    def test_distant_future_does_not_hide_current_demand_and_scan_limit_is_explicit(self):
+        ids=[self.campaign() for _ in range(101)]
+        self.execute("UPDATE campaigns SET payment_status='verified',auto_schedule_paused=false,requested_start_at=now()+interval '2 days',created_at=now()-interval '1 day' WHERE id=ANY(%s)",ids)
+        report=self.call(action='inspect')['queue']
+        self.assertEqual(report['campaign_count'],1); self.assertFalse(report['limited'])
+        self.assertEqual(report['delayed_count'],1)
+        self.execute('UPDATE campaigns SET requested_start_at=NULL WHERE id=ANY(%s)',ids)
+        report=self.call(action='inspect')['queue']
+        self.assertEqual(report['campaign_count'],100); self.assertTrue(report['limited'])
+        self.assertEqual(report['delayed_count'],100)
+
+    def test_queue_threshold_uses_requested_start_and_ignores_own_reserved_period(self):
+        self.execute("UPDATE campaigns SET requested_start_at=now()+interval '4 hours',placement_status='scheduled',auto_schedule_managed=true,proxy_node_id=%s,scheduled_start_at=now()+interval '6 hours',scheduled_end_at=now()+interval '30 hours' WHERE id=%s",self.node,self.target)
+        report=self.call(action='inspect')['queue']
+        self.assertEqual(report['reason'],'below_threshold')
+        self.assertTrue(3500 < report['max_delay_seconds'] <= 3600)
+
+    def test_ai_wait_is_preserved_in_public_report(self):
+        from datetime import datetime,timezone
+        self.advice.return_value='wait'
+        self.assertEqual(self.call()['reason'],'wait')
+        revision=str(self.execute('SELECT revision FROM proxy_provisioning_settings')[0]['revision'])
+        self.addCleanup(lambda:(control.root()/'proxy-provisioner.json').unlink(missing_ok=True))
+        control.write('proxy-provisioner.json',dict(code='wait',checked_at=datetime.now(timezone.utc).isoformat(),policy_revision=revision))
+        saved=self.request('GET','/admin/proxy-provisioning')
+        self.assertEqual(saved['agent']['code'],'wait'); self.assertTrue(saved['agent']['current_policy'])
+
+    def test_demand_withdrawn_during_ai_has_a_real_wait_reason(self):
+        def withdraw(*_):
+            self.execute("UPDATE campaigns SET placement_status='completed' WHERE id=%s",self.blocker)
+            return 'create_proxy'
+        self.advice.side_effect=withdraw
+        self.assertEqual(self.call()['reason'],'no_demand')
+        self.assertEqual(self.execute('SELECT decision FROM proxy_provisioning_settings')[0]['decision'],'no_demand')
+        self.assertEqual(self.execute('SELECT count(*) AS n FROM proxy_provisioning_jobs')[0]['n'],0)
+
+    def test_full_queue_to_host_registration_binding_and_full_period(self):
+        from app import auto_schedule, telegram_binding
+        self.addCleanup(lambda:self.execute("UPDATE campaigns SET placement_status='not_scheduled',proxy_node_id=NULL,scheduled_start_at=NULL,scheduled_end_at=NULL WHERE id=%s",self.target))
+        auto_schedule.service_once(self.dsn)
+        previous=self.execute('SELECT * FROM campaigns WHERE id=%s',self.target)[0]
+        self.assertEqual(previous['proxy_node_id'],self.node)
+        job=self.call(); self.assertEqual(job['state'],'provision')
+        def cleanup_bindings():
+            with psycopg.connect(self.dsn) as conn:
+                for table in ('telegram_binding_events','telegram_binding_jobs','channel_promotion_bindings'):
+                    conn.execute('DELETE FROM '+table+' WHERE proxy_node_id=%s',(job['node_id'],))
+        self.addCleanup(cleanup_bindings)
+        cfg=dict(node_id=job['node_id'],host=self.host,port=job['port'],secret='b'*32)
+        def exchange(request):
+            with psycopg.connect(self.dsn,row_factory=dict_row) as conn:return provision.handle(conn,request)
+        with tempfile.TemporaryDirectory() as temporary:
+            receipt=Path(temporary)/'receipt.json'
+            with patch.object(host,'create_instance',return_value=cfg), patch.object(host,'install_instance'), \
+                 patch.object(host,'ready',return_value=True), patch.object(host,'command'), \
+                 patch.object(host,'stop_instance') as stop, patch.object(host,'exchange',side_effect=exchange), \
+                 patch.object(host,'save_receipt',side_effect=lambda *_:receipt.write_text('ready')), \
+                 patch.object(host,'receipt_path',return_value=receipt), \
+                 patch('automatic_binding.helper',return_value=dict(ok=True,tag='b'*32)) as telegram:
+                host.provision(job)
+                telegram.assert_called_once(); stop.assert_not_called(); self.assertFalse(receipt.exists())
+        self.assertEqual(self.execute('SELECT status FROM proxy_nodes WHERE id=%s',job['node_id'])[0]['status'],'active')
+        def bind(action,**extra):
+            with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+                return telegram_binding.handle(conn,dict(action=action,host=self.host,port=job['port'])|extra)
+        binding=bind('owner_claim'); self.assertEqual(binding['state'],'job')
+        proof=dict(job_id=binding['job_id'],tag='b'*32,telegram_channel_id=123456789,owner_telegram_id=456,
+                   bot_message_id=789,channel_username=binding['channel_url'].rstrip('/').rsplit('/',1)[-1].lower())
+        self.assertTrue(bind('owner_authorize',**proof)['accepted'])
+        self.assertTrue(bind('owner_verified',**proof)['accepted'])
+        self.assertFalse(bind('owner_verified',**proof)['accepted'])  # Пауза Telegram обязательна.
+        self.execute("UPDATE telegram_binding_jobs SET retry_at=now()-interval '1 second' WHERE id=%s",binding['job_id'])
+        self.assertTrue(bind('owner_verified',**proof)['accepted'])
+        auto_schedule.service_once(self.dsn)
+        current=self.execute('SELECT * FROM campaigns WHERE id=%s',self.target)[0]
+        self.assertEqual(str(current['proxy_node_id']),job['node_id'])
+        self.assertLess(current['scheduled_start_at'],previous['scheduled_start_at'])
+        self.assertEqual((current['scheduled_end_at']-current['scheduled_start_at']).total_seconds(),current['duration_seconds_snapshot'])
+        self.assertEqual(self.execute('SELECT placement_status FROM campaigns WHERE id=%s',self.blocker)[0]['placement_status'],'active')
+        self.assertEqual(self.call()['reason'],'daily_limit')
+
     def test_readiness_uses_read_only_transaction_and_does_not_evaluate_or_claim(self):
         before=self.execute('SELECT * FROM proxy_provisioning_settings')[0]
         with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
