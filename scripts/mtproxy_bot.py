@@ -79,11 +79,12 @@ def card_tag(message, hosts, port):
         raise BotProtocolError('proxy_identity_not_verified')
     # Не путать тег с расположенным рядом 32-символьным secret.
     tags = set(re.findall(r'(?im)^[ \t]*(?:proxy[ _-]*)?(?:tag|тег)\s*[:=]\s*`?([a-f0-9]{32})(?!\w)', text(message)))
-    # В карточке бот пишет «Proxy server: host:port with tag …».
+    # Оригинал: «Proxy host:port with the tag …». Старые карточки и
+    # переводы могут содержать «server» и двоеточие после «Proxy».
     # Тег принимаем только из заголовка с проверенным адресом и портом,
     # а не из названия продвигаемого канала или произвольного текста.
     for host, shown_port, tag in re.findall(
-            r'(?im)^[ \t]*(?:proxy(?: server)?|прокси(?:-сервер)?)\s*:\s*'
+            r'(?im)^[ \t]*(?:proxy(?: server)?|прокси(?:-сервер)?)(?:\s*:\s*|\s+)'
             r'([a-z0-9][a-z0-9.-]*):(\d{1,5})\s+(?:with (?:the )?tag|с тегом)\s*'
             r'`?([a-f0-9]{32})(?!\w)', text(message)):
         if (host.lower(), int(shown_port)) not in wanted:
