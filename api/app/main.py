@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.64",
+    version="1.65",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -96,6 +96,7 @@ class SessionResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
+    is_owner: bool = False
     phone_verified: bool = False
     id: UUID
     telegram_user_id: int
@@ -398,7 +399,7 @@ def get_current_user(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             user = connection.execute(
                 """
-                SELECT u.id, u.telegram_user_id, u.role, u.first_name, u.last_name,
+                SELECT u.id, u.telegram_user_id, u.role, u.is_owner, u.first_name, u.last_name,
                        u.username, u.blocked_at, s.id AS session_id, s.login_surface,
                        EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=u.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
                 FROM users AS u
@@ -427,6 +428,12 @@ def require_operator(user: dict[str, Any] = Depends(get_current_user)) -> dict[s
 def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     if user["role"] != "admin":
         raise HTTPException(status_code=403, detail="admin_role_required")
+    return user
+
+
+def require_owner(user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
+    if not user.get('is_owner'):
+        raise HTTPException(status_code=403, detail='owner_role_required')
     return user
 
 
@@ -3088,7 +3095,7 @@ from .wallet import router_for as wallet_router_for
 app.include_router(wallet_router_for(lambda: DATABASE_URL, get_current_user, require_admin))
 
 from .sbp_connection import router_for as sbp_connection_router
-app.include_router(sbp_connection_router(lambda: DATABASE_URL, require_admin))
+app.include_router(sbp_connection_router(lambda: DATABASE_URL, require_owner))
 
 from .channel_logos import router_for as channel_logos_router
 app.include_router(channel_logos_router(lambda: DATABASE_URL, get_current_user))
@@ -3120,7 +3127,7 @@ from .channel_directory import router_for as channel_directory_router
 app.include_router(channel_directory_router(lambda: DATABASE_URL, get_current_user))
 
 from .channel_ai_connection import router_for as channel_ai_router
-app.include_router(channel_ai_router(lambda: DATABASE_URL, require_admin))
+app.include_router(channel_ai_router(lambda: DATABASE_URL, require_owner))
 from .campaign_assistant import router_for as campaign_assistant_router
 app.include_router(campaign_assistant_router(lambda: DATABASE_URL, require_operator, campaign_promotion_status))
 

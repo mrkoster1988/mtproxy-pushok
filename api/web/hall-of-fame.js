@@ -1,6 +1,6 @@
 'use strict';
 window.pushokHall=(()=>{
- const kinds={week:'Неделя',month:'Месяц',year:'Год'},titles={invited:'Приглашённые',paid_referrals:'Платящие приглашённые',spend_rub:'Расходы · ₽',spend_xtr:'Расходы · Stars',paid_campaigns:'Оплаченные кампании'};
+ const kinds={week:'Неделя',month:'Месяц',year:'Год'},titles={invited:'Приглашённые',paid_referrals:'Платящие приглашённые',spend:'Расходы на рекламу',paid_campaigns:'Оплаченные кампании'};
  const date=d=>new Date(d).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'});
  const fmt=n=>Number(n).toLocaleString('ru-RU'),month=d=>new Date(d).toLocaleDateString('ru-RU',{month:'long',year:'numeric',timeZone:'Europe/Moscow'});
  function frame(node,rank){if(!node||!rank)return;node.classList.add('hall-frame',rank===1?'hall-gold':rank===2?'hall-silver':rank===3?'hall-bronze':'hall-teal');node.title='Место '+rank;}
@@ -9,34 +9,41 @@ window.pushokHall=(()=>{
   for(const m of data.medals){const row=el('div',undefined,'hall-medal');row.append(el('span',['','🥇','🥈','🥉'][m.rank]),el('span',month(m.starts_at)+' · '+(titles[m.metric]||m.metric)),el('strong','#'+m.rank));box.append(row);}target.append(box);
  }
  async function load(target){
-  const session=token;let kind='month',metric='invited',period='',serial=0;
-  target.replaceChildren();const controls=el('div',undefined,'hall-controls'),tabs=el('nav',undefined,'hall-tabs'),select=el('select'),history=el('select'),body=el('section',undefined,'hall-board'),admin=el('section');
-  select.setAttribute('aria-label','Номинация');history.setAttribute('aria-label','Период рейтинга');
-  for(const [key,title] of Object.entries(titles)){const o=el('option',title);o.value=key;select.append(o);}select.value=metric;
+  const session=token;let kind='month',period='',serial=0;
+  const controls=el('div',undefined,'hall-controls'),tabs=el('nav',undefined,'hall-tabs'),history=el('select'),body=el('section',undefined,'hall-board'),admin=el('section');
+  history.setAttribute('aria-label','Период рейтинга');
   for(const [key,title] of Object.entries(kinds)){const b=button(title,()=>{kind=key;period='';void refresh();});b.dataset.kind=key;tabs.append(b);}
-  select.onchange=()=>{metric=select.value;void refresh();};history.onchange=()=>{period=history.value;void refresh();};controls.append(tabs,select,history);target.append(controls,body,admin);
-  const help=el('details',undefined,'context-help');help.append(el('summary','ⓘ Как считаем и награждаем'),el('p','Учёт с регистрации первого пользователя. Исторические итоги восстанавливаются автоматически без бонусов за периоды до установки доски почёта. Календарные периоды по Москве; неделя — с понедельника. Учитываются зарегистрированные приглашённые и реальные оплаты рекламы. Бонусные, ручные, тестовые и возвращённые оплаты не участвуют. Платящий приглашённый учитывается в период первой действующей оплаты. Сотрудники и заблокированные пользователи не участвуют. При равенстве баллов выше тот, у кого раньше первая учитываемая активность; затем порядок по ID. Итоги и бонусы фиксируются после закрытия периода, последующие возвраты не меняют уже закрытые итоги. Награды за разные номинации и периоды суммируются. Рамка профиля — лучший результат последнего закрытого месяца; медали топ-3 сохраняются в истории.'));target.append(help);
+  history.onchange=()=>{period=history.value;void refresh();};controls.append(tabs,history);target.replaceChildren(controls,body,admin);
+  const help=el('details',undefined,'context-help');help.append(el('summary','ⓘ Как считаем и награждаем'),el('p','Учёт с регистрации первого пользователя. Участвуют пользователи и сотрудники, кроме владельца и заблокированных аккаунтов. Расходы Stars учитываются по рублёвой цене заявки, рублёвые — по фактически оплаченной сумме без бонусов. Тестовые, ручные и возвращённые оплаты не учитываются. Периоды по Москве, неделя с понедельника. До окончания периода места могут меняться. Итоги и бонусы фиксируются после завершения; повторных начислений нет. Исторические периоды до запуска доски восстанавливаются без бонусов. При равенстве выше первая учитываемая активность, затем ID.'));target.append(help);
   function valid(){return session===token&&target.isConnected&&location.hash.startsWith('#/hall');}
+  function periodTitle(d){const options=kind==='year'?{year:'numeric'}:kind==='month'?{month:'long',year:'numeric'}:{day:'numeric',month:'short'};const start=new Date(d.starts_at).toLocaleDateString('ru-RU',{...options,timeZone:'Europe/Moscow'});return kind==='week'?start+' – '+new Date(new Date(d.ends_at)-1).toLocaleDateString('ru-RU',{day:'numeric',month:'short',timeZone:'Europe/Moscow'}):start;}
+  function person(row,metric,podium=false){
+   const line=el('article',undefined,podium?'hall-podium-person hall-place-'+row.rank:'hall-row'),avatar=window.pushokViews.userAvatar(row.user_id,row.first_name||row.username||'',true),copy=el('div',undefined,'hall-person');frame(avatar,row.rank<=10?row.rank:null);
+   const name=[row.first_name,row.last_name].filter(Boolean).join(' ')||row.username||'Участник';copy.append(el('strong',name));if(row.username&&/^[A-Za-z0-9_]+$/.test(row.username)){const link=el('a','@'+row.username);link.href='https://t.me/'+row.username;link.target='_blank';link.rel='noopener noreferrer';copy.append(link);}
+   const value=el('div',undefined,'hall-value');value.append(el('strong',metric==='spend'?fmt(row.score/100)+' ₽':fmt(row.score)));if(row.bonus_amount)value.append(el('small','+'+fmt(row.bonus_amount/100)+' бонусных ₽'));
+   line.append(el('span',podium?['','🥇','🥈','🥉'][row.rank]:String(row.rank),'hall-rank'),avatar,copy,value);return line;
+  }
   async function refresh(){
-   const request=++serial;body.replaceChildren(el('p','Загрузка…','muted'));[...tabs.children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.kind===kind)));
-   try{const data=await api('/hall?kind='+kind+'&metric='+metric+(period?'&period_id='+period:''));if(!valid()||request!==serial)return;
-    history.replaceChildren();const current=el('option','Текущий период');current.value='';history.append(current);for(const p of data.periods){const o=el('option',date(p.starts_at)+' — '+date(p.ends_at));o.value=p.id;history.append(o);}history.value=period;
-    const heading=el('div',undefined,'hall-heading');heading.append(el('h2','Топ-'+data.top_size),el('span',data.closed?'Итоги':'Предварительные результаты','muted'));body.replaceChildren(heading,el('small',date(data.starts_at)+' — '+date(data.ends_at),'muted'));
-    if(data.rewards.some(n=>n>0))body.append(el('p','Призы: '+data.rewards.map((n,i)=>n?'#'+(i+1)+' · '+fmt(n/100)+' бонусных ₽':null).filter(Boolean).join(' / '),'hall-prizes'));
-    if(!data.rows.length)body.append(el('p','Пока нет участников с результатом. Учёт начат '+date(data.started_at)+'.','empty'));
-    for(const row of data.rows){const line=el('article',undefined,'hall-row'),avatar=window.pushokViews.userAvatar(row.user_id,row.first_name||row.username||'',true),copy=el('div',undefined,'hall-person');frame(avatar,row.rank<=10?row.rank:null);
-     const name=[row.first_name,row.last_name].filter(Boolean).join(' ')||row.username||'Участник';copy.append(el('strong',name));if(row.username&&/^[A-Za-z0-9_]+$/.test(row.username)){const a=el('a','@'+row.username);a.href='https://t.me/'+row.username;a.target='_blank';a.rel='noopener noreferrer';copy.append(a);}
-     const value=el('div',undefined,'hall-value');value.append(el('strong',metric==='spend_rub'?fmt(row.score/100)+' ₽':fmt(row.score)+(metric==='spend_xtr'?' XTR':'')));if(row.bonus_amount)value.append(el('small','+'+fmt(row.bonus_amount/100)+' бонусных ₽'));
-     line.append(el('span',String(row.rank),'hall-rank'),avatar,copy,value);body.append(line);
-    }
-   }catch(e){if(valid()&&request===serial)body.replaceChildren(el('p',e.message,'empty'),button('Повторить',refresh));}
+   const request=++serial;body.setAttribute('aria-busy','true');[...tabs.children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.kind===kind)));
+   try{const all=await Promise.all(Object.keys(titles).map(metric=>api('/hall?kind='+kind+'&metric='+metric+(period?'&period_id='+period:''))));if(!valid()||request!==serial)return;
+    const first=all[0];history.replaceChildren();const current=el('option',periodTitle({starts_at:new Date(),ends_at:new Date()})+' · Идёт');current.value='';history.append(current);
+    if(!period)current.textContent=periodTitle(first)+' · Идёт';for(const p of first.periods){const o=el('option',periodTitle(p)+' · Итоги');o.value=p.id;history.append(o);}history.value=period;
+    const heading=el('div',undefined,'hall-heading');heading.append(el('span',first.closed?'Итоги за '+periodTitle(first):'Лидеры · '+periodTitle(first)),el('small',first.closed?'Награды сохранены':'До конца периода места могут меняться','muted'));body.replaceChildren(heading);
+    Object.keys(titles).forEach((metric,i)=>{const data=all[i],section=el('section',undefined,'hall-category');section.append(el('h2',titles[metric]));const podium=el('div',undefined,'hall-podium');for(const rank of [2,1,3]){const row=data.rows.find(r=>r.rank===rank);if(row)podium.append(person(row,metric,true));}section.append(podium);
+     if(!data.rows.length)section.append(el('p','Первое место пока свободно','muted'));
+     const rest=el('details',undefined,'hall-rest'),own=data.own;rest.append(el('summary','Все участники · топ-'+data.top_size+' · '+(own?'Ваше место: '+own.rank:'У вас пока нет результата')));
+     for(const row of data.rows.filter(r=>r.rank>3))rest.append(person(row,metric));if(own&&own.rank>data.top_size)rest.append(person(own,metric));
+     if(!data.rows.some(r=>r.rank>3))rest.append(el('p','Других участников пока нет','muted'));section.append(rest);
+     if(data.rewards.some(n=>n>0))section.append(el('small','Призы: '+data.rewards.map((n,j)=>n?'#'+(j+1)+' · '+fmt(n/100)+' ₽':null).filter(Boolean).join(' / '),'hall-prizes'));body.append(section);
+    });
+   }catch(e){if(valid()&&request===serial)body.replaceChildren(el('p',e.message,'empty'),button('Повторить',refresh));}finally{if(request===serial)body.removeAttribute('aria-busy');}
   }
   await refresh();if(me?.role==='admin'&&valid())await adminPanel(admin,valid);
  }
  async function adminPanel(target,valid){
   try{const data=await api('/hall/admin');if(!valid())return;const box=el('details',undefined,'hall-admin panel');box.append(el('summary','Управление и статистика'));target.replaceChildren(box);
    box.append(el('p','Победителей: '+fmt(data.totals.winners)+' · Призовых мест: '+fmt(data.totals.awards)+' · Начислено: '+fmt(data.totals.bonus/100)+' бонусных ₽'));
-   const activity=el('details');activity.append(el('summary','Статистика текущего месяца'));for(const [key,item] of Object.entries(data.activity)){activity.append(el('p',titles[key]+' · участников: '+fmt(item.participants)+' · всего: '+fmt(key==='spend_rub'?item.total/100:item.total)));}box.append(activity);
+   const activity=el('details');activity.append(el('summary','Статистика текущего месяца'));for(const [key,item] of Object.entries(data.activity)){activity.append(el('p',titles[key]+' · участников: '+fmt(item.participants)+' · всего: '+fmt(key==='spend'?item.total/100:item.total)));}box.append(activity);
    const form=el('form'),size=el('input');size.type='number';size.min=3;size.max=200;size.value=data.settings.top_size;const sizeLabel=el('label','Размер топа');sizeLabel.append(size);form.append(sizeLabel);
    const period=el('select'),metric=el('select');period.setAttribute('aria-label','Период наград');metric.setAttribute('aria-label','Номинация наград');for(const [k,t] of Object.entries(kinds)){const o=el('option',t);o.value=k;period.append(o);}for(const [k,t] of Object.entries(titles)){const o=el('option',t);o.value=k;metric.append(o);}
    const rewards=structuredClone(data.settings.rewards),grid=el('div',undefined,'hall-prize-grid');form.append(period,metric,grid);let previousKind=period.value,previousMetric=metric.value;

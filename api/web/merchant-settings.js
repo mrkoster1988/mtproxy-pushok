@@ -3,7 +3,7 @@ window.pushokSBP=(()=>{
  let generation=0;
  async function load(){
   const host=$('sbp-connection'),session=token,uid=me?.id,version=++generation;
-  if(!host||me?.role!=='admin')return;
+  if(!host||!me?.is_owner)return;
   const valid=()=>version===generation&&session===token&&uid===me?.id;
   host.replaceChildren(el('p','Загружаем подключение СБП…'));
   try{

@@ -18,6 +18,11 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
             sid=uuid4();conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')",(sid,uid));tokens[role]=api._create_session_token(uid,sid)
         conn.execute("UPDATE hall_settings SET started_at=%s",(previous,))
         conn.execute("INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days,created_at) VALUES(%s,%s,10,90,now())",(friend,owner))
+        for inviter,count in ((owner,3),(friend,2),(admin,1)):
+            for _ in range(count):
+                referred=uuid4()
+                conn.execute("INSERT INTO users(id,telegram_user_id,role,first_name) VALUES(%s,%s,'advertiser','Друг')",(referred,int(referred.hex[:12],16)))
+                conn.execute("INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days) VALUES(%s,%s,10,90)",(referred,inviter))
         p=conn.execute("INSERT INTO hall_periods(kind,starts_at,ends_at,settings,closed_at) VALUES('month',%s,%s,%s,now()) RETURNING id",(previous,start,Jsonb({'top_size':50,'rewards':{}}))).fetchone()['id']
         conn.execute("INSERT INTO hall_results(period_id,metric,user_id,rank,score) VALUES(%s,'invited',%s,1,8)",(p,owner))
     contexts=[]
@@ -28,10 +33,14 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                 context.add_init_script('sessionStorage.setItem("pushok-session",'+repr(tokens[role])+')')
                 page=context.new_page();page.on('pageerror',lambda e:failures.append(str(e)));page.route('**/*',lambda r:r.continue_() if r.request.url.startswith(base+'/') else r.abort())
                 page.goto(base+'/#/hall');expect(page.locator('body')).to_have_attribute('data-cabinet-loaded','true')
-                board=page.locator('[data-page=hall]');expect(board.locator('.hall-row')).not_to_have_count(0)
-                expect(board.locator('.hall-row').filter(has_text='Лидер').first).to_be_visible()
+                board=page.locator('[data-page=hall]');expect(board.locator('.hall-podium-person')).not_to_have_count(0)
+                expect(board.locator('.hall-podium-person').filter(has_text='Лидер').first).to_be_visible()
                 for width in (320,390):
                     page.set_viewport_size({'width':width,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                page.screenshot(path=str(output/f'hall-podium-{role}-390.png'))
+                expect(page.locator('.mobile-brand')).to_contain_text('Доска почёта')
+                expect(page.locator('.mobile-bottom-nav [data-route=hall]')).to_have_attribute('aria-current','page')
+                expect(board.locator('.hall-category')).to_have_count(4)
                 if role=='admin':
                     board.get_by_text('Управление и статистика',exact=True).click();form=board.locator('.hall-admin form')
                     form.get_by_label('Размер топа',exact=True).fill('25');form.get_by_label('Место 1',exact=True).fill('100')

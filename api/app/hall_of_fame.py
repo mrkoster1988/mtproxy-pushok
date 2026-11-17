@@ -13,11 +13,11 @@ from .channel_logos import user_avatar
 
 KINDS = ('week', 'month', 'year')
 METRICS = {'invited': 'Приглашённые пользователи', 'paid_referrals': 'Платящие приглашённые',
-           'spend_rub': 'Расходы на рекламу · ₽', 'spend_xtr': 'Расходы на рекламу · Stars',
+           'spend': 'Расходы на рекламу',
            'paid_campaigns': 'Оплаченные кампании'}
 MOSCOW = ZoneInfo('Europe/Moscow')
 Kind = Literal['week', 'month', 'year']
-Metric = Literal['invited', 'paid_referrals', 'spend_rub', 'spend_xtr', 'paid_campaigns']
+Metric = Literal['invited', 'paid_referrals', 'spend', 'spend_rub', 'spend_xtr', 'paid_campaigns']
 
 
 def bounds(kind, at):
@@ -44,7 +44,7 @@ class Settings(BaseModel):
         total = 0
         for categories in self.rewards.values():
             for metric, amounts in categories.items():
-                if metric not in METRICS or len(amounts)>10: raise ValueError('invalid_metric_or_places')
+                if metric not in {*METRICS, 'spend_rub', 'spend_xtr'} or len(amounts)>10: raise ValueError('invalid_metric_or_places')
                 if any(type(a) is not int or a<0 or a>100000000 for a in amounts): raise ValueError('invalid_reward')
                 total += sum(amounts)
         if total>1000000000: raise ValueError('reward_budget_exceeded')
@@ -53,18 +53,18 @@ class Settings(BaseModel):
 
 # Источник денег: подтверждённые реальные оплаты; бонусы и ручные отметки не считаются.
 PAYMENTS = '''WITH payments AS (
- SELECT c.id campaign_id,c.advertiser_user_id user_id,p.currency,p.amount::bigint amount,p.settled_at paid_at
+ SELECT c.id campaign_id,c.advertiser_user_id user_id,p.currency,p.amount::bigint amount,p.settled_at paid_at, CASE WHEN p.currency='RUB' THEN p.amount ELSE c.price_kopecks_snapshot END::bigint rub_amount
  FROM payment_attempts p JOIN campaigns c ON c.id=p.campaign_id
  WHERE p.status='succeeded' AND ((p.provider='telegram_stars' AND NOT p.telegram_test_environment) OR (p.provider='sbp' AND p.sbp_test_mode IS FALSE)) AND c.payment_status='verified'
  UNION ALL
- SELECT c.id,c.advertiser_user_id,w.currency,w.cash_amount,w.created_at
+ SELECT c.id,c.advertiser_user_id,w.currency,w.cash_amount,w.created_at,CASE WHEN w.currency='RUB' THEN w.cash_amount ELSE round(c.price_kopecks_snapshot::numeric*w.cash_amount/NULLIF(w.cash_amount+w.bonus_amount,0)) END::bigint
  FROM wallet_payments w JOIN campaigns c ON c.id=w.campaign_id
  WHERE w.status='paid' AND w.cash_amount>0 AND c.payment_status='verified'
  AND NOT EXISTS(SELECT 1 FROM payment_attempts p WHERE p.campaign_id=c.id AND p.status='succeeded')
-), eligible AS (SELECT id FROM users WHERE role='advertiser' AND blocked_at IS NULL) '''
+), eligible AS (SELECT id FROM users WHERE NOT is_owner AND blocked_at IS NULL) '''
 
 
-def scores(conn, metric, start, end, limit):
+def scores(conn, metric, start, end, limit, viewer=None):
     if metric == 'invited':
         query = '''SELECT r.inviter_user_id user_id,count(*) score,min(r.created_at) reached_at
             FROM growth_referrals r JOIN eligible e ON e.id=r.referred_user_id
@@ -76,15 +76,15 @@ def scores(conn, metric, start, end, limit):
             WHERE p.first_paid >= %s AND p.first_paid < %s AND r.created_at<=p.first_paid
             GROUP BY r.inviter_user_id'''
     else:
-        value = 'count(DISTINCT campaign_id)' if metric=='paid_campaigns' else 'sum(amount)'
+        value = 'count(DISTINCT campaign_id)' if metric=='paid_campaigns' else 'sum(rub_amount)' if metric=='spend' else 'sum(amount)'
         currency = " AND currency='RUB'" if metric=='spend_rub' else " AND currency='XTR'" if metric=='spend_xtr' else ''
         query = f'''SELECT user_id,{value} score,min(paid_at) reached_at FROM payments
             WHERE paid_at >= %s AND paid_at < %s {currency} GROUP BY user_id'''
-    return conn.execute(PAYMENTS+f''', scored AS ({query})
+    return conn.execute(PAYMENTS+f''', scored AS ({query}), ranked AS (
         SELECT count(*) OVER()::int participants,sum(s.score) OVER()::bigint score_total,s.user_id,s.score::bigint,u.first_name,u.last_name,u.username,
         row_number() OVER(ORDER BY s.score DESC,s.reached_at,s.user_id)::int rank
         FROM scored s JOIN users u ON u.id=s.user_id JOIN eligible e ON e.id=s.user_id
-        WHERE s.score>0 ORDER BY s.score DESC,s.reached_at,s.user_id LIMIT %s''',(start,end,limit)).fetchall()
+        WHERE s.score>0) SELECT * FROM ranked WHERE rank<=%s OR user_id=%s ORDER BY rank''',(start,end,limit,viewer)).fetchall()
 
 
 def counting_start(conn, settings):
@@ -111,7 +111,7 @@ def settle(conn, now=None):
         nonlocal closed
         if row['closed_at'] is not None or row['ends_at'] > now: return
         cfg=row['settings'];start=row['starts_at'];end=row['ends_at'];kind=row['kind']
-        for metric in METRICS:
+        for metric in dict.fromkeys([*METRICS, *cfg['rewards'].get(kind,{})]):
             prizes=cfg['rewards'].get(kind,{}).get(metric,[]) if end>settings['rewards_started_at'] else []
             for item in scores(conn,metric,max(start,since),end,cfg['top_size']):
                 rank=item['rank'];amount=prizes[rank-1] if rank<=len(prizes) else 0
@@ -119,7 +119,7 @@ def settle(conn, now=None):
                 if amount:
                     entry=post(conn,item['user_id'],'BONUS',amount,'gift_credit',
                         f"hall:{row['id']}:{metric}:{item['user_id']}",
-                        f"Доска почёта · {METRICS[metric]} · место {rank} · {start.astimezone(MOSCOW).date()}")['id']
+                        f"Доска почёта · {METRICS.get(metric,metric)} · место {rank} · {start.astimezone(MOSCOW).date()}")['id']
                 conn.execute('''INSERT INTO hall_results(period_id,metric,user_id,rank,score,bonus_amount,entry_id)
                     VALUES(%s,%s,%s,%s,%s,%s,%s)''',(row['id'],metric,item['user_id'],rank,item['score'],amount,entry))
         conn.execute('UPDATE hall_periods SET closed_at=%s WHERE id=%s',(now,row['id']))
@@ -186,8 +186,11 @@ def router_for(dsn,current_user,require_admin):
                 start,end=bounds(kind,datetime.now(timezone.utc))
                 period=conn.execute('SELECT settings FROM hall_periods WHERE kind=%s AND starts_at=%s',(kind,start)).fetchone()
                 effective=period['settings'] if period else cfg
-                rows=scores(conn,metric,max(start,cfg['started_at']),end,effective['top_size'])
-            return dict(rows=rows,periods=periods,starts_at=start,ends_at=end,closed=bool(period_id),top_size=effective['top_size'],
+                rows=scores(conn,metric,max(start,cfg['started_at']),end,effective['top_size'],user['id'])
+            if period_id and metric=='spend' and not rows:
+                rows=scores(conn,metric,max(start,cfg['started_at']),end,effective['top_size'],user['id'])
+            own=next((r for r in rows if str(r['user_id'])==str(user['id'])),None)
+            return dict(rows=rows[:effective['top_size']],own=own,periods=periods,starts_at=start,ends_at=end,closed=bool(period_id),top_size=effective['top_size'],
                         rewards=effective['rewards'].get(kind,{}).get(metric,[]),metrics=METRICS,started_at=cfg['started_at'])
         return db(read)
 
@@ -197,7 +200,7 @@ def router_for(dsn,current_user,require_admin):
         try: value=UUID(uid)
         except ValueError: raise HTTPException(404,'user_not_found')
         def find(conn):
-            row=conn.execute("SELECT telegram_user_id FROM users WHERE id=%s AND role='advertiser' AND blocked_at IS NULL",(value,)).fetchone()
+            row=conn.execute("SELECT telegram_user_id FROM users WHERE id=%s AND NOT is_owner AND blocked_at IS NULL",(value,)).fetchone()
             if not row: raise HTTPException(404,'user_not_found')
             return row['telegram_user_id']
         data=user_avatar(db(find))

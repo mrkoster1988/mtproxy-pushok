@@ -25,11 +25,12 @@ def router_for(get_dsn, require_admin, require_operator):
     def lock_users(conn, actor_id, telegram_id):
         # Единый порядок с назначением ролей защищает последнего администратора.
         conn.execute('SELECT pg_advisory_xact_lock(736102483)')
-        actor = conn.execute('SELECT role,blocked_at FROM users WHERE id=%s FOR UPDATE', (actor_id,)).fetchone()
+        actor = conn.execute('SELECT role,is_owner,blocked_at FROM users WHERE id=%s FOR UPDATE', (actor_id,)).fetchone()
         if not actor or actor['blocked_at'] or actor['role'] not in ('admin','operator'):
             raise HTTPException(403, 'operator_role_required')
-        target = conn.execute('SELECT id,role,blocked_at FROM users WHERE telegram_user_id=%s FOR UPDATE', (telegram_id,)).fetchone()
+        target = conn.execute('SELECT id,role,is_owner,blocked_at FROM users WHERE telegram_user_id=%s FOR UPDATE', (telegram_id,)).fetchone()
         if not target:raise HTTPException(404, 'team_user_must_login')
+        if target['is_owner']:raise HTTPException(403, 'team_owner_protected')
         if actor['role']=='operator' and target['role']=='admin':
             raise HTTPException(403, 'team_admin_protected')
         return actor,target
@@ -44,7 +45,7 @@ def router_for(get_dsn, require_admin, require_operator):
         response.headers['Cache-Control'] = 'private, no-store'
         try:
             with psycopg.connect(get_dsn(), row_factory=dict_row, connect_timeout=3) as conn:
-                return conn.execute("SELECT id,telegram_user_id,first_name,last_name,username,role,blocked_at FROM users WHERE role IN ('admin','operator') ORDER BY role,telegram_user_id").fetchall()
+                return conn.execute("SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,blocked_at FROM users WHERE role IN ('admin','operator') ORDER BY role,telegram_user_id").fetchall()
         except psycopg.Error as exc:
             explain_license_error(exc)
             raise HTTPException(503, 'database_unavailable') from exc
