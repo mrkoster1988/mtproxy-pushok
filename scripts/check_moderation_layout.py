@@ -85,6 +85,8 @@ def check_moderation_layout(browser, base, output, failures, dsn):
             }
             const steps=[...card.querySelectorAll('.approval-progress li')].map(n=>n.getBoundingClientRect());
             if(steps.some(r=>Math.abs(r.y-steps[0].y)>1))throw Error('Перенос этапов');
+            const finish=card.querySelector('.approval-progress li:last-child>span:last-child');
+            if(finish.getBoundingClientRect().height>parseFloat(getComputedStyle(finish).lineHeight)+1)throw Error('Разорвано название последнего этапа');
         }''')
         for action in card.locator('button.icon-action:visible').all():
             assert action.get_attribute('aria-label')
@@ -104,15 +106,21 @@ def check_moderation_layout(browser, base, output, failures, dsn):
         expect(card.locator('.campaign-pricing')).to_contain_text('Условия можно менять только до оплаты')
         tools = card.get_by_role('group', name='Действия заявки', exact=True)
         expect(tools.locator('button')).to_have_count(3)
-        for name, icon in (('Изменить слот', 'edit'), ('Снять будущий слот', 'close'), ('Удалить', 'trash'), ('Отчёт по кампании', 'chart'), ('Журнал проверок', 'history')):
+        for name, icon in (('Изменить слот', 'edit'), ('Снять будущий слот', 'close'), ('Удалить', 'trash'), ('Обновить историю и документы', 'refresh'), ('Журнал проверок', 'history')):
             expect(card.get_by_role('button', name=name, exact=True).locator('use')).to_have_attribute('href', re.compile(r'/assets/pushok-icons\.svg(?:\?v=\d+)?#pi-' + icon + '$'))
         card.get_by_role('button', name='Изменить слот', exact=True).click()
         expect(card.get_by_label('Новое начало слота', exact=True)).to_be_visible()
         for width in (320, 390, 768, 1280):
             admin.set_viewport_size({'width': width, 'height': 844})
             geometry(admin, card)
+            field=card.get_by_label('Новое начало слота',exact=True).bounding_box()
+            save=card.get_by_role('button',name='Сохранить изменения',exact=True).bounding_box()
+            cancel=card.get_by_role('button',name='Отмена',exact=True).bounding_box()
+            assert save['x']>=field['x']+field['width']+7
+            assert cancel['x']>=save['x']+save['width']+7
+            assert abs(save['y']+save['height']/2-field['y']-field['height']/2)<2
         card.get_by_role('button', name='Отмена', exact=True).click()
-        card.get_by_role('button', name='Отчёт по кампании', exact=True).click()
+        card.get_by_role('button', name='Обновить историю и документы', exact=True).click()
         expect(card.locator('.campaign-report')).to_contain_text('История действий')
         expect(card.locator('.campaign-tile')).to_contain_text('Без оплаты')
         card.get_by_role('button', name='Журнал проверок', exact=True).click()

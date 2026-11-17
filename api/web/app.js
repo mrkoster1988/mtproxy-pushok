@@ -264,7 +264,9 @@ function showCampaignReport(c, box,{refresh=false,embedded=false}={}){
  const panel=old||el('section',undefined,'campaign-report'),session=token,request=(panel.reportRequest||0)+1;panel.reportRequest=request;
  const current=()=>panel.isConnected&&session===token&&request===panel.reportRequest;
  panel.setAttribute('aria-label','Отчёт о рекламной кампании');
- if(!old){box.append(panel);panel.append(el('p','Загружаем подтверждённые сведения…','muted'));}
+ if(!old)box.append(panel);
+ panel.querySelector(':scope > .report-status')?.remove();
+ const status=el('div',undefined,'report-status'),message=el('p','Загружаем сведения…','muted');status.setAttribute('role','status');status.append(message);panel.prepend(status);panel.setAttribute('aria-busy','true');
  return api('/campaigns/'+c.id+'/report').then(data=>{
   if(!current())return;
   const observationsOpen=panel.querySelector('.report-observations')?.open;
@@ -313,7 +315,13 @@ function showCampaignReport(c, box,{refresh=false,embedded=false}={}){
   }else panel.append(el('p','История пока пуста.','muted'));
   window.pushokControls.help(panel,[el('p','Запуск и завершение отражены в истории событий. Количество просмотров спонсора здесь не измеряется. Наблюдения оператора и скриншоты показаны, если они сохранены.')],'О данных отчёта');
   if(embedded){const docs=el('div',undefined,'report-documents');docs.append(button('Скачать CSV',()=>downloadCampaignCsv(c)));panel.append(docs);}
- }).catch(error=>{if(current()&&!old)panel.remove();throw error;});
+  panel.dataset.reportLoaded='true';
+ }).catch(error=>{
+  if(!current())return;
+  message.textContent=panel.dataset.reportLoaded==='true'?'Не удалось обновить сведения. Показаны ранее загруженные данные.':'Не удалось загрузить историю и документы.';
+  if(!status.isConnected)panel.prepend(status);
+  status.append(window.pushokViews.iconAction(button('',()=>showCampaignReport(c,box,{refresh:true,embedded})),'refresh','Повторить загрузку отчёта'));
+ }).finally(()=>{if(current())panel.setAttribute('aria-busy','false');});
 }
 
 function card(c,op,{compact=false}={}){

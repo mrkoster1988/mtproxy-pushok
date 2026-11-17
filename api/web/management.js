@@ -19,7 +19,8 @@ window.pushokManagement=(()=>{
   parent.querySelector('.management-form')?.remove();const form=el('form',undefined,'management-form'),heading=el('h4',title),hint=el('p');hint.setAttribute('role','status');form.append(heading);
   const inputs={};for(const spec of fields){const input=el(spec.type==='textarea'?'textarea':'input');if(spec.type!=='textarea')input.type=spec.type||'text';input.value=spec.value??'';input.required=spec.required!==false;if(spec.min)input.min=spec.min;if(spec.max)input.max=spec.max;inputs[spec.name]=label(form,spec.label,input);}
   const submit=el('button','Сохранить изменения');submit.type='submit';const cancel=button('Отмена',()=>form.remove());
-  if(parent.classList.contains('node-actions')){submit.setAttribute('aria-label','Сохранить изменения');submit.replaceChildren(window.pushokViews.icon('save'),document.createTextNode('Сохранить'));cancel.prepend(window.pushokViews.icon('close'));const actions=el('div',undefined,'sponsor-form-actions');actions.append(submit,cancel);form.append(actions,hint);}else{const actions=el('div',undefined,'campaign-action-tools');actions.append(submit,cancel);form.append(actions,hint);}
+  window.pushokViews.iconAction(submit,'save','Сохранить изменения');window.pushokViews.iconAction(cancel,'close','Отмена');
+  const actions=el('div',undefined,'campaign-action-tools');actions.append(submit,cancel);form.append(actions,hint);
   form.addEventListener('invalid',e=>{e.preventDefault();hint.textContent='Заполните корректно поле «'+(e.target.getAttribute('aria-label')||'значение')+'».';e.target.focus();},{capture:true});
   form.addEventListener('submit',e=>{e.preventDefault();if(!form.reportValidity()||submit.disabled)return;void run(async()=>{try{await save(inputs);form.remove();await refresh();notice('Изменения сохранены.',true);}catch(error){hint.textContent=error.message;}},submit);});
   parent.append(form);form.scrollIntoView({block:'nearest'});return form;

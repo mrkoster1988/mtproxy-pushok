@@ -42,14 +42,14 @@ window.pushokAssistant=(()=>{
    if(result.advice.advertiser_message){
     const label=el('label','Черновик для рекламодателя'),draft=el('textarea');draft.value=result.advice.advertiser_message;draft.rows=4;draft.maxLength=1500;draft.setAttribute('aria-label','Черновик для рекламодателя');label.append(draft);output.append(label);
     const tools=el('div',undefined,'assistant-actions');
-    tools.append(button('Скопировать',async()=>{if(!valid())return;try{await navigator.clipboard.writeText(draft.value);if(valid())status.textContent='Черновик скопирован.';}catch{if(valid()){draft.focus();draft.select();status.textContent='Выделите и скопируйте текст.';}}}));
+    tools.append(window.pushokViews.iconAction(button('',async()=>{if(!valid())return;try{await navigator.clipboard.writeText(draft.value);if(valid())status.textContent='Черновик скопирован.';}catch{if(valid()){draft.focus();draft.select();status.textContent='Выделите и скопируйте текст.';}}}),'copy','Скопировать черновик'));
     const comment=host.closest('.approval-card')?.querySelector('textarea[aria-label="Комментарий рекламодателю"]');
-    if(comment)tools.append(button('Вставить в комментарий',()=>{
+    if(comment)tools.append(window.pushokViews.iconAction(button('',()=>{
      if(!valid()||!comment.isConnected)return;
      if(comment.value.trim()&&!confirm('Заменить набранный комментарий черновиком ИИ?'))return;
      comment.value=draft.value;comment.dispatchEvent(new Event('input',{bubbles:true}));comment.closest('details').open=true;comment.focus();
      status.textContent='Черновик вставлен. Проверьте текст и выберите решение в форме. Он ещё не отправлен.';
-    }));output.append(tools);
+    }),'edit','Вставить в комментарий'));output.append(tools);window.pushokControls.fieldActions(draft,[...tools.children]);tools.remove();
    }
 
   }
