@@ -125,7 +125,7 @@
  const channelFormActions=el('div',undefined,'channel-form-actions'),channelCancel=button('Отмена',()=>{go('channels');});channelFormActions.append($('channel-form').querySelector('button[type=submit]'),channelCancel);$('channel-form').append(channelFormActions);
  const channelList=section('Ваши каналы'),channelRows=el('div');channelList.classList.add('flat-section');channelList.querySelector('h2').remove();channelList.append(channelRows);content.channels.prepend(channelList);
  const channelSearch=el('input',undefined,'channel-search');channelSearch.type='search';channelSearch.placeholder='Название или @username';channelSearch.setAttribute('aria-label','Поиск каналов');channelSearch.autocomplete='off';channelSearch.autocapitalize='none';channelSearch.spellcheck=false;
- const channelSearchBar=el('div',undefined,'channel-search-bar'),channelSearchClear=window.pushokViews.iconAction(button('',()=>{channelSearch.value='';renderChannels();channelSearch.focus();}),'close','Очистить поиск каналов');channelSearchClear.hidden=true;channelSearchBar.append(window.pushokViews.icon('search'),channelSearch,channelSearchClear);channelList.prepend(channelSearchBar);
+ const channelSearchBar=el('div',undefined,'channel-search-bar'),channelSearchClear=window.pushokViews.iconAction(button('',()=>{channelSearch.value='';renderChannels();channelSearch.focus();}),'close','Очистить поиск каналов');channelSearchClear.hidden=true;channelSearchBar.append(window.pushokViews.icon('search'),channelSearch,channelSearchClear);const channelTools=el('div',undefined,'search-action-row');channelTools.append(channelSearchBar,pages.channels.querySelector('.page-heading .icon-action'));channelList.prepend(channelTools);
  function renderChannels(){const query=channelSearch.value.trim().replace(/^@/,'').toLocaleLowerCase('ru');channelSearchClear.hidden=!channelSearch.value;const list=channels.filter(c=>!query||(c.title+' '+c.telegram_url).toLocaleLowerCase('ru').includes(query));window.pushokViews.channelCards(channelRows,list);if(query&&!list.length)channelRows.replaceChildren(el('p','Каналы не найдены. Измените запрос.','empty'));}
  channelSearch.addEventListener('input',renderChannels);
 
@@ -143,7 +143,7 @@
  const reset=button('',async()=>{state.search='';state.filter='';search.value='';filter.value='';renderList();});
  window.pushokViews.iconAction(reset,'close','Сбросить поиск и фильтр');
  search.addEventListener('input',()=>{state.search=search.value.trim();renderList();});
- filter.addEventListener('change',()=>{state.filter=filter.value;renderList();});listTools.append(searchForm,filter,reset);content.campaigns.append(listTools,$('campaigns'));
+ filter.addEventListener('change',()=>{state.filter=filter.value;renderList();});const campaignTools=el('div',undefined,'search-action-row');campaignTools.append(searchForm,pages.campaigns.querySelector('.page-heading .icon-action'));listTools.append(campaignTools,filter,reset);content.campaigns.append(listTools,$('campaigns'));
  const campaignScope=el('nav',undefined,'campaign-scope');campaignScope.setAttribute('aria-label','Чьи кампании');
  for(const [value,title] of [['all','Все кампании'],['mine','Мои кампании']]){const b=button(title,()=>go(value==='mine'?'campaigns/mine':'campaigns'));b.dataset.scope=value;campaignScope.append(b);}listTools.before(campaignScope);
  // Архив всегда виден рядом с текущими кампаниями, без поиска в настройках.
@@ -168,7 +168,7 @@
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);bottomNav.append(a);
  });
  shell.append(bottomNav);
- const homeLeaders=el('nav',undefined,'home-leaders');homeLeaders.setAttribute('aria-label','Лидеры месяца');content.dashboard.append(homeLeaders);
+ const homeLeaders=el('section',undefined,'panel home-leaders');homeLeaders.setAttribute('aria-label','Лидеры месяца');content.dashboard.append(homeLeaders);
  const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.classList.add('flat-section','dashboard-campaigns');summary.append(summaryRows);content.dashboard.append(summary);
  const summaryHeading=el('div',undefined,'section-heading');summaryHeading.append(summary.querySelector('h2'),link('Все →','campaigns'));summary.prepend(summaryHeading);
 
@@ -464,7 +464,7 @@
   if(name==='channels'){
    const adding=id==='new';channelAdd.hidden=!adding;channelList.hidden=adding;
    pages.channels.querySelector('h1').textContent=adding?'Добавить канал':'Мои каналы';
-   pages.channels.querySelector('.page-heading>.icon-action').hidden=adding;
+   channelTools.querySelector(':scope>.icon-action').hidden=adding;
    pages.channels.querySelector('.campaign-tabs').hidden=adding;
   }
   if(name==='users')window.pushokUsers.directory(content.users);

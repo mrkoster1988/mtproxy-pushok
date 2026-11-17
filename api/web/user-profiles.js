@@ -10,7 +10,7 @@ window.pushokProfiles=(()=>{
   return {username,name:username&&name.replace(/^@/,'').toLowerCase()===username.toLowerCase()?'':name};
  }
  function names(user,linked=false){
-  const {name,username}=person(user),copy=el('div',undefined,'person-copy');
+  const {name,username}=person(user),copy=el('div',undefined,'person-copy');copy.dataset.userRole=user.is_owner?'owner':user.role||'advertiser';if(user.id)copy.dataset.personId=user.id;
   if(name)copy.append(el('strong',name,'person-name'));
   if(username){
    const handle=el(linked?'a':'span','@'+username,'person-handle'+(!name?' person-name':''));
@@ -62,7 +62,7 @@ window.pushokProfiles=(()=>{
    target.replaceChildren(stats(data.counts,key=>window.cabinet.go({current:'campaigns/mine',channels:'channels',archived:'archive'}[key])),window.pushokCommunity.invited(uid,data.counts.invited));
    window.pushokHall.medals(target,data);
 
-   const personal=target.parentElement.querySelector('.profile-personal');if(personal){personal.querySelector('.profile-details')?.remove();personal.append(accountDetails(data.user));}
+   const personal=target.parentElement.querySelector('.profile-personal');if(personal){const details=personal.querySelector('.profile-details');if(details)details.replaceWith(accountDetails(data.user));else personal.append(accountDetails(data.user));}
   }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p','Обзор не обновлён. '+e.message,'muted'),button('Повторить',()=>ownOverview(target)));}
  }
  function show(target,uid){
@@ -92,7 +92,7 @@ window.pushokProfiles=(()=>{
   function paint(data){
    const channelSection=el('section',undefined,'profile-section profile-channels'),campaignSection=el('section',undefined,'profile-section profile-campaigns');
    const overview=stats(data.counts,key=>{if(key==='channels')channelSection.scrollIntoView({block:'start'});else{archived=key==='archived';campaignPage=0;void load();}});
-   const personal=window.pushokVerification.readOnly(data.verification||{});personal.append(accountDetails(data.user));window.pushokCommunity.ownerTools(personal,uid,data.verification||{},load);
+   const personal=window.pushokVerification.readOnly(data.verification||{});personal.querySelector('.personal-body').append(accountDetails(data.user));window.pushokCommunity.ownerTools(personal.querySelector('.personal-body'),uid,data.verification||{},load);
    target.replaceChildren(identity(data.user),window.pushokCommunity.invited(uid,data.counts.invited),personal,...(me.role==='admin'&&data.wallet?[balance(data.wallet,data.user)]:[]),overview,channelSection,campaignSection);
 
    window.pushokHall.medals(target.querySelector('.profile-identity'),data);
@@ -130,5 +130,5 @@ window.pushokProfiles=(()=>{
   }
   void load();
  }
- return {compact,identity,accountDetails,advertiser,ownOverview,show,setBackRoute:route=>{returnRoute=route;},backRoute:()=>returnRoute};
+ return {names,compact,identity,accountDetails,advertiser,ownOverview,show,setBackRoute:route=>{returnRoute=route;},backRoute:()=>returnRoute};
 })();

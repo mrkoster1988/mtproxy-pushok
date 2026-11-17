@@ -1,4 +1,5 @@
 """Native contact popup is simulated; proof still passes the real private API and SQL."""
+from ui_test_helpers import open_settings
 import io
 import json
 import os
@@ -114,7 +115,7 @@ def check_verified_profiles(browser, base, output, failures, dsn):
                 lookup.assert_called_once_with(tg)
             personal = page.locator('.profile-personal')
             expect(personal).not_to_have_attribute('open', '')
-            personal.locator('summary').click()
+            personal.locator(':scope > summary').click()
             expect(personal.locator('.profile-verified-state')).to_contain_text('Верифицирован')
             expect(personal.locator('.profile-phone')).to_contain_text('+79990001122')
             expect(page.locator('.profile-identity .phone-verified-badge')).to_have_count(1)
@@ -127,8 +128,10 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             expect(personal).to_contain_text('Изменить сведения может только владелец')
             expect(personal.get_by_label('День', exact=True)).to_be_disabled()
             expect(personal.get_by_label('Месяц', exact=True)).to_be_disabled()
+            expect(personal.get_by_role('button', name='Сохранить', exact=True)).to_be_hidden()
+            personal.get_by_label('Поздравления и подарок в день рождения', exact=True).uncheck()
             personal.get_by_role('button', name='Сохранить', exact=True).click()
-            expect(personal.locator('.verification-status')).to_contain_text('Сведения сохранены')
+            expect(personal.get_by_role('button', name='Сохранить', exact=True)).to_be_hidden()
             for width in (320, 390):
                 page.set_viewport_size({'width': width, 'height': 844})
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
@@ -144,7 +147,7 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             page.reload()
             expect(page.locator('.profile-identity')).to_contain_text('Администратор')
             page.evaluate("window.cabinet.go('settings')")
-            page.locator('#settings-system-tab').click()
+            page.locator('#settings-system-tab').click();open_settings(page)
             settings = page.locator('#birthday-settings')
             amount = settings.get_by_label('Ежегодный подарок, бонусных ₽', exact=True)
             expect(amount).to_have_value('0')
