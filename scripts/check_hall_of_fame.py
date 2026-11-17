@@ -25,10 +25,9 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                 conn.execute("INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days) VALUES(%s,%s,10,90)",(referred,inviter))
         p=conn.execute("INSERT INTO hall_periods(kind,starts_at,ends_at,settings,closed_at) VALUES('month',%s,%s,%s,now()) RETURNING id",(previous,start,Jsonb({'top_size':50,'rewards':{}}))).fetchone()['id']
         conn.execute("INSERT INTO hall_results(period_id,metric,user_id,rank,score) VALUES(%s,'invited',%s,1,8)",(p,owner))
-    # Фикстуры внесены напрямую в БД после предыдущих сценариев. Не используем
-    # их старый 20-секундный снимок и не делаем тест зависимым от скорости CI.
-    with community._frames_lock:
-        community._frames.clear()
+    # Fixture записывает данные напрямую: начинаем отдельный сценарий без
+    # 20-секундного снимка рейтинга предыдущего браузерного сценария.
+    with community._frames_lock:community._frames.clear()
     contexts=[]
     try:
         with patch('app.community.user_avatar',return_value=None):
@@ -78,3 +77,4 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
             profile.locator('.hall-medals summary').click();expect(profile.locator('.hall-medal')).to_contain_text('#1')
     finally:
         for context in contexts:context.close()
+        with community._frames_lock:community._frames.clear()
