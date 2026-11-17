@@ -1,6 +1,6 @@
 'use strict';
 window.pushokWallet=(()=>{
- let epoch=0,overviewEpoch=0,target=null,adminTelegram='',historyPage=0,adminPage=0,giftPage=0,giftDeleted=false,settingsEpoch=0;
+ let epoch=0,overviewEpoch=0,target=null,adminTelegram='',historyPage=0,adminPage=0,giftPage=0,giftDeleted=false,giftArchived=false,settingsEpoch=0;
  const names={RUB:'Рубли',XTR:'Остаток Stars прежнего кошелька',BONUS:'Бонусные рубли'};
  const kinds={gift_credit:'Подарочный код',topup:'Пополнение',payment:'Оплата размещения',refund:'Возврат на баланс',manual_credit:'Ручное начисление',manual_debit:'Ручное списание',reversal:'Отмена корректировки',provider_refund:'Возврат провайдером',referral_reward:'Реферальная награда',referral_reversal:'Отмена реферальной награды'};
  const statuses={created:'Выпуск счёта не завершён',pending:'Ожидает оплаты',succeeded:'Подтверждено',failed:'Счёт закрыт',refunded:'Возвращено провайдером',review:'Требуется сверка'};
@@ -188,7 +188,7 @@ window.pushokWallet=(()=>{
      unmatched.refunds.forEach(r=>{const card=el('article',undefined,'card');card.append(el('h3','Неразобранный возврат Stars'),el('p','Telegram ID '+r.telegram_user_id+' · '+r.amount+' Stars'),el('p',r.charge_id,'growth-code'));list.append(card);});
      review.append(list);}));root.append(review);
    }
-   if(me.role==='admin'){const gifts=await api('/admin/wallet/gifts?page='+giftPage+'&deleted='+giftDeleted);if(version!==epoch||session!==token||uid!==me?.id)return;adminGifts(root,gifts);}
+   if(me.role==='admin'){const gifts=await api('/admin/wallet/gifts?page='+giftPage+'&deleted='+giftDeleted+(giftDeleted?'':'&archived='+giftArchived));if(version!==epoch||session!==token||uid!==me?.id)return;adminGifts(root,gifts);}
    entries(root,journal,false,async page=>{historyPage=page;await load(node);});
    foldPanels(root,data);node.replaceChildren(root);if(adminTelegram&&adminTarget)await adminLookup();
   }catch(e){if(version===epoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить',()=>load(node)));}
@@ -230,9 +230,9 @@ window.pushokWallet=(()=>{
  function adminGifts(root,data){
   const p=panel('Подарочные коды на баланс');
   p.append(el('p','Удалённые коды закрыты для новых активаций. История и уже начисленные бонусы сохраняются.','muted'));
-  const tabs=el('nav',undefined,'bonus-tabs');for(const [value,title] of [[false,'Коды'],[true,'Удалённые коды']]){const b=button(title,()=>{giftDeleted=value;giftPage=0;return load(target);});b.setAttribute('aria-pressed',String(giftDeleted===value));tabs.append(b);}p.append(tabs);
-  if(!giftDeleted)giftForm(p);
-  if(!data.items.length)p.append(el('p',giftDeleted?'Удалённых кодов нет.':'Подарочных кодов пока нет.'));
+  const tabs=el('nav',undefined,'bonus-tabs');for(const [value,title] of [['active','Коды'],['archive','Архив'],['deleted','Удалённые коды']]){const b=button(title,()=>{giftDeleted=value==='deleted';giftArchived=value==='archive';giftPage=0;return load(target);});b.setAttribute('aria-pressed',String(value===(giftDeleted?'deleted':giftArchived?'archive':'active')));tabs.append(b);}p.append(tabs);
+  if(!giftDeleted&&!giftArchived)giftForm(p);
+  if(!data.items.length)p.append(el('p',giftDeleted?'Удалённых кодов нет.':giftArchived?'Активированных подарков пока нет.':'Подарочных кодов пока нет.'));
   for(const g of data.items){const row=el('article',undefined,'card wallet-gift'),head=el('div',undefined,'gift-heading'),name=el('h3',g.name);name.prepend(window.pushokViews.icon('gift'));head.append(name);row.append(head,el('p',amount(g.amount,'BONUS')+' · активаций '+g.used+' из '+g.max_uses,'wallet-gift-summary'),el('p',g.code,'growth-code'),el('p',giftStatus(g),'wallet-gift-status muted'));
    row.append(el('p',g.recipient_telegram_id?'Получатель: '+(g.recipient_username?'@'+g.recipient_username:'Telegram ID '+g.recipient_telegram_id):'Любой получатель кода','muted'));
    const actions=el('div',undefined,'gift-actions');row.append(actions);
@@ -293,5 +293,5 @@ window.pushokWallet=(()=>{
    curr.addEventListener('change',state);bonus.addEventListener('change',state);state();container.append(form);const link=el('a','Открыть баланс и пополнить →');link.href='#/wallet';container.append(link);
   }catch(e){if(container.isConnected&&session===token)container.replaceChildren(el('p',e.message));}
  }
- return {load,payment,minor,overview,selectUser(tg){adminTelegram=String(tg);adminPage=0;expanded.admin=true;},settings:walletSettings,reset(){expanded={};deletedTopups=false;epoch++;overviewEpoch++;settingsEpoch++;$('wallet-settings')?.replaceChildren();adminSeq++;if(target)target.replaceChildren();target=null;adminTarget=null;adminTelegram='';historyPage=0;adminPage=0;giftPage=0;giftDeleted=false;}};
+ return {load,payment,minor,overview,selectUser(tg){adminTelegram=String(tg);adminPage=0;expanded.admin=true;},settings:walletSettings,reset(){expanded={};deletedTopups=false;epoch++;overviewEpoch++;settingsEpoch++;$('wallet-settings')?.replaceChildren();adminSeq++;if(target)target.replaceChildren();target=null;adminTarget=null;adminTelegram='';historyPage=0;adminPage=0;giftPage=0;giftDeleted=false;giftArchived=false;}};
 })();

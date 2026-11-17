@@ -225,7 +225,8 @@ def main():
                 advertiser.evaluate("window.cabinet.config({telegram_bot_username:'fixture_bot',proxy_url:'https://t.me/proxy?server=proxy.example.org&port=443&secret=ddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'})")
                 expect(proxy).to_have_attribute('href','https://t.me/proxy?server=proxy.example.org&port=443&secret=ddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
                 assert proxy.evaluate("e=>getComputedStyle(e).backgroundColor==='rgb(217, 71, 80)'")
-                assert proxy.evaluate("e=>e.previousElementSibling.textContent==='Создать кампанию'")
+                expect(advertiser.locator(".dashboard-campaign-intro").get_by_role("link",name="Создать кампанию",exact=True)).to_be_visible()
+                assert advertiser.locator(".dashboard-help").evaluate("e=>e.previousElementSibling.id==='dashboard-referral'")
                 expect(advertiser.locator('[data-page=dashboard] .payment-counts')).to_have_count(0)
                 go(advertiser, "settings", expected_page="dashboard")
                 expect(advertiser.locator('[data-page=dashboard]')).to_be_visible()
@@ -1474,7 +1475,7 @@ def main():
                 go(advertiser,'dashboard')
                 expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
                 expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
-                assert advertiser.locator('#dashboard-referral').evaluate('e=>e===e.parentElement.lastElementChild')
+                assert advertiser.locator('#dashboard-referral').evaluate("e=>e.nextElementSibling.classList.contains('dashboard-help')&&e.nextElementSibling===e.parentElement.lastElementChild")
                 share=advertiser.locator('#dashboard-referral').get_by_role('link',name='Поделиться реферальной ссылкой',exact=True)
                 expect(share).to_be_visible()
                 from urllib.parse import urlparse,parse_qs

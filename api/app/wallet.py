@@ -149,13 +149,14 @@ def router_for(dsn,current_user,require_admin):
         with db() as conn:return gifts.redeem(conn,user['id'],data.code)
 
     @router.get('/api/v1/admin/wallet/gifts')
-    def list_gifts(page:int=Query(default=0,ge=0,le=100000),deleted:bool=False,admin=Depends(require_admin)):
+    def list_gifts(page:int=Query(default=0,ge=0,le=100000),deleted:bool=False,archived:bool|None=None,admin=Depends(require_admin)):
         with db() as conn:
             rows=conn.execute("""SELECT g.*, (SELECT count(*) FROM wallet_gift_redemptions r WHERE r.gift_id=g.id) AS used,
                 g.expires_at<=now() AS expired,u.username AS recipient_username FROM wallet_gifts g
                 LEFT JOIN users u ON u.telegram_user_id=g.recipient_telegram_id WHERE (g.deleted_at IS NOT NULL)=%s
-                ORDER BY g.created_at DESC,g.id LIMIT 30 OFFSET %s""",(deleted,page*30)).fetchall()
-            total=conn.execute('SELECT count(*) AS n FROM wallet_gifts WHERE (deleted_at IS NOT NULL)=%s',(deleted,)).fetchone()['n']
+                AND (%s::boolean IS NULL OR ((SELECT count(*) FROM wallet_gift_redemptions r WHERE r.gift_id=g.id)>=g.max_uses)=%s)
+                ORDER BY g.created_at DESC,g.id LIMIT 30 OFFSET %s""",(deleted,archived,archived,page*30)).fetchall()
+            total=conn.execute('SELECT count(*) AS n FROM wallet_gifts g WHERE (deleted_at IS NOT NULL)=%s AND (%s::boolean IS NULL OR ((SELECT count(*) FROM wallet_gift_redemptions r WHERE r.gift_id=g.id)>=g.max_uses)=%s)',(deleted,archived,archived)).fetchone()['n']
             return dict(items=rows,total=total,page=page,page_size=30)
 
     @router.get('/api/v1/admin/wallet/gifts/{gid}/redemptions')
