@@ -6,6 +6,8 @@ from psycopg.rows import dict_row
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from .channel_logos import user_avatar
+from .verified_profiles import private_profile
+from .telegram_environment import environment_name
 
 PAGE_SIZE = 10
 ARCHIVED = "(c.archived_at IS NOT NULL OR c.placement_status IN ('completed','cancelled'))"
@@ -15,8 +17,9 @@ PRIVATE_HEADERS = {'Cache-Control': 'private, no-store', 'X-Content-Type-Options
 def _user(conn, uid, viewer):
     if viewer['id'] != uid and viewer['role'] not in ('admin', 'operator'):
         raise HTTPException(404, 'user_profile_not_found')
-    row = conn.execute('''SELECT id,telegram_user_id,first_name,last_name,username,role,created_at,blocked_at
-        FROM users WHERE id=%s''', (uid,)).fetchone()
+    row = conn.execute('''SELECT id,telegram_user_id,first_name,last_name,username,role,created_at,blocked_at,
+        EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=users.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
+        FROM users WHERE id=%s''', (environment_name(), uid)).fetchone()
     if not row:
         raise HTTPException(404, 'user_profile_not_found')
     return row
@@ -60,6 +63,8 @@ def router_for(dsn, current_user):
                 WHERE c.advertiser_user_id=%s AND {ARCHIVED}=%s ORDER BY c.created_at DESC,c.id DESC
                 LIMIT %s OFFSET %s''', (uid, archived, PAGE_SIZE, campaign_page * PAGE_SIZE)).fetchall()
             private = {}
+            if viewer['id'] == uid or viewer['role'] == 'admin':
+                private['verification'] = private_profile(conn, uid)
             if viewer['role'] == 'admin':
                 balances = {currency: 0 for currency in ('RUB', 'BONUS', 'XTR')}
                 balances.update({row['currency']: row['balance'] for row in conn.execute(

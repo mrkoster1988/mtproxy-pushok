@@ -29,6 +29,7 @@ def main():
     parser.add_argument("--out", type=Path, default=ROOT / ".build/cabinet-pages")
     parser.add_argument("--browser-executable")
     parser.add_argument("--sponsors-only", action="store_true", help="Полный сценарий страницы спонсоров")
+    parser.add_argument("--verification-only", action="store_true", help="Подтверждение контакта, профиль и настройки подарка")
     args = parser.parse_args()
     # main.py captures this setting when imported, before test sessions are issued.
     os.environ["SESSION_SIGNING_KEY"] = "browser-test-only-" * 8
@@ -157,6 +158,13 @@ def main():
                         page.locator('#refresh').click()
                     expect(page.locator('#refresh')).to_be_enabled()
 
+                if args.verification_only:
+                    from check_verified_profiles import check_verified_profiles
+                    check_verified_profiles(browser, base, output, failures, PostgresIntegration.dsn)
+                    if failures:
+                        raise AssertionError(failures)
+                    print('Verified profile browser checks passed')
+                    return
                 if args.sponsors_only:
                     from check_sponsor_workspace import check_sponsor_workspace
                     check_sponsor_workspace(browser, base, output, failures, PostgresIntegration.dsn)
@@ -1619,6 +1627,8 @@ def main():
                 with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'1','TELEGRAM_BOT_USERNAME':'mtproxy_pushok_bot'}),patch.object(api,'TELEGRAM_BOT_TOKEN','fixture-token'):
                     check_bonus_links(browser,base,output,failures,PostgresIntegration.dsn)
 
+                from check_verified_profiles import check_verified_profiles
+                check_verified_profiles(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_user_profiles import check_user_profiles
                 check_user_profiles(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_admin_users import check_admin_users

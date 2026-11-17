@@ -1,0 +1,241 @@
+"""Собственный Contact, приватность и однократное ежегодное начисление в реальной БД."""
+import os
+import time
+import unittest
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date
+from unittest.mock import Mock, patch
+from uuid import uuid4
+
+import psycopg
+from psycopg.rows import dict_row
+import test_postgres as fixture
+from app import verified_profiles as verified
+from bot.verified_profiles import verification_response, birthday_from_chat, render_birthday
+
+main = fixture.main
+
+
+class BotVerification(unittest.TestCase):
+    def contact(self, **changes):
+        message = {'from': {'id': 123}, 'chat': {'id': 123, 'type': 'private'}, 'date': 100,
+                   'contact': {'phone_number': '+79991234567', 'user_id': 123}}
+        message.update(changes)
+        return {'update_id': 42, 'message': message}
+
+    def test_reject_forwarded_other_missing_and_group_contact(self):
+        for changes in ({'forward_origin': {'type': 'user'}}, {'via_bot': {'id': 7}},
+                        {'contact': {'phone_number': '+79991234567', 'user_id': 124}},
+                        {'contact': {'phone_number': '+79991234567'}},
+                        {'chat': {'id': -10, 'type': 'group'}}):
+            api, telegram = Mock(), Mock()
+            verification_response(self.contact(**changes), api, telegram)
+            api.assert_not_called(); telegram.assert_not_called()
+
+    def test_native_contact_proof_and_optional_telegram_birthday(self):
+        api = Mock(return_value={'verified': True})
+        telegram = Mock(return_value={'birthdate': {'day': 29, 'month': 2}})
+        reply = verification_response(self.contact(), api, telegram)
+        self.assertIn('Номер подтверждён', reply['text'])
+        self.assertEqual(api.call_args.args[0], 'verification/contact')
+        self.assertEqual(api.call_args.args[1]['birthday'], {'day': 29, 'month': 2, 'year': None})
+        self.assertTrue(reply['reply_markup']['remove_keyboard'])
+        telegram.side_effect = OSError('private')
+        verification_response(self.contact(), api, telegram)
+        self.assertIsNone(api.call_args.args[1]['birthday'])
+
+    def test_bot_prompt_consent_and_birthdate_validation(self):
+        api = Mock()
+        reply = verification_response(self.contact(text='/start verify', contact=None), api, Mock())
+        self.assertTrue(reply['reply_markup']['keyboard'][0][0]['request_contact'])
+        self.assertIn('администратору', reply['text'])
+        api.assert_called_once_with('verification/request', {'telegram_user_id': 123, 'birthday_opt_in': True})
+        for value in ({'day': 31, 'month': 2}, {'day': True, 'month': 1}, {'day': 1, 'month': 1, 'year': 2999}):
+            self.assertIsNone(birthday_from_chat({'birthdate': value}))
+        self.assertNotIn('Подарок уже', render_birthday({'first_name': 'Маша', 'bonus_amount': 0}))
+        self.assertIn('100 ₽', render_birthday({'first_name': 'Маша', 'bonus_amount': 10000}))
+
+
+@unittest.skipUnless(fixture._approved_test_postgres(), 'Нужен отдельный тестовый PostgreSQL')
+class VerificationIntegration(unittest.TestCase):
+    setUpClass = classmethod(fixture.PostgresIntegration.setUpClass.__func__)
+    tearDownClass = classmethod(fixture.PostgresIntegration.tearDownClass.__func__)
+    request = fixture.PostgresIntegration.request
+
+    def setUp(self):
+        self.uid, self.admin, self.other = uuid4(), uuid4(), uuid4()
+        self.tg = int(self.uid.hex[:12], 16)
+        self.update = int(self.uid.hex[12:24], 16)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE verified_profiles SET birthday_opt_in=false')
+            conn.execute('UPDATE birthday_settings SET congratulations_enabled=true,bonus_amount=0')
+            conn.execute('UPDATE wallet_settings SET enabled=true')
+            for uid, role in ((self.uid, 'advertiser'), (self.admin, 'admin'), (self.other, 'operator')):
+                conn.execute("INSERT INTO users(id,telegram_user_id,role,first_name) VALUES(%s,%s,%s,'Тест')",
+                             (uid, self.tg if uid == self.uid else int(uid.hex[:12], 16), role))
+        self.actor = {'id': self.uid, 'telegram_user_id': self.tg, 'role': 'advertiser'}
+        main.app.dependency_overrides[main.get_current_user] = lambda: self.actor
+        self.addCleanup(main.app.dependency_overrides.clear)
+        env = patch.dict(os.environ, {'BOT_INTERNAL_SECRET': 'f'*64, 'PUSHOK_TELEGRAM_TEST_ENVIRONMENT': '0'})
+        env.start(); self.addCleanup(env.stop)
+        self.headers = {'X-Bot-Secret': 'f'*64, 'X-Pushok-Telegram-Environment': 'production'}
+
+    def verify(self, birthday=None):
+        self.request('POST', '/me/verification/request', json={'birthday_opt_in': True})
+        return self.request('POST', '/internal/bot/verification/contact', headers=self.headers,
+                            json=self.payload(birthday=birthday))
+
+    def payload(self, **changes):
+        data = dict(telegram_user_id=self.tg, contact_user_id=self.tg, chat_id=self.tg, private_chat=True,
+                    forwarded=False, phone_number='+7 (999) 123-45-67', update_id=self.update,
+                    message_date=int(time.time()), birthday=None)
+        data.update(changes)
+        return data
+
+    def db(self, sql, args=()):
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            cursor = conn.execute(sql, args)
+            return cursor.fetchall() if cursor.description else None
+
+    def test_contact_requires_intent_secret_environment_and_matching_owner(self):
+        path = '/internal/bot/verification/contact'
+        self.request('POST', path, 401, json=self.payload())
+        self.request('POST', path, 403, json=self.payload(), headers={**self.headers, 'X-Pushok-Telegram-Environment': 'test'})
+        self.request('POST', path, 409, json=self.payload(), headers=self.headers)
+        self.request('POST', '/me/verification/request', json={'birthday_opt_in': True})
+        for changes in ({'contact_user_id': self.tg+1}, {'chat_id': self.tg+1}, {'private_chat': False},
+                        {'forwarded': True}, {'phone_number': '555 abc 12345'}):
+            self.request('POST', path, 400, json=self.payload(**changes), headers=self.headers)
+        self.request('POST', path, 409, json=self.payload(message_date=int(time.time())-600), headers=self.headers)
+        self.request('POST', path, 409, json=self.payload(message_date=int(time.time())+60), headers=self.headers)
+        self.assertFalse(self.request('GET', '/me/verification')['phone_verified'])
+        self.verify(birthday={'day': 29, 'month': 2})
+        self.request('POST', path, json=self.payload(), headers=self.headers)  # повтор доставки Telegram
+        data = self.request('GET', '/me/verification')
+        self.assertEqual(data['phone_number'], '+79991234567')
+        self.assertTrue(data['phone_verified'])
+        self.assertEqual(data['birthday_source'], 'telegram')
+        self.assertIsNone(data['birthday']['year'])
+        self.assertEqual(len(self.db('SELECT * FROM verified_profiles WHERE user_id=%s', (self.uid,))), 1)
+        self.assertEqual(self.db('SELECT * FROM phone_verification_requests WHERE user_id=%s', (self.uid,)), [])
+
+    def test_expired_request_and_no_frontend_phone_write(self):
+        self.request('POST', '/me/verification/request', 422, json={'phone_number': '+79991234567'})
+        self.request('POST', '/me/verification/request', json={'birthday_opt_in': False})
+        self.db("UPDATE phone_verification_requests SET expires_at=now()-interval '1 second' WHERE user_id=%s", (self.uid,))
+        self.request('POST', '/internal/bot/verification/contact', 409, headers=self.headers, json=self.payload())
+        self.request('PUT', '/me/birthday', 422, json={'birthday': None, 'birthday_opt_in': False, 'phone_verified': True})
+
+    def test_bot_fallback_preserves_opt_out_and_test_phone_is_separate(self):
+        self.request('POST', '/me/verification/request', json={'birthday_opt_in': False})
+        intent = self.request('POST', '/internal/bot/verification/request', headers=self.headers,
+                              json={'telegram_user_id': self.tg, 'birthday_opt_in': True})
+        self.assertFalse(intent['birthday_opt_in'])
+        self.request('POST', '/internal/bot/verification/contact', headers=self.headers,
+                     json=self.payload(birthday={'day': 1, 'month': 1}))
+        self.assertIsNone(self.request('GET', '/me/verification')['birthday'])
+        with patch.dict(os.environ, {'PUSHOK_TELEGRAM_TEST_ENVIRONMENT': '1'}):
+            self.assertFalse(self.request('GET', '/me/verification')['phone_verified'])
+            self.assertFalse(self.request('GET', f'/users/{self.uid}/profile')['user']['phone_verified'])
+            self.request('PUT', '/me/birthday', json={'birthday': {'day': 2, 'month': 2}, 'birthday_opt_in': True})
+            self.assertFalse(self.request('GET', '/me/verification')['phone_verified'])
+        self.assertTrue(self.request('GET', '/me/verification')['phone_verified'])
+        self.assertIsNone(self.request('GET', '/me/verification')['birthday'])
+
+    def test_failed_credit_rolls_back_year_and_blocked_user_gets_nothing(self):
+        self.verify(birthday={'day': 4, 'month': 4})
+        self.db('UPDATE birthday_settings SET bonus_amount=10000')
+        with self.assertRaises(RuntimeError), patch.object(verified, 'post', side_effect=RuntimeError('offline')):
+            with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+                verified.generate_birthdays(conn, date(2027, 4, 4))
+        self.assertEqual(self.db('SELECT * FROM birthday_rewards WHERE user_id=%s', (self.uid,)), [])
+        self.db('UPDATE users SET blocked_at=now() WHERE id=%s', (self.uid,))
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            verified.generate_birthdays(conn, date(2027, 4, 4))
+        self.assertEqual(self.db('SELECT * FROM birthday_rewards WHERE user_id=%s', (self.uid,)), [])
+
+    def test_private_details_admin_only_and_public_badge(self):
+        self.verify(birthday={'day': 15, 'month': 5, 'year': 1990})
+        path = f'/users/{self.uid}/profile'
+        own = self.request('GET', path)
+        self.assertTrue(own['user']['phone_verified'])
+        self.assertEqual(own['verification']['phone_number'], '+79991234567')
+        self.actor = {'id': self.other, 'role': 'operator'}
+        operator = self.request('GET', path)
+        self.assertTrue(operator['user']['phone_verified'])
+        self.assertNotIn('verification', operator)
+        directory = self.request('GET', '/admin/users?query='+str(self.tg))
+        self.assertTrue(directory['items'][0]['phone_verified'])
+        self.assertNotIn('79991234567', str(directory))
+        self.request('GET', '/admin/birthday-settings', 403)
+        self.actor = {'id': self.admin, 'role': 'admin'}
+        self.assertEqual(self.request('GET', path)['verification']['birthday']['year'], 1990)
+        self.request('PUT', '/admin/birthday-settings', json={'congratulations_enabled': True, 'bonus_amount': 10000})
+
+    def test_manual_date_validation_removal_and_opt_out(self):
+        for birthday in ({'day': 31, 'month': 2}, {'day': 29, 'month': 2, 'year': 2025},
+                         {'day': 1, 'month': 1, 'year': 2199}, {'day': True, 'month': 1}):
+            self.request('PUT', '/me/birthday', 422, json={'birthday': birthday, 'birthday_opt_in': True})
+        result = self.request('PUT', '/me/birthday', json={'birthday': {'day': 2, 'month': 3}, 'birthday_opt_in': True})
+        self.assertFalse(result['phone_verified'])
+        self.verify(birthday={'day': 5, 'month': 6})
+        data = self.request('GET', '/me/verification')
+        self.assertEqual(data['birthday']['day'], 2)  # Не затирать исправленную пользователем дату.
+        self.assertEqual(data['birthday_source'], 'manual')
+        removed = self.request('PUT', '/me/birthday', json={'birthday': None, 'birthday_opt_in': False})
+        self.assertTrue(removed['phone_verified'])
+        self.assertIsNone(removed['birthday'])
+        self.assertFalse(removed['birthday_opt_in'])
+
+    def test_annual_bonus_atomic_concurrency_date_changes_and_next_year(self):
+        self.verify(birthday={'day': 29, 'month': 2})
+        self.db('UPDATE birthday_settings SET bonus_amount=10000')
+        def run(current):
+            with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+                verified.generate_birthdays(conn, current)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(run, [date(2027, 2, 28)]*4))
+        entries = self.db("SELECT delta FROM wallet_entries WHERE user_id=%s AND operation_key LIKE 'birthday:%%'", (self.uid,))
+        self.assertEqual(entries, [{'delta': 10000}])
+        self.assertEqual(self.db("SELECT balance FROM wallet_accounts WHERE user_id=%s AND currency='BONUS'", (self.uid,))[0]['balance'], 10000)
+        self.request('PUT', '/me/birthday', json={'birthday': {'day': 3, 'month': 3}, 'birthday_opt_in': True})
+        run(date(2027, 3, 3))
+        self.assertEqual(len(self.db('SELECT * FROM birthday_rewards WHERE user_id=%s', (self.uid,))), 1)
+        run(date(2028, 3, 3))
+        self.assertEqual(self.db("SELECT balance FROM wallet_accounts WHERE user_id=%s AND currency='BONUS'", (self.uid,))[0]['balance'], 20000)
+
+    def test_disabled_wallet_unverified_opted_out_and_leap_year(self):
+        self.request('PUT', '/me/birthday', json={'birthday': {'day': 29, 'month': 2}, 'birthday_opt_in': True})
+        self.db('UPDATE birthday_settings SET bonus_amount=10000')
+        def run(current):
+            with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+                verified.generate_birthdays(conn, current)
+        run(date(2028, 2, 29))
+        self.assertEqual(self.db('SELECT * FROM birthday_rewards WHERE user_id=%s', (self.uid,)), [])
+        self.verify()
+        run(date(2028, 2, 28))
+        self.assertEqual(self.db('SELECT * FROM birthday_rewards WHERE user_id=%s', (self.uid,)), [])
+        self.db('UPDATE verified_profiles SET birthday_opt_in=false WHERE user_id=%s', (self.uid,))
+        run(date(2028, 2, 29))
+        self.assertEqual(self.db('SELECT * FROM birthday_rewards WHERE user_id=%s', (self.uid,)), [])
+        self.db('UPDATE verified_profiles SET birthday_opt_in=true WHERE user_id=%s', (self.uid,))
+        self.db('UPDATE wallet_settings SET enabled=false')
+        run(date(2028, 2, 29))
+        self.assertEqual(self.db('SELECT bonus_amount,entry_id FROM birthday_rewards WHERE user_id=%s', (self.uid,)), [{'bonus_amount': 0, 'entry_id': None}])
+
+    def test_outbox_retry_ack_and_default_no_money(self):
+        current = verified.today()
+        self.verify(birthday={'day': current.day, 'month': current.month})
+        path = '/internal/bot/birthday/outbox/'
+        claim = self.request('POST', path+'claim', headers=self.headers, json={})
+        mine = next(x for x in claim if x['telegram_user_id'] == self.tg)
+        self.assertEqual(mine['bonus_amount'], 0)
+        self.assertFalse(any(x['telegram_user_id'] == self.tg for x in self.request('POST', path+'claim', headers=self.headers, json={})))
+        wrong = {'notice_id': mine['notice_id'], 'claim_token': str(uuid4()), 'permanent_failure': False}
+        self.assertFalse(self.request('POST', path+'finish', headers=self.headers, json=wrong)['acknowledged'])
+        self.db("UPDATE birthday_notice_outbox SET lease_until=now()-interval '1 second',next_attempt_at=now()-interval '1 second' WHERE id=%s", (mine['notice_id'],))
+        retry = next(x for x in self.request('POST', path+'claim', headers=self.headers, json={}) if x['telegram_user_id'] == self.tg)
+        self.assertNotEqual(retry['claim_token'], mine['claim_token'])
+        self.assertTrue(self.request('POST', path+'finish', headers=self.headers, json={**wrong, 'claim_token': retry['claim_token']})['acknowledged'])
+        self.assertFalse(any(x['telegram_user_id'] == self.tg for x in self.request('POST', path+'claim', headers=self.headers, json={})))
+        self.assertEqual(self.db('SELECT * FROM wallet_entries WHERE user_id=%s', (self.uid,)), [])

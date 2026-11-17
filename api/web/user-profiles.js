@@ -17,6 +17,7 @@ window.pushokProfiles=(()=>{
    if(linked){handle.href='https://t.me/'+username;handle.target='_blank';handle.rel='noopener noreferrer';}
    copy.append(handle);
   }else if(!name)copy.append(el('strong','Пользователь','person-name'));
+  if(user.phone_verified)copy.querySelector('.person-name')?.append(window.pushokVerification.badge());
   return copy;
  }
  function advertiser(c){
@@ -93,7 +94,7 @@ window.pushokProfiles=(()=>{
   function paint(data){
    const channelSection=el('section',undefined,'profile-section profile-channels'),campaignSection=el('section',undefined,'profile-section profile-campaigns');
    const overview=stats(data.counts,key=>{if(key==='channels')channelSection.scrollIntoView({block:'start'});else{archived=key==='archived';campaignPage=0;void load();}});
-   target.replaceChildren(identity(data.user),...(me.role==='admin'&&data.wallet?[balance(data.wallet,data.user)]:[]),overview,channelSection,campaignSection);
+   target.replaceChildren(identity(data.user),...(data.verification?[window.pushokVerification.readOnly(data.verification)]:[]),...(me.role==='admin'&&data.wallet?[balance(data.wallet,data.user)]:[]),overview,channelSection,campaignSection);
    channelSection.append(el('h2','Каналы'));
    const channelList=el('div',undefined,'profile-list');channelSection.append(channelList);
    if(!data.channels.length)channelList.append(el('p','Каналов пока нет.','empty'));
