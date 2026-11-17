@@ -363,7 +363,7 @@ def main():
                 advertiser.locator('#calendar-from').dispatch_event('change')
                 expect(advertiser.locator('#availability-days button:enabled').first).to_be_visible()
                 advertiser.locator('#availability-days button:enabled').first.click()
-                advertiser.get_by_role('button',name='Тематика канала',exact=True).click();advertiser.get_by_role('button',name='Образование',exact=True).click()
+                advertiser.get_by_role('button',name='Тематика канала',exact=True).click();advertiser.get_by_role('dialog',name='Тематика канала',exact=True).get_by_role('option',name='Образование',exact=True).click()
                 advertiser.locator('#campaign-form button[type=submit]').click()
                 expect(advertiser.locator('#order-result')).to_be_visible()
                 campaign_id = advertiser.evaluate("location.hash.split('/')[2]")

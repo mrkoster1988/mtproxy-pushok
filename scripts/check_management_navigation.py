@@ -61,6 +61,10 @@ def check_management_navigation(browser, base, output, failures, dsn):
             for width in (320, 390, 768, 1280):
                 admin.set_viewport_size({'width': width, 'height': 844})
                 assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth+1'), (key, width)
+                if key == 'tariffs':
+                    field, action = admin.locator('#tariff-admin-select').bounding_box(), admin.locator('#tariff-admin-new').bounding_box()
+                    assert action['x'] >= field['x'] + field['width'] + 7
+                    assert abs(field['y'] + field['height']/2 - action['y'] - action['height']/2) < 2
                 if width == 390:
                     admin.evaluate('window.scrollTo(0,0)')
                     admin.screenshot(path=str(output / ('management-' + key + '.png')), full_page=True)

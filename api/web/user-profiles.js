@@ -63,20 +63,20 @@ window.pushokProfiles=(()=>{
    const personal=target.parentElement.querySelector('.profile-personal');if(personal){const details=personal.querySelector('.profile-details');if(details)details.replaceWith(accountDetails(data.user));else personal.append(accountDetails(data.user));}
   }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p','Обзор не обновлён. '+e.message,'muted'),button('Повторить',()=>ownOverview(target)));}
  }
- function agentCard(back='users'){
-  const card=el('article',undefined,'card directory-user ai-agent-card'),row=el('a',undefined,'user-summary person-line'),avatar=el('span',undefined,'user-avatar agent-avatar'),copy=el('div',undefined,'person-copy');
-  avatar.append(views().icon('moderation'));copy.append(el('strong','Агент ИИ','person-name'),el('small','Решения и статистика','muted'));row.append(avatar,copy);row.href='#/user/ai-agent';row.addEventListener('click',()=>{returnRoute=back;});card.append(row,el('span','Служебный аккаунт','person-role'));return card;
+ function agentCard(back='users',linked=true){
+  const card=el('article',undefined,'card directory-user ai-agent-card'),row=el(linked?'a':'div',undefined,'user-summary person-line'),avatar=el('span',undefined,'user-avatar agent-avatar'),copy=el('div',undefined,'person-copy');
+  avatar.append(views().icon('moderation'));copy.append(el('strong','Агент ИИ','person-name'),el('small','Решения и статистика','muted'));row.append(avatar,copy);if(linked){row.href='#/user/ai-agent';row.addEventListener('click',()=>{returnRoute=back;});}card.append(row,el('span','Служебный аккаунт','person-role'));return card;
  }
  async function showAgent(target){
-  const session=token;target.replaceChildren(el('p','Загрузка статистики…','muted'));target.classList.add('ai-agent-profile');
-  try{const data=await api('/users/ai-agent/profile');if(session!==token||!target.isConnected||location.hash!=='#/user/ai-agent')return;
-   const card=agentCard(),stats=el('dl',undefined,'ai-agent-stats');card.querySelector('a').removeAttribute('href');
+  const session=token,valid=()=>session===token&&target.isConnected&&location.hash==='#/user/ai-agent'&&['admin','operator'].includes(me?.role);target.replaceChildren(el('p','Загрузка статистики…','muted'));target.classList.add('ai-agent-profile');
+  try{const data=await api('/users/ai-agent/profile');if(!valid())return;
+   const card=agentCard('users',false),stats=el('dl',undefined,'ai-agent-stats');
    for(const [key,title] of [['approved','Одобрено'],['rejected','Отклонено'],['review','Передано сотруднику'],['campaigns','Проверено кампаний']]){const cell=el('div');cell.append(el('dt',title),el('dd',String(data.counts[key])));stats.append(cell);}
    const section=el('section',undefined,'panel');section.append(el('h2','Решения по темам'));const table=el('table',undefined,'ai-topic-table'),head=el('tr');['Тематика','Одобрено','Отклонено','На проверку'].forEach(t=>head.append(el('th',t)));const thead=el('thead');thead.append(head);table.append(thead);const body=el('tbody');
    for(const t of data.topics){const row=el('tr');[t.label,t.approved,t.rejected,t.review].forEach(v=>row.append(el('td',String(v))));body.append(row);}table.append(body);section.append(data.topics.length?table:el('p','Решений пока нет.','empty'));
    target.replaceChildren(card,stats,section);
    window.pushokControls.help(section,[el('p','Считаются сохранённые решения за всё время, включая повторные проверки. Передача сотруднику не является отказом. Автоматическое отклонение сейчас выключено. Темы фиксируются на момент решения; у старых записей тема может отсутствовать.'),el('p','Повторов из-за временной недоступности: '+data.counts.retry+'. Последнее решение: '+date(data.counts.last_decision_at))],'Как считается статистика агента');
-  }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p',e.message,'empty'),button('Повторить',()=>showAgent(target)));}
+  }catch(e){if(valid())target.replaceChildren(el('p',e.message,'empty'),button('Повторить',()=>showAgent(target)));}
  }
  function show(target,uid){
   if(!['admin','operator'].includes(me?.role)){target.replaceChildren();return;}
