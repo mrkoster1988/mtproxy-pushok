@@ -24,9 +24,10 @@ def render_advertiser_notice(notice):
     if decision not in _DECISIONS:
         raise ValueError("Неизвестный статус решения")
     campaign = UUID(str(notice["campaign_id"]))
+    ai_rejection = decision == 'rejected' and notice.get('actor_id') == 'ai-agent'
     lines = [
         "🐱 MTProxy Pushok",
-        _DECISIONS[decision],
+        'Ваша рекламная заявка отклонена Агентом ИИ.' if ai_rejection else _DECISIONS[decision],
         "Заявка: " + str(campaign)[:8],
     ]
     if decision != "approved":
@@ -34,8 +35,13 @@ def render_advertiser_notice(notice):
         if isinstance(comment, str):
             cleaned = "".join(c for c in comment if c.isprintable() or c == "\n").strip()
             if cleaned:
-                lines.append("Комментарий модератора:\n" + cleaned[:1100])
+                if ai_rejection:
+                    signature = 'С уважением, Агент ИИ'
+                    if cleaned.endswith(signature):cleaned = cleaned[:-len(signature)].rstrip()
+                    lines.append(cleaned[:1900])
+                else:lines.append("Комментарий модератора:\n" + cleaned[:1100])
     lines.append("Посмотрите подробности в разделе «Мои кампании» (/campaigns).")
+    if ai_rejection:lines.append('С уважением, Агент ИИ')
     return "\n\n".join(lines)
 
 

@@ -111,5 +111,34 @@ def check_unified_controls(browser,base,output,failures,dsn):
             dialog=page.get_by_role('dialog');box=dialog.bounding_box()
             assert box['x']>=0 and box['x']+box['width']<=width+1 and box['y']+box['height']<=601
             page.screenshot(path=str(output/f'controls-topic-{width}.png'));page.keyboard.press('Escape')
+        # Отказ ИИ виден в той же карточке, связан с профилем и попадает в историю.
+        rejected=uuid4()
+        with psycopg.connect(dsn,row_factory=dict_row) as c:
+            c.execute("""INSERT INTO campaigns(id,advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,
+                duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,moderation_status,moderator_comment)
+                VALUES(%s,%s,%s,%s,'День',86400,30000,'RUB','rejected','Причина отказа: Продвижение азартных игр.')""",(rejected,member,channel,tariff))
+            c.execute("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision,decision,reason,description)
+                SELECT id,updated_at,'test','rejected','Продвижение азартных игр.','Канал публикует рекламу казино.'
+                FROM campaigns WHERE id=%s""",(rejected,))
+            c.execute("""INSERT INTO ai_moderation_events(campaign_id,decision,reason,revision,topic,description,evidence)
+                VALUES(%s,'rejected','Продвижение азартных игр.','test','entertainment','Канал публикует рекламу казино.',
+                '[{"source":"post_1","quote":"Реклама казино"}]'::jsonb)""",(rejected,))
+        page.reload();expect(page.locator('body')).to_have_attribute('data-cabinet-loaded','true')
+        go('moderation/'+str(rejected))
+        expect(page.locator('.ai-decision')).to_have_text('Отклонено: Агент ИИ')
+        expect(page.locator('.assistant-saved')).to_contain_text('Описание канала: Канал публикует рекламу казино.')
+        expect(page.locator('.assistant-saved')).to_contain_text('Причина отказа: Продвижение азартных игр.')
+        page.locator('.assistant-saved summary').click()
+        expect(page.locator('.assistant-saved blockquote')).to_have_text('Реклама казино')
+        page.locator('summary').filter(has_text='История и документы').click()
+        expect(page.locator('.campaign-report')).to_contain_text('Отклонено: Агент ИИ')
+        for width in (320,390,768):
+            page.set_viewport_size({'width':width,'height':844})
+            assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+        page.set_viewport_size({'width':390,'height':844})
+        page.screenshot(path=str(output/'controls-ai-rejection-390.png'),full_page=True)
+        page.locator('.ai-decision a').click()
+        expect(page.locator('.ai-agent-stats div').filter(has_text='Отклонено').locator('dd')).to_have_text('1')
+        assert page.evaluate('pushokProfiles.backRoute()')=='moderation/'+str(rejected)
         assert not failures,failures
     finally:context.close()

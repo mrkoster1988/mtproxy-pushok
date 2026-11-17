@@ -9,6 +9,7 @@ from typing import Any
 PUBLIC_EVENTS = frozenset({
     "campaign_submitted",
     "campaign_approved_by_ai",
+    "campaign_rejected_by_ai",
     "campaign_moderated",
     "campaign_pricing_changed",
     "payment_proof_submitted",

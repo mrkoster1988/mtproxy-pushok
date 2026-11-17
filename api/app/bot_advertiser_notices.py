@@ -24,6 +24,7 @@ class AdvertiserNotice(BaseModel):
     campaign_id: UUID
     decision: Literal["approved", "rejected", "changes_requested"]
     comment: str | None = None
+    actor_id: str | None = None
 
 
 class NoticeFinish(BaseModel):
@@ -68,12 +69,14 @@ def claim_advertiser_notices(
                     WHERE n.id = due.id
                     RETURNING n.id AS notice_id, n.claim_token,
                               n.campaign_id, n.recipient_user_id,
-                              n.decision, n.comment_snapshot AS comment
+                              n.decision, n.comment_snapshot AS comment, n.ai_moderation_event_id
                 )
                 SELECT c.notice_id, c.claim_token, c.campaign_id,
-                       u.telegram_user_id, c.decision, c.comment
+                       u.telegram_user_id, c.decision, c.comment, e.actor_id
                 FROM claimed AS c
                 JOIN users AS u ON u.id = c.recipient_user_id
+                LEFT JOIN ai_moderation_events AS e ON e.id=c.ai_moderation_event_id
+                    AND e.campaign_id=c.campaign_id AND e.decision=c.decision
                 WHERE u.telegram_user_id > 0
                 """,
             ).fetchall()
