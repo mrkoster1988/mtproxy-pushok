@@ -79,10 +79,19 @@ def free_port(port):
 
 
 def exchange(data):
-    result = subprocess.run(['python3',str(ROOT/'scripts/installer_runtime.py'),'compose','exec','-T',
-        'api','python','-m','app.proxy_provisioning'],cwd=ROOT,input=json.dumps(data),
-        text=True,capture_output=True,timeout=45,check=True)
-    return json.loads(result.stdout)
+    def execute():
+        result = subprocess.run([sys.executable,str(ROOT/'scripts/installer_runtime.py'),'compose','exec','-T',
+            'api','python','-m','app.proxy_provisioning'],cwd=ROOT,input=json.dumps(data),
+            text=True,capture_output=True,timeout=45,check=True)
+        return json.loads(result.stdout)
+    if data.get('action') == 'inspect':
+        from updater import lock_file
+        # Обновлятор заменяет код и контейнеры под этой же блокировкой.
+        # Не объявляем его штатную работу потерей связи с кабинетом.
+        with lock_file('host-lock') as lock:
+            fcntl.flock(lock, fcntl.LOCK_SH | fcntl.LOCK_NB)
+            return execute()
+    return execute()
 
 
 def read_instance(node_id):
@@ -447,7 +456,7 @@ def main():
             if os.geteuid()!=0:
                 raise RuntimeError('root_required')
             from proxy_readiness import inspect, publish
-            report = inspect(sys.modules[__name__])
+            report = inspect(sys.modules[__name__], source='manual')
             publish(sys.modules[__name__], report)
             print(json.dumps(report, ensure_ascii=False))
             return 0 if all(value=='ready' for value in report['checks'].values()) else 2

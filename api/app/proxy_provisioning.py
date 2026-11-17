@@ -30,9 +30,9 @@ READINESS = {
     'timers': {'ready', 'timer_unavailable'},
     'telegram': {'ready', 'owner_unavailable', 'connection_busy', 'telegram_flood_wait'},
     'resources': {'ready', 'resources_low'},
-    'api': {'ready', 'api_unavailable'},
+    'api': {'ready', 'api_unavailable', 'api_timeout', 'api_invalid_response', 'agent_busy'},
     'policy': {'ready', 'disabled', 'ai_unavailable', 'owner_unavailable', 'unknown'},
-    'ports': {'ready', 'port_busy', 'preparation_pending', 'instance_limit', 'unknown'},
+    'ports': {'ready', 'port_busy', 'port_check_failed', 'preparation_pending', 'instance_limit', 'unknown'},
     'capacity': {'ready', 'instance_limit', 'preparation_pending', 'preparation_failed', 'daily_limit', 'unknown'},
 }
 
@@ -52,6 +52,8 @@ def readiness_report(policy_revision=None):
             return None
         result = dict(checked_at=checked.isoformat(), recent=age <= 660, checks=checks,
                       current_policy=policy_revision is not None and raw.get('policy_revision')==str(policy_revision))
+        if raw.get('source') in ('manual', 'scheduled'):
+            result['source'] = raw['source']
         retry = datetime.fromisoformat(raw.get('retry_at', '')) if raw.get('retry_at') else None
         if retry and checks['telegram']=='telegram_flood_wait' and 0 < (retry-datetime.now(timezone.utc)).total_seconds() <= 2147483648:
             result['retry_at'] = retry.isoformat()
