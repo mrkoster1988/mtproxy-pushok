@@ -224,6 +224,42 @@ class BotFlowTests(unittest.IsolatedAsyncioTestCase):
             await self.dialog.register(request,state)
         self.dialog.send.assert_not_called()
 
+    async def test_registration_accepts_actual_hex_prompt_and_sends_existing_secret_once(self):
+        from unittest.mock import Mock, call
+        from uuid import uuid4
+        request=dict(action='register',host='8.8.8.8',port=8443,secret='b'*32,node_id=str(uuid4()))
+        marker='registration-'+request['node_id']+'.json'
+        identity={'host':request['host'],'port':request['port']}
+        state=Mock(read_file=Mock(return_value=None))
+        self.dialog.select=AsyncMock(side_effect=[BotProtocolError('proxy_not_found'),card(host=request['host'])])
+        async def send(value):
+            if value=='/newproxy':
+                return NS(raw_text='Registering a new proxy server. Please send me its address in the format host:port.')
+            if value=='8.8.8.8:8443':
+                return NS(raw_text='Now please specify its secret in hex format.')
+            self.assertEqual(value,request['secret'])
+            state.save_file.assert_called_once_with(marker,identity)
+            return NS(raw_text='Registered')
+        self.dialog.send=AsyncMock(side_effect=send)
+        result=await self.dialog.register(request,state)
+        self.assertEqual(result['tag'],TAG)
+        self.assertEqual(self.dialog.send.await_args_list,[call('/newproxy'),call('8.8.8.8:8443'),call(request['secret'])])
+        self.assertEqual(state.save_file.call_args_list,[call(marker,identity),call(marker,dict(identity,tag=TAG))])
+
+    async def test_secret_is_not_sent_for_unrecognised_second_prompt(self):
+        from unittest.mock import Mock, call
+        from uuid import uuid4
+        request=dict(action='register',host='8.8.8.8',port=8443,secret='b'*32,node_id=str(uuid4()))
+        for prompt in ('Now please specify your login code.', 'Secret is invalid.', 'Please send your password.'):
+            with self.subTest(prompt=prompt):
+                state=Mock(read_file=Mock(return_value=None))
+                self.dialog.select=AsyncMock(side_effect=BotProtocolError('proxy_not_found'))
+                self.dialog.send=AsyncMock(side_effect=[NS(raw_text='Send IP address and port'),NS(raw_text=prompt)])
+                with self.assertRaisesRegex(BotProtocolError,'registration_prompt_invalid'):
+                    await self.dialog.register(request,state)
+                self.assertEqual(self.dialog.send.await_args_list,[call('/newproxy'),call('8.8.8.8:8443')])
+                state.save_file.assert_not_called()
+
     async def test_registration_wrong_secret_and_unrecognised_prompt_are_rejected(self):
         from unittest.mock import Mock
         from uuid import uuid4

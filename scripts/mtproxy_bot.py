@@ -246,7 +246,7 @@ class MTProxyDialog:
             if not re.search(r'(?is)(?:ip|address|адрес).*(?:port|порт)',text(prompt)):
                 raise BotProtocolError('registration_prompt_invalid')
             prompt = await self.send(f'{host}:{port}')
-            if not re.search(r'(?is)(?:send|enter|пришл|отправ|укаж).*(?:secret|секрет)',text(prompt)):
+            if not re.search(r'(?is)(?:send|enter|specify|пришл|отправ|укаж).*(?:secret|секрет)',text(prompt)):
                 raise BotProtocolError('registration_prompt_invalid')
             # Сохраняем намерение ДО финальной отправки. При обрыве — только чтение.
             state.save_file(marker,identity)
