@@ -45,7 +45,8 @@ class Settings(BaseModel):
         for categories in self.rewards.values():
             for metric, amounts in categories.items():
                 if metric not in {*METRICS, 'spend_rub', 'spend_xtr'} or len(amounts)>10: raise ValueError('invalid_metric_or_places')
-                if any(type(a) is not int or a<0 or a>100000000 for a in amounts): raise ValueError('invalid_reward')
+                maximum=200000000 if metric=='spend' else 100000000
+                if any(type(a) is not int or a<0 or a>maximum for a in amounts): raise ValueError('invalid_reward')
                 total += sum(amounts)
         if total>1000000000: raise ValueError('reward_budget_exceeded')
         return self
@@ -187,11 +188,18 @@ def router_for(dsn,current_user,require_admin):
                 period=conn.execute('SELECT settings FROM hall_periods WHERE kind=%s AND starts_at=%s',(kind,start)).fetchone()
                 effective=period['settings'] if period else cfg
                 rows=scores(conn,metric,max(start,cfg['started_at']),end,effective['top_size'],user['id'])
+            legacy_spend={}
             if period_id and metric=='spend' and not rows:
-                rows=scores(conn,metric,max(start,cfg['started_at']),end,effective['top_size'],user['id'])
+                # Старые итоги в разных валютах нельзя пересчитать из живых оплат:
+                # возвраты/блокировки изменят уже закрытый рейтинг.
+                for old in ('spend_rub','spend_xtr'):
+                    saved=conn.execute('''SELECT r.user_id,r.rank,r.score,r.bonus_amount,u.first_name,u.last_name,u.username
+                        FROM hall_results r JOIN users u ON u.id=r.user_id
+                        WHERE r.period_id=%s AND r.metric=%s ORDER BY rank''',(period_id,old)).fetchall()
+                    if saved:legacy_spend[old]=saved
             own=next((r for r in rows if str(r['user_id'])==str(user['id'])),None)
             return dict(rows=rows[:effective['top_size']],own=own,periods=periods,starts_at=start,ends_at=end,closed=bool(period_id),top_size=effective['top_size'],
-                        rewards=effective['rewards'].get(kind,{}).get(metric,[]),metrics=METRICS,started_at=cfg['started_at'])
+                        rewards=effective['rewards'].get(kind,{}).get(metric,[]),metrics=METRICS,started_at=cfg['started_at'],legacy_spend=legacy_spend)
         return db(read)
 
     @router.get('/avatar/{uid}')

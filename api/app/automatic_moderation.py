@@ -51,7 +51,7 @@ def service_once(dsn,limit=3):
                 WHERE c.moderation_status='pending' AND c.archived_at IS NULL AND sc.archived_at IS NULL
                 AND (a.campaign_id IS NULL OR a.snapshot<>c.updated_at OR a.revision<>%s
                     OR (a.decision='retry' AND a.attempted_at<now()-interval '5 minutes'))
-                ORDER BY c.created_at,c.id LIMIT 1 FOR UPDATE OF c SKIP LOCKED""",(revision,)).fetchone()
+                ORDER BY a.attempted_at NULLS FIRST,c.created_at,c.id LIMIT 1 FOR UPDATE OF c SKIP LOCKED""",(revision,)).fetchone()
             if not row:break
             c.execute("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision) VALUES(%s,%s,%s)
                 ON CONFLICT(campaign_id) DO UPDATE SET snapshot=EXCLUDED.snapshot,revision=EXCLUDED.revision,
@@ -59,10 +59,13 @@ def service_once(dsn,limit=3):
         decision,reason='review','Недостаточно доступных текстов для автоматического одобрения.'
         try:
             chat=public_channels.lookup(row['telegram_url'],fresh=True,expected_id=row['telegram_channel_id'])
-            posts=[t[:1200] for t in topics.public_posts(chat['username'])[-8:]]
+            sample=topics.public_sample(chat['username'])
+            posts=sample['posts']
             channel={'title':chat['title'][:255],'description':chat.get('description','')[:2000],'posts':posts}
             if MARKER.search(' '.join([channel['title'],channel['description'],*posts])):
                 reason='Обнаружена маркировка 18+. Требуется проверка сотрудником.'
+            elif not sample['fully_textual']:
+                reason='Есть медиа или неполные тексты. Требуется проверка сотрудником.'
             elif len(posts)>=3 and sum(len(t.strip()) for t in posts)>=300:
                 answer=classify(channel,config);decision='approved' if answer.decision=='approve' else 'review';reason=answer.reason
         except (HTTPException,OSError,ValueError,TypeError,KeyError,IndexError):

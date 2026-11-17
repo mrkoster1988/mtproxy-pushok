@@ -982,6 +982,7 @@ let statusRefreshBusy=false;
 async function refreshStatuses(){
  const route=location.hash.split('/')[1];
  if(!me||!token||document.hidden||statusRefreshBusy||!['dashboard','campaigns','campaign','payments','moderation'].includes(route))return;
+ if(window.pushokAssistant?.isBusy())return;
  if(document.querySelector('.assistant-output:not(:empty),input:focus,textarea:focus,select:focus')||[...document.querySelectorAll('details[open]:not(.assistant-open)')].some(node=>node.getClientRects().length))return;
  statusRefreshBusy=true;
  try{await refresh({background:true});}catch{}finally{statusRefreshBusy=false;}

@@ -4,7 +4,7 @@ window.pushokViews=(()=>{
  function icon(name){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.classList.add('ui-icon');
-  const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg?v=187#pi-'+name);svg.append(use);return svg;
+  const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg?v=188#pi-'+name);svg.append(use);return svg;
  }
  // Иконка всегда имеет доступное имя и подпись при наведении.
  function iconAction(node,name,label){if(/^Сохранить/.test(label))name='save';node.replaceChildren(icon(name));node.dataset.actionIcon=name;node.classList.add('icon-action');node.setAttribute('aria-label',label);node.title=label;return node;}

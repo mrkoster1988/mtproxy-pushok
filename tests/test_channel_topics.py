@@ -14,6 +14,24 @@ from app import channel_topics as topics, channel_topic_suggestions as suggest, 
 
 
 class TopicSuggestions(unittest.TestCase):
+    def test_moderation_sample_preserves_media_and_missing_text(self):
+        text='Обучение и формулы: достаточно подробный текст публикации.'
+        def post(i,body):return f'<div class="tgme_widget_message" data-post="example/{i}">{body}</div>'
+        def caption(t):return '<div class="tgme_widget_message_text">'+t+'</div>'
+        clean=''.join(post(i,caption(text)) for i in range(3))
+        for extra in ('<a class="tgme_widget_message_photo_wrap"></a>',
+                      '<div class="tgme_widget_message_video_player"></div>',
+                      caption(text)+'<a class="tgme_widget_message_photo_wrap"></a>',
+                      caption('Коротко'),'<audio></audio>'):
+            with patch.object(suggest,'read_url',return_value=(clean+post(4,extra)).encode()):
+                sample=suggest.public_sample('example')
+                self.assertGreaterEqual(len(sample['posts']),3)
+                self.assertFalse(sample['fully_textual'])
+        with patch.object(suggest,'read_url',return_value=clean.encode()):
+            self.assertTrue(suggest.public_sample('example')['fully_textual'])
+        with patch.object(suggest,'read_url',side_effect=URLError('offline')):
+            self.assertEqual(suggest.public_sample('example'),{'posts':[],'fully_textual':False})
+
     def setUp(self):
         suggest._cache.clear(); suggest._ai_calls.clear()
         env=patch.dict(os.environ, {'CHANNEL_TOPIC_AI_ENABLED':'0','PUSHOK_TELEGRAM_TEST_ENVIRONMENT':'0'})

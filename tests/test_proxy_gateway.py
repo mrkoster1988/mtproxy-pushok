@@ -27,6 +27,28 @@ import proxy_provisioner as provisioner
 
 
 class GatewayTests(unittest.TestCase):
+    def test_privileged_backend_port_and_hex_secret_case(self):
+        settings=dict(port=10443,interests_enabled=False,topics=[])
+        node=dict(id=str(uuid4()),address='127.0.0.1',port=443)
+        self.assertIn('127.0.0.1:443 check',host.configuration(settings,[node]))
+        for port in (0,-1,65536,True,10443):
+            with self.assertRaises(ValueError):host.configuration(settings,[dict(node,port=port)])
+        raw=b'/opt/MTProxy/objs/bin/mtproto-proxy\0-H\000443\0-S\0'+b'AbCd'*8+b'\0'
+        with patch.object(provisioner,'command',return_value='42'),patch.object(Path,'read_bytes',return_value=raw):
+            self.assertTrue(host.process_ready('primary',443,'abcd'*8))
+            self.assertTrue(host.process_ready('primary',443,'ABCD'*8))
+            self.assertFalse(host.process_ready('primary',443,'abce'*8))
+
+    def test_gateway_local_host_inventory_is_bounded_and_fresh(self):
+        with tempfile.TemporaryDirectory() as tmp,patch.object(proxy_link,'LINK_FILE',Path(tmp)/'proxy-link.json'):
+            proxy_link.LINK_FILE.write_text(json.dumps({'url':proxy_link.connection_url('proxy.example.org',443,'a'*32)}))
+            report=Path(tmp)/'proxy-gateway-status.json'
+            report.write_text(json.dumps({'hosts':['proxy.example.org','8.8.8.8'],'checked_at':time.time()}))
+            self.assertEqual(api.local_hosts(),['8.8.8.8','proxy.example.org'])
+            report.write_text(json.dumps({'hosts':['8.8.8.8'],'checked_at':time.time()-121}))
+            self.assertEqual(api.local_hosts(),['proxy.example.org'])
+            report.write_text(json.dumps({'hosts':['8.8.8.8'],'checked_at':True}))
+            self.assertEqual(api.local_hosts(),['proxy.example.org'])
     def test_invalid_config_and_failed_reload_preserve_previous_config(self):
         settings=dict(port=10443,interests_enabled=False,topics=[])
         nodes=[dict(id=str(uuid4()),address='127.0.0.1',port=8443,topic=None)]
@@ -179,6 +201,19 @@ class GatewayIntegration(unittest.TestCase):
     setUp=wallet.WalletIntegration.setUp
     _management_fixture=fixture.PostgresIntegration._management_fixture
     write_promotion_report=fixture.PostgresIntegration.write_promotion_report
+
+    def test_remote_node_port_does_not_conflict_with_local_gateway(self):
+        self.owner_actor()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("INSERT INTO proxy_nodes(name,host,port) VALUES('Remote','remote.example.org',10443)")
+        cfg=self.request('GET','/admin/proxy-gateway')
+        data=dict(enabled=True,port=10443,interests_enabled=True,revision=cfg['revision'])
+        with patch.object(api,'local_hosts',return_value=['local.example.org','8.8.8.8']):
+            saved=self.request('PUT','/admin/proxy-gateway',json=data)
+            data['revision']=saved['revision']
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("INSERT INTO proxy_nodes(name,host,port) VALUES('Local','LOCAL.example.org',10444)")
+            self.request('PUT','/admin/proxy-gateway',409,json=data)
 
     def test_topic_requires_fresh_applied_current_plan(self):
         from app.promotion_runtime import handle
