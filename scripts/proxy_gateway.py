@@ -52,7 +52,7 @@ def configuration(settings, nodes, *, runtime_socket=RUNTIME_SOCKET):
             raise ValueError('invalid_node')
         seen.add(n['id'])
         ipaddress.IPv4Address(n['address'])
-        if type(n['port']) is not int or not 1024 <= n['port'] <= 65535 or n['port'] in listeners.values():
+        if type(n['port']) is not int or not 1 <= n['port'] <= 65535 or n['port'] in listeners.values():
             raise ValueError('port_busy')
     lines = ['global','  nbthread 2','  maxconn 4096','  hard-stop-after 30m',
              f'  stats socket {runtime_socket} mode 600 level user',
@@ -100,9 +100,10 @@ def process_ready(service, port, secret):
         if pid <= 1:
             return False
         args = Path(f'/proc/{pid}/cmdline').read_bytes().decode().split('\0')
-        secrets = [args[i+1] for i,arg in enumerate(args[:-1]) if arg=='-S']
+        secrets = [args[i+1].lower() for i,arg in enumerate(args[:-1]) if arg=='-S'
+                   and re.fullmatch('[0-9a-fA-F]{32}', args[i+1])]
         return (Path(args[0]).name=='mtproto-proxy' and args[args.index('-H')+1]==str(port)
-                and secret in secrets)
+                and secret.lower() in secrets)
     except (OSError,ValueError,IndexError,subprocess.SubprocessError):
         return False
 
@@ -213,7 +214,8 @@ def tick(status):
     host, primary_port, secret = load_proxy(provisioner.BASE/'mtproxy.env')
     host=host.lower()
     public = provisioner.primary_host()
-    settings = exchange(list(dict.fromkeys([host,public])))
+    status['hosts'] = list(dict.fromkeys([host,public]))
+    settings = exchange(status['hosts'])
     status.update(revision=settings['revision'],port=settings['port'],interests_enabled=settings['interests_enabled'])
     if not settings['enabled']:
         (CONTROL/'proxy-gateway.json').unlink(missing_ok=True)

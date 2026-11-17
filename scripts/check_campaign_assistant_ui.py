@@ -84,6 +84,11 @@ def check_campaign_assistant_ui(new_page, go, output, dsn):
         }''')
         panel.get_by_role('button',name='Разобрать заявку',exact=True).click()
         page.wait_for_function('Boolean(window.__assistantResolve)')
+        # Таймер обновления не должен удалять карточку и отменять незавершённый анализ.
+        assert page.evaluate('''async () => {const card=document.querySelector('.campaign-assistant');
+            document.querySelectorAll('details[open]:not(.assistant-open)').forEach(d=>d.open=false);
+            await refreshStatuses();return window.pushokAssistant.isBusy() && card.isConnected
+              && card===document.querySelector('.campaign-assistant');}''')
         page.evaluate('''() => {window.cabinet.logout();window.__assistantResolve(new Response(JSON.stringify({engine:'ai',advice:{summary:'LATE-PRIVATE-RESULT',checks:[],next_steps:[],advertiser_message:''},facts:[]} ),{headers:{'Content-Type':'application/json'}}));window.fetch=window.__assistantFetch;}''')
         expect(page.locator('#queue')).to_be_empty()
         assert page.evaluate('me') is None

@@ -4,6 +4,7 @@ import os
 import re
 import time
 from uuid import UUID, uuid4
+from urllib.parse import parse_qs, urlsplit
 
 import psycopg
 from psycopg.rows import dict_row
@@ -19,6 +20,26 @@ TOPICS = ('technology','education','business','finance','marketing','career','ne
           'real_estate','auto','family','pets','science','industry','agriculture',
           'shopping','lifestyle','other')
 PRIVATE = {'Cache-Control': 'private, no-store'}
+
+
+def local_hosts():
+    """Адреса этого VPS из локальных файлов агента, без DNS и данных клиента."""
+    hosts = set()
+    direct = proxy_link.read_proxy_url(proxy_link.LINK_FILE)
+    if direct:
+        hosts.add(parse_qs(urlsplit(direct).query)['server'][0].lower())
+    try:
+        report = proxy_link.read_json(proxy_link.LINK_FILE.parent/'proxy-gateway-status.json')
+        if (isinstance(report, dict) and type(report.get('checked_at')) in (int,float)
+                and 0 <= time.time()-report['checked_at'] <= 120):
+            values = report.get('hosts')
+            if isinstance(values,list) and 1 <= len(values) <= 2 and all(
+                    isinstance(h,str) and re.fullmatch(r'[a-zA-Z0-9.:-]{1,253}',h) for h in values):
+                hosts.update(h.lower() for h in values)
+    except (OSError, ValueError, TypeError):
+        pass
+    # Без отчёта порт всё равно проверяется на VPS перед применением HAProxy.
+    return sorted(hosts)
 
 
 class Settings(BaseModel):
@@ -107,7 +128,8 @@ def router_for(dsn, current_user, require_owner):
                 raise HTTPException(409, 'gateway_settings_changed')
             last = data.port + (len(TOPICS) if data.interests_enabled else 0)
             if data.enabled and (data.port <= 20002 and last >= 19999 or conn.execute(
-                    'SELECT 1 FROM proxy_nodes WHERE port BETWEEN %s AND %s', (data.port, last)).fetchone()):
+                    'SELECT 1 FROM proxy_nodes WHERE lower(host)=ANY(%s) AND port BETWEEN %s AND %s',
+                    (local_hosts(), data.port, last)).fetchone()):
                 raise HTTPException(409, 'gateway_port_conflict')
             # Смена адреса не должна незаметно ломать выданные постоянные ссылки.
             if cfg['enabled'] and data.enabled and (cfg['port'] != data.port or cfg['interests_enabled'] and not data.interests_enabled):

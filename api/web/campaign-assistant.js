@@ -82,5 +82,5 @@ window.pushokAssistant=(()=>{
   }
   host.addEventListener('toggle',()=>{if(host.open)void load();});if(expanded)setTimeout(()=>void load(),0);return host;
  }
- return {panel,reset};
+ return {panel,reset,isBusy:()=>requests.size>0};
 })();
