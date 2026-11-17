@@ -7,7 +7,6 @@ from collections import OrderedDict, deque
 import hashlib
 from html.parser import HTMLParser
 import json
-import os
 import re
 import threading
 import time
@@ -82,10 +81,8 @@ def public_posts(username):
 
 
 def ai_config():
-    key = os.getenv('CHANNEL_TOPIC_AI_API_KEY', '').strip()
-    model = os.getenv('CHANNEL_TOPIC_AI_MODEL', 'gpt-4.1-mini').strip()
-    enabled = os.getenv('CHANNEL_TOPIC_AI_ENABLED', '0') == '1' and bool(key)
-    return (key, model) if enabled and re.fullmatch(r'[A-Za-z0-9._-]{1,80}', model) else None
+    from .channel_ai_connection import active
+    return active()
 
 
 def ai_topic(title, description, posts, config):

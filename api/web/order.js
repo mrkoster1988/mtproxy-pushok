@@ -36,6 +36,7 @@ window.pushokOrder=(()=>{
   const channel=newChannel?($('order-channel-title').value.trim()||$('order-channel-url').value.trim()||'Укажите канал'):channels.find(c=>c.id===$('channel-select').value)?.title||'Выберите канал';
   topic.context(newChannel?$('order-channel-url').value:channels.find(c=>c.id===$('channel-select').value)?.telegram_url||'');
   if(attempt)topic.restore(attempt.topic);
+  topic.resume();
   const preview=$('order-selected-preview');if(preview&&window.pushokViews){
    selectedChecker??=window.pushokViews.channelVerification(preview,()=>newChannel?'':channels.find(c=>c.id===$('channel-select').value)?.telegram_url||'',data=>{
     const selected=channels.find(c=>c.id===$('channel-select').value),heading=preview.querySelector('strong');if(selected&&heading)heading.textContent=selected.title;topic.verified(data.telegram_url);

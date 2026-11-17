@@ -2,13 +2,13 @@
 // Анализ независим от формы: отправку можно продолжить, не дожидаясь подсказки.
 window.pushokTopics={create({locked,onChange}){
  const select=$('order-topic'),status=$('order-topic-status'),retry=$('order-topic-detect');
- let channel='',automatic=true,requested=false,epoch=0,controller=null;
+ let channel='',verifiedChannel='',automatic=true,requested=false,epoch=0,controller=null;
  const normalize=value=>{const match=(value||'').trim().match(/^(?:@|https:\/\/(?:t\.me|telegram\.me)\/)?([a-z][a-z0-9_]{3,31})\/?$/i);return match?match[1].toLowerCase():'';};
  function stop(){epoch++;controller?.abort();controller=null;retry.disabled=false;status.removeAttribute('aria-busy');}
- function reset(){stop();channel='';automatic=true;requested=false;select.value='';status.textContent='Можно изменить подсказку или оставить «Не указывать».';}
+ function reset(){stop();channel='';verifiedChannel='';automatic=true;requested=false;select.value='';status.textContent='Можно изменить подсказку или оставить «Не указывать».';}
  function context(value){const next=normalize(value);if(channel!==next){reset();channel=next;}}
  async function detect(){
-  if(locked()||!channel)return;
+  if(locked()||!channel||!select.getClientRects().length)return;
   stop();automatic=true;requested=true;
   const version=epoch,session=token,currentChannel=channel;
   const active=new AbortController();controller=active;
@@ -33,7 +33,8 @@ window.pushokTopics={create({locked,onChange}){
  retry.addEventListener('click',()=>{if(channel)void detect();else status.textContent='Сначала укажите публичный канал.';});
  select.form.addEventListener('reset',reset);
  reset();
- return {context,reset,detect,verified(value){if(normalize(value)===channel&&automatic&&!requested)void detect();},
+ function resume(){if(verifiedChannel===channel&&automatic&&!requested)void detect();}
+ return {context,reset,detect,resume,verified(value){verifiedChannel=normalize(value);resume();},
   value:()=>select.value||null,label:()=>select.selectedOptions[0]?.textContent||'',
   restore(value){stop();automatic=false;requested=true;select.value=value||'';status.textContent='Тематика сохранена вместе с отправляемой заявкой.';}};
 }};

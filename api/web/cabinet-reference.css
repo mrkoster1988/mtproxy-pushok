@@ -564,5 +564,23 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .topic-hint p{margin:0;font-size:.85rem;line-height:1.45;overflow-wrap:anywhere}
 .topic-hint button{border:0;background:transparent;color:var(--mint);border-radius:0;padding:6px 0;min-height:36px;font-size:.85rem;white-space:normal;text-align:left}
 .campaign-topic{display:block;color:var(--mint);font-size:.8rem;line-height:1.4;overflow-wrap:anywhere;margin:6px 0 0}
+.cabinet-mode .ai-settings-card{border:1px solid var(--line);border-radius:16px;background:var(--surface);margin:0 0 16px;overflow:hidden}
+.cabinet-mode .ai-settings-card>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px;cursor:pointer;list-style:none}
+.cabinet-mode .ai-settings-card>summary::-webkit-details-marker{display:none}
+.cabinet-mode .ai-settings-title{display:flex;align-items:center;gap:10px;min-width:0;font-weight:700}
+.cabinet-mode .ai-settings-title .ui-icon{flex:none;color:var(--mint)}
+.cabinet-mode .ai-state{font-size:.75rem;color:var(--text-soft);white-space:nowrap;border:1px solid var(--line);padding:4px 8px;border-radius:20px}
+.cabinet-mode .ai-state.active{color:#66d8bf;background:#153c3e;border-color:#287e79}
+.cabinet-mode .ai-settings-content{padding:0 18px 18px;display:grid;gap:14px}
+.cabinet-mode .ai-settings-content fieldset{border:0;padding:0;margin:0;min-width:0;display:grid;gap:14px}
+.cabinet-mode .ai-settings-content label{margin:0;display:grid;gap:8px;font-size:.875rem}
+.cabinet-mode .ai-settings-content .ai-switch{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.cabinet-mode .ai-switch input{flex:none;width:20px;height:20px;margin:0}
+.cabinet-mode .ai-settings-content .muted,.cabinet-mode .ai-settings-status{margin:0;font-size:.8rem;line-height:1.5;overflow-wrap:anywhere}
+.cabinet-mode .ai-settings-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cabinet-mode .ai-settings-actions button{margin:0;min-width:0;min-height:44px;padding:10px 8px;font-size:.85rem}
+.cabinet-mode .ai-remove{justify-self:start;border:0;background:transparent;color:#efa2a5;padding:8px 0;font-size:.8rem}
+@media(max-width:360px){.cabinet-mode .ai-settings-card>summary{padding:14px;gap:8px}.cabinet-mode .ai-settings-title{font-size:.85rem;gap:6px}.cabinet-mode .ai-settings-content{padding:0 14px 14px}}
+
 /* Доска почёта: плотные строки и рамки без анимации. */
 .hall-controls{display:grid;gap:8px;margin-bottom:12px}.hall-controls select{min-width:0;width:100%}.hall-tabs{display:flex;gap:6px}.hall-tabs button{flex:1;padding:9px 5px}.hall-tabs [aria-pressed=true]{background:var(--accent);color:#06212c}.hall-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.hall-heading h2{font-size:16px}.hall-heading span,.hall-prizes{font-size:11px}.hall-row{display:flex;align-items:center;gap:8px;padding:12px 0;border-bottom:1px solid var(--line-soft)}.hall-rank{font-size:12px;color:var(--muted);min-width:20px}.hall-row .user-avatar{width:36px;height:36px;flex:0 0 36px}.hall-person{min-width:0;flex:1;display:grid;gap:3px}.hall-person strong,.hall-person a{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.hall-value{display:grid;gap:3px;text-align:right;font-size:12px}.hall-value small{font-size:9px}.hall-frame{box-sizing:border-box;border:2px solid #32c6bc!important;outline:1px solid #32c6bc55;outline-offset:2px}.hall-gold{border-color:#f5c65b!important;outline-color:#f5c65b66}.hall-silver{border-color:#d1deed!important;outline-color:#d1deed66}.hall-bronze{border-color:#ce8b58!important;outline-color:#ce8b5866}.hall-medals{margin:10px 0;font-size:12px}.hall-medal{display:flex;align-items:center;gap:8px;padding:8px 0}.hall-medal strong{margin-left:auto}.hall-admin{margin-top:16px}.hall-admin form{display:grid;gap:10px;margin-top:12px}.hall-admin label{font-size:12px}.hall-prize-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.hall-prize-grid input{width:100%;min-width:0;box-sizing:border-box}.hall-admin summary{cursor:pointer;font-weight:600}
