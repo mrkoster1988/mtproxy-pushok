@@ -538,3 +538,5 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .birthday-settings form{display:grid;gap:12px}
 .birthday-settings form>label{margin:0}
 .verification-private>h2{font-size:16px}
+
+.dashboard-hero-actions>a.dashboard-promote-channel{background:#26b96b;color:#052b1b!important}
