@@ -1,7 +1,7 @@
 -- Исправление выбора владельца в 056 без изменения уже применённой миграции.
 -- Действующий владелец и блокировка прежнего администратора сохраняются.
-LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE;
 DO $$ DECLARE old_owner UUID; next_owner UUID; BEGIN
+ LOCK TABLE users IN SHARE ROW EXCLUSIVE MODE;
  SELECT id INTO old_owner FROM users WHERE is_owner AND blocked_at IS NOT NULL
    AND id=(SELECT id FROM users WHERE role='admin' ORDER BY created_at,id LIMIT 1);
  IF old_owner IS NOT NULL OR NOT EXISTS(SELECT 1 FROM users WHERE is_owner) THEN

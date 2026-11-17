@@ -205,3 +205,9 @@ class HallIntegration(unittest.TestCase):
             conn.execute("UPDATE users SET role='admin',created_at='1999-01-01' WHERE id=%s",(self.other,))
             conn.execute(sql)
             self.assertTrue(conn.execute('SELECT is_owner FROM users WHERE id=%s',(self.friend,)).fetchone()['is_owner'])
+        # docker-entrypoint выполняет SQL без внешнего BEGIN; установщик — в транзакции.
+        with psycopg.connect(self.dsn,autocommit=True) as conn:
+            prefix,block=sql.split('DO $$',1)
+            if any(line.strip() and not line.lstrip().startswith('--') for line in prefix.splitlines()):
+                conn.execute(prefix)
+            conn.execute('DO $$'+block)

@@ -60,6 +60,15 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                 else:expect(board.locator('.hall-admin')).to_have_count(0)
                 board.get_by_label('Период рейтинга').select_option(str(p));expect(board.locator('.hall-heading')).to_contain_text('Итоги');expect(board.locator('.hall-gold')).to_have_count(1)
                 page.screenshot(path=str(output/f'hall-{role}-390.png'))
+            # Старые валютные результаты остаются читаемыми без живого пересчёта.
+            with psycopg.connect(dsn) as conn:
+                conn.execute("INSERT INTO hall_results(period_id,metric,user_id,rank,score) VALUES(%s,'spend_rub',%s,1,12345),(%s,'spend_xtr',%s,1,25)",(p,friend,p,friend))
+            board.get_by_label('Период рейтинга').select_option('')
+            expect(board.locator('.hall-heading')).to_contain_text('Места обновляются')
+            board.get_by_label('Период рейтинга').select_option(str(p))
+            legacy=board.locator('.hall-category').filter(has=page.get_by_role('heading',name='Расходы на рекламу',exact=True))
+            expect(legacy).to_contain_text('Архив сохранён в прежних номинациях')
+            expect(legacy).to_contain_text('123,45 ₽');expect(legacy).to_contain_text('25 Stars')
             page.evaluate('window.cabinet.go('+repr('user/'+str(owner))+')')
             profile=page.locator('[data-page=user]');expect(profile.locator('.hall-medals')).to_be_visible();expect(profile.locator('.hall-gold')).to_have_count(1)
             profile.locator('.hall-medals summary').click();expect(profile.locator('.hall-medal')).to_contain_text('#1')
