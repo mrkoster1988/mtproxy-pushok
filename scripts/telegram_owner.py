@@ -217,13 +217,13 @@ MESSAGES = {
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("connect", "status", "disconnect", "check"))
+    parser.add_argument("action", choices=("connect", "enable", "disable", "status", "disconnect", "check"))
     parser.add_argument("--state-dir", type=Path, default=DEFAULT_STATE)
     args = parser.parse_args()
     logging.disable(logging.CRITICAL)
     os.umask(0o077)
     try:
-        if args.action == "connect" and (not sys.stdin.isatty() or not sys.stdout.isatty()):
+        if args.action in ('connect','enable') and (not sys.stdin.isatty() or not sys.stdout.isatty()):
             print("Подключение запускается только в интерактивном терминале VPS.")
             return 2
         import telethon
@@ -233,11 +233,20 @@ def main():
             raise OwnerError("sdk_version")
         with PrivateState(args.state_dir) as state:
             existing = state.read()
+            if args.action in ('disable','disconnect'):
+                try:
+                    os.unlink('automatic.enabled', dir_fd=state.directory)
+                    os.fsync(state.directory)
+                except FileNotFoundError:
+                    pass
+                if args.action == 'disable':
+                    print('{"automatic_binding_enabled": false}')
+                    return 0
             if args.action == "check":
                 print(json.dumps({"state": "session_saved" if existing else "not_connected",
                                   "sdk_version": TELETHON_VERSION, "network_checked": False}, ensure_ascii=False))
                 return 0
-            if not existing and args.action != "connect":
+            if not existing and args.action not in ('connect','enable'):
                 print(json.dumps({"state": "not_connected", "automatic_binding_enabled": False}))
                 return 0
             if existing:
@@ -259,9 +268,20 @@ def main():
                 return await operate(client, args.action, state, credentials, existing, errors)
 
             result = asyncio.run(run())
+            if args.action == 'enable' and result['state'] == 'connected':
+                fd = os.open('automatic.enabled', os.O_CREAT | os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                             0o600, dir_fd=state.directory)
+                try:
+                    state.validate(fd)
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
+                os.fsync(state.directory)
+            result['automatic_binding_enabled'] = (state.path / 'automatic.enabled').is_file()
             print(json.dumps(result, ensure_ascii=False, indent=2))
             if result["state"] == "connected":
-                print("Аккаунт подключён. Привязки каналов ещё не изменялись; автоматическая перепривязка не включена.")
+                print("Аккаунт подключён. " + ('Агент будет готовить привязки через @MTProxyBot.' if result['automatic_binding_enabled']
+                      else 'Для автоматической привязки выполните connect_telegram_owner.sh enable.'))
             elif result["state"] == "revoked":
                 print("Сессия отозвана в Telegram. Выполните disconnect, затем connect для повторного входа.")
                 return 1

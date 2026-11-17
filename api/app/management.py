@@ -170,6 +170,8 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
         return {'updated': True, 'changes_applied': False}
 
     def node_free(conn, node_id):
+        if conn.execute("SELECT 1 FROM telegram_binding_jobs WHERE proxy_node_id=%s AND phase<>'done'", (node_id,)).fetchone():
+            raise HTTPException(409, 'Узел готовит привязку в Telegram. Дождитесь завершения подготовки.')
         if conn.execute("SELECT 1 FROM campaigns WHERE proxy_node_id=%s AND placement_status IN ('scheduled','active') LIMIT 1", (node_id,)).fetchone() or conn.execute('SELECT 1 FROM slot_holds WHERE proxy_node_id=%s AND expires_at>now() LIMIT 1', (node_id,)).fetchone():
             raise HTTPException(409, 'proxy_node_has_placements')
 
@@ -202,6 +204,8 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
             node = conn.execute("SELECT id FROM proxy_nodes WHERE id=%s AND status='active' AND archived_at IS NULL FOR UPDATE", (payload.proxy_node_id,)).fetchone()
             if not node:
                 raise HTTPException(404, 'active_proxy_node_not_found')
+            if conn.execute("SELECT 1 FROM telegram_binding_jobs WHERE proxy_node_id=%s AND phase<>'done'", (payload.proxy_node_id,)).fetchone():
+                raise HTTPException(409, 'Узел готовит привязку в Telegram. Дождитесь завершения подготовки.')
             end = payload.start_at + timedelta(seconds=c['duration_seconds_snapshot'])
             hold = conn.execute("SELECT 1 FROM slot_holds WHERE proxy_node_id=%s AND campaign_id<>%s AND expires_at>now() AND tstzrange(starts_at,ends_at,'[)') && tstzrange(%s,%s,'[)') LIMIT 1", (payload.proxy_node_id,campaign_id,payload.start_at,end)).fetchone()
             if hold:
@@ -232,6 +236,7 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
             end=start_at+timedelta(seconds=c['duration_seconds_snapshot'])
             rows=conn.execute("""SELECT n.id,n.name FROM proxy_nodes n
                 WHERE n.status='active' AND n.archived_at IS NULL
+                AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.proxy_node_id=n.id AND j.phase<>'done')
                 AND NOT EXISTS(SELECT 1 FROM campaigns other
                   WHERE other.proxy_node_id=n.id AND other.id<>%s
                   AND other.placement_status IN ('scheduled','active')

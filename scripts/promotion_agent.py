@@ -24,7 +24,7 @@ TAG = re.compile(r'[0-9a-fA-F]{32}')
 PLAN_CODES = {
     'ready', 'idle', 'default_sponsor', 'default_binding_missing', 'node_not_found', 'node_ambiguous', 'node_paused', 'node_archived',
     'engine_unsupported', 'manual_placement_active', 'conflicting_campaigns',
-    'binding_missing', 'binding_changed', 'binding_selection_pending', 'channel_archived', 'moderation_pending',
+    'binding_missing', 'binding_changed', 'telegram_binding_pending', 'binding_selection_pending', 'channel_archived', 'moderation_pending',
     'payment_pending', 'waiting_start', 'period_ended', 'no_current_campaign',
 }
 REPORT_CODES = PLAN_CODES | {
@@ -210,13 +210,21 @@ def tick(status=None):
     cfg=parse_env(ENV.read_text())
     request=node_request(cfg)
     status.update(host=request['host'], port=request['port'], resolved_host=request.get('resolved_host'), code='runtime_unavailable')
+    import automatic_binding
+    import sys
+    automatic_binding.tick(sys.modules[__name__], request)
     plan=exchange(request)
     status['code'] = 'invalid_plan'
     validate_plan(plan)
     status.update(node_id=plan.get('node_id'), plan_revision=plan['revision'])
     if plan['state']=='idle':
         status['code'] = 'restore_failed'
-        restore()
+        if plan.get('reason') == 'telegram_binding_pending':
+            # Даже если владелец отключён, неизвестный результат внешней записи
+            # не разрешает вернуться к прежней неподтверждённой связи.
+            apply('')
+        else:
+            restore()
     else:
         status['code'] = 'apply_failed'
         baseline=json.loads(STATE.read_text())['baseline'] if STATE.exists() else cfg.get('MT_PROXY_TAG','')

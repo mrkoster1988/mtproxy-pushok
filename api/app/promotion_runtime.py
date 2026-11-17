@@ -32,6 +32,8 @@ def campaign_automation_status(campaign, confirmed, node=None, *, now=None):
     if node and (node['status'] != 'active' or node['archived_at']
                  or node['target_engine'] not in (None, 'official_mtproxy')):
         return 'node_unavailable'
+    if campaign.get('telegram_binding_pending'):
+        return 'preparing_tag'
     if status == 'not_scheduled':
         return 'awaiting_slot'
     if campaign.get('binding_selection_pending'):
@@ -74,6 +76,9 @@ def node_plan(conn, node):
         return dict(result, reason='node_paused')
     if node['target_engine'] not in (None,'official_mtproxy'):
         return dict(result, reason='engine_unsupported')
+    preparation = conn.execute("SELECT phase FROM telegram_binding_jobs WHERE proxy_node_id=%s AND phase<>'done'", (node['id'],)).fetchone()
+    if preparation and preparation['phase'] in ('inspect','bind','propagating'):
+        return dict(result, reason='telegram_binding_pending')
     # Ручной активный показ не перехватывается автоматикой.
     active = conn.execute("SELECT 1 FROM campaigns c WHERE proxy_node_id=%s AND placement_status='active' AND scheduled_end_at>now() AND NOT EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied') LIMIT 1", (node['id'],)).fetchone()
     if active:
@@ -159,6 +164,9 @@ def confirmation(conn, node, runtime, *, now=None, plan=None, report=_UNREAD_REP
 
 
 def handle(conn, request):
+    if str(request.get('action', '')).startswith('owner_'):
+        from .telegram_binding import handle as owner_handle
+        return owner_handle(conn, request)
     plan=desired(conn,request['host'],int(request['port']),request.get('resolved_host'))
     if request.get('action')=='failure':
         if plan.get('node_id') and request.get('code') in FAILURE_CODES:
