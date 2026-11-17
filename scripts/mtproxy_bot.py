@@ -74,10 +74,21 @@ def list_proxy(value):
 
 
 def card_tag(message, hosts, port):
-    if not endpoints(text(message) + '\n' + '\n'.join(urls(message))) & {(h.lower(), port) for h in hosts}:
+    wanted = {(h.lower(), port) for h in hosts}
+    if not endpoints(text(message) + '\n' + '\n'.join(urls(message))) & wanted:
         raise BotProtocolError('proxy_identity_not_verified')
     # Не путать тег с расположенным рядом 32-символьным secret.
-    tags = set(re.findall(r'(?i)(?:proxy[ _-]*)?(?:tag|тег)\s*[:=]\s*[`\s]*([a-f0-9]{32})(?![a-f0-9])', text(message)))
+    tags = set(re.findall(r'(?im)^[ \t]*(?:proxy[ _-]*)?(?:tag|тег)\s*[:=]\s*`?([a-f0-9]{32})(?!\w)', text(message)))
+    # В карточке бот пишет «Proxy server: host:port with tag …».
+    # Тег принимаем только из заголовка с проверенным адресом и портом,
+    # а не из названия продвигаемого канала или произвольного текста.
+    for host, shown_port, tag in re.findall(
+            r'(?im)^[ \t]*(?:proxy(?: server)?|прокси(?:-сервер)?)\s*:\s*'
+            r'([a-z0-9][a-z0-9.-]*):(\d{1,5})\s+(?:with (?:the )?tag|с тегом)\s*'
+            r'`?([a-f0-9]{32})(?!\w)', text(message)):
+        if (host.lower(), int(shown_port)) not in wanted:
+            raise BotProtocolError('proxy_identity_not_verified')
+        tags.add(tag)
     tags = {t.lower() for t in tags}
     if len(tags) != 1 or '0' * 32 in tags:
         raise BotProtocolError('tag_not_verified')
@@ -86,7 +97,7 @@ def card_tag(message, hosts, port):
 
 def promoted_channel(message):
     # Проверяем именно поле продвижения, а не случайное упоминание канала.
-    match = re.search(r'(?im)^\s*(?:promotion|promoted channel|sponsor(?: channel)?|канал(?: спонсора)?|продвижение)\s*:\s*(.+)$', text(message))
+    match = re.search(r'(?im)^\s*(?:promotion|promoted channel|sponsor(?: channel)?|канал(?: спонсора)?|продвижение|рекомендованный канал)\s*:\s*(.+)$', text(message))
     if not match:
         return None
     values = re.findall(r'(?:https://t\.me/|@)([a-zA-Z][a-zA-Z0-9_]{3,31})', match[1])
@@ -266,7 +277,7 @@ class MTProxyDialog:
                 raise BotProtocolError('tag_changed')
             if not matches:
                 choices = [b for b in buttons(card) if b.text.strip().lower() in
-                           ('set promotion', 'изменить продвижение', 'задать продвижение')]
+                           ('set promotion', 'edit promotion', 'изменить продвижение', 'задать продвижение')]
                 if len(choices) != 1:
                     raise BotProtocolError('set_promotion_button_missing')
                 prompt = await self.click(card, choices[0])

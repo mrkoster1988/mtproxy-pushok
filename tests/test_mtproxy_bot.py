@@ -1,4 +1,4 @@
-"""Синтетические ответы протокола, не запись живого диалога @MTProxyBot."""
+"""Обезличенные форматы карточек и синтетические сценарии @MTProxyBot."""
 import asyncio
 from pathlib import Path
 import sys
@@ -51,7 +51,44 @@ def card(target='sample_channel', tag=TAG, host=HOST):
     return NS(id=100,raw_text=f'Address: {host}:8443\nSecret: '+ 'b'*32 + f'\nTag: {tag}\nPromoted channel: @{target}',entities=[])
 
 
+def prose_card(target='sample_channel', tag=TAG, *, russian=False):
+    # Форма карточки со скриншота; адрес, тег и ссылка заменены тестовыми.
+    prefix = (f'Прокси-сервер: {HOST}:8443 с тегом {tag}.\nРекомендованный канал: '
+              if russian else f'Proxy server: {HOST}:8443 with tag {tag}.\nPromoted channel: ')
+    title = ':// Канал 🔐 Новости'
+    content = prefix + title + '.\nWhat can I do for you?'
+    entity = NS(offset=len(prefix.encode('utf-16-le'))//2,
+                length=len(title.encode('utf-16-le'))//2, url='https://t.me/'+target)
+    return NS(id=100, raw_text=content, entities=[entity])
+
+
 class BotParserTests(unittest.TestCase):
+    def test_tag_in_card_sentence_and_translated_promotion_link(self):
+        for russian in (False, True):
+            value = prose_card(russian=russian)
+            self.assertEqual(card_tag(value, [HOST], 8443), TAG)
+            self.assertEqual(promoted_channel(value), 'sample_channel')
+        value = prose_card(tag=TAG.upper())
+        value.raw_text = value.raw_text.replace('with tag ', 'with tag\n')
+        self.assertEqual(card_tag(value, [HOST], 8443), TAG)
+
+    def test_prose_tag_rejects_wrong_identity_secret_and_ambiguous_values(self):
+        for value in (prose_card(tag='0'*32), prose_card(tag=TAG+'c'),
+                      NS(raw_text=f'{HOST}:8443\nSecret: {TAG}', entities=[]),
+                      NS(raw_text=f'{HOST}:8443\nPromoted channel: with tag {TAG}', entities=[])):
+            with self.assertRaises(BotProtocolError):
+                card_tag(value, [HOST], 8443)
+        value = prose_card()
+        with self.assertRaisesRegex(BotProtocolError, 'proxy_identity_not_verified'):
+            card_tag(value, [HOST], 9443)
+        value.raw_text += '\nTag: ' + 'c'*32
+        with self.assertRaisesRegex(BotProtocolError, 'tag_not_verified'):
+            card_tag(value, [HOST], 8443)
+        value = prose_card()
+        value.raw_text = value.raw_text.replace(HOST, 'other.example.org') + f'\n{HOST}:8443'
+        with self.assertRaisesRegex(BotProtocolError, 'proxy_identity_not_verified'):
+            card_tag(value, [HOST], 8443)
+
     def test_tag_is_not_connection_secret_and_node_must_match(self):
         self.assertEqual(card_tag(card(),[HOST],8443), TAG)
         with self.assertRaisesRegex(BotProtocolError,'proxy_identity'):
@@ -94,6 +131,29 @@ class BotFlowTests(unittest.IsolatedAsyncioTestCase):
         self.client=NS(get_entity=AsyncMock(return_value=NS(id=321,broadcast=True,username='sample_channel')))
         self.dialog=MTProxyDialog(self.client,NS(id=123))
         self.request=dict(action='bind',hosts=[HOST],port=8443,expected_tag=TAG,channel_url='https://t.me/sample_channel')
+
+    async def test_prose_card_with_edit_promotion_verifies_fresh_channel(self):
+        old = prose_card('old_channel')
+        edit = NS(text='Edit promotion', button=type('KeyboardButtonCallback',(),{})())
+        remove = NS(text='Remove promotion', button=type('KeyboardButtonCallback',(),{})())
+        old.buttons = [[edit, remove]]
+        self.dialog.select = AsyncMock(side_effect=[old, prose_card()])
+        self.dialog.click = AsyncMock(return_value=NS(raw_text='Send a public channel link'))
+        self.dialog.send = AsyncMock(return_value=NS(raw_text='Success'))
+        result = await self.dialog.prepare(self.request)
+        self.assertEqual(result['tag'], TAG)
+        self.assertEqual(result['channel_username'], 'sample_channel')
+        self.dialog.click.assert_awaited_once_with(old, edit)
+        self.dialog.send.assert_awaited_once_with('https://t.me/sample_channel')
+
+    async def test_prose_card_already_promoted_does_not_change_channel(self):
+        self.dialog.select = AsyncMock(side_effect=[prose_card(), prose_card()])
+        self.dialog.click = AsyncMock()
+        self.dialog.send = AsyncMock()
+        result = await self.dialog.prepare(self.request)
+        self.assertEqual(result['channel_username'], 'sample_channel')
+        self.dialog.click.assert_not_called()
+        self.dialog.send.assert_not_called()
 
     async def test_multiple_same_ip_proxies_are_selected_by_verified_port(self):
         listing=NS(raw_text='Proxies',buttons=[[NS(text=HOST+' '+tag,button=type('KeyboardButtonCallback',(),{})()) for tag in (TAG,'c'*32)]])
