@@ -129,13 +129,14 @@ class CabinetTests(unittest.TestCase):
                    placement_status="not_scheduled", requested_start_at=None,
                    scheduled_start_at=None, scheduled_end_at=None, moderator_comment="Исправьте ссылку")
         connection = MagicMock()
-        connection.execute.return_value.fetchone.side_effect = [{"id": row["channel_id"]}, row]
-        with patch.object(main.psycopg, "connect") as connect:
+        snapshot = dict(id=row['channel_id'], telegram_url='https://t.me/example', telegram_channel_id=None)
+        connection.execute.return_value.fetchone.side_effect = [snapshot, snapshot, row]
+        with patch.object(main.psycopg, "connect") as connect, patch('app.public_channels.lookup', return_value={'telegram_channel_id':-123}):
             connect.return_value.__enter__.return_value = connection
             response = self.client.post("/api/v1/campaigns/" + str(campaign_id) + "/submit")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["price_kopecks_snapshot"], 30000)
-            sql = connection.execute.call_args_list[1].args[0]
+            sql = connection.execute.call_args_list[2].args[0]
             self.assertIn("'changes_requested'", sql)
             self.assertNotIn("SET price_kopecks_snapshot", sql)
 

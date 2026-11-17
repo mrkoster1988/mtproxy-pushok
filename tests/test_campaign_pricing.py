@@ -57,7 +57,7 @@ class PricingIntegration(unittest.TestCase):
                 conn.execute('INSERT INTO users(id,telegram_user_id,role) VALUES(%s,%s,%s)', (uid, tg, role))
             for tid, name, duration, rub, stars in ((self.tariff, 'День', 86400, 30000, 151), (self.next_tariff, 'Три дня', 259200, 90000, 451)):
                 conn.execute('INSERT INTO tariffs(id,name,duration_seconds,price_kopecks,stars_price_xtr) VALUES(%s,%s,%s,%s,%s)', (tid, name, duration, rub, stars))
-            conn.execute("INSERT INTO sponsor_channels(id,owner_user_id,title,telegram_url) VALUES(%s,%s,'Канал',%s)", (self.channel, self.owner, 'https://t.me/test_'+self.channel.hex))
+            conn.execute("INSERT INTO sponsor_channels(id,owner_user_id,title,telegram_url) VALUES(%s,%s,'Канал',%s)", (self.channel, self.owner, 'https://t.me/test_'+self.channel.hex[:20]))
         self.actor = {'id': self.admin, 'role': 'admin'}
         main.app.dependency_overrides[main.get_current_user] = lambda: self.actor
         self.addCleanup(main.app.dependency_overrides.clear)

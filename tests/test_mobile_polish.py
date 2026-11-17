@@ -6,23 +6,23 @@ from uuid import uuid4
 from fastapi import HTTPException
 import test_postgres as fixture
 import test_wallet as wallet_fixture
-from app import wallet_topups as topups, channel_directory, channel_logos
+from app import wallet_topups as topups, channel_directory, channel_logos, public_channels
 from bot.button_styles import with_button_styles
 
 
 class ChannelLookup(unittest.TestCase):
     def setUp(self):
-        channel_logos._cache.clear()
+        public_channels._cache.clear()
 
     def test_public_channel_and_alias_without_private_tokens(self):
-        with patch.dict(os.environ, {'TELEGRAM_BOT_TOKEN':'12345:fixture'}), patch.object(channel_logos, '_call', return_value={'type':'channel','username':'MainChannel','active_usernames':['OtherChannel'],'title':'Мой канал'}) as call:
+        with patch.dict(os.environ, {'TELEGRAM_BOT_TOKEN':'12345:fixture'}), patch.object(public_channels, '_telegram_chat', return_value={'id':-100123,'type':'channel','username':'MainChannel','active_usernames':['OtherChannel'],'title':'Мой канал'}) as call:
             data=channel_directory.lookup('@OtherChannel')
-            self.assertEqual(data, {'title':'Мой канал','username':'otherchannel','telegram_url':'https://t.me/otherchannel'})
+            self.assertEqual(data, {'title':'Мой канал','username':'otherchannel','telegram_url':'https://t.me/otherchannel','telegram_channel_id':-100123})
             self.assertEqual(channel_directory.lookup('https://t.me/OtherChannel/'),data)
-            call.assert_called_once_with('12345:fixture','getChat',{'chat_id':'@otherchannel'})
+            call.assert_called_once_with('otherchannel')
 
     def test_invalid_reference_never_fetches_arbitrary_address(self):
-        with patch.object(channel_logos, '_call') as call:
+        with patch.object(public_channels, '_telegram_chat') as call:
             for value in ('http://127.0.0.1','https://evil.test/channel','https://t.me/+invite','https://t.me/channel?x=1','https://t.me/channel/45'):
                 with self.assertRaises(HTTPException) as error:channel_directory.lookup(value)
                 self.assertEqual(error.exception.status_code,422)
@@ -31,9 +31,9 @@ class ChannelLookup(unittest.TestCase):
     def test_group_wrong_username_and_unavailable_bot(self):
         with patch.dict(os.environ, {'TELEGRAM_BOT_TOKEN':'12345:fixture'}):
             for chat in ({'type':'supergroup','username':'example'},{'type':'channel','username':'different'},None):
-                with patch.object(channel_logos, '_cached', return_value=chat):
+                with patch.object(public_channels, '_telegram_chat', return_value=chat):
                     with self.assertRaises(HTTPException) as error:channel_directory.lookup('@example')
-                    self.assertEqual(error.exception.detail,'channel_lookup_unavailable')
+                    self.assertIn(error.exception.detail,('channel_lookup_unavailable','channel_not_broadcast','channel_public_unavailable'))
         with patch.dict(os.environ, {'TELEGRAM_BOT_TOKEN':''}):
             with self.assertRaises(HTTPException) as error:channel_directory.lookup('@example')
             self.assertEqual(error.exception.status_code,503)

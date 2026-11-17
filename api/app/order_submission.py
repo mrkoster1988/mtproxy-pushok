@@ -8,25 +8,44 @@ from .license_errors import explain as explain_license_error
 from fastapi import HTTPException
 from psycopg.rows import dict_row
 from .growth import quote
+from . import public_channels
+
+
+def saved_order(conn, payload, user, fingerprint):
+    saved = conn.execute("SELECT * FROM order_submissions WHERE user_id=%s AND request_id=%s",
+                         (user['id'], payload.request_id)).fetchone()
+    if not saved:
+        return None
+    hashes = {fingerprint}
+    if not payload.quote_revision and not payload.promo_code:
+        hashes.add(hashlib.sha256(payload.model_dump_json(exclude={'promo_code','quote_revision'}).encode()).hexdigest())
+    if saved['request_hash'] not in hashes:
+        raise HTTPException(409, 'order_request_conflict')
+    return conn.execute('SELECT * FROM campaigns WHERE id=%s AND advertiser_user_id=%s',
+                        (saved['campaign_id'], user['id'])).fetchone()
 
 
 def create_order(dsn, payload, user):
     fingerprint = hashlib.sha256(payload.model_dump_json().encode()).hexdigest()
     try:
+        # Повтор потерянного ответа не зависит от доступности Telegram.
+        with psycopg.connect(dsn, connect_timeout=3, row_factory=dict_row) as conn:
+            saved = saved_order(conn, payload, user, fingerprint)
+            if saved:
+                return saved
+        snapshot = None
+        if payload.channel_id:
+            snapshot = public_channels.owned_snapshot(dsn, user['id'], channel_id=payload.channel_id)
+            public_channels.verify_snapshot(snapshot)
+        else:
+            public_channels.lookup(payload.channel.telegram_url, fresh=True)
         with psycopg.connect(dsn, connect_timeout=3, row_factory=dict_row) as conn:
             # Сериализуем только повторы одного ключа. Блокировка освобождается с транзакцией.
             conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
                          (str(user["id"]) + ":" + str(payload.request_id),))
-            saved = conn.execute("SELECT * FROM order_submissions WHERE user_id=%s AND request_id=%s",
-                                 (user["id"], payload.request_id)).fetchone()
+            saved = saved_order(conn, payload, user, fingerprint)
             if saved:
-                hashes = {fingerprint}
-                if not payload.quote_revision and not payload.promo_code:
-                    hashes.add(hashlib.sha256(payload.model_dump_json(exclude={'promo_code','quote_revision'}).encode()).hexdigest())
-                if saved["request_hash"] not in hashes:
-                    raise HTTPException(409, "order_request_conflict")
-                return conn.execute("SELECT * FROM campaigns WHERE id=%s AND advertiser_user_id=%s",
-                                    (saved["campaign_id"], user["id"])).fetchone()
+                return saved
             # Перечитываем роль под блокировкой: она могла измениться после проверки сессии.
             actor = conn.execute("SELECT role FROM users WHERE id=%s FOR SHARE", (user["id"],)).fetchone()
             tariff = conn.execute("SELECT * FROM tariffs WHERE id=%s AND is_active AND archived_at IS NULL FOR SHARE",
@@ -45,10 +64,11 @@ def create_order(dsn, payload, user):
             if payload.requested_start_at and payload.requested_start_at <= datetime.now(timezone.utc):
                 raise HTTPException(422, "schedule_start_must_be_future")
             if payload.channel_id:
-                channel = conn.execute("SELECT id FROM sponsor_channels WHERE id=%s AND owner_user_id=%s AND archived_at IS NULL FOR UPDATE",
+                channel = conn.execute("SELECT id,telegram_url,telegram_channel_id FROM sponsor_channels WHERE id=%s AND owner_user_id=%s AND archived_at IS NULL FOR UPDATE",
                                        (payload.channel_id, user["id"])).fetchone()
                 if not channel:
                     raise HTTPException(404, "channel_or_active_tariff_not_found")
+                public_channels.unchanged(channel, snapshot)
             else:
                 url = payload.channel.telegram_url.strip().rstrip("/")
                 match = re.fullmatch(r"https://(?:t\.me|telegram\.me)/([A-Za-z][A-Za-z0-9_]{3,31})", url)

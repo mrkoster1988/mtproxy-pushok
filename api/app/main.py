@@ -54,7 +54,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.56",
+    version="1.57",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -602,6 +602,8 @@ def create_channel(
     normalized_title = payload.title.strip()
     if not normalized_title:
         raise HTTPException(status_code=422, detail="channel_title_required")
+    from . import public_channels
+    checked = public_channels.lookup(payload.telegram_url, fresh=True)
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             row = connection.execute(
@@ -610,7 +612,7 @@ def create_channel(
                 VALUES (%s, %s, %s)
                 RETURNING id, telegram_url, title
                 """,
-                (user["id"], payload.telegram_url.rstrip("/"), normalized_title),
+                (user["id"], checked['telegram_url'], normalized_title),
             ).fetchone()
     except UniqueViolation as exc:
         raise HTTPException(status_code=409, detail="channel_already_added") from exc
@@ -712,11 +714,14 @@ def submit_campaign(
     campaign_id: UUID,
     user: dict[str, Any] = Depends(get_current_user),
 ) -> CampaignResponse:
+    from . import public_channels
+    snapshot = public_channels.owned_snapshot(DATABASE_URL, user['id'], campaign_id=campaign_id)
+    public_channels.verify_snapshot(snapshot)
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             channel = connection.execute(
                 """
-                SELECT ch.id FROM sponsor_channels AS ch
+                SELECT ch.id, ch.telegram_url, ch.telegram_channel_id FROM sponsor_channels AS ch
                 JOIN campaigns AS c ON c.channel_id = ch.id
                 WHERE c.id = %s AND c.advertiser_user_id = %s AND c.archived_at IS NULL AND ch.archived_at IS NULL
                 FOR UPDATE OF ch
@@ -724,6 +729,7 @@ def submit_campaign(
             ).fetchone()
             if channel is None:
                 raise HTTPException(status_code=404, detail="campaign_not_found")
+            public_channels.unchanged(channel, snapshot)
             row = connection.execute(
                 """
                 UPDATE campaigns

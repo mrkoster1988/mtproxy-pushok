@@ -60,10 +60,10 @@ def check_mobile_polish(browser,base,output,failures,dsn):
         narrow(client);client.screenshot(path=str(output/'60-channel-actions-390.png'),full_page=True)
         go(client,'create');client.locator('#order-channel-mode').click()
         with patch.object(channel_directory,'lookup',side_effect=lookup):
-            client.locator('#order-channel-url').fill('@public_channel');client.locator('#order-new-channel').get_by_role('button',name='Найти канал',exact=True).click()
+            client.locator('#order-channel-url').fill('@public_channel');client.locator('#order-new-channel').get_by_role('button',name='Проверить канал',exact=True).click()
             expect(client.locator('#order-channel-title')).to_have_value('Найденный канал')
             expect(client.locator('#order-new-channel .channel-preview .channel-avatar img')).to_be_visible()
-            expect(client.locator('#order-channel-url')).to_have_value('https://t.me/public_channel')
+            expect(client.locator('#order-channel-url')).to_have_value('@public_channel')
             narrow(client);client.screenshot(path=str(output/'61-channel-search-390.png'),full_page=True)
             client.set_viewport_size({'width':390,'height':430});client.locator('#order-channel-url').focus();client.locator('#order-channel-url').scroll_into_view_if_needed()
             assert client.evaluate('document.documentElement.scrollWidth<=innerWidth+1')

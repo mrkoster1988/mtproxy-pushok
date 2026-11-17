@@ -71,13 +71,18 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
     @router.patch('/channels/{channel_id}')
     def edit_channel(channel_id: UUID, payload: ChannelEdit, user=Depends(get_user)):
         import re
+        from . import public_channels
         match = re.fullmatch(r'https://(?:t\.me|telegram\.me)/([a-zA-Z][a-zA-Z0-9_]{3,31})/?', payload.telegram_url.strip())
         if not match or not payload.title.strip():
             raise HTTPException(422, 'invalid_telegram_channel_url')
+        snapshot = public_channels.owned_snapshot(get_dsn(), user['id'], channel_id=channel_id)
+        public_channels.lookup(payload.telegram_url, fresh=True,
+                               expected_id=snapshot['telegram_channel_id'] if payload.telegram_url.rstrip('/') == snapshot['telegram_url'].rstrip('/') else None)
         with transaction() as conn:
-            ch = conn.execute('SELECT id FROM sponsor_channels WHERE id=%s AND owner_user_id=%s AND archived_at IS NULL FOR UPDATE', (channel_id, user['id'])).fetchone()
+            ch = conn.execute('SELECT id,telegram_url,telegram_channel_id FROM sponsor_channels WHERE id=%s AND owner_user_id=%s AND archived_at IS NULL FOR UPDATE', (channel_id, user['id'])).fetchone()
             if not ch:
                 raise HTTPException(404, 'channel_not_found')
+            public_channels.unchanged(ch, snapshot)
             channel_unused(conn, channel_id)
             row = conn.execute('UPDATE sponsor_channels SET title=%s,telegram_channel_id=CASE WHEN telegram_url IS DISTINCT FROM %s THEN NULL ELSE telegram_channel_id END,telegram_url=%s WHERE id=%s RETURNING id,title,telegram_url',
                                (payload.title.strip(), 'https://t.me/'+match[1].lower(), 'https://t.me/'+match[1].lower(), channel_id)).fetchone()
