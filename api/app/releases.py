@@ -1,4 +1,4 @@
-"""Read-only discovery of the published release; never installs or reads credentials."""
+"""Read-only discovery of the published release; never installs or exposes credentials."""
 import base64
 import json
 import re
@@ -6,6 +6,7 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 from threading import Lock
+from . import github_access
 
 REPOSITORY = 'https://api.github.com/repos/mrkoster1988/mtproxy-pushok'
 _lock = Lock()
@@ -20,8 +21,7 @@ def version_key(value):
 
 
 def _json(path):
-    request = urllib.request.Request(REPOSITORY + path, headers={
-        'Accept': 'application/vnd.github+json', 'User-Agent': 'Pushok-release-check'})
+    request = github_access.request(path, user_agent='Pushok-release-check')
     with urllib.request.urlopen(request, timeout=3) as response:
         raw = response.read(65537)
     if len(raw) > 65536:

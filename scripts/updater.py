@@ -17,9 +17,13 @@ CONTROL = ROOT / '.control'
 REMOTE = 'https://github.com/mrkoster1988/mtproxy-pushok.git'
 
 def run(*args, capture=False):
+    env = dict(os.environ)
+    if args and args[0] == 'git':
+        # No hanging systemd prompt if a read token expires or is missing.
+        env['GIT_TERMINAL_PROMPT'] = '0'
     return subprocess.run(args, cwd=ROOT, check=True, text=True,
                           stdout=subprocess.PIPE if capture else None,
-                          timeout=1800).stdout
+                          timeout=1800, env=env).stdout
 
 def write_control(filename, data):
     fd, name = tempfile.mkstemp(dir=CONTROL)

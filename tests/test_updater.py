@@ -91,6 +91,22 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(json.loads((self.root / '.control/status.json').read_text())['state'], 'failed')
         self.assertEqual(json.loads((self.root / '.control/status.json').read_text())['stage'], 'backup')
 
+    def test_fetch_denied_never_backs_up_merges_or_stops_services(self):
+        self.request()
+        def run(*args, **kwargs):
+            if 'fetch' in args:
+                raise RuntimeError('repository access denied')
+            return self.fake_run(*args, **kwargs)
+        with patch.object(updater, 'run', side_effect=run), self.assertRaises(RuntimeError):
+            updater.main()
+        self.assertFalse(any('create' in c or 'merge' in c or 'compose' in c for c in self.commands))
+        self.assertEqual(updater.read_control('status.json')['stage'], 'preflight')
+
+    def test_git_commands_disable_interactive_password_prompt(self):
+        with patch.object(updater.subprocess, 'run') as execute:
+            updater.run('git', 'fetch', '--no-tags', updater.REMOTE, 'refs/heads/release/stable')
+        self.assertEqual(execute.call_args.kwargs['env']['GIT_TERMINAL_PROMPT'], '0')
+
     def test_malformed_queue_is_consumed_without_running_commands(self):
         self.request('[]')
         with patch.object(updater, 'run') as run:

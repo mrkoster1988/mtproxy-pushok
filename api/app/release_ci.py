@@ -1,9 +1,10 @@
-"""Публичный результат GitHub CI именно установленного коммита; без токенов."""
+"""Результат GitHub CI установленного коммита; доступ к закрытому репозиторию."""
 import json
 import re
 import time
 import urllib.request
 from threading import Lock
+from . import github_access
 
 _cache = {}
 _lock = Lock()
@@ -18,9 +19,8 @@ def lookup(commit):
             return cached[1]
     result=None
     try:
-        request=urllib.request.Request(
-            'https://api.github.com/repos/mrkoster1988/mtproxy-pushok/actions/runs?head_sha='+commit+'&event=push&per_page=20',
-            headers={'Accept':'application/vnd.github+json','User-Agent':'Pushok-release-readiness'})
+        request=github_access.request('/actions/runs?head_sha='+commit+'&event=push&per_page=20',
+            user_agent='Pushok-release-readiness')
         with urllib.request.urlopen(request,timeout=3) as response:
             data=json.loads(response.read(1048576))
         runs=[r for r in data.get('workflow_runs',[]) if r.get('head_sha')==commit and r.get('name')=='API and PostgreSQL checks']
