@@ -207,6 +207,7 @@ window.pushokViews=(()=>{
   const overview=el('div',undefined,'profile-overview');target.append(overview);
   if(location.hash.startsWith('#/profile'))void window.pushokProfiles.ownOverview(overview);
   window.pushokVerification.profile(target);
+  window.pushokGateway?.profile(target);
   const groups=[['Мой кабинет',[['channels','channel','Мои каналы'],['reports','chart','Отчёты'],...(me.role==='admin'?[]:[['growth','gift','Бонусы и подарки']]),['hall','star','Доска почёта']]]];
   if(['admin','operator'].includes(me.role)){
    const admin=[['moderation','moderation','Модерация'],['sponsors','server','Узлы и спонсоры']];

@@ -51,3 +51,5 @@ WantedBy=timers.target
 UNIT
 systemctl daemon-reload
 systemctl enable --now mtproxy-pushok-provisioner.timer
+
+bash scripts/install_proxy_gateway.sh

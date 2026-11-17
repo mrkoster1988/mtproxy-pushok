@@ -35,6 +35,7 @@ def main():
     parser.add_argument("--moderation-only", action="store_true")
     parser.add_argument("--campaign-cards-only", action="store_true", help="Карточки кампаний во всех разделах")
     parser.add_argument("--verification-only", action="store_true", help="Подтверждение контакта, профиль и настройки подарка")
+    parser.add_argument("--gateway-only", action="store_true")
     parser.add_argument("--ai-only", action="store_true", help="Подключение ИИ, хранение ключа и роли")
     args = parser.parse_args()
     # main.py captures this setting when imported, before test sessions are issued.
@@ -164,6 +165,13 @@ def main():
                         page.locator('#refresh').click()
                     expect(page.locator('#refresh')).to_be_enabled()
 
+                if args.gateway_only or not any((args.moderation_only,args.campaign_cards_only,args.management_only,args.interface_only,args.verification_only,args.sponsors_only,args.ai_only)):
+                    from check_proxy_gateway_ui import check_proxy_gateway_ui
+                    check_proxy_gateway_ui(new_page,go,output,PostgresIntegration.dsn)
+                    if args.gateway_only:
+                        if failures:raise AssertionError(failures)
+                        print('PASS: gateway interests, deletion, personalized link and owner settings')
+                        return
                 if args.moderation_only:
                     from check_moderation_layout import check_moderation_layout
                     check_moderation_layout(browser,base,output,failures,PostgresIntegration.dsn)

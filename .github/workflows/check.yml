@@ -37,6 +37,8 @@ jobs:
         run: |
           pip install -r scripts/requirements-telegram-owner.txt
           bash -n scripts/connect_telegram_owner.sh
+      - name: Install HAProxy for real loopback routing tests
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends haproxy
       - run: python -m unittest discover -s tests -v
       - name: Run pytest-native payment regressions
         run: python -m pytest -q tests/test_sbp_provider.py tests/test_sbp_reconcile.py tests/test_sbp_verification.py tests/test_maintenance_once.py
