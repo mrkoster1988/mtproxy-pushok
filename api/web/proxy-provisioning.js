@@ -24,22 +24,28 @@ window.pushokProvisioning=(()=>{
   unknown:'Пока не проверено',instance_limit:'Все разрешённые экземпляры уже созданы',
   preparation_pending:'Продолжается подготовка ранее созданного экземпляра',
   preparation_failed:'Сначала завершите подготовку с ошибкой в списке ниже'};
- function readinessView(report){
+ function readinessView(report,saved){
   const card=el('section',undefined,'proxy-readiness');card.id='proxy-readiness';
   card.append(el('h4','Готовность VPS'));
-  const fresh=report?.recent===true;
-  const title=!report?'Проверка ещё не получена':!fresh?'Проверка устарела':Object.values(report.checks).every(v=>v==='ready')?'Предварительные проверки пройдены':'Есть условия для запуска';
+  const policy=report?.checks?.policy;
+  const policyMatches=!saved.enabled?policy==='disabled':saved.ai_ready?!['disabled','ai_unavailable'].includes(policy):policy==='ai_unavailable';
+  const matching=report?.current_policy===true&&policyMatches;
+  const fresh=report?.recent===true&&matching;
+  const pending=report?.recent===true&&!matching;
+  const title=!report?'Проверка ещё не получена':!report.recent?'Проверка устарела':pending?'Ожидаем проверку новых настроек':Object.values(report.checks).every(v=>v==='ready')?'Предварительные проверки пройдены':'Есть ограничения для запуска';
   card.append(el('p',title,'muted'));
   if(report?.checked_at)card.append(el('p','Последняя проверка: '+date(report.checked_at),'muted'));
   if(!fresh)card.append(el('p','Агент проверяет VPS автоматически каждые 5 минут. Нажмите «Обновить», чтобы получить новый отчёт.','muted'));
+  if(pending)card.append(el('p','Изменения сохранены. Агент ещё не подтвердил проверку текущих настроек.','muted'));
   const names={host:'Адрес VPS',native:'Файлы MTProxy',timers:'Запуск по расписанию',telegram:'Сессия Telegram',resources:'Ресурсы VPS',api:'Связь с кабинетом',policy:'Разрешение ИИ',ports:'Порты',capacity:'Лимит экземпляров'};
   const list=el('ul',undefined,'proxy-readiness-list');
   for(const [key,name] of Object.entries(names)){
-   const code=report?.checks?.[key]||'unknown',row=el('li'),heading=el('strong',name);
+   const awaiting=pending&&['policy','ports','capacity'].includes(key);
+   const code=awaiting?'unknown':report?.checks?.[key]||'unknown',row=el('li'),heading=el('strong',name);
    const passed=fresh&&code==='ready';
    heading.prepend(window.pushokViews.icon(passed?'check':'info'));
    if(passed)row.classList.add('is-ready');
-   const text=code==='ready'?(key==='telegram'?'Сессия сохранена · без запроса в Telegram':'Проверено'):
+   const text=awaiting?'Ожидаем нового отчёта':code==='ready'?(!fresh?'Проверено ранее':key==='telegram'?'Сессия сохранена · без запроса в Telegram':'Проверено'):
     key==='policy'&&code==='ai_unavailable'?'Включите подключение ИИ и разрешение на создание прокси.':
     labels[code]||'Пока не проверено';
    row.append(heading,el('span',text,'muted'));list.append(row);
@@ -75,8 +81,8 @@ window.pushokProvisioning=(()=>{
    fields.append(el('p','Не более одного нового экземпляра в сутки. Перед запуском проверяются память, загрузка VPS и свободный порт. Неудачная подготовка повторяется до 5 раз с тем же портом.','muted'));
    const status=el('p',undefined,'ai-settings-status');status.id='proxy-provisioning-status';status.setAttribute('role','status');status.setAttribute('aria-live','polite');
    const agent=saved.agent;
-   status.textContent=!saved.ai_ready?'В настройках ИИ выше включите разрешение на создание прокси.':!agent?.recent?'Нет свежего отчёта. После обновления VPS агент появится здесь.':labels[agent.code]||'Проверьте состояние подготовки.';
-   if(agent?.checked_at)content.append(el('p','Агент проверен: '+date(agent.checked_at),'muted'));
+   status.textContent=!saved.enabled?'Автоматическое создание выключено в настройках.':!saved.ai_ready?'В настройках ИИ выше включите разрешение на создание прокси.':!agent?.recent?'Нет свежего отчёта. Ожидаем проверку агента.':!agent.current_policy||agent.code==='disabled'?'Настройки сохранены. Ожидаем проверку новых настроек агентом.':labels[agent.code]||'Проверьте состояние подготовки.';
+   if(agent?.checked_at)content.append(el('p','Последний ответ агента: '+date(agent.checked_at),'muted'));
    if(agent?.recent&&agent.retry_at)content.append(el('p','Telegram: следующая попытка после '+date(agent.retry_at),'muted'));
    const actions=el('div',undefined,'ai-settings-actions'),save=el('button','Сохранить','primary'),refresh=el('button','Обновить');save.type='submit';save.id='proxy-provisioning-save';refresh.type='button';refresh.addEventListener('click',()=>load(true));actions.append(save,refresh);fields.append(actions);form.append(fields);
    form.addEventListener('input',()=>{dirty=true;status.textContent='Есть несохранённые изменения.';});
@@ -89,7 +95,7 @@ window.pushokProvisioning=(()=>{
     }catch(error){if(valid())status.textContent=error.code==='provisioning_ai_required'?'Сначала включите ИИ и разрешение на создание прокси.':error.code==='provisioning_changed'?'Настройки изменились в другом окне. Нажмите «Обновить».':'Не удалось сохранить настройки.';}
     finally{if(valid()){busy=false;fields.disabled=false;}}
    });
-   content.append(info,form,status,readinessView(saved.readiness));
+   content.append(info,form,status,readinessView(saved.readiness,saved));
    const jobs=el('div',undefined,'proxy-provisioning-jobs');
    for(const job of saved.jobs){
     const card=el('article',undefined,'proxy-provisioning-job');

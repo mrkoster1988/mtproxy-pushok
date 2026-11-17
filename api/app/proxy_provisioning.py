@@ -37,7 +37,7 @@ READINESS = {
 }
 
 
-def readiness_report():
+def readiness_report(policy_revision=None):
     from . import control
     raw = control.read('proxy-readiness.json', {})
     try:
@@ -50,7 +50,8 @@ def readiness_report():
         age = (datetime.now(timezone.utc)-checked).total_seconds()
         if age < 0:
             return None
-        result = dict(checked_at=checked.isoformat(), recent=age <= 660, checks=checks)
+        result = dict(checked_at=checked.isoformat(), recent=age <= 660, checks=checks,
+                      current_policy=policy_revision is not None and raw.get('policy_revision')==str(policy_revision))
         retry = datetime.fromisoformat(raw.get('retry_at', '')) if raw.get('retry_at') else None
         if retry and checks['telegram']=='telegram_flood_wait' and 0 < (retry-datetime.now(timezone.utc)).total_seconds() <= 2147483648:
             result['retry_at'] = retry.isoformat()
@@ -91,14 +92,15 @@ def public(conn):
     try:
         age = (datetime.now(timezone.utc)-datetime.fromisoformat(agent['checked_at'])).total_seconds()
         retry_at = agent.get('retry_at')
-        agent = {'code':agent['code'],'checked_at':agent['checked_at'],'recent':0<=age<=660}
+        agent = {'code':agent['code'],'checked_at':agent['checked_at'],'recent':0<=age<=660,
+                 'current_policy':agent.get('policy_revision')==str(cfg['revision'])}
         if isinstance(retry_at,str):
             retry = datetime.fromisoformat(retry_at)
             if retry.tzinfo and 0 < (retry-datetime.now(timezone.utc)).total_seconds() <= 2147483648:
                 agent['retry_at'] = retry.isoformat()
     except (KeyError,TypeError,ValueError):
         agent = None
-    return dict(cfg, jobs=jobs, agent=agent, readiness=readiness_report(),
+    return dict(cfg, jobs=jobs, agent=agent, readiness=readiness_report(cfg['revision']),
                 ai_ready=bool(channel_ai_connection.active('proxy_provisioning')))
 
 
@@ -234,6 +236,7 @@ def handle(conn, request):
                     'daily_limit' if any(datetime.now(timezone.utc)-j['created_at']<timedelta(days=1) for j in jobs) else 'ready')
         reserved = conn.execute('SELECT port FROM proxy_nodes WHERE host=%s', (host,)).fetchall()
         return dict(first_port=cfg['first_port'], max_instances=cfg['max_instances'], capacity=capacity,
+                    policy_revision=str(cfg['revision']),
                     reserved_ports=[r['port'] for r in reserved],
                     policy='disabled' if not cfg['enabled'] else 'ai_unavailable' if not ai_ready else
                            'owner_unavailable' if not owner_ready else 'ready')
@@ -273,10 +276,11 @@ def handle(conn, request):
         if recovered['state']=='active':
             registered = conn.execute('SELECT ad_tag FROM proxy_sponsor_registrations WHERE proxy_node_id=%s',(recovered['proxy_node_id'],)).fetchone()
             return {'accepted':bool(registered and request.get('ready') is True and registered['ad_tag']==request.get('tag'))}
+    if request['action'] == 'settings':
+        return dict(enabled=allowed(conn,cfg), first_port=cfg['first_port'], max_instances=cfg['max_instances'],
+                    policy_revision=str(cfg['revision']))
     if not allowed(conn,cfg):
         return {'state':'disabled','accepted':False}
-    if request['action'] == 'settings':
-        return {k:cfg[k] for k in ('enabled','first_port','max_instances')}
     job = conn.execute('''SELECT j.*,n.host,n.port,n.archived_at FROM proxy_provisioning_jobs j
         JOIN proxy_nodes n ON n.id=j.proxy_node_id WHERE j.state='pending' FOR UPDATE OF j,n''').fetchone()
     if request['action']=='authorize':

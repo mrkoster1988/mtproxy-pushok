@@ -348,6 +348,7 @@ def tick(status=None):
             fcntl.flock(update_lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
             reconcile(host)
         cfg = exchange(dict(action='settings',host=host))
+        status['policy_revision'] = cfg.get('policy_revision')
         if cfg.get('state')=='wait':
             status['code'] = 'agent_busy'
             return
@@ -409,6 +410,9 @@ def publish_report(status):
     path = ROOT/'.control'/'proxy-provisioner.json'
     try:
         report = dict(code=code,checked_at=datetime.now(timezone.utc).isoformat())
+        revision = status.get('policy_revision')
+        if isinstance(revision,str) and re.fullmatch('[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}',revision):
+            report['policy_revision'] = revision
         if isinstance(status.get('retry_at'),str):
             report['retry_at'] = status['retry_at']
         atomic(path,json.dumps(report))
