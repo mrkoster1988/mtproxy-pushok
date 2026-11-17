@@ -20,6 +20,7 @@ from .button_icons import decorate, configured_icons, without_button_icons, icon
 from .button_styles import with_button_styles
 from .proxy_link import current_proxy_url
 from .campaign_analytics import member_payload
+from .verified_profiles import verification_response, deliver_birthdays
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
 BOT_USERNAME = "mtproxy_pushok_bot"
@@ -677,6 +678,13 @@ def run():
                     _internal_api("analytics/join",join)
                     offset=next_offset
                     continue
+                if ready:
+                    verified = verification_response(update, _internal_api,
+                        lambda method, payload: raw_telegram_call(token, method, payload))
+                    if verified is not None:
+                        raw_telegram_call(token, "sendMessage", verified)
+                        offset = next_offset
+                        continue
                 if process_stars_update(update, token):
                     navigation.incoming(token, update)
                     offset = next_offset
@@ -703,6 +711,7 @@ def run():
                     lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4),
                 )
                 deliver_lifecycle_notices(_internal_api,lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4),miniapp_url())
+                deliver_birthdays(_internal_api, lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4), miniapp_url())
                 navigation.cleanup_pending(token)
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
             # Не включать str(exc): HTTPError содержит URL с секретным токеном.

@@ -1,3 +1,4 @@
+from .telegram_environment import environment_name
 from .payment_gate import sbp_reconciliation_enabled
 import binascii
 import hashlib
@@ -53,7 +54,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.52",
+    version="1.53",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -94,6 +95,7 @@ class SessionResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
+    phone_verified: bool = False
     id: UUID
     telegram_user_id: int
     role: str
@@ -391,13 +393,14 @@ def get_current_user(
             user = connection.execute(
                 """
                 SELECT u.id, u.telegram_user_id, u.role, u.first_name, u.last_name,
-                       u.username, u.blocked_at, s.id AS session_id, s.login_surface
+                       u.username, u.blocked_at, s.id AS session_id, s.login_surface,
+                       EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=u.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
                 FROM users AS u
                 JOIN user_sessions AS s ON s.user_id = u.id
                 WHERE u.id = %s AND s.id = %s
                   AND s.revoked_at IS NULL AND s.expires_at > now()
                 """,
-                (user_id, session_id),
+                (environment_name(), user_id, session_id),
             ).fetchone()
     except psycopg.Error as exc:
         explain_license_error(exc)
@@ -3118,3 +3121,6 @@ def set_home_banner(data: home_banner.Banner, admin=Depends(require_admin)):
         return home_banner.save(data)
     except OSError as exc:
         raise HTTPException(status_code=503, detail='Не удалось сохранить текст главной') from exc
+
+from .verified_profiles import router_for as verified_profiles_router
+app.include_router(verified_profiles_router(lambda: DATABASE_URL, get_current_user, require_admin))

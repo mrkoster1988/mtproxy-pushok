@@ -29,6 +29,7 @@ def main():
     parser.add_argument("--out", type=Path, default=ROOT / ".build/cabinet-pages")
     parser.add_argument("--browser-executable")
     parser.add_argument("--sponsors-only", action="store_true", help="Полный сценарий страницы спонсоров")
+    parser.add_argument("--verification-only", action="store_true", help="Подтверждение контакта, профиль и настройки подарка")
     args = parser.parse_args()
     # main.py captures this setting when imported, before test sessions are issued.
     os.environ["SESSION_SIGNING_KEY"] = "browser-test-only-" * 8
@@ -157,6 +158,13 @@ def main():
                         page.locator('#refresh').click()
                     expect(page.locator('#refresh')).to_be_enabled()
 
+                if args.verification_only:
+                    from check_verified_profiles import check_verified_profiles
+                    check_verified_profiles(browser, base, output, failures, PostgresIntegration.dsn)
+                    if failures:
+                        raise AssertionError(failures)
+                    print('Verified profile browser checks passed')
+                    return
                 if args.sponsors_only:
                     from check_sponsor_workspace import check_sponsor_workspace
                     check_sponsor_workspace(browser, base, output, failures, PostgresIntegration.dsn)
@@ -1096,7 +1104,14 @@ def main():
                 expect(archive_card).to_contain_text('Ожидаем оплату')
                 archive_card.locator('summary').filter(has_text='Изменить или удалить заявку').click()
                 admin.once('dialog',lambda dialog:dialog.accept())
-                archive_card.get_by_role('button',name='🗑️ Удалить',exact=True).click()
+                delete_archive=archive_card.get_by_role('button',name='🗑️ Удалить',exact=True)
+                expect(delete_archive).to_be_visible()
+                expect(delete_archive).to_be_enabled()
+                # После DELETE карточка исчезает до завершения pointer-action Playwright.
+                # Проверяем один настоящий обработчик и его HTTP-результат без повторного клика.
+                with admin.expect_response(lambda r:r.url.endswith('/campaigns/'+archive_id) and r.request.method=='DELETE') as removed:
+                    delete_archive.evaluate('(button)=>button.click()')
+                assert removed.value.ok
                 expect(admin.locator('#notice')).to_contain_text('Объект перемещён')
                 expect(archive_card).to_have_count(0)
                 assert archive_id not in {c['id'] for c in authenticated('admin','GET','/operator/campaigns')}
@@ -1623,6 +1638,8 @@ def main():
                 with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'1','TELEGRAM_BOT_USERNAME':'mtproxy_pushok_bot'}),patch.object(api,'TELEGRAM_BOT_TOKEN','fixture-token'):
                     check_bonus_links(browser,base,output,failures,PostgresIntegration.dsn)
 
+                from check_verified_profiles import check_verified_profiles
+                check_verified_profiles(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_user_profiles import check_user_profiles
                 check_user_profiles(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_admin_users import check_admin_users
