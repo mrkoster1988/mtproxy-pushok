@@ -96,7 +96,7 @@ window.pushokVerification=(()=>{
   box.append(el('summary','Личные сведения'),el('p','Загружаем сведения…','muted'));
   const valid=()=>session===token&&me?.id===uid&&profileNode===box;
   async function load(){
-   try{const data=await request('/me/verification');if(!valid())return;paint(data);if(Boolean(me.phone_verified)!==data.phone_verified){me.phone_verified=data.phone_verified;window.cabinet.sync(ownCampaigns);}}catch(e){if(valid())box.replaceChildren(el('h2','Личные сведения'),el('p',e.message,'muted'),button('Повторить',load));}
+   try{const data=await request('/me/verification');if(!valid())return;paint(data);if(Boolean(me.phone_verified)!==data.phone_verified){me.phone_verified=data.phone_verified;window.cabinet.sync(ownCampaigns);}}catch(e){if(valid())box.replaceChildren(el('summary','Личные сведения'),el('p',e.message,'muted'),button('Повторить',load));}
   }
   function paint(data){
    const summary=el('summary'),heading=el('span','Личные сведения');summary.append(heading);if(data.phone_verified){const state=el('span',undefined,'profile-verified-state');state.append(badge(),el('span','Верифицирован'));state.title=title;summary.append(state);}box.replaceChildren(summary);
