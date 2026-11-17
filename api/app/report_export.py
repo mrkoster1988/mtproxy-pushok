@@ -16,7 +16,7 @@ PUBLIC_EVENT_TITLES = {
     "sbp_invoice_created": "Выставлен счёт СБП",
     "sbp_payment_verified": "СБП подтверждена сервером",
     "sbp_payment_canceled": "СБП отменена провайдером",
-    "placement_auto_scheduled": "Автоматически назначено",
+    "placement_auto_scheduled": "Автоматическое расписание",
     "placement_activated_by_agent": "Агент подтвердил запуск",
     "placement_completed_by_agent": "Агент подтвердил завершение",
     "placement_scheduled": "Размещение запланировано",

@@ -152,6 +152,112 @@ class BindingQueueTests(unittest.TestCase):
             conn.execute("UPDATE campaigns SET placement_status='scheduled',scheduled_start_at=now()+interval '7 days',scheduled_end_at=now()+interval '7 days 1 hour' WHERE id=%s",(self.f['campaign'],))
         self.assertEqual(self.exchange('owner_claim')['state'],'wait')
 
+    def blocked_forecast_queue(self):
+        """Текущему каналу нет тега, следующие 3+3 часа заняты готовым каналом."""
+        future = [self._management_fixture(ready=True) for _ in range(2)]
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE proxy_nodes SET status='paused' WHERE id=ANY(%s)", ([f['node'] for f in future],))
+            conn.execute('''INSERT INTO channel_promotion_bindings(proxy_node_id,channel_id,channel_url,node_host,node_port,ad_tag,confirmed_by)
+                SELECT %s,id,telegram_url,%s,%s,%s,%s FROM sponsor_channels WHERE id=%s''',
+                (self.node['id'],self.node['host'],self.node['port'],self.tag,self.f['admin'],future[0]['channel']))
+            for index, f in enumerate([self.f, *future]):
+                conn.execute('''UPDATE campaigns SET placement_status='scheduled',proxy_node_id=%s,
+                    auto_schedule_managed=true,auto_schedule_tag_pending=%s,duration_seconds_snapshot=10800,
+                    requested_start_at=now()-interval '2 hours'+%s*interval '3 hours',
+                    scheduled_start_at=now()-interval '2 hours'+%s*interval '3 hours',
+                    scheduled_end_at=now()+interval '1 hour'+%s*interval '3 hours' WHERE id=%s''',
+                    (self.node['id'],index==0,index,index,index,f['campaign']))
+            conn.execute('UPDATE campaigns SET channel_id=%s WHERE id=%s',(future[0]['channel'],future[1]['campaign']))
+        return future
+
+    def test_earlier_unprepared_campaign_is_not_blocked_by_later_prepared_forecasts(self):
+        future = self.blocked_forecast_queue()
+        job = self.claim()
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            self.assertEqual(conn.execute('SELECT campaign_id FROM telegram_binding_jobs WHERE id=%s',(job,)).fetchone()['campaign_id'],self.f['campaign'])
+        # Планировщик не возвращает прогнозы на узел, пока Telegram меняет канал.
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM campaigns WHERE proxy_node_id=%s AND placement_status='scheduled'",(self.node['id'],)).fetchone()[0],0)
+        self.authorize(job)
+        self.assertTrue(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
+        self.mature(job)
+        self.assertTrue(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
+        before = datetime.now(timezone.utc)
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            rows=conn.execute('SELECT * FROM campaigns WHERE id=ANY(%s) ORDER BY scheduled_start_at',([self.f['campaign'],*[f['campaign'] for f in future]],)).fetchall()
+            self.assertEqual(rows[0]['id'],self.f['campaign'])
+            self.assertGreaterEqual(rows[0]['scheduled_start_at'],before)
+            for row in rows:
+                self.assertEqual((row['scheduled_end_at']-row['scheduled_start_at']).total_seconds(),10800)
+            for previous,current in zip(rows,rows[1:]):
+                self.assertGreaterEqual(current['scheduled_start_at'],previous['scheduled_end_at'])
+            self.assertEqual(promotion_runtime.node_plan(conn,self.node)['state'],'apply')
+
+    def test_blocked_queue_preserves_manual_active_paused_observed_and_applied_campaigns(self):
+        future = self.blocked_forecast_queue()
+        with psycopg.connect(self.dsn) as conn:
+            original = conn.execute('SELECT id,placement_status,proxy_node_id,scheduled_start_at,scheduled_end_at FROM campaigns WHERE proxy_node_id=%s ORDER BY id',(self.node['id'],)).fetchall()
+        changes = [
+            ("UPDATE campaigns SET auto_schedule_managed=false WHERE id=%s", "UPDATE campaigns SET auto_schedule_managed=true WHERE id=%s"),
+            ("UPDATE campaigns SET placement_status='active' WHERE id=%s", "UPDATE campaigns SET placement_status='scheduled' WHERE id=%s"),
+            ("UPDATE campaigns SET auto_schedule_paused=true WHERE id=%s", "UPDATE campaigns SET auto_schedule_paused=false WHERE id=%s"),
+        ]
+        for change, restore in changes:
+            with self.subTest(change=change):
+                with psycopg.connect(self.dsn) as conn:conn.execute(change,(future[0]['campaign'],))
+                self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+                with psycopg.connect(self.dsn) as conn:conn.execute(restore,(future[0]['campaign'],))
+        with psycopg.connect(self.dsn) as conn:
+            observation=conn.execute("""INSERT INTO placement_observations(campaign_id,observer_user_id,result,method,observed_at,note)
+                VALUES(%s,%s,'not_visible','separate_unsubscribed_client',now(),'Protected operator observation') RETURNING id""",(self.f['campaign'],self.f['admin'])).fetchone()[0]
+        self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('DELETE FROM placement_observations WHERE id=%s',(observation,))
+            conn.execute("INSERT INTO promotion_runtime(proxy_node_id,campaign_id,state) VALUES(%s,%s,'applied')",(self.node['id'],self.f['campaign']))
+        self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('DELETE FROM promotion_runtime WHERE proxy_node_id=%s',(self.node['id'],))
+            self.assertEqual(conn.execute('SELECT id,placement_status,proxy_node_id,scheduled_start_at,scheduled_end_at FROM campaigns WHERE proxy_node_id=%s ORDER BY id',(self.node['id'],)).fetchall(),original)
+            self.assertIsNone(conn.execute('SELECT 1 FROM telegram_binding_jobs WHERE proxy_node_id=%s',(self.node['id'],)).fetchone())
+
+    def test_blocked_queue_preserves_live_reservation(self):
+        future = self.blocked_forecast_queue()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('''INSERT INTO slot_holds(campaign_id,proxy_node_id,starts_at,ends_at,expires_at)
+                VALUES(%s,%s,now()+interval '9 hours',now()+interval '12 hours',now()+interval '10 minutes')''',
+                (future[0]['campaign'],self.node['id']))
+        self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM campaigns WHERE proxy_node_id=%s AND placement_status='scheduled'",(self.node['id'],)).fetchone()[0],3)
+
+    def test_preparation_reserves_queue_before_next_forecast_enters_protected_window(self):
+        self.blocked_forecast_queue()
+        with psycopg.connect(self.dsn) as conn:
+            for campaign, in conn.execute('SELECT id FROM campaigns WHERE proxy_node_id=%s ORDER BY scheduled_start_at DESC',(self.node['id'],)).fetchall():
+                conn.execute("""UPDATE campaigns SET requested_start_at=requested_start_at+interval '90 minutes',
+                    scheduled_start_at=scheduled_start_at+interval '90 minutes',scheduled_end_at=scheduled_end_at+interval '90 minutes'
+                    WHERE id=%s""",(campaign,))
+        job=self.claim()
+        auto_schedule.service_once(self.dsn)
+        self.authorize(job)
+        self.assertTrue(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
+        self.mature(job)
+        self.assertTrue(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM campaigns WHERE proxy_node_id=%s AND placement_status='scheduled'",(self.node['id'],)).fetchone()[0],0)
+
+    def test_prepared_current_campaign_keeps_its_schedule(self):
+        self.blocked_forecast_queue()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('''INSERT INTO channel_promotion_bindings(proxy_node_id,channel_id,channel_url,node_host,node_port,ad_tag,confirmed_by)
+                VALUES(%s,%s,'https://t.me/sample_channel',%s,%s,%s,%s)''',
+                (self.node['id'],self.f['channel'],self.node['host'],self.node['port'],uuid4().hex,self.f['admin']))
+        self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM campaigns WHERE proxy_node_id=%s AND placement_status='scheduled'",(self.node['id'],)).fetchone()[0],3)
+
     def test_shared_tag_is_rejected_before_external_write(self):
         other=self._management_fixture()
         with psycopg.connect(self.dsn) as conn:

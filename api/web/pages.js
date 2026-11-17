@@ -240,7 +240,13 @@
    }
    diagnosticsBody.append(plans);
    automationRuntime.replaceChildren();
-   for(const item of data.nodes.filter(n=>n.checked_at)){automationRuntime.append(el('p',item.name+': '+(!item.agent_recent?'Нет свежего подтверждения агента':item.config_applied?'Тег применён; показ не проверен':'Применение текущего плана не подтверждено')+' · '+date(item.checked_at)));}
+   for(const item of data.nodes){
+    const row=el('article',undefined,'diagnostic-card');row.dataset.runtimeCode=item.code;
+    row.append(el('h3',item.name),el('p',item.title));
+    if(item.next_action)row.append(el('p',item.next_action,'muted'));
+    row.append(el('p',(!item.agent_recent?'Нет свежего подтверждения агента':item.config_applied?'Тег применён; показ не проверен':'Применение текущего плана не подтверждено')+(item.checked_at?' · '+date(item.checked_at):''),'muted'));
+    automationRuntime.append(row);
+   }
    if(!automationRuntime.childElementCount)automationRuntime.append(el('p','Подтверждения от агента пока нет. Служба устанавливается обновлением на VPS с классическим MTProxy.','muted'));
    if(!data.nodes.length)diagnosticsBody.append(el('p','В реестре нет узлов. Добавьте узел или восстановите его из архива.'));
   }catch(e){if(rev===diagnosticsRevision&&token===session&&me?.role==='admin'){diagnosticsSummary.replaceChildren(el('p','Диагностика недоступна. Повторите проверку.','muted'));diagnosticsBody.replaceChildren(el('p',e.message));automationRuntime.replaceChildren(el('p','Состояние применения недоступно. Обновите диагностику.','muted'));}}
@@ -261,7 +267,7 @@
   sponsorResult.textContent='';try{const data=await api('/admin/proxy-nodes/'+sponsorNode.value+'/sponsor-registration',{method:'PUT',body:{engine:sponsorEngine.value,ad_tag:sponsorTag.value}});
   sponsorTag.value='';sponsorResult.dataset.tone='success';sponsorResult.textContent='Сохранён тег с окончанием '+data.tag_ending+'.';}catch(error){sponsorResult.dataset.tone='error';sponsorResult.textContent=error.message;}
  },sponsorSave);});
- const automationPanel=section('Автоматическое размещение'),automationBody=el('div'),automationRuntime=el('div');
+ const automationPanel=section('Автоматическое размещение'),automationBody=el('div'),automationRuntime=el('div',undefined,'diagnostic-stack');
  automationPanel.id='promotion-automation';automationRuntime.id='promotion-automation-runtime';automationRuntime.setAttribute('aria-live','polite');
  automationPanel.append(automationBody,window.pushokViews.disclosure('Применение на узлах',[automationRuntime],'disclosure-panel'));
  window.pushokViews.info(automationPanel,'Подключите аккаунт владельца один раз. Агент подберёт свободный узел и переключит канал. Подготовка не уменьшает оплаченный период; занятые узлы и ручные размещения не переключаются.','Как работает автоматическое размещение');
@@ -302,7 +308,7 @@
     if(item.phase!=='done')row.append(el('p',(item.phase==='propagating'&&!item.error_code?'Проверка после обновления Telegram: ':'Повтор не раньше: ')+date(item.retry_at),'muted'));
     autoStatus.append(row);
    }
-   if(!autoStatus.childElementCount)autoStatus.append(window.pushokViews.emptyLine('Нет каналов в подготовке','campaign'));
+   if(!autoStatus.childElementCount)autoStatus.append(window.pushokViews.emptyLine('Нет активных задач привязки','campaign'),el('p','Причина ожидания указана ниже, в «Применение на узлах».','muted'));
    const commandText='sudo bash /opt/mtproxy-pushok/scripts/connect_telegram_owner.sh enable',command=el('code',commandText);
    const copyCommand=window.pushokViews.iconAction(button('',async()=>{await navigator.clipboard.writeText(commandText);notice('Команда скопирована. Выполните её в терминале VPS.',true); }),'copy','Скопировать команду подключения'),commandRow=el('div',undefined,'sponsor-command');commandRow.append(command,copyCommand);
    const statusText='sudo bash /opt/mtproxy-pushok/scripts/connect_telegram_owner.sh status',statusRow=el('div',undefined,'sponsor-command');statusRow.append(el('code',statusText),window.pushokViews.iconAction(button('',async()=>{await navigator.clipboard.writeText(statusText);notice('Команда проверки скопирована.',true); }),'copy','Скопировать команду проверки'));
