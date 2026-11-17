@@ -1,5 +1,5 @@
 """Мобильные карточки, поиск, счета и история: Chromium с настоящей БД/API."""
-from ui_test_helpers import open_settings
+from ui_test_helpers import open_settings, open_management
 import base64
 import io
 from unittest.mock import patch
@@ -109,10 +109,11 @@ def check_mobile_polish(browser,base,output,failures,dsn):
             assert node.evaluate("e=>getComputedStyle(e).backgroundColor==='rgba(0, 0, 0, 0)' && getComputedStyle(e).display==='flex'")
             assert node.bounding_box()['height']<65
         narrow(admin);admin.screenshot(path=str(output/'65-empty-profile-390.png'),full_page=True)
-        go(admin,'settings');admin.locator('#settings-payments-tab').click();open_settings(admin)
+        go(admin,'management/payments');open_management(admin,'payments')
         info=admin.get_by_role('button',name='О внутреннем балансе',exact=True);body=admin.locator('#'+info.get_attribute('aria-controls'));expect(body).to_be_hidden();info.click();expect(body).to_be_visible();info.click();expect(body).to_be_hidden()
-        admin.locator('#settings-system-tab').click();open_settings(admin);expect(admin.locator('#team-list .team-member')).not_to_have_count(0)
+        open_management(admin,'people');expect(admin.locator('#team-list .team-member')).not_to_have_count(0)
         narrow(admin);admin.locator('#team-list').screenshot(path=str(output/'66-team-cards-390.png'))
+        open_management(admin,'design')
         png=io.BytesIO();Image.new('RGB',(48,48),'turquoise').save(png,format='PNG');catalog=[dict(id=str(123456700+i),emoji='⭐',image='data:image/png;base64,'+base64.b64encode(png.getvalue()).decode()) for i in range(12)]
         with patch.object(api.emoji_settings,'fetch',return_value=catalog):
             with admin.expect_response(lambda response: response.url.endswith('/api/v1/admin/icons/import') and response.request.method=='POST') as imported:

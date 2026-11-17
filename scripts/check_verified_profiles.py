@@ -1,5 +1,5 @@
 """Native contact popup is simulated; proof still passes the real private API and SQL."""
-from ui_test_helpers import open_settings
+from ui_test_helpers import open_settings, open_management
 import io
 import json
 import os
@@ -146,8 +146,8 @@ def check_verified_profiles(browser, base, output, failures, dsn):
                 conn.execute("UPDATE users SET role='admin' WHERE telegram_user_id=%s", (tg,))
             page.reload()
             expect(page.locator('.profile-identity')).to_contain_text('Администратор')
-            page.evaluate("window.cabinet.go('settings')")
-            page.locator('#settings-system-tab').click();open_settings(page)
+            page.evaluate("window.cabinet.go('management/payments')")
+            open_management(page,'people')
             settings = page.locator('#birthday-settings')
             amount = settings.get_by_label('Ежегодный подарок, бонусных ₽', exact=True)
             expect(amount).to_have_value('0')

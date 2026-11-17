@@ -46,7 +46,7 @@ window.pushokTeam=(()=>{
    const session=token;const rows=await api('/admin/team');if(session!==token||me?.role!=='admin')return;list.replaceChildren();
    for(const user of rows){
     const row=el('section',undefined,'team-member');
-    const access=roleControl(user);row.append(window.pushokProfiles.compact(user,'settings'),access.badge,access.editor);list.append(row);
+    const access=roleControl(user);row.append(window.pushokProfiles.compact(user,'management/people'),access.badge,access.editor);list.append(row);
    }
    fields.disabled=false;
   }catch(e){status.textContent='Не удалось загрузить администраторов. Откройте настройки повторно.';throw e;}

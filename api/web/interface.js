@@ -2,6 +2,25 @@
 // Общие действия и разделы: обработчики форм остаются у исходных элементов.
 window.pushokInterface=(()=>{
  const v=()=>window.pushokViews;
+ // Эти разделы открываются прямо из блока «Управление» в профиле.
+ const managementSections=[
+  {key:'payments',title:'Платежи',icon:'wallet',pane:'payments'},
+  {key:'tariffs',title:'Тарифы',icon:'calendar',pane:'tariffs'},
+  {key:'design',title:'Оформление',icon:'edit',pane:'system'},
+  {key:'people',title:'Пользователи и награды',icon:'gift',pane:'system'},
+  {key:'automation',title:'ИИ и прокси',icon:'server',pane:'system'},
+  {key:'technical',title:'Диагностика',icon:'status',pane:'system'}
+ ];
+ function managementSection(key){return managementSections.find(item=>item.key===key)||managementSections[0];}
+ function showManagement(key){
+  const selected=managementSection(key);$('settings').dataset.managementSection=selected.key;
+  for(const pane of ['payments','tariffs','system'])$('settings-'+pane).hidden=pane!==selected.pane;
+  for(const group of document.querySelectorAll('#settings-system > [data-settings-group]')){
+   group.hidden=group.dataset.settingsGroup!==selected.key;
+   if(!group.hidden)group.open=true;
+  }
+  return selected;
+ }
  function actions(root=document){
   for(const b of root.querySelectorAll('button')){
    if(b.matches('.user-choice,.person-role,[role=tab],[aria-pressed],.settings-nav button,.campaign-scope button,.hall-tabs button,.profile-stats button,.topic-option,.topic-trigger')||b.closest('.mobile-bottom-nav'))continue;
@@ -22,9 +41,10 @@ window.pushokInterface=(()=>{
   for(const node of [...sys.querySelectorAll(':scope > .core-health')])wrap(node,technical,'Испытания ядра');
   const payments=$('settings-payments');for(const [id,title] of [['sbp-connection','Подключение СБП'],['payment-switches','Способы оплаты'],['wallet-settings','Баланс и пополнения']])wrap($(id),payments,title);
   for(const node of [...$('settings-tariffs').children])if(!node.classList.contains('settings-section'))wrap(node,$('settings-tariffs'),'Тарифы и стоимость');
+  if(location.hash.startsWith('#/management/'))showManagement(location.hash.split('/')[2]);
   actions();
  }
  function recent(){const box=$('software-updates');if(!box||box.querySelector('.recent-releases'))return;const section=el('details',undefined,'recent-releases');section.open=true;section.append(el('summary','Последние 5 обновлений'));const versions=window.pushokReleaseNotes||[];for(const r of versions.slice(0,5)){const d=el('details',undefined,'release-item');d.append(el('summary','v'+r.version+' · '+r.title));const list=el('ul');for(const item of r.items)list.append(el('li',item));d.append(list);section.append(d);}const a=el('a','Все обновления ↗');a.href='https://github.com/mrkoster1988/mtproxy-pushok/blob/main/CHANGELOG.md';a.target='_blank';a.rel='noopener noreferrer';section.append(a);box.append(section);}
  let queued=false;new MutationObserver(()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;actions();});}).observe(document.body,{childList:true,subtree:true});
- actions();recent();return {settings,actions};
+ actions();recent();return {settings,actions,managementSections,managementSection,showManagement};
 })();

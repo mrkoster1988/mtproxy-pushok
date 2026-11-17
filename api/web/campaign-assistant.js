@@ -69,7 +69,7 @@ window.pushokAssistant=(()=>{
      if(data.capabilities.includes(id)){const b=button(title,()=>analyze(kind));b.dataset.analysisKind=kind;actions.append(b);}
     }
     status.textContent=actions.childElementCount?'Выберите задачу. Анализ запускается только по нажатию.':'Помощник выключен. Владелец может включить его в настройках ИИ.';
-    if(me.is_owner){const link=el('a','Настройки ИИ');link.href='#/settings';link.addEventListener('click',()=>setTimeout(()=>$('settings-system-tab')?.click(),0));body.append(link);}
+    if(me.is_owner){const link=el('a','Подключение и права ИИ');link.href='#/management/automation';body.append(link);}
    }catch{if(valid()){loaded=false;status.textContent='Не удалось загрузить возможности.';actions.replaceChildren(button('Повторить',load));}}
   }
   host.addEventListener('toggle',()=>{if(host.open)void load();});return host;
