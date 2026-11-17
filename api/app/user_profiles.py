@@ -51,6 +51,7 @@ def router_for(dsn, current_user):
                 FROM campaigns c WHERE c.advertiser_user_id=%s''', (uid,)).fetchone()
             counts['channels'] = conn.execute('''SELECT count(*) AS n FROM sponsor_channels
                 WHERE owner_user_id=%s AND archived_at IS NULL''', (uid,)).fetchone()['n']
+            counts['invited'] = conn.execute('SELECT count(*) AS n FROM growth_referrals WHERE inviter_user_id=%s', (uid,)).fetchone()['n']
             channels = conn.execute('''SELECT id,title,telegram_url FROM sponsor_channels
                 WHERE owner_user_id=%s AND archived_at IS NULL ORDER BY created_at DESC,id DESC
                 LIMIT %s OFFSET %s''', (uid, PAGE_SIZE, channel_page * PAGE_SIZE)).fetchall()

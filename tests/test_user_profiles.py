@@ -74,7 +74,7 @@ class ProfileIntegration(unittest.TestCase):
     def test_own_profile_pagination_archive_and_isolation(self):
         path=f'/users/{self.owner}/profile'
         first=self.request('GET',path)
-        self.assertEqual(first['counts'],{'total':23,'current':18,'archived':5,'active':0,'channels':12})
+        self.assertEqual(first['counts'],{'total':23,'current':18,'archived':5,'active':0,'channels':12,'invited':0})
         self.assertTrue(first['more_channels']);self.assertTrue(first['more_campaigns'])
         second=self.request('GET',path+'?campaign_page=1&channel_page=1')
         self.assertEqual(len(second['campaigns']),8);self.assertEqual(len(second['channels']),2)
@@ -89,6 +89,15 @@ class ProfileIntegration(unittest.TestCase):
         self.actor={'id':self.staff,'role':'operator'}
         self.assertEqual(self.request('GET',path)['user']['id'],str(self.owner))
         self.request('GET',f'/users/{uuid4()}/profile',404)
+
+    def test_referral_count_belongs_to_viewed_user(self):
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days) VALUES(%s,%s,10,90)', (self.other,self.owner))
+        path=f'/users/{self.owner}/profile'
+        self.assertEqual(self.request('GET',path)['counts']['invited'],1)
+        self.actor={'id':self.staff,'role':'operator'}
+        self.assertEqual(self.request('GET',path)['counts']['invited'],1)
+        self.assertEqual(self.request('GET',f'/users/{self.staff}/profile')['counts']['invited'],0)
 
     def test_avatar_authorization_happens_before_download(self):
         path=f'/api/v1/users/{self.owner}/avatar'
