@@ -125,6 +125,13 @@ class DraftWizard:
             try:
                 result = self.creator(telegram_id, state["username"], state["request_key"])
             except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+                if isinstance(exc,HTTPError) and exc.code==403:
+                    try:
+                        import json
+                        detail=json.loads(exc.read(4096)).get('detail')
+                    except (ValueError,OSError):detail=None
+                    if detail=='phone_verification_required':
+                        return _answer(chat_id,'Перед созданием кампании подтвердите свой номер: отправьте /verify, затем повторите создание.',callback_id)
                 LOG.warning("Ошибка создания черновика: %s", type(exc).__name__)
                 return _answer(chat_id,
                                "Не получилось сохранить черновик. Попробуйте нажать «Создать черновик» ещё раз.",

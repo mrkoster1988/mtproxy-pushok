@@ -24,6 +24,7 @@
   license:['Лицензия приложения','Тариф и ограничения установки'],
   profile:['Профиль','Ваш аккаунт и разделы кабинета'],
   users:['Пользователи','Люди, роли и входы в приложение'],
+  member:['Профиль пользователя','Участник сообщества'],
   user:['Профиль пользователя','Каналы и кампании рекламодателя'],
   calendar:['Календарь размещений','Доступность на полную длительность тарифа'],
   reports:['Отчёты и история','Подтверждённые события ваших кампаний'],
@@ -167,6 +168,7 @@
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);bottomNav.append(a);
  });
  shell.append(bottomNav);
+ const homeLeaders=el('nav',undefined,'home-leaders');homeLeaders.setAttribute('aria-label','Лидеры месяца');content.dashboard.append(homeLeaders);
  const summary=section('Ваши кампании'),summaryRows=el('div','Загрузка данных. При ошибке нажмите «Обновить».');summary.classList.add('flat-section','dashboard-campaigns');summary.append(summaryRows);content.dashboard.append(summary);
  const summaryHeading=el('div',undefined,'section-heading');summaryHeading.append(summary.querySelector('h2'),link('Все →','campaigns'));summary.prepend(summaryHeading);
 
@@ -466,6 +468,8 @@
    pages.channels.querySelector('.campaign-tabs').hidden=adding;
   }
   if(name==='users')window.pushokUsers.directory(content.users);
+  if(name==='dashboard'&&!background)void window.pushokCommunity.leaders(homeLeaders);
+  if(name==='member')void window.pushokCommunity.show(content.member,id);
   if(name==='user')window.pushokProfiles.show(content.user,id);
   helpText.textContent=hints[name]||'Удалённые объекты можно восстановить. Для заявки сначала восстановите её канал и тариф.';
   const selected=state.campaigns.find(c=>c.id===id),key=JSON.stringify([name,id,selected]);
@@ -515,6 +519,7 @@
  }
  function back(){
   const [name,id]=routeParts();
+  if(name==='member'){go(window.pushokCommunity.backRoute());return;}
   if(name==='user'){go(window.pushokProfiles.backRoute());return;}
   if(name==='moderation'&&id)window.pushokApproval?.resetSelection();
   go(id?(name==='campaign'||name==='create'?'campaigns':name):['create','channels','calendar','archive'].includes(name)?'campaigns':name==='payments'?'wallet':['dashboard','campaigns','wallet','profile'].includes(name)?'dashboard':'profile');
@@ -525,6 +530,7 @@
   let [name,section]=routeParts();
   if(name==='campaigns')state.scope=section==='mine'?'mine':'all';
   if(name!=='sponsors')automationFocusRoute='';
+  if(name==='create'&&!me?.phone_verified){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Подтвердите номер перед созданием кампании.');}
   if(!permitted(name)){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}
   if($('notice').dataset.route!==location.hash)$('notice').hidden=true;
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);

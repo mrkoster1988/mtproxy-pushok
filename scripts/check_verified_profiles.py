@@ -22,6 +22,8 @@ from test_miniapp_auth import signed_data
 def check_verified_profiles(browser, base, output, failures, dsn):
     from app import main as api
     from app import verified_profiles as verified
+    with psycopg.connect(dsn) as conn:
+        conn.execute('DROP TRIGGER IF EXISTS fixture_verified_user ON users')
     tg = 99881521
     context = browser.new_context(viewport={'width': 390, 'height': 844}, reduced_motion='reduce')
     context.add_init_script("window.__nativeEvents=[];window.TelegramWebviewProxy={postEvent(name,data){__nativeEvents.push({name,data:JSON.parse(data||'{}')});}};")
@@ -122,9 +124,9 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             with patch.object(verified, 'telegram_birthday', return_value=verified.Birthday(day=11, month=11)):
                 personal.get_by_role('button', name='Взять из Telegram', exact=True).click()
                 expect(personal.get_by_label('День', exact=True)).to_have_value('11')
-            expect(personal).to_contain_text('Добавлено из профиля Telegram')
-            personal.get_by_label('День', exact=True).fill('29')
-            personal.get_by_label('Месяц', exact=True).select_option('2')
+            expect(personal).to_contain_text('Изменить сведения может только владелец')
+            expect(personal.get_by_label('День', exact=True)).to_be_disabled()
+            expect(personal.get_by_label('Месяц', exact=True)).to_be_disabled()
             personal.get_by_role('button', name='Сохранить', exact=True).click()
             expect(personal.locator('.verification-status')).to_contain_text('Сведения сохранены')
             for width in (320, 390):
@@ -132,12 +134,12 @@ def check_verified_profiles(browser, base, output, failures, dsn):
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
                 personal.screenshot(path=str(output/f'verification-profile-{width}.png'))
             page.reload()
-            expect(page.locator('.profile-personal').get_by_label('День', exact=True)).to_have_value('29')
-            expect(page.locator('.profile-personal').get_by_label('Месяц', exact=True)).to_have_value('2')
+            expect(page.locator('.profile-personal').get_by_label('День', exact=True)).to_have_value('11')
+            expect(page.locator('.profile-personal').get_by_label('Месяц', exact=True)).to_have_value('11')
             with psycopg.connect(dsn) as conn:
                 record = conn.execute('''SELECT v.birth_day,v.birth_month,v.birth_year,v.phone_number FROM verified_profiles v
                     JOIN users u ON u.id=v.user_id WHERE u.telegram_user_id=%s''', (tg,)).fetchone()
-                assert record == (29, 2, None, '+79990001122')
+                assert record == (11, 11, None, '+79990001122')
                 conn.execute("UPDATE users SET role='admin' WHERE telegram_user_id=%s", (tg,))
             page.reload()
             expect(page.locator('.profile-identity')).to_contain_text('Администратор')
@@ -157,4 +159,6 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             expect(page.locator('#dashboard-verification')).to_be_empty()
             expect(page.locator('.profile-personal')).to_have_count(0)
     finally:
+        with psycopg.connect(dsn) as conn:
+            conn.execute('CREATE TRIGGER fixture_verified_user AFTER INSERT ON users FOR EACH ROW EXECUTE FUNCTION fixture_verified_user()')
         context.close()

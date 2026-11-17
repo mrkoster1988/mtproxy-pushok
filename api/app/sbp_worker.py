@@ -117,6 +117,11 @@ def main():
             result = {'status': 'database_unavailable'}
         if args.apply:
             try:
+                from .automatic_moderation import service_once as moderate_once
+                result['ai_moderation'] = moderate_once(os.environ['DATABASE_URL'])
+            except (HTTPException, psycopg.Error):
+                result['ai_moderation'] = {'status':'retry'}
+            try:
                 from .hall_of_fame import service_once as hall_once
                 result['hall'] = hall_once(os.environ['DATABASE_URL'])
             except (HTTPException, psycopg.Error):

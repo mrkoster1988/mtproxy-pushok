@@ -98,7 +98,8 @@ window.pushokViews=(()=>{
   const fallback=avatar('user');fallback.classList.add('user-avatar');
   const initials=name.trim().split(/\s+/).filter(Boolean).slice(0,2).map(s=>Array.from(s)[0]).join('').toUpperCase();
   if(initials)fallback.textContent=initials;fallback.setAttribute('aria-hidden','true');
-  return loadAvatar(fallback,id?(hall?'hall/avatar/'+encodeURIComponent(id):'users/'+encodeURIComponent(id)+'/avatar'):'',(hall?'hall:':'user:')+id,'');
+  const node=loadAvatar(fallback,id?'community/users/'+encodeURIComponent(id)+'/avatar':'','user:'+id,'');
+  window.pushokCommunity.decorate(node,id);return node;
  }
  function loadAvatar(fallback,path,key,alt){
   if(!path||!token)return fallback;const scope=token+'|'+me?.role;if(logoSession!==scope){clearLogos();logoSession=scope;}

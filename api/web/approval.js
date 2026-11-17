@@ -49,6 +49,7 @@ window.pushokApproval=(()=>{
   option(choose,'','Все заявки');for(const item of choices)option(choose,item.id,(item.archived_at?'Удалена · ':'')+(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;choose.hidden=choices.length===1;
   choose.addEventListener('change',()=>{selected=choose.value;window.cabinet.go(selected?'moderation/'+selected:'moderation');});box.append(choose);
   box.append(el('h2',c.channel_title||'Рекламная заявка'),advertiser(c));
+  if(c.moderation_status==='pending'){const aiState=el('small',undefined,'muted');box.append(aiState);const aiSession=token;void api('/community/moderation/'+c.id).then(data=>{if(aiSession!==token||!box.isConnected)return;aiState.textContent=!data.enabled?'Автомодерация ИИ выключена в настройках владельца.':data.check?.reason||'Ожидает автоматической проверки ИИ.';}).catch(()=>{});}
   if(c.topic_label)box.append(el('p',c.topic_label,'campaign-topic'));
   if(c.archived_at){
    const banner=el('section',undefined,'card approval-archive-notice');banner.setAttribute('role','status');

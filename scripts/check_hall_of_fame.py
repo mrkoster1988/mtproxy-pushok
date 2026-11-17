@@ -27,7 +27,7 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
         conn.execute("INSERT INTO hall_results(period_id,metric,user_id,rank,score) VALUES(%s,'invited',%s,1,8)",(p,owner))
     contexts=[]
     try:
-        with patch('app.hall_of_fame.user_avatar',return_value=None):
+        with patch('app.community.user_avatar',return_value=None):
             for role in ('advertiser','admin'):
                 context=browser.new_context(viewport={'width':390,'height':844});contexts.append(context)
                 context.add_init_script('sessionStorage.setItem("pushok-session",'+repr(tokens[role])+')')
@@ -41,6 +41,18 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                 expect(page.locator('.mobile-brand')).to_contain_text('Доска почёта')
                 expect(page.locator('.mobile-bottom-nav [data-route=hall]')).to_have_attribute('aria-current','page')
                 expect(board.locator('.hall-category')).to_have_count(4)
+                expect(board.locator('.hall-podium-person .hall-rank')).to_have_count(0)
+                expect(board.locator('.hall-podium-person .hall-person a')).to_have_count(0)
+                card=board.locator('.hall-podium-person').first.bounding_box()
+                assert abs(card['height']-card['width'])<3, card
+                if role=='advertiser':
+                    avatar=board.locator('.hall-place-1 .user-avatar').first
+                    uid=avatar.get_attribute('data-user-id');avatar.click()
+                    expect(page).to_have_url(base+'/#/member/'+uid)
+                    expect(page.locator('.public-person')).to_be_visible()
+                    expect(page.locator('.public-person')).not_to_contain_text('Telegram ID')
+                    page.locator('.screen-back').click()
+                    expect(page).to_have_url(base+'/#/hall')
                 if role=='admin':
                     board.get_by_text('Управление и статистика',exact=True).click();form=board.locator('.hall-admin form')
                     form.get_by_label('Размер топа',exact=True).fill('25');form.get_by_label('Место 1',exact=True).fill('100')

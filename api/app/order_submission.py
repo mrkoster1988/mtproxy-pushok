@@ -33,6 +33,8 @@ def create_order(dsn, payload, user):
             saved = saved_order(conn, payload, user, fingerprint)
             if saved:
                 return saved
+            from .community import require_verified
+            require_verified(conn,user['id'])
         snapshot = None
         if payload.channel_id:
             snapshot = public_channels.owned_snapshot(dsn, user['id'], channel_id=payload.channel_id)
@@ -52,6 +54,8 @@ def create_order(dsn, payload, user):
                                   (payload.tariff_id,)).fetchone()
             if not actor or not tariff or (tariff["admin_only"] and actor["role"] != "admin"):
                 raise HTTPException(404, "active_tariff_not_found")
+            from .community import require_verified
+            require_verified(conn,user['id'])
             pricing = quote(conn, user, tariff, payload.promo_code, lock=True) if payload.quote_revision else None
             if payload.promo_code and not pricing:
                 raise HTTPException(409, 'growth_quote_required')

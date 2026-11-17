@@ -34,27 +34,20 @@ window.pushokProfiles=(()=>{
   copy.append(el('small','ID '+user.telegram_user_id,'muted'));
   row.append(views().userAvatar(id,person(user).name||person(user).username),copy);return row;
  }
- function invited(count){
-  const row=el('div',undefined,'profile-invited');row.append(views().icon('users'),el('span','Приглашено'),el('strong',String(count)));return row;
+ function accountDetails(user){
+  const details=el('div',undefined,'profile-details'),id=el('div',undefined,'profile-id');id.append(el('span','Telegram ID: '+user.telegram_user_id));
+  id.append(views().iconAction(button('',async()=>{try{await navigator.clipboard.writeText(String(user.telegram_user_id));notice('ID скопирован.',true);}catch{notice('Не удалось скопировать.');}}),'copy','Скопировать ID'));details.append(id);
+  if(user.created_at)details.append(el('small','В кабинете с '+new Date(user.created_at).toLocaleDateString('ru-RU'),'muted'));return details;
  }
- function identity(user,count){
+ function identity(user){
   const section=el('section',undefined,'profile-identity user-identity'),row=el('div',undefined,'person-line'),copy=names(user,true);
-  const access=window.pushokTeam.roleControl(user);copy.append(access.badge);
-  row.append(views().userAvatar(user.id,person(user).name||person(user).username),copy);section.append(row,access.editor);
-  const details=el('details',undefined,'profile-details');details.append(el('summary','Сведения об аккаунте'));
-  const id=el('div',undefined,'profile-id');id.append(el('span','Telegram ID: '+user.telegram_user_id));
-  const copyId=views().iconAction(button('',async()=>{
-   try{await navigator.clipboard.writeText(String(user.telegram_user_id));notice('Telegram ID скопирован.',true);}
-   catch{notice('Не удалось скопировать. Можно выделить ID в сведениях об аккаунте.');}
-  }),'copy','Скопировать ID');id.append(copyId);details.append(id);
-  if(user.created_at)details.append(el('p','В кабинете с '+new Date(user.created_at).toLocaleDateString('ru-RU'),'muted'));
-  if(Number.isInteger(count))section.append(invited(count));
-  section.append(details);return section;
+  const access=window.pushokTeam.roleControl(user);access.badge.classList.add('profile-role');access.badge.dataset.role=user.is_owner?'owner':user.role;
+  row.append(views().userAvatar(user.id,person(user).name||person(user).username),copy);section.append(access.badge,row,access.editor);return section;
  }
  function balance(data,user){
-  const box=el('section',undefined,'profile-section profile-wallet');box.append(el('h2','Баланс пользователя'),el('p','Виден только администратору','muted'));
+  const box=el('section',undefined,'panel profile-section profile-wallet');box.append(el('h2','Баланс пользователя'),el('p','Виден только администратору','muted'));
   const balances=el('dl',undefined,'profile-balance-values');for(const [key,label] of [['RUB','Рубли'],['BONUS','Бонусы'],['XTR','Stars в puShok']])balances.append(el('dt',label),el('dd',key==='XTR'?data[key]+' XTR':money(data[key])));box.append(balances);
-  box.append(button('Управлять балансом',()=>{window.pushokWallet.selectUser(user.telegram_user_id);window.cabinet.go('wallet');}));return box;
+  box.append(views().iconAction(button('',()=>{window.pushokWallet.selectUser(user.telegram_user_id);window.cabinet.go('wallet');}),'wallet','Управлять балансом'));return box;
  }
  function stats(counts,onSelect){
   const row=el('nav',undefined,'profile-stats');row.setAttribute('aria-label','Обзор пользователя');
@@ -66,11 +59,10 @@ window.pushokProfiles=(()=>{
  async function ownOverview(target){
   const session=token,uid=me?.id;target.replaceChildren(el('p','Загрузка обзора…','muted'));
   try{const data=await api('/users/'+uid+'/profile');if(session!==token||uid!==me?.id||!target.isConnected)return;
-   target.replaceChildren(stats(data.counts,key=>window.cabinet.go({current:'campaigns/mine',channels:'channels',archived:'archive'}[key])),invited(data.counts.invited));
+   target.replaceChildren(stats(data.counts,key=>window.cabinet.go({current:'campaigns/mine',channels:'channels',archived:'archive'}[key])),window.pushokCommunity.invited(uid,data.counts.invited));
    window.pushokHall.medals(target,data);
-   window.pushokHall.frame(target.previousElementSibling?.querySelector('.user-avatar'),data.frame_rank);
-   const details=target.previousElementSibling?.querySelector('.profile-details');
-   if(details&&data.user.created_at)details.append(el('p','В кабинете с '+new Date(data.user.created_at).toLocaleDateString('ru-RU'),'muted'));
+
+   const personal=target.parentElement.querySelector('.profile-personal');if(personal){personal.querySelector('.profile-details')?.remove();personal.append(accountDetails(data.user));}
   }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p','Обзор не обновлён. '+e.message,'muted'),button('Повторить',()=>ownOverview(target)));}
  }
  function show(target,uid){
@@ -100,8 +92,9 @@ window.pushokProfiles=(()=>{
   function paint(data){
    const channelSection=el('section',undefined,'profile-section profile-channels'),campaignSection=el('section',undefined,'profile-section profile-campaigns');
    const overview=stats(data.counts,key=>{if(key==='channels')channelSection.scrollIntoView({block:'start'});else{archived=key==='archived';campaignPage=0;void load();}});
-   target.replaceChildren(identity(data.user,data.counts.invited),...(data.verification?[window.pushokVerification.readOnly(data.verification)]:[]),...(me.role==='admin'&&data.wallet?[balance(data.wallet,data.user)]:[]),overview,channelSection,campaignSection);
-   window.pushokHall.frame(target.querySelector('.user-avatar'),data.frame_rank);
+   const personal=window.pushokVerification.readOnly(data.verification||{});personal.append(accountDetails(data.user));window.pushokCommunity.ownerTools(personal,uid,data.verification||{},load);
+   target.replaceChildren(identity(data.user),window.pushokCommunity.invited(uid,data.counts.invited),personal,...(me.role==='admin'&&data.wallet?[balance(data.wallet,data.user)]:[]),overview,channelSection,campaignSection);
+
    window.pushokHall.medals(target.querySelector('.profile-identity'),data);
    channelSection.append(el('h2','Каналы'));
    const channelList=el('div',undefined,'profile-list');channelSection.append(channelList);
@@ -137,5 +130,5 @@ window.pushokProfiles=(()=>{
   }
   void load();
  }
- return {compact,identity,advertiser,ownOverview,show,backRoute:()=>returnRoute};
+ return {compact,identity,accountDetails,advertiser,ownOverview,show,setBackRoute:route=>{returnRoute=route;},backRoute:()=>returnRoute};
 })();

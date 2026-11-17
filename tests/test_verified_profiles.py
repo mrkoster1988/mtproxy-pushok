@@ -194,8 +194,8 @@ class VerificationIntegration(unittest.TestCase):
         self.verify()
         self.request('POST', '/me/verification/request', json={'birthday_opt_in': False})
         self.request('POST', '/internal/bot/verification/contact', headers=self.headers,
-                     json=self.payload(update_id=self.update-1, phone_number='+79997654321'))
-        self.assertEqual(self.request('GET', '/me/verification')['phone_number'], '+79997654321')
+                     json=self.payload(update_id=self.update-1, phone_number='+79991234567'))
+        self.assertEqual(self.request('GET', '/me/verification')['phone_number'], '+79991234567')
 
     def test_bot_fallback_preserves_opt_out_and_test_phone_is_separate(self):
         self.request('POST', '/me/verification/request', json={'birthday_opt_in': False})
@@ -253,9 +253,10 @@ class VerificationIntegration(unittest.TestCase):
         data = self.request('GET', '/me/verification')
         self.assertEqual(data['birthday']['day'], 2)  # Не затирать исправленную пользователем дату.
         self.assertEqual(data['birthday_source'], 'manual')
-        removed = self.request('PUT', '/me/birthday', json={'birthday': None, 'birthday_opt_in': False})
+        self.request('PUT', '/me/birthday',409,json={'birthday': None, 'birthday_opt_in': False})
+        removed = self.request('PUT', '/me/birthday', json={'birthday':data['birthday'], 'birthday_opt_in': False})
         self.assertTrue(removed['phone_verified'])
-        self.assertIsNone(removed['birthday'])
+        self.assertEqual(removed['birthday'],data['birthday'])
         self.assertFalse(removed['birthday_opt_in'])
 
     def test_profile_import_uses_own_private_chat_and_optional_year(self):
@@ -317,6 +318,7 @@ class VerificationIntegration(unittest.TestCase):
             self.assertEqual(result['birthday'], {'day': 10, 'month': 5, 'year': None})
             self.assertEqual(result['birthday_source'], 'manual')
             lookup.assert_called_once_with(self.tg)
+        self.actor['is_owner']=True  # Только владелец вправе исправить сохранённое.
         self.request('PUT', '/me/birthday', json={'birthday': None, 'birthday_opt_in': True})
         with patch.object(verified, 'telegram_birthday') as lookup:
             result = self.request('POST', '/me/birthday/sync')
@@ -352,6 +354,7 @@ class VerificationIntegration(unittest.TestCase):
         entries = self.db("SELECT delta FROM wallet_entries WHERE user_id=%s AND operation_key LIKE 'birthday:%%'", (self.uid,))
         self.assertEqual(entries, [{'delta': 10000}])
         self.assertEqual(self.db("SELECT balance FROM wallet_accounts WHERE user_id=%s AND currency='BONUS'", (self.uid,))[0]['balance'], 10000)
+        self.actor['is_owner']=True
         self.request('PUT', '/me/birthday', json={'birthday': {'day': 3, 'month': 3}, 'birthday_opt_in': True})
         run(date(2027, 3, 3))
         self.assertEqual(len(self.db('SELECT * FROM birthday_rewards WHERE user_id=%s', (self.uid,))), 1)

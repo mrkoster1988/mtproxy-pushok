@@ -18,17 +18,17 @@ window.pushokHall=(()=>{
   function valid(){return session===token&&target.isConnected&&location.hash.startsWith('#/hall');}
   function periodTitle(d){const options=kind==='year'?{year:'numeric'}:kind==='month'?{month:'long',year:'numeric'}:{day:'numeric',month:'short'};const start=new Date(d.starts_at).toLocaleDateString('ru-RU',{...options,timeZone:'Europe/Moscow'});return kind==='week'?start+' – '+new Date(new Date(d.ends_at)-1).toLocaleDateString('ru-RU',{day:'numeric',month:'short',timeZone:'Europe/Moscow'}):start;}
   function person(row,metric,podium=false){
-   const line=el('article',undefined,podium?'hall-podium-person hall-place-'+row.rank:'hall-row'),avatar=window.pushokViews.userAvatar(row.user_id,row.first_name||row.username||'',true),copy=el('div',undefined,'hall-person');frame(avatar,row.rank<=10?row.rank:null);
-   const name=[row.first_name,row.last_name].filter(Boolean).join(' ')||row.username||'Участник';copy.append(el('strong',name));if(row.username&&/^[A-Za-z0-9_]+$/.test(row.username)){const link=el('a','@'+row.username);link.href='https://t.me/'+row.username;link.target='_blank';link.rel='noopener noreferrer';copy.append(link);}
+   const line=el('article',undefined,podium?'hall-podium-person hall-place-'+row.rank:'hall-row'),avatar=window.pushokViews.userAvatar(row.user_id,row.first_name||row.username||'',true),copy=el('div',undefined,'hall-person');frame(avatar,row.rank<=10?row.rank:null);avatar.dataset.hallRank=String(row.rank);
+   const name=[row.first_name,row.last_name].filter(Boolean).join(' ')||row.username||'Участник';copy.append(el('strong',name));if(!podium&&row.username&&/^[A-Za-z0-9_]+$/.test(row.username)){const link=el('a','@'+row.username);link.href='https://t.me/'+row.username;link.target='_blank';link.rel='noopener noreferrer';copy.append(link);}
    const value=el('div',undefined,'hall-value');value.append(el('strong',metric==='spend'?fmt(row.score/100)+' ₽':fmt(row.score)));if(row.bonus_amount)value.append(el('small','+'+fmt(row.bonus_amount/100)+' бонусных ₽'));
-   line.append(el('span',podium?['','🥇','🥈','🥉'][row.rank]:String(row.rank),'hall-rank'),avatar,copy,value);return line;
+   if(!podium)line.append(el('span',String(row.rank),'hall-rank'));line.append(avatar,copy,value);return line;
   }
   async function refresh(){
    const request=++serial;body.setAttribute('aria-busy','true');[...tabs.children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.kind===kind)));
    try{const all=await Promise.all(Object.keys(titles).map(metric=>api('/hall?kind='+kind+'&metric='+metric+(period?'&period_id='+period:''))));if(!valid()||request!==serial)return;
-    const first=all[0];history.replaceChildren();const current=el('option',periodTitle({starts_at:new Date(),ends_at:new Date()})+' · Идёт');current.value='';history.append(current);
-    if(!period)current.textContent=periodTitle(first)+' · Идёт';for(const p of first.periods){const o=el('option',periodTitle(p)+' · Итоги');o.value=p.id;history.append(o);}history.value=period;
-    const heading=el('div',undefined,'hall-heading');heading.append(el('span',first.closed?'Итоги за '+periodTitle(first):'Лидеры · '+periodTitle(first)),el('small',first.closed?'Награды сохранены':'До конца периода места могут меняться','muted'));body.replaceChildren(heading);
+    const first=all[0];history.replaceChildren();const current=el('option',periodTitle({starts_at:new Date(),ends_at:new Date()}));current.value='';history.append(current);
+    if(!period)current.textContent=periodTitle(first);for(const p of first.periods){const o=el('option',periodTitle(p));o.value=p.id;history.append(o);}history.value=period;
+    const heading=el('div',undefined,'hall-heading');heading.append(el('small',first.closed?'Итоги сохранены':'Места обновляются до конца периода','muted'));body.replaceChildren(heading);
     Object.keys(titles).forEach((metric,i)=>{const data=all[i],section=el('section',undefined,'hall-category');section.append(el('h2',titles[metric]));const podium=el('div',undefined,'hall-podium');for(const rank of [2,1,3]){const row=data.rows.find(r=>r.rank===rank);if(row)podium.append(person(row,metric,true));}section.append(podium);
      if(!data.rows.length)section.append(el('p','Первое место пока свободно','muted'));
      const rest=el('details',undefined,'hall-rest'),own=data.own;rest.append(el('summary','Все участники · топ-'+data.top_size+' · '+(own?'Ваше место: '+own.rank:'У вас пока нет результата')));
@@ -49,7 +49,7 @@ window.pushokHall=(()=>{
    const rewards=structuredClone(data.settings.rewards),grid=el('div',undefined,'hall-prize-grid');form.append(period,metric,grid);let previousKind=period.value,previousMetric=metric.value;
    function persist(){rewards[previousKind]??={};rewards[previousKind][previousMetric]=[...grid.querySelectorAll('input')].map(i=>Math.round(Number(i.value)*100));}
    function paint(){previousKind=period.value;previousMetric=metric.value;grid.replaceChildren();for(let i=0;i<10;i++){const label=el('label','Место '+(i+1)),input=el('input');input.type='number';input.min=0;input.max=1000000;input.step='0.01';input.value=(rewards[previousKind]?.[previousMetric]?.[i]||0)/100;label.append(input);grid.append(label);}}
-   period.onchange=metric.onchange=()=>{persist();paint();};paint();const submit=el('button','Сохранить настройки','primary');submit.type='submit';const status=el('p',undefined,'muted');status.setAttribute('role','status');
+   period.onchange=metric.onchange=()=>{persist();paint();};paint();const submit=window.pushokViews.iconAction(el('button',undefined,'primary'),'save','Сохранить настройки');submit.type='submit';const status=el('p',undefined,'muted');status.setAttribute('role','status');
    form.append(el('small','Награды — в бонусных рублях. 0 означает без награды. Новые правила действуют со следующей недели, месяца или года; правила текущих периодов сохраняются.','muted'),submit,status);
    form.onsubmit=async e=>{e.preventDefault();persist();submit.disabled=true;try{await api('/hall/admin/settings',{method:'PUT',body:{top_size:Number(size.value),rewards}});if(valid())status.textContent='Сохранено для следующих периодов.';}catch(err){if(valid())status.textContent=err.message;}finally{submit.disabled=false;}};box.append(form);
    const history=el('details');history.append(el('summary','История итогов и начислений'));for(const p of data.history)history.append(el('p',kinds[p.kind]+' · '+date(p.starts_at)+' · '+(p.closed_at?'Закрыт':'Текущий')+' · '+p.places+' мест · '+fmt(p.bonus/100)+' бонусных ₽'));box.append(history);

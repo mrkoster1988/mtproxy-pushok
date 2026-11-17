@@ -35,7 +35,7 @@ def check_user_profiles(browser, base, output, failures, dsn):
     def go(page,route):
         page.evaluate('route=>window.cabinet.go(route)',route)
     try:
-        with patch('app.user_profiles.user_avatar',return_value=photo.getvalue()) as avatar:
+        with patch('app.community.user_avatar',return_value=photo.getvalue()) as avatar:
             admin=launch('admin');go(admin,'moderation/'+str(campaigns[0]))
             card=admin.locator('.approval-advertiser');expect(card.locator('.user-avatar img')).to_have_count(1)
             assert card.inner_text().count('@ZibrovaM')==1
@@ -45,7 +45,7 @@ def check_user_profiles(browser, base, output, failures, dsn):
             card.get_by_role('link',name='Открыть профиль рекламодателя').click()
             profile=admin.locator('[data-page=user]');expect(profile.locator('.person-name')).to_have_text('Мария Зиброва')
             expect(profile.locator('.user-avatar img')).to_have_count(1)
-            expect(profile.locator('.profile-invited')).to_have_text('Приглашено0')
+            expect(profile.locator('.profile-invited-block summary')).to_have_text('Приглашено0')
             assert profile.locator('.profile-identity').inner_text().count('@ZibrovaM')==1
             expect(profile.locator('.profile-campaign-row')).to_have_count(10)
             profile.locator('.profile-campaigns').get_by_role('button',name='Следующая страница').click()
@@ -65,10 +65,10 @@ def check_user_profiles(browser, base, output, failures, dsn):
             own=client.locator('[data-page=profile]')
             expect(own.locator('.profile-stats')).to_contain_text('11')
             expect(own.get_by_role('button',name='Скопировать ID',exact=True)).to_be_hidden()
-            own.get_by_text('Сведения об аккаунте',exact=True).click()
+            own.locator('.profile-personal>summary').click()
             expect(own.get_by_role('button',name='Скопировать ID',exact=True)).to_be_visible()
             expect(own.locator('.profile-details')).to_contain_text('В кабинете с')
-            own.get_by_text('Сведения об аккаунте',exact=True).click()
+            own.locator('.profile-personal>summary').click()
             client.screenshot(path=str(output/'51-own-profile.png'))
             for label,route in (('Каналы: 1','channels'),('Кампании: 11','campaigns/mine'),('Архив: 1','archive')):
                 own.get_by_role('button',name=label,exact=True).click()

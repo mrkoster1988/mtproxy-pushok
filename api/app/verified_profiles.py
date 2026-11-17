@@ -90,11 +90,11 @@ class Finish(BaseModel):
 
 def private_profile(conn, uid):
     row = conn.execute('''SELECT phone_number,phone_verified_at,birth_day,birth_month,birth_year,
-        birthday_source,birthday_opt_in,birthday_sync_state,birthday_sync_checked_at
+        birthday_source,birthday_opt_in,birthday_sync_state,birthday_sync_checked_at,birthday_locked,transferred_to
         FROM verified_profiles WHERE user_id=%s AND telegram_environment=%s''', (uid, environment_name())).fetchone()
     if not row:
         return dict(phone_number=None, phone_verified_at=None, phone_verified=False,
-                    birthday=None, birthday_source=None, birthday_opt_in=False,
+                    birthday=None, birthday_source=None, birthday_opt_in=False,birthday_locked=False,transferred_to=None,
                     birthday_sync_state=None, birthday_sync_checked_at=None)
     birthday = (dict(day=row.pop('birth_day'), month=row.pop('birth_month'), year=row.pop('birth_year'))
                 if row['birth_day'] is not None else None)
@@ -140,12 +140,14 @@ def save_contact(conn, payload):
     phone = '+' + re.sub(r'[^0-9]', '', payload.phone_number)
     if not re.fullmatch(r'\+[0-9]{7,15}', phone):
         raise HTTPException(400, 'phone_invalid')
-    user = conn.execute('SELECT id,blocked_at FROM users WHERE telegram_user_id=%s FOR UPDATE',
+    user = conn.execute('SELECT id,blocked_at FROM users WHERE telegram_user_id=%s FOR NO KEY UPDATE',
                         (payload.telegram_user_id,)).fetchone()
     if not user or user['blocked_at']:
         raise HTTPException(404, 'verification_user_not_found')
     uid = user['id']
-    previous = conn.execute('SELECT telegram_update_id FROM verified_profiles WHERE user_id=%s AND telegram_environment=%s', (uid, environment_name())).fetchone()
+    previous = conn.execute('SELECT telegram_update_id,phone_number,transferred_to FROM verified_profiles WHERE user_id=%s AND telegram_environment=%s', (uid, environment_name())).fetchone()
+    if previous and (previous['transferred_to'] or (previous['phone_number'] and previous['phone_number'] != phone)):
+        raise HTTPException(409,'personal_details_locked')
     if previous and previous['telegram_update_id'] == payload.update_id:
         return dict(verified=True)
     intent = conn.execute('''SELECT *,floor(extract(epoch FROM requested_at))::bigint AS message_after,
@@ -165,9 +167,9 @@ def save_contact(conn, payload):
     if payload.birthday and intent['birthday_opt_in']:
         b = payload.birthday
         conn.execute('''UPDATE verified_profiles SET birth_day=%s,birth_month=%s,birth_year=%s,
-            birthday_source='telegram',birthday_sync_state='imported',birthday_sync_checked_at=now()
+            birthday_source='telegram',birthday_locked=true,birthday_sync_state='imported',birthday_sync_checked_at=now()
             WHERE user_id=%s AND telegram_environment=%s AND birthday_source IS DISTINCT FROM 'manual'
-            AND birthday_sync_state IS DISTINCT FROM 'manual' ''',
+            AND birthday_sync_state IS DISTINCT FROM 'manual' AND NOT birthday_locked AND transferred_to IS NULL ''',
             (b.day, b.month, b.year, uid, environment_name()))
     conn.execute('DELETE FROM phone_verification_requests WHERE user_id=%s AND telegram_environment=%s', (uid, environment_name()))
     return dict(verified=True)
@@ -248,6 +250,10 @@ def router_for(dsn, current_user, require_admin):
     def birthday(payload: BirthdayUpdate, user=Depends(current_user)):
         def save(conn):
             b = payload.birthday
+            conn.execute('SELECT id FROM users WHERE id=%s FOR NO KEY UPDATE',(user['id'],)).fetchone()
+            previous=private_profile(conn,user['id'])
+            if previous.get('transferred_to') or (previous.get('birthday_locked') and not user.get('is_owner') and previous['birthday'] != (b.model_dump() if b else None)):
+                raise HTTPException(409,'personal_details_locked')
             conn.execute('''INSERT INTO verified_profiles(user_id,birth_day,birth_month,birth_year,birthday_source,
                 birthday_opt_in,consent_version,consent_at,telegram_environment,birthday_sync_state,birthday_sync_checked_at)
                 VALUES(%s,%s,%s,%s,%s,%s,%s,now(),%s,'manual',now())
@@ -257,6 +263,7 @@ def router_for(dsn, current_user, require_admin):
                 consent_at=now(),updated_at=now(),birthday_sync_state='manual',birthday_sync_checked_at=now()''',
                 (user['id'], b.day if b else None, b.month if b else None, b.year if b else None,
                  'manual' if b else None, payload.birthday_opt_in, CONSENT, environment_name()))
+            conn.execute('UPDATE verified_profiles SET birthday_locked=birthday_locked OR birth_day IS NOT NULL WHERE user_id=%s AND telegram_environment=%s',(user['id'],environment_name()))
             return private_profile(conn, user['id'])
         return db(save)
 
@@ -268,7 +275,7 @@ def router_for(dsn, current_user, require_admin):
         claimed = db(lambda conn: conn.execute('''UPDATE verified_profiles
             SET birthday_sync_state='pending',birthday_sync_checked_at=now()
             WHERE user_id=%s AND telegram_environment=%s AND phone_verified_at IS NOT NULL
-            AND birthday_opt_in AND birth_day IS NULL AND birthday_source IS DISTINCT FROM 'manual'
+            AND birthday_opt_in AND birth_day IS NULL AND NOT birthday_locked AND transferred_to IS NULL AND birthday_source IS DISTINCT FROM 'manual'
             AND birthday_sync_state IS DISTINCT FROM 'manual'
             AND (birthday_sync_checked_at IS NULL OR birthday_sync_checked_at<now()-interval '1 minute')
             RETURNING birthday_sync_checked_at''', (uid, environment)).fetchone())
@@ -282,12 +289,12 @@ def router_for(dsn, current_user, require_admin):
 
         def finish(conn):
             conn.execute('''UPDATE verified_profiles SET birth_day=%s,birth_month=%s,birth_year=%s,
-                birthday_source=%s,birthday_sync_state=%s,updated_at=now()
+                birthday_source=%s,birthday_sync_state=%s,birthday_locked=(%s::smallint IS NOT NULL),updated_at=now()
                 WHERE user_id=%s AND telegram_environment=%s AND birthday_sync_state='pending'
                 AND birthday_sync_checked_at=%s AND birthday_opt_in AND birth_day IS NULL
-                AND phone_verified_at IS NOT NULL AND birthday_source IS DISTINCT FROM 'manual' ''',
+                AND phone_verified_at IS NOT NULL AND NOT birthday_locked AND transferred_to IS NULL AND birthday_source IS DISTINCT FROM 'manual' ''',
                 (birthday.day if birthday else None, birthday.month if birthday else None,
-                 birthday.year if birthday else None, 'telegram' if birthday else None, state,
+                 birthday.year if birthday else None, 'telegram' if birthday else None, state, birthday.day if birthday else None,
                  uid, environment, claimed['birthday_sync_checked_at']))
             return private_profile(conn, uid)
         return db(finish)
