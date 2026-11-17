@@ -7,8 +7,9 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT/'scripts'), str(ROOT/'api')]
@@ -68,11 +69,15 @@ class OwnerHealthTests(unittest.TestCase):
         self.assertEqual(binding.connection_status()['state'],'invalid_state')
 
     def test_disable_between_claim_and_helper_stops_before_client_creation(self):
-        import telethon
+        # SDK устанавливается на хост, но отсутствует в контейнере API.
+        # Здесь проверяется ранний выход до создания клиента, без вызовов SDK.
+        client=Mock()
+        sdk=SimpleNamespace(__version__=worker.TELETHON_VERSION,TelegramClient=client)
+        sessions=SimpleNamespace(StringSession=Mock())
         self.save();(self.path/'automatic.enabled').unlink()
         output=io.StringIO()
         with patch.object(worker,'DEFAULT_STATE',self.path),patch.object(worker.sys,'stdin',io.StringIO('{"action":"bind"}')), \
-                patch.object(telethon,'TelegramClient') as client,redirect_stdout(output):
+                patch.dict(sys.modules,{'telethon':sdk,'telethon.sessions':sessions}),redirect_stdout(output):
             previous=os.umask(0o077)
             try:worker.main()
             finally:os.umask(previous)
