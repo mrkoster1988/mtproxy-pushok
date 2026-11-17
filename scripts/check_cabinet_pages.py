@@ -1104,7 +1104,14 @@ def main():
                 expect(archive_card).to_contain_text('Ожидаем оплату')
                 archive_card.locator('summary').filter(has_text='Изменить или удалить заявку').click()
                 admin.once('dialog',lambda dialog:dialog.accept())
-                archive_card.get_by_role('button',name='🗑️ Удалить',exact=True).click()
+                delete_archive=archive_card.get_by_role('button',name='🗑️ Удалить',exact=True)
+                expect(delete_archive).to_be_visible()
+                expect(delete_archive).to_be_enabled()
+                # После DELETE карточка исчезает до завершения pointer-action Playwright.
+                # Проверяем один настоящий обработчик и его HTTP-результат без повторного клика.
+                with admin.expect_response(lambda r:r.url.endswith('/campaigns/'+archive_id) and r.request.method=='DELETE') as removed:
+                    delete_archive.evaluate('(button)=>button.click()')
+                assert removed.value.ok
                 expect(admin.locator('#notice')).to_contain_text('Объект перемещён')
                 expect(archive_card).to_have_count(0)
                 assert archive_id not in {c['id'] for c in authenticated('admin','GET','/operator/campaigns')}

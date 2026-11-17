@@ -127,8 +127,8 @@ def save_contact(conn, payload):
     if (not intent or payload.message_date < intent['message_after'] or
             payload.message_date > intent['server_time']+5):
         raise HTTPException(409, 'verification_request_expired')
-    if previous and previous['telegram_update_id'] is not None and payload.update_id <= previous['telegram_update_id']:
-        raise HTTPException(409, 'verification_contact_stale')
+    # После недели без обновлений Telegram выбирает update_id случайно.
+    # Свежесть доказывается временем сообщения и запросом, а не порядком ID.
     conn.execute('''INSERT INTO verified_profiles(user_id,phone_number,phone_verified_at,telegram_update_id,
         birthday_opt_in,consent_version,consent_at,telegram_environment) VALUES(%s,%s,now(),%s,%s,%s,now(),%s)
         ON CONFLICT(user_id,telegram_environment) DO UPDATE SET phone_number=EXCLUDED.phone_number,phone_verified_at=now(),
@@ -176,6 +176,8 @@ def generate_birthdays(conn, current=None):
 
 
 def claim_birthdays(conn):
+    if environment_name() != 'production':
+        return []
     generate_birthdays(conn)
     # Не доставлять старые поздравления после отключения пользователем или администратором.
     return conn.execute('''WITH due AS (

@@ -50,7 +50,7 @@ class BotVerification(unittest.TestCase):
         self.assertTrue(reply['reply_markup']['keyboard'][0][0]['request_contact'])
         self.assertIn('администратору', reply['text'])
         api.assert_called_once_with('verification/request', {'telegram_user_id': 123, 'birthday_opt_in': True})
-        for value in ({'day': 31, 'month': 2}, {'day': True, 'month': 1}, {'day': 1, 'month': 1, 'year': 2999}):
+        for value in ({'day': 31, 'month': 2}, {'day': True, 'month': 1}, {'day': 1, 'month': 1, 'year': 0}, {'day': 1, 'month': 1, 'year': 2999}):
             self.assertIsNone(birthday_from_chat({'birthdate': value}))
         self.assertNotIn('Подарок уже', render_birthday({'first_name': 'Маша', 'bonus_amount': 0}))
         self.assertIn('100 ₽', render_birthday({'first_name': 'Маша', 'bonus_amount': 10000}))
@@ -125,6 +125,13 @@ class VerificationIntegration(unittest.TestCase):
         self.db("UPDATE phone_verification_requests SET expires_at=now()-interval '1 second' WHERE user_id=%s", (self.uid,))
         self.request('POST', '/internal/bot/verification/contact', 409, headers=self.headers, json=self.payload())
         self.request('PUT', '/me/birthday', 422, json={'birthday': None, 'birthday_opt_in': False, 'phone_verified': True})
+
+    def test_new_contact_after_telegram_update_sequence_reset(self):
+        self.verify()
+        self.request('POST', '/me/verification/request', json={'birthday_opt_in': False})
+        self.request('POST', '/internal/bot/verification/contact', headers=self.headers,
+                     json=self.payload(update_id=self.update-1, phone_number='+79997654321'))
+        self.assertEqual(self.request('GET', '/me/verification')['phone_number'], '+79997654321')
 
     def test_bot_fallback_preserves_opt_out_and_test_phone_is_separate(self):
         self.request('POST', '/me/verification/request', json={'birthday_opt_in': False})
@@ -230,6 +237,9 @@ class VerificationIntegration(unittest.TestCase):
         claim = self.request('POST', path+'claim', headers=self.headers, json={})
         mine = next(x for x in claim if x['telegram_user_id'] == self.tg)
         self.assertEqual(mine['bonus_amount'], 0)
+        with patch.dict(os.environ, {'PUSHOK_TELEGRAM_TEST_ENVIRONMENT': '1'}):
+            with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+                self.assertEqual(verified.claim_birthdays(conn), [])
         self.assertFalse(any(x['telegram_user_id'] == self.tg for x in self.request('POST', path+'claim', headers=self.headers, json={})))
         wrong = {'notice_id': mine['notice_id'], 'claim_token': str(uuid4()), 'permanent_failure': False}
         self.assertFalse(self.request('POST', path+'finish', headers=self.headers, json=wrong)['acknowledged'])

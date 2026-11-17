@@ -13,7 +13,7 @@ def birthday_from_chat(chat):
     if type(day) is not int or type(month) is not int or (year is not None and type(year) is not int):
         return None
     try:
-        birthday = date(year or 2000, month, day)
+        birthday = date(year if year is not None else 2000, month, day)
         if year and (birthday > date.today() or date.today().year-year > 120 or year < 1900):
             return None
     except (ValueError, TypeError):

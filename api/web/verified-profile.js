@@ -30,7 +30,7 @@ window.pushokVerification=(()=>{
   if(me.phone_verified){
    card.classList.add('verification-complete');copy.append(el('strong',title));const link=el('a','Мой профиль');link.href='#/profile';card.append(link);return;
   }
-  copy.append(el('h2','Подтвердите свой номер'),el('p','Один шаг — и в профиле появится синяя галочка.'));
+  copy.append(el('h2','Подтвердите свой номер'),el('p','Номер будет виден вам и администратору.'));
   const help=el('details',undefined,'verification-consent');help.append(el('summary','Какие сведения сохранятся'),el('p','Ваш номер будет виден вам и администратору. Доступную дату рождения из Telegram используем для поздравлений и ежегодного бонуса по условиям puShok. Год рождения необязателен. Это подтверждение номера внутри puShok.'));card.append(help);
   const consent=optIn(true),status=el('p',undefined,'verification-status');status.setAttribute('role','status');card.append(consent.node);
   const actions=el('div',undefined,'verification-actions');
@@ -79,7 +79,7 @@ window.pushokVerification=(()=>{
    const form=el('form'),fields=el('div',undefined,'birthday-fields'),day=el('input'),month=el('select'),year=el('input');
    day.type='number';day.min='1';day.max='31';day.inputMode='numeric';day.placeholder='День';day.value=data.birthday?.day||'';
    [['','Месяц'],...['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'].map((m,i)=>[String(i+1),m])].forEach(([value,text])=>{const o=el('option',text);o.value=value;month.append(o);});month.value=data.birthday?.month||'';
-   year.type='number';year.min=String(new Date().getFullYear()-120);year.max=String(new Date().getFullYear());year.inputMode='numeric';year.placeholder='Необязательно';year.value=data.birthday?.year||'';
+   year.type='number';year.min=String(new Date().getFullYear()-120);year.max=String(new Date().getFullYear());year.inputMode='numeric';year.placeholder='—';year.title='Год указывать необязательно';year.value=data.birthday?.year||'';
    fields.append(label('День',day),label('Месяц',month),label('Год',year));form.append(el('h3','День рождения'),fields);
    const source=el('p',data.birthday_source==='telegram'?'Добавлено из профиля Telegram. Можно исправить.':'Если Telegram не передал дату, укажите день и месяц здесь.','muted');form.append(source);
    const consent=optIn(data.birthday_opt_in),status=el('p',undefined,'verification-status');status.setAttribute('role','status');form.append(consent.node);
