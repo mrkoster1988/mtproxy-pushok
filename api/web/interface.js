@@ -35,7 +35,7 @@ window.pushokInterface=(()=>{
  function settings(){
   const sys=$('settings-system');if(!sys)return;
   const design=group(sys,'design','Оформление','edit'),people=group(sys,'people','Пользователи и награды','users'),automation=group(sys,'automation','ИИ и прокси','server'),technical=group(sys,'technical','Диагностика','status');
-  for(const [id,g,title] of [['home-banner-settings',design,'Текст на главной'],['loading-title-form',design,'Экран загрузки'],['icons-form',design,'Иконки Telegram'],['team-form',people,'Права пользователей'],['birthday-settings',people,'Дни рождения'],['referral-settings',people,'Приглашения и награды'],['channel-ai-settings',automation,'Подключение и права ИИ'],['proxy-provisioning-settings',automation,'Дополнительные прокси'],['default-sponsor-form',automation,'Канал по умолчанию'],['launch-refresh',technical,'Проверка запуска']]){
+  for(const [id,g,title] of [['home-banner-settings',design,'Текст на главной'],['loading-title-form',design,'Экран загрузки'],['icons-form',design,'Иконки Telegram'],['team-form',people,'Права пользователей'],['birthday-settings',people,'Дни рождения'],['referral-settings',people,'Приглашения и награды'],['channel-ai-settings',automation,'Подключение и права ИИ'],['proxy-provisioning-settings',automation,'Дополнительные прокси'],['proxy-gateway-settings',automation,'Единый вход и интересы'],['default-sponsor-form',automation,'Канал по умолчанию'],['launch-refresh',technical,'Проверка запуска']]){
    const source=$(id);if(source)wrap(source.closest('.core-health')||source,g,title);
   }
   for(const node of [...sys.querySelectorAll(':scope > .core-health')])wrap(node,technical,'Испытания ядра');

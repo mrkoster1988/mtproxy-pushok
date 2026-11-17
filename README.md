@@ -6,7 +6,7 @@
 
 MTProxy · Спонсорские каналы · Рекламный кабинет · Telegram-бот · Mini App
 
-[Установка](docs/INSTALL_QUICKSTART.md) · [Возможности](#возможности-проекта) · [Спонсорство](docs/MTProxy_SPONSOR.md) · [План развития](docs/ROADMAP.md) · [Изменения](CHANGELOG.md)
+[Установка](docs/INSTALL_QUICKSTART.md) · [Возможности](#возможности-проекта) · [Спонсорство](docs/MTProxy_SPONSOR.md) · [План развития](docs/ROADMAP.md) · [Изменения](CHANGELOG.md) · [Единый вход и интересы](docs/PROXY_GATEWAY.md)
 
 [![CI](https://github.com/mrkoster1988/mtproxy-pushok/actions/workflows/check.yml/badge.svg)](https://github.com/mrkoster1988/mtproxy-pushok/actions/workflows/check.yml)
 [![Pushok Icons](https://github.com/mrkoster1988/mtproxy-pushok/actions/workflows/pushok-icons.yml/badge.svg)](https://github.com/mrkoster1988/mtproxy-pushok/actions/workflows/pushok-icons.yml)
@@ -23,7 +23,9 @@ MTProxy Pushok — самостоятельный проект для устан
 
 Проект устанавливается отдельно от Pushok VPN / puShok shop VPN. Фирменный стиль общий: рыжий Пушок, бирюзовый, тёмно-синий и оранжевый, рисунки цветными карандашами.
 
-Версия проекта: v1.83.
+Версия проекта: v1.84.
+
+[v1.84: единый вход и интересы](docs/PROXY_GATEWAY.md).
 
 [v1.83: единые элементы кабинета и профиль ИИ](docs/RELEASE_v1.83.md).
 

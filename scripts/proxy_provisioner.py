@@ -441,6 +441,11 @@ def run_instance(node_id):
     args = [str(BINARY),'-u','nobody','-p',str(cfg['stats_port']),'-H',str(cfg['port']),'-S',cfg['secret'],
             '--address',local,'--nat-info',local+':'+cfg['host'],
             '--aes-pwd',str(BASE/'proxy-secret'),str(BASE/'proxy-multi.conf'),'-M','1']
+    # Общий вход использует основной ключ; личная ссылка экземпляра сохраняется.
+    from check_telegram_promo import load_proxy
+    shared_secret = load_proxy(BASE/'mtproxy.env')[2]
+    if shared_secret != cfg['secret']:
+        args.extend(['-S',shared_secret])
     tag = env.get('MT_PROXY_TAG','')
     if tag:
         import re
