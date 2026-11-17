@@ -10,8 +10,9 @@ def check_channel_topics_ui(page, output):
     def choose(value):
         label=select.locator('option[value="'+value+'"]').text_content()
         page.get_by_role('button',name='Тематика канала',exact=True).click()
-        page.get_by_role('dialog',name='Выбор тематики канала').get_by_role('searchbox').fill(label)
-        page.get_by_role('button',name=label,exact=True).click()
+        dialog=page.get_by_role('dialog',name='Тематика канала',exact=True)
+        dialog.get_by_role('searchbox').fill(label)
+        dialog.get_by_role('option',name=label,exact=True).click()
 
     def suggestion(route):
         adult='onlysexstickers' in route.request.url
@@ -50,6 +51,12 @@ def check_channel_topics_ui(page, output):
         detect.click()
         page.wait_for_function('Boolean(window.__topicResolve)')
         expect(page.locator('#order-submit')).to_be_enabled()
+        # Даже повторный выбор пустого значения — явное решение пользователя.
+        choose('')
+        page.evaluate('''() => {window.__topicResolve(new Response(JSON.stringify({topic:'education',engine:'ai',basis:'posts'}),{headers:{'Content-Type':'application/json'}}));}''')
+        expect(select).to_have_value('')
+        expect(status).to_contain_text('не указана')
+        detect.click()
         choose('business')
         page.evaluate('''() => {window.__topicResolve(new Response(JSON.stringify({topic:'education',engine:'ai',basis:'posts'}),{headers:{'Content-Type':'application/json'}}));window.fetch=window.__topicFetch;}''')
         expect(select).to_have_value('business')

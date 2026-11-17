@@ -34,7 +34,7 @@ window.pushokTopics={create({locked,onChange}){
  retry.addEventListener('click',()=>{if(channel)void detect();else status.textContent='Сначала укажите публичный канал.';});
  function install(){
   const v=window.pushokViews;select.hidden=true;select.tabIndex=-1;
-  trigger=el('button');trigger.type='button';trigger.addEventListener('click',()=>{if(!locked())window.pushokControls.open(select,{trigger,title:'Тематика канала',alwaysSearch:true,searchLabel:'Найти тематику',closeLabel:'Закрыть выбор тематики'});});trigger.className='topic-trigger';trigger.setAttribute('aria-label','Тематика канала');trigger.setAttribute('aria-haspopup','dialog');trigger.setAttribute('aria-expanded','false');trigger.append(v.icon('channel'),el('span'),v.icon('chevron'));select.after(trigger);
+  trigger=el('button');trigger.type='button';trigger.addEventListener('click',()=>{if(!locked())window.pushokControls.open(select,{trigger,title:'Тематика канала',alwaysSearch:true,notifyUnchanged:true,searchLabel:'Найти тематику',closeLabel:'Закрыть выбор тематики'});});trigger.className='topic-trigger';trigger.setAttribute('aria-label','Тематика канала');trigger.setAttribute('aria-haspopup','dialog');trigger.setAttribute('aria-expanded','false');trigger.append(v.icon('channel'),el('span'),v.icon('chevron'));select.after(trigger);
   new MutationObserver(sync).observe(select,{attributes:true,attributeFilter:['disabled']});sync();
  }
  if(!window.pushokViews)document.addEventListener('DOMContentLoaded',install,{once:true});else install();

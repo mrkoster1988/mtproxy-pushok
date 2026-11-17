@@ -44,7 +44,7 @@ window.pushokControls=(()=>{
   state.trigger.setAttribute('aria-expanded','false');state.dialog.close();state.dialog.remove();
   if(!unavailable(state.select,state.trigger))state.trigger.focus({preventScroll:true});
  }
- function open(select,{trigger=select,title:caption=label(select),query:initialQuery='',searchLabel='Поиск по вариантам',closeLabel='Закрыть список',alwaysSearch=false}={}){
+ function open(select,{trigger=select,title:caption=label(select),query:initialQuery='',searchLabel='Поиск по вариантам',closeLabel='Закрыть список',alwaysSearch=false,notifyUnchanged=false}={}){
   if(unavailable(select,trigger))return;close();
   const dialog=el('dialog',undefined,'select-dialog'),header=el('div',undefined,'select-heading'),title=el('h2',caption),search=el('input'),list=el('div',undefined,'select-options');
   title.id='select-'+crypto.randomUUID();dialog.setAttribute('aria-labelledby',title.id);list.setAttribute('role','listbox');list.setAttribute('aria-label',caption);
@@ -63,7 +63,7 @@ window.pushokControls=(()=>{
     const b=button('',()=>{
      if(unavailable(select,trigger)||option.closest('select')!==select||option.disabled||option.hidden||parent.disabled||(parent!==select&&parent.hidden)){close();return;}
      const changed=select.selectedIndex!==option.index;select.selectedIndex=option.index;close();
-     if(changed){select.dispatchEvent(new Event('input',{bubbles:true}));select.dispatchEvent(new Event('change',{bubbles:true}));}
+     if(changed||notifyUnchanged){select.dispatchEvent(new Event('input',{bubbles:true}));select.dispatchEvent(new Event('change',{bubbles:true}));}
     });
     b.classList.add('select-option');b.dataset.optionIndex=String(option.index);b.setAttribute('role','option');b.setAttribute('aria-selected',String(option.selected));b.disabled=option.disabled||parent.disabled||false;b.tabIndex=-1;
     b.append(el('span',option.textContent));if(option.selected)b.append(v().icon('check'));list.append(b);count++;
