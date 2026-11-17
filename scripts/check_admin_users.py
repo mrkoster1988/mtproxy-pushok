@@ -64,7 +64,7 @@ def check_admin_users(browser,base,output,failures,dsn):
         gift.get_by_role('button',name='Изменить',exact=True).click();edit=gift.locator('.gift-editor');edit.get_by_label('Название подарка',exact=True).fill('Изменённый подарок');edit.get_by_label('Подарок, бонусных ₽',exact=True).fill('75');edit.get_by_role('button',name='Сохранить подарок',exact=True).click()
         gift=admin.locator('.wallet-gift').filter(has=admin.get_by_role('heading',name='Изменённый подарок',exact=True));expect(gift).to_contain_text('75')
         call(admin,'advertiser','POST','/wallet/gifts/redeem',{'code':code})
-        go(admin,'wallet');expect(admin.locator('.wallet-gift').filter(has_text='Изменённый подарок')).to_contain_text('активаций 1 из 1')
+        go(admin,'wallet');expect(admin.locator('.wallet-gift').filter(has_text='Изменённый подарок')).to_have_count(0);admin.get_by_role('button',name='Архив',exact=True).click();expect(admin.locator('.wallet-gift').filter(has_text='Изменённый подарок')).to_contain_text('активаций 1 из 1')
         for width in (320,390):
             admin.set_viewport_size({'width':width,'height':844});assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         gift=admin.locator('.wallet-gift').filter(has=admin.get_by_role('heading',name='Изменённый подарок',exact=True));gift.evaluate("n=>n.scrollIntoView({block:'center',behavior:'instant'})");gift.screenshot(path=str(output/'55-gift-actions.png'))
