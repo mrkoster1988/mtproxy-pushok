@@ -69,14 +69,14 @@ window.pushokManagement=(()=>{
   archive(box,'/campaigns/'+c.id,'Убрать заявку из списка? Будущий слот отменится. Активный показ и платежи сохранятся у оператора.',operator?'moderation':'campaigns');return box;
  }
  function nodeActions(n){
-  const box=el('details',undefined,'management-actions');box.append(el('summary','Изменить или удалить узел'));
-  box.append(button('Изменить узел',()=>{
+  const box=el('details',undefined,'management-actions node-actions'),controls=el('div',undefined,'node-action-buttons');box.append(el('summary','Управление узлом'),controls);
+  const edit=button('Изменить узел',()=>{
    const f=editor(box,'Запись узла',[
     {name:'name',label:'Название узла',value:n.name},{name:'host',label:'Адрес узла',value:n.host},{name:'port',label:'Порт узла',value:n.port,type:'number',min:1,max:65535}
    ],v=>api('/admin/proxy-nodes/'+n.id,{method:'PATCH',body:{name:v.name.value.trim(),host:v.host.value.trim(),port:Number(v.port.value)}}));
    f.append(el('p','Изменяется запись в кабинете. Настройка работающего прокси на VPS выполняется отдельно.','muted'));
-  }));
-  archive(box,'/admin/proxy-nodes/'+n.id,'Удалить узел из реестра? Будущие размещения вернутся на подбор. Активные показы сохранятся у оператора; прокси на VPS продолжит работать.','sponsors');return box;
+  });edit.replaceChildren(window.pushokViews.icon('edit'),document.createTextNode('Изменить'));edit.setAttribute('aria-label','Изменить узел');controls.append(edit);
+  const remove=archive(controls,'/admin/proxy-nodes/'+n.id,'Удалить узел из реестра? Будущие размещения вернутся на подбор. Активные показы сохранятся у оператора; прокси на VPS продолжит работать.','sponsors');remove.replaceChildren(window.pushokViews.icon('trash'),document.createTextNode('Удалить'));remove.classList.add('danger-text');return box;
  }
  function local(value){if(!value)return '';const d=new Date(value);return localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
  async function renderArchive(target,selectedId=''){

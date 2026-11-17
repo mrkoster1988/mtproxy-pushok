@@ -109,12 +109,15 @@ window.pushokViews=(()=>{
   copy.append(a,details);
   const open=link('',(mode==='sponsors'?'moderation/':'campaign/')+c.id);iconAction(open,'chevron','Открыть кампанию '+title(c));const current=campaignState(c),stateBadge=badge(current[0],current[1]);stateBadge.classList.add('campaign-current');head.append(channelAvatar(c.channel_id,title(c),c.channel_url),copy,stateBadge,open);item.append(head);
   item.append(el('p',c.placement_status==='active'&&c.scheduled_end_at?'До '+date(c.scheduled_end_at):c.scheduled_start_at?'Начало: '+date(c.scheduled_start_at):c.requested_start_at?'Желаемое начало: '+date(c.requested_start_at):'Дата — по согласованию','tile-period'));
+  if(mode==='sponsors'){
+   item.classList.add('sponsor-placement');
+   const footer=el('div',undefined,'sponsor-placement-footer'),terms=el('span',(c.tariff_name_snapshot||'Тариф')+' · '+duration(c),'muted');footer.append(terms,el('strong',price(c)));item.append(footer);return item;
+  }
   item.append(statusSteps(c,true));
   const meta=el('dl',undefined,'tile-meta campaign-tile-facts');for(const [label,value] of [['Тариф',c.tariff_name_snapshot||'—'],['Срок',duration(c)],['Стоимость',price(c)]]){const cell=el('div');cell.append(el('dt',label),el('dd',value));meta.append(cell);}item.append(meta);
   if(mode==='reports'){
    const actions=el('div',undefined,'tile-actions');actions.append(button('История кампании',()=>showCampaignReport(c,item)));if(!miniAppMode)actions.append(button('Скачать CSV',()=>downloadCampaignCsv(c)));item.append(actions);
-  }else if(mode==='sponsors')item.append(link('Управлять','moderation/'+c.id));
-  else if(mode==='payments')item.append(link(c.payment_status==='verified'?'Оплата':c.price_kopecks_snapshot===0?'Размещение':'Оплатить','payments/'+c.id,c.payment_status==='awaiting_payment'));
+  }else if(mode==='payments')item.append(link(c.payment_status==='verified'?'Оплата':c.price_kopecks_snapshot===0?'Размещение':'Оплатить','payments/'+c.id,c.payment_status==='awaiting_payment'));
   else if(c.moderation_status==='approved'&&c.payment_status==='awaiting_payment'&&c.price_kopecks_snapshot>0)item.append(link('Оплатить','payments/'+c.id,true));
   else if(c.moderation_status==='changes_requested')item.append(link('Исправить','campaign/'+c.id));
   return item;
@@ -165,10 +168,12 @@ window.pushokViews=(()=>{
  }
  function sponsors(target,list){
   target.replaceChildren();
-  const active=list.filter(c=>c.placement_status==='active'),queued=list.filter(c=>!c.archived_at&&c.moderation_status==='approved'&&c.payment_status==='verified'&&['scheduled','not_scheduled'].includes(c.placement_status));
-  target.append(el('h2','Сейчас в эфире'));if(!active.length)target.append(el('p','Активных размещений пока нет.','empty'));active.forEach(c=>target.append(campaignSummary(c,'sponsors')));
-  target.append(el('h2','Очередь размещений'));if(!queued.length)target.append(el('p','Нет оплаченных кампаний в очереди.','empty'));
-  queued.sort((a,b)=>(a.scheduled_start_at||'9999').localeCompare(b.scheduled_start_at||'9999')).forEach(c=>target.append(campaignSummary(c,'sponsors')));
+  const active=list.filter(c=>!c.archived_at&&c.placement_status==='active'),queued=list.filter(c=>!c.archived_at&&c.moderation_status==='approved'&&c.payment_status==='verified'&&['scheduled','not_scheduled'].includes(c.placement_status));
+  queued.sort((a,b)=>(a.scheduled_start_at||'9999').localeCompare(b.scheduled_start_at||'9999'));
+  for(const [title,items,emptyText] of [['Сейчас в эфире',active,'Активных размещений пока нет'],['Очередь размещений',queued,'Готовых к запуску кампаний нет']]){
+   const group=el('section',undefined,'sponsor-placement-group'),heading=el('div',undefined,'section-heading');heading.append(el('h2',title),el('span',String(items.length),'count-pill'));group.append(heading);
+   if(!items.length)group.append(el('p',emptyText,'sponsor-empty'));else{const rows=el('div',undefined,'sponsor-placement-list');items.forEach(c=>rows.append(campaignSummary(c,'sponsors')));group.append(rows);}target.append(group);
+  }
  }
  return {clearLogos,channelAvatar,channelPreview,channelSearch,userAvatar,icon,iconAction,disclosure,info,brand,mascot,profileAvatar,statusSteps,progress,facts,campaigns,channelCards,paymentOverview,profile,sponsors};
 })();

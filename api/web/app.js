@@ -445,8 +445,8 @@ function card(c,op,{compact=false}={}){
  return box;
 }
 const engineTitles={official_mtproxy:'MTProxy Classic',official_docker:'MTProxy Docker (тест)',telemt:'Telemt (адаптер)'};
-function engineRequest(){
- const data=Object.fromEntries(new FormData($('node-form')));
+function engineRequest(form=$('node-form')){
+ const data=Object.fromEntries(new FormData(form));
  const policy={deployment:data.deployment,environment:data.environment,engine_mode:data.engine_mode};
  if(policy.engine_mode==='manual')policy.preferred_engine=data.preferred_engine||null;
  return policy;
@@ -665,27 +665,43 @@ $('tariff-admin-form').addEventListener('submit',e=>{e.preventDefault();run(asyn
 
 function renderNodes(){
  $('node-admin').hidden=me?.role!=='admin';
+ const expanded=new Set([...$('nodes-list').querySelectorAll('.proxy-node')].filter(row=>row.querySelector('.node-actions')?.open).map(row=>row.dataset.nodeId));
  $('nodes-list').replaceChildren(...nodes.map(n=>{
-  const box=el('div',undefined,'card');
-  box.append(el('h3',n.name),el('p',n.host+':'+n.port+' · '+(n.status==='active'?'Доступен для расписания':'На паузе')));
-  box.append(el('p','План движка: '+(engineTitles[n.target_engine]||'Не выбран (старый узел)')+
-    ' · '+({auto:'автовыбор',manual:'вручную',legacy:'старый узел'}[n.engine_selection_mode]||'старый узел')+'. Установка и доступность не проверены.','muted'));
-  if(me?.role==='admin'){box.append(window.pushokManagement?.nodeActions(n)||el('span'));
-  box.append(button('Изменить план движка',async()=>{
-   if(!confirm('Изменить только план движка? Реальный прокси не будет переключён.'))return;
-   await api('/admin/proxy-nodes/'+n.id+'/engine-plan',{method:'PATCH',body:engineRequest()});
-   await refresh();notice('План сохранён. Проверка и установка выполняются отдельно.',true);
-  }));
-  box.append(button(n.status==='active'?'Поставить на паузу':'Возобновить',async()=>{
+  const box=el('div',undefined,'card proxy-node'),head=el('div',undefined,'proxy-node-heading'),copy=el('div');
+  box.dataset.nodeId=n.id;copy.append(el('h3',n.name),el('p',n.host+':'+n.port,'muted'));head.append(window.pushokViews.icon('server'),copy,el('span',n.status==='active'?'В расписании':'На паузе','badge'));box.append(head);
+  box.append(el('p','План: '+(engineTitles[n.target_engine]||'Не выбран'),'proxy-node-engine muted'));
+  if(me?.role==='admin'){
+  const actions=window.pushokManagement?.nodeActions(n)||el('details'),controls=actions.querySelector('.node-action-buttons')||actions;actions.open=expanded.has(n.id);box.append(actions);
+  const plan=button('Изменить план движка',()=>{
+   if(box.querySelector('.node-plan-form'))return;
+   const form=el('form',undefined,'node-plan-form'),inputs={};
+   // Редактирование плана относится к этому узлу, а не к скрытой форме добавления.
+   for(const [name,title,values,selected] of [
+    ['environment','Среда',[['production','Основной сервер'],['staging','Тестовый стенд']],n.target_engine&&n.target_engine!=='official_mtproxy'?'staging':'production'],
+    ['deployment','Способ развёртывания',[['any','Автовыбор'],['native','systemd / native'],['docker','Docker']],['native','docker'].includes(n.deployment_profile)?n.deployment_profile:'any'],
+    ['engine_mode','Выбор движка',[['auto','Автоматически'],['manual','Вручную']],n.engine_selection_mode==='manual'?'manual':'auto'],
+    ['preferred_engine','Движок',Object.entries(engineTitles),n.target_engine||'official_mtproxy']]){
+    const label=el('label',title),input=el('select');input.name=name;values.forEach(([v,t])=>option(input,v,t));input.value=selected;label.append(input);form.append(label);inputs[name]=input;
+   }
+   const toggle=()=>{inputs.preferred_engine.closest('label').hidden=inputs.engine_mode.value!=='manual';};inputs.engine_mode.addEventListener('change',toggle);toggle();
+   form.append(el('p','Сохраняется только план. Работающий прокси не переключается.','muted'));
+   const save=el('button','Сохранить план');save.type='submit';form.append(save,button('Отмена',()=>form.remove()));
+   form.addEventListener('submit',event=>{event.preventDefault();run(async()=>{await api('/admin/proxy-nodes/'+n.id+'/engine-plan',{method:'PATCH',body:engineRequest(form)});await refresh();notice('План сохранён. Проверка и установка выполняются отдельно.',true);},save);});
+   actions.append(form);inputs.environment.focus();
+  });plan.replaceChildren(window.pushokViews.icon('settings'),document.createTextNode('План движка'));plan.setAttribute('aria-label','Изменить план движка');controls.append(plan);
+  const pause=button(n.status==='active'?'Поставить на паузу':'Возобновить',async()=>{
    await api('/admin/proxy-nodes/'+n.id+'/status',{method:'PATCH',body:{status:n.status==='active'?'paused':'active'}});
    await refresh();notice('Состояние узла сохранено.',true);
-  }));}return box;
+  });pause.replaceChildren(window.pushokViews.icon('power'),document.createTextNode(n.status==='active'?'Пауза':'Возобновить'));pause.setAttribute('aria-label',n.status==='active'?'Поставить на паузу':'Возобновить');controls.append(pause);
+  const remove=actions.querySelector('.danger-text');if(remove)controls.append(remove);
+  }return box;
  }));
+ if(!nodes.length)$('nodes-list').append(el('p','Узлов пока нет. Добавьте первый прокси.','sponsor-empty'));
 }
 $('node-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
  const data=Object.fromEntries(new FormData(e.target));data.port=Number(data.port);
  if(data.engine_mode==='auto')delete data.preferred_engine;
- await api('/admin/proxy-nodes',{method:'POST',body:data});e.target.reset();await refresh();notice('Узел добавлен в реестр.',true);
+ await api('/admin/proxy-nodes',{method:'POST',body:data});e.target.reset();$('engine-mode').dispatchEvent(new Event('change'));$('node-create').open=false;await refresh();notice('Узел добавлен в реестр.',true);
 },e.submitter);});
 async function refresh({background=false}={}){
  if(!token)return;
