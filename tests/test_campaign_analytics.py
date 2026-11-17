@@ -84,14 +84,28 @@ class AnalyticsIntegration(unittest.TestCase):
         return self.web.post('/api/v1/internal/bot/analytics/join',json=payload,headers={'X-Pushok-Bot-Secret':'e'*64,'X-Pushok-Telegram-Environment':'production'})
 
     def test_complete_path_duplicates_daily_stats_and_no_personal_data(self):
-        self.start();action=self.action()
+        self.start()
+        # ID подписчика может случайно совпасть с частью даты или публичного токена.
+        # Фиксируем такое совпадение: проверка приватности должна учитывать поля JSON.
+        with topups.connect(self.dsn) as conn:
+            conn.execute("""UPDATE campaign_analytics
+                SET enabled_at=date_trunc('second',enabled_at)+interval '0.386999 seconds',token=%s
+                WHERE campaign_id=%s""",('999'+'a'*29,self.cid))
+        action=self.action()
         for _ in range(2):self.assertEqual(self.web.post(action+'&event=view').status_code,204)
         self.assertEqual(self.web.get(self.path).json()['link_views'],1)
         for _ in range(2):
             r=self.web.post(action,follow_redirects=False);self.assertEqual(r.status_code,303);self.assertEqual(r.headers['location'],self.invite)
         for _ in range(2):self.assertEqual(self.joined().json()['status'],'recorded')
         data=self.web.get(self.path).json();self.assertEqual((data['link_views'],data['clicks'],data['joins'],data['conversion_percent']),(1,1,1,100.0))
-        self.assertIsNone(data['reach']);self.assertNotIn('999',str(data));self.assertEqual(int(data['days'][0]['joins']),1)
+        self.assertIsNone(data['reach']);self.assertEqual(int(data['days'][0]['joins']),1)
+        # Только агрегаты и публичные параметры ссылки, без полей отдельного подписчика.
+        self.assertEqual(set(data),{'enabled','configured','reach','link_views','clicks','joins',
+            'conversion_percent','days','enabled_at','test_environment','url','source','timezone','channel_url_snapshot'})
+        for day in data['days']:
+            self.assertEqual(set(day),{'day','views','clicks','joins'})
+        self.assertIn('.386999',data['enabled_at'])
+        self.assertEqual(data['url'],'https://ads.example.org/r/'+'999'+'a'*29)
         with patch.dict(os.environ,{'SESSION_SIGNING_KEY':'r'*64}):self.joined()
         self.assertEqual(self.web.get(self.path).json()['joins'],1)
         # Второй подписчик мог открыть пересланное приглашение напрямую: процент не выдумываем.
