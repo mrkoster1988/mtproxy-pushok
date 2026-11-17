@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 action="${1:-connect}"
-[[ $# -le 1 && "$action" =~ ^(connect|status|disconnect|check)$ ]] || {
-  echo "Использование: sudo bash scripts/connect_telegram_owner.sh [connect|status|disconnect|check]" >&2
+[[ $# -le 1 && "$action" =~ ^(connect|enable|disable|status|disconnect|check)$ ]] || {
+  echo "Использование: sudo bash scripts/connect_telegram_owner.sh [enable|disable|connect|status|disconnect|check]" >&2
   exit 2
 }
 [[ "$(id -u)" == 0 ]] || { echo "Запустите через sudo на VPS." >&2; exit 1; }
-if [[ "$action" == connect && ( ! -t 0 || ! -t 1 ) ]]; then
+if [[ "$action" =~ ^(connect|enable)$ && ( ! -t 0 || ! -t 1 ) ]]; then
   echo "Для входа нужен интерактивный терминал VPS." >&2; exit 2
 fi
 owner_source="$(cd -- "$(dirname -- "$0")" && pwd)"
+if [[ "$action" == enable ]]; then
+  [[ "$(dirname "$owner_source")" == /opt/mtproxy-pushok && -f /etc/mtproxy-pushok/mtproxy.env ]] || {
+    echo "Автопривязка требует установленного на этом VPS MTProxy Classic и /opt/mtproxy-pushok." >&2; exit 1
+  }
+fi
 owner_venv=/opt/mtproxy-pushok-telegram-owner-venv
 umask 077
 [[ ! -L "$owner_venv" ]] || { echo "Каталог окружения не должен быть ссылкой." >&2; exit 1; }
@@ -32,4 +37,8 @@ if ! "$owner_venv/bin/python" -c 'import telethon; assert telethon.__version__ =
 fi
 flock -u 9
 exec 9>&-
-exec "$owner_venv/bin/python" "$owner_source/telegram_owner.py" "$action"
+"$owner_venv/bin/python" "$owner_source/telegram_owner.py" "$action"
+if [[ "$action" == enable ]]; then
+  bash "$owner_source/install_promotion_agent.sh"
+  echo "Автоматическая привязка включена. Состояние — в кабинете: Узлы и спонсоры → Автоприменение."
+fi

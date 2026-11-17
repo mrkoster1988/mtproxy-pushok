@@ -53,7 +53,7 @@ from .sbp_verification import SBPVerificationError
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.46",
+    version="1.47",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -1047,6 +1047,8 @@ def create_slot_hold(
             ).fetchone()
             if node is None:
                 raise HTTPException(status_code=404, detail="active_proxy_node_not_found")
+            if connection.execute("SELECT 1 FROM telegram_binding_jobs WHERE proxy_node_id=%s AND phase<>'done'", (payload.proxy_node_id,)).fetchone():
+                raise HTTPException(409, 'Узел готовит привязку в Telegram. Дождитесь завершения подготовки.')
             connection.execute(
                 "DELETE FROM slot_holds WHERE proxy_node_id = %s AND expires_at <= now()",
                 (payload.proxy_node_id,),
@@ -1260,6 +1262,8 @@ def schedule_placement(
             ).fetchone()
             if node is None:
                 raise HTTPException(status_code=404, detail="active_proxy_node_not_found")
+            if connection.execute("SELECT 1 FROM telegram_binding_jobs WHERE proxy_node_id=%s AND phase<>'done'", (payload.proxy_node_id,)).fetchone():
+                raise HTTPException(409, 'Узел готовит привязку в Telegram. Дождитесь завершения подготовки.')
             end_at = start_at + timedelta(seconds=campaign["duration_seconds_snapshot"])
             connection.execute(
                 "DELETE FROM slot_holds WHERE proxy_node_id = %s AND expires_at <= now()",
@@ -1652,6 +1656,7 @@ def activate_placement(
                 WHERE c.id = %s AND c.placement_status = 'scheduled'
                   AND c.moderation_status = 'approved' AND c.payment_status = 'verified'
                   AND c.scheduled_start_at <= now() AND c.scheduled_end_at > now()
+                  AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.proxy_node_id=c.proxy_node_id AND j.phase<>'done')
                   AND EXISTS (
                     SELECT 1 FROM placement_observations AS o
                     WHERE o.id = (
@@ -2906,7 +2911,7 @@ def control_update(admin=Depends(require_admin)):
         control.write('request.json', {'action': 'update', 'actor': str(admin['id']), 'at': control.now()})
     return {'queued': True}
 
-from . import emoji_settings
+from . import emoji_settings, telegram_binding
 
 @app.get('/api/v1/admin/icons', tags=['admin'])
 def icons_settings(admin=Depends(require_admin)):
@@ -2956,6 +2961,7 @@ def promotion_bindings(admin: dict = Depends(require_admin)):
                 JOIN sponsor_channels ch ON ch.id=b.channel_id
                 WHERE n.archived_at IS NULL AND ch.archived_at IS NULL''').fetchall(),
             'runtime': runtime,
+            'telegram_automation': telegram_binding.public_status(conn),
         }
 
 
@@ -2977,6 +2983,8 @@ def save_promotion_binding(payload: PromotionBindingRequest, admin: dict = Depen
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as conn:
             node=conn.execute('SELECT id,target_engine,host,port FROM proxy_nodes WHERE id=%s AND archived_at IS NULL FOR UPDATE',(payload.node_id,)).fetchone()
+            if conn.execute("SELECT 1 FROM telegram_binding_jobs WHERE proxy_node_id=%s AND phase<>'done'", (payload.node_id,)).fetchone():
+                raise HTTPException(409,'Автоматика готовит привязку этого узла. Дождитесь завершения.')
             if not node or node['target_engine'] not in (None,'official_mtproxy'):
                 raise HTTPException(409, 'classic_node_required')
             channel=conn.execute('SELECT id,telegram_url FROM sponsor_channels WHERE id=%s AND archived_at IS NULL',(payload.channel_id,)).fetchone()
@@ -3021,6 +3029,7 @@ def campaign_promotion_status(campaign_id: UUID, user: dict = Depends(get_curren
             WHERE c.id=%s''',(campaign_id,)).fetchone()
         if not row or (user['role'] not in ('admin','operator') and row['advertiser_user_id']!=user['id']):
             raise HTTPException(404,'campaign_not_found')
+        row['telegram_binding_pending'] = bool(conn.execute("SELECT 1 FROM telegram_binding_jobs WHERE campaign_id=%s AND phase<>'done'", (campaign_id,)).fetchone())
         row['binding_selection_pending'] = False
         if (row['placement_status']=='scheduled' and row['automatic_assignment'] and not row['auto_schedule_paused']
                 and (not row['prepared'] or row['preparation_was_pending'])

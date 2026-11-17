@@ -1,0 +1,170 @@
+"""Внешняя привязка: очередь, запрет раннего запуска, повтор и полный период."""
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+import unittest
+from uuid import uuid4
+import psycopg
+from psycopg.rows import dict_row
+import test_postgres as fixture
+from app import telegram_binding as binding, promotion_runtime, auto_schedule
+
+
+@unittest.skipUnless(fixture._approved_test_postgres(), 'Нужен отдельный тестовый PostgreSQL')
+class BindingQueueTests(unittest.TestCase):
+    setUpClass=classmethod(fixture.PostgresIntegration.setUpClass.__func__)
+    tearDownClass=classmethod(fixture.PostgresIntegration.tearDownClass.__func__)
+    _management_fixture=fixture.PostgresIntegration._management_fixture
+    request=fixture.PostgresIntegration.request
+
+    def setUp(self):
+        self.f=self._management_fixture(ready=True)
+        self.tag=uuid4().hex
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            self.node=conn.execute('SELECT * FROM proxy_nodes WHERE id=%s',(self.f['node'],)).fetchone()
+            conn.execute("UPDATE sponsor_channels SET telegram_url='https://t.me/sample_channel' WHERE id=%s",(self.f['channel'],))
+        self.base=dict(host=self.node['host'],port=self.node['port'])
+        self.proof=dict(tag=self.tag,channel_username='sample_channel',owner_telegram_id=999,
+                        telegram_channel_id=777,bot_message_id=555)
+
+    def exchange(self,action,base=None,**extra):
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            return binding.handle(conn,dict(base or self.base,action=action,**extra))
+
+    def claim(self):
+        job=self.exchange('owner_claim');self.assertEqual(job['state'],'job')
+        return job['job_id']
+
+    def authorize(self,job):
+        self.assertTrue(self.exchange('owner_authorize',job_id=job,**self.proof)['accepted'])
+
+    def mature(self,job):
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE telegram_binding_jobs SET retry_at=now()-interval '1 second',verified_at=now()-interval '1 hour' WHERE id=%s",(job,))
+
+    def test_verified_binding_reassigns_full_period_and_duplicate_is_harmless(self):
+        auto_schedule.service_once(self.dsn)
+        job=self.claim();self.assertEqual(job,self.claim())
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            self.assertEqual(promotion_runtime.node_plan(conn,self.node)['reason'],'telegram_binding_pending')
+        self.authorize(job)
+        self.assertTrue(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
+        self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+        self.assertFalse(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
+        with psycopg.connect(self.dsn) as conn:
+            self.assertIsNone(conn.execute('SELECT 1 FROM channel_promotion_bindings WHERE proxy_node_id=%s',(self.node['id'],)).fetchone())
+        self.mature(job)
+        self.assertTrue(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
+        self.assertFalse(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
+        before=datetime.now(timezone.utc)
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            row=conn.execute('SELECT * FROM campaigns WHERE id=%s',(self.f['campaign'],)).fetchone()
+            self.assertEqual(row['proxy_node_id'],self.node['id'])
+            self.assertGreaterEqual(row['scheduled_start_at'],before)
+            self.assertEqual((row['scheduled_end_at']-row['scheduled_start_at']).total_seconds(),3600)
+            self.assertFalse(row['auto_schedule_tag_pending'])
+            self.assertEqual(promotion_runtime.node_plan(conn,self.node)['state'],'apply')
+            self.assertNotIn(self.tag,str(binding.public_status(conn)))
+
+    def test_active_and_manual_scheduled_node_are_not_rebound(self):
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET proxy_node_id=%s,placement_status='active',scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '1 hour' WHERE id=%s",(self.node['id'],self.f['campaign']))
+        self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET placement_status='scheduled',scheduled_start_at=now()+interval '7 days',scheduled_end_at=now()+interval '7 days 1 hour' WHERE id=%s",(self.f['campaign'],))
+        self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+
+    def test_shared_tag_is_rejected_before_external_write(self):
+        other=self._management_fixture()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('''INSERT INTO channel_promotion_bindings(proxy_node_id,channel_id,channel_url,node_host,node_port,ad_tag,confirmed_by)
+                SELECT n.id,%s,'https://t.me/other_channel',n.host,n.port,%s,%s FROM proxy_nodes n WHERE n.id=%s''',
+                (other['channel'],self.tag,other['admin'],other['node']))
+        job=self.claim()
+        self.assertFalse(self.exchange('owner_authorize',job_id=job,**self.proof)['accepted'])
+
+    def test_old_binding_removed_before_mutation_and_flood_wait_survives_retry(self):
+        old=self._management_fixture()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('''INSERT INTO channel_promotion_bindings(proxy_node_id,channel_id,channel_url,node_host,node_port,ad_tag,confirmed_by)
+                VALUES(%s,%s,'https://t.me/old_channel',%s,8443,%s,%s)''',(self.node['id'],old['channel'],self.node['host'],self.tag,old['admin']))
+        job=self.claim();self.authorize(job)
+        self.exchange('owner_error',job_id=job,code='telegram_flood_wait',retry_seconds=7200)
+        self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            self.assertIsNone(conn.execute('SELECT 1 FROM channel_promotion_bindings WHERE ad_tag=%s',(self.tag,)).fetchone())
+            row=conn.execute('SELECT retry_at>now()+interval \'119 minutes\' AS waiting FROM telegram_binding_jobs WHERE id=%s',(job,)).fetchone()
+            self.assertTrue(row['waiting'])
+            self.assertEqual(promotion_runtime.node_plan(conn,self.node)['reason'],'telegram_binding_pending')
+
+    def test_cancelled_or_renamed_target_cannot_publish_stale_success(self):
+        job=self.claim();self.authorize(job)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE sponsor_channels SET telegram_url='https://t.me/changed_channel' WHERE id=%s",(self.f['channel'],))
+        self.assertFalse(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
+        self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+        with psycopg.connect(self.dsn) as conn:
+            self.assertIsNone(conn.execute('SELECT 1 FROM channel_promotion_bindings WHERE ad_tag=%s',(self.tag,)).fetchone())
+
+    def test_wrong_account_channel_tag_and_job_never_confirm(self):
+        job=self.claim();self.authorize(job)
+        for changes in [dict(tag=uuid4().hex),dict(owner_telegram_id=1),dict(channel_username='another_channel'),dict(bot_message_id=-1)]:
+            self.assertFalse(self.exchange('owner_verified',job_id=job,**dict(self.proof,**changes))['accepted'])
+        self.assertFalse(self.exchange('owner_verified',job_id=str(uuid4()),**self.proof)['accepted'])
+
+    def test_two_free_hosts_claim_campaign_once(self):
+        other=self._management_fixture()
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            other_node=conn.execute('SELECT * FROM proxy_nodes WHERE id=%s',(other['node'],)).fetchone()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results=list(pool.map(lambda base:self.exchange('owner_claim',base),[self.base,dict(host=other_node['host'],port=8443)]))
+        self.assertEqual(sum(r['state']=='job' for r in results),1)
+
+    def test_free_host_can_beat_busy_node_with_prepared_tag(self):
+        other=self._management_fixture()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('''INSERT INTO channel_promotion_bindings(proxy_node_id,channel_id,channel_url,node_host,node_port,ad_tag,confirmed_by)
+                SELECT n.id,%s,'https://t.me/sample_channel',n.host,n.port,%s,%s FROM proxy_nodes n WHERE n.id=%s''',
+                (self.f['channel'],uuid4().hex,other['admin'],other['node']))
+        # Существующая готовая связь свободна прямо сейчас: подготовка лишняя.
+        self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET placement_status='active',proxy_node_id=%s,scheduled_start_at=now()-interval '1 minute',scheduled_end_at=now()+interval '10 hours' WHERE id=%s",(other['node'],other['campaign']))
+        # Та же связь занята надолго: свободный узел подготовит канал раньше.
+        self.claim()
+
+    def test_reserved_node_rejects_manual_slot_and_public_status_hides_tag(self):
+        from datetime import timedelta
+        job=self.claim();self.authorize(job)
+        fixture.main.app.dependency_overrides[fixture.main.get_current_user]=lambda:dict(id=self.f['admin'],role='admin')
+        self.request('POST',f"/operator/campaigns/{self.f['campaign']}/schedule",409,
+            json=dict(proxy_node_id=str(self.node['id']),start_at=(datetime.now(timezone.utc)+timedelta(minutes=10)).isoformat()))
+        data=self.request('GET','/admin/promotion-bindings')
+        self.assertEqual(next(r for r in data['telegram_automation'] if r['proxy_node_id']==str(self.node['id']))['phase'],'bind')
+        self.assertNotIn(self.tag,str(data))
+        self.assertEqual(self.request('GET',f"/campaigns/{self.f['campaign']}/promotion-status")['automation_status'],'preparing_tag')
+
+    def test_migration_replay_preserves_verified_binding_and_history(self):
+        from pathlib import Path
+        job=self.claim();self.authorize(job)
+        self.exchange('owner_verified',job_id=job,**self.proof);self.mature(job)
+        self.exchange('owner_verified',job_id=job,**self.proof)
+        with psycopg.connect(self.dsn) as conn:
+            for migration in sorted((Path(__file__).resolve().parents[1]/'database').glob('0*.sql'))[1:]:
+                conn.execute(migration.read_text())
+            self.assertEqual(conn.execute('SELECT count(*) FROM telegram_binding_events WHERE job_id=%s',(job,)).fetchone()[0],1)
+            self.assertIsNone(conn.execute('SELECT confirmed_by FROM channel_promotion_bindings WHERE ad_tag=%s',(self.tag,)).fetchone()[0])
+
+    def test_default_channel_is_prepared_again_when_queue_empty(self):
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET placement_status='cancelled' WHERE id=%s",(self.f['campaign'],))
+            conn.execute('INSERT INTO default_sponsor_settings(singleton,channel_id,updated_by) VALUES(true,%s,%s) ON CONFLICT(singleton) DO UPDATE SET channel_id=EXCLUDED.channel_id', (self.f['channel'],self.f['admin']))
+        def cleanup():
+            with psycopg.connect(self.dsn) as conn:conn.execute('DELETE FROM default_sponsor_settings')
+        self.addCleanup(cleanup)
+        job=self.claim();self.authorize(job)
+        self.assertTrue(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
+        self.mature(job)
+        self.assertTrue(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            self.assertEqual(promotion_runtime.node_plan(conn,self.node)['state'],'default')
