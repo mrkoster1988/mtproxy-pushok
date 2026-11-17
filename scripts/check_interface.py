@@ -32,6 +32,20 @@ def check_interface(browser,base,output,failures,dsn):
         expect(page.locator('[data-page=profile] .profile-identity .person-handle')).to_have_css('color','rgb(255, 140, 152)')
         expect(page.locator('[data-page=profile] .profile-identity .person-role')).to_have_css('border-top-width','0px')
         expect(page.locator('.recent-releases .release-item')).to_have_count(5)
+        # Переход по имени задаёт другой источник, чем предыдущий переход по аватарке.
+        page.evaluate("window.cabinet.go('users')")
+        page.get_by_role('searchbox',name='Поиск пользователей').fill('interface_admin')
+        page.get_by_role('button',name='Найти',exact=True).click()
+        page.locator('.user-directory .person-handle').filter(has_text='@interface_admin').click()
+        expect(page).to_have_url(base+'/#/user/'+str(uid))
+        nested=page.locator('[data-page=user] .profile-invited-block')
+        nested.locator(':scope>summary').click()
+        expect(nested.locator('.invitee')).to_have_count(20)
+        friend_id=nested.locator('.user-avatar').first.get_attribute('data-user-id')
+        nested.locator('.user-avatar').first.click()
+        expect(page).to_have_url(base+'/#/user/'+friend_id)
+        page.locator('.screen-back').click()
+        expect(page).to_have_url(base+'/#/users')
         for route in ('channels','campaigns'):
             page.evaluate('r=>window.cabinet.go(r)',route);row=page.locator('[data-page='+route+'] .search-action-row');expect(row).to_be_visible()
             a=row.locator('input[type=search]').bounding_box();b=row.locator(':scope>.icon-action').bounding_box();assert abs(a['y']+a['height']/2-b['y']-b['height']/2)<3

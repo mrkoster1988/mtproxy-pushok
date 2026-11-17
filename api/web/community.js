@@ -6,7 +6,10 @@ window.pushokCommunity=(()=>{
  async function person(id){if(session!==token){cache.clear();session=token;}const old=cache.get(id);if(old&&Date.now()-old.at<60000)return old.promise;const promise=api('/community/users/'+id);cache.set(id,{at:Date.now(),promise});try{return await promise;}catch(e){cache.delete(id);throw e;}}
  function decorate(node,id){
   if(!id)return;node.removeAttribute('aria-hidden');node.setAttribute('role','link');node.tabIndex=0;node.setAttribute('aria-label','Открыть профиль');
-  const go=e=>{e.preventDefault();e.stopPropagation();const from=location.hash.replace(/^#\/?/,'')||'dashboard';if(!/^(user|member)\//.test(from))returnRoute=from;window.pushokProfiles.setBackRoute(returnRoute);window.cabinet.go(id===me?.id?'profile':['admin','operator'].includes(me?.role)?'user/'+id:'member/'+id);};
+  const go=e=>{e.preventDefault();e.stopPropagation();const from=location.hash.replace(/^#\/?/,'')||'dashboard';
+   // Вложенный профиль сохраняет исходный раздел, в том числе после перехода по имени.
+   if(!/^(user|member)\//.test(from)){returnRoute=from;window.pushokProfiles.setBackRoute(from);}
+   window.cabinet.go(id===me?.id?'profile':['admin','operator'].includes(me?.role)?'user/'+id:'member/'+id);};
   node.addEventListener('click',go);node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')go(e);});
   node.dataset.userId=id;updateAvatar(node,id);
  }

@@ -53,7 +53,9 @@ def check_campaign_assistant_ui(new_page, go, output, dsn):
             for width in (320,390,768,1280):
                 page.set_viewport_size({'width':width,'height':1000});panel.scroll_into_view_if_needed()
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),width
-                for button in panel.locator('button').all():assert button.bounding_box()['height']>=44
+                for button in panel.locator('button').all():
+                    box=button.bounding_box()
+                    assert box['height']>=44 and box['width']>=44,(width,button.get_attribute('aria-label'),box)
                 if width==390:panel.screenshot(path=str(output/'48-campaign-assistant.png'))
         # Без публикаций не показываем «признаки не выявлены», даже если модель так ответила.
         clean=response|{'content_review':{'assessment':'not_detected','evidence':[]}}
