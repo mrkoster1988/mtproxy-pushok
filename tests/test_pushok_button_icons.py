@@ -52,7 +52,7 @@ class TestButtonIcons(unittest.TestCase):
         with patch.dict(os.environ, env):
             baseline = keyboard()
             self.assertEqual(baseline['inline_keyboard'], [[{
-                'text': '📢 Разместить рекламу', 'style': 'success',
+                'text': '📢 Подключить трафик', 'style': 'success',
                 'web_app': {'url': env['PUSHOK_MINIAPP_URL'] + '#/create'},
             }]])
             campaign = {"campaign_id": str(uuid4()), "moderation_status": "approved",

@@ -149,7 +149,7 @@ class TelegramBotTests(unittest.TestCase):
         self.assertEqual(response[1], "callback1")
         self.assertIn("Актуальная", response[0]["text"])
         self.assertEqual(keyboard()["inline_keyboard"], [[{
-            "text": "📢 Разместить рекламу", "callback_data": "advertise", "style": "success",
+            "text": "📢 Подключить трафик", "callback_data": "advertise", "style": "success",
         }]])
 
 

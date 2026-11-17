@@ -57,7 +57,7 @@ def miniapp_url():
 
 def keyboard():
     """Главное меню: одна зелёная кнопка размещения рекламы."""
-    button = {"text": "📢 Разместить рекламу", "style": "success"}
+    button = {"text": "📢 Подключить трафик", "style": "success"}
     url = miniapp_url()
     if url:
         button['web_app'] = {'url': url + '#/create'}
@@ -281,7 +281,7 @@ def submission_reply(callback, submitter):
 def format_campaigns(campaigns):
     if not campaigns:
         return ("📋 Пока у вас нет заявок в рекламном кабинете.\n"
-                "Нажми «Разместить рекламу», чтобы создать первую кампанию.")
+                "Нажми «Подключить трафик», чтобы создать первую кампанию.")
     moderation = {"draft": "Черновик", "pending": "На модерации",
                   "approved": "Одобрено", "rejected": "Отклонено",
                   "changes_requested": "Нужны исправления"}
