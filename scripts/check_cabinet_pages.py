@@ -409,6 +409,13 @@ def main():
                 operator.get_by_role('button', name='Снять будущий слот', exact=True).click()
                 expect(operator.locator('#queue')).to_contain_text('Слот не назначен')
                 expect(operator.locator('#queue')).to_contain_text('Оплачено')
+                # После снятия слота пауза снимается видимой кнопкой, без поиска в details.
+                resume = operator.get_by_role('button', name='Возобновить автоподбор', exact=True)
+                expect(resume).to_be_visible()
+                resume.click()
+                expect(operator.locator('#notice')).to_contain_text('Автоподбор включён')
+                with psycopg.connect(PostgresIntegration.dsn) as connection:
+                    assert connection.execute('SELECT auto_schedule_paused FROM campaigns WHERE id=%s', (campaign_id,)).fetchone()[0] is False
                 operator.locator('summary').filter(has_text='Изменить расписание').click()
                 operator.get_by_label('Начало размещения', exact=True).fill(tomorrow + 'T12:00')
                 operator.get_by_role('button', name='Назначить слот', exact=True).click()

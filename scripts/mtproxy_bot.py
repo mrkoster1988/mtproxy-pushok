@@ -65,6 +65,14 @@ def endpoints(value):
     return result
 
 
+def list_proxy(value):
+    """В списке бот может показывать адрес и тег без порта: это лишь кандидат."""
+    match = re.fullmatch(r'\s*([a-zA-Z0-9][a-zA-Z0-9.-]*)\s+([a-fA-F0-9]{32})\s*', value)
+    if match and match[2] != '0' * 32:
+        return match[1].lower(), match[2].lower()
+    return None
+
+
 def card_tag(message, hosts, port):
     if not endpoints(text(message) + '\n' + '\n'.join(urls(message))) & {(h.lower(), port) for h in hosts}:
         raise BotProtocolError('proxy_identity_not_verified')
@@ -144,15 +152,19 @@ class MTProxyDialog:
     async def select(self, hosts, port):
         message = await self.send('/myproxies')
         matches, pages = [], set()
-        wanted = {(h.lower(), port) for h in hosts}
+        wanted_hosts = {h.lower() for h in hosts}
+        wanted = {(h, port) for h in wanted_hosts}
         for _ in range(10):
             signature = snapshot(message)
             if signature in pages:
                 raise BotProtocolError('proxy_list_loop')
             pages.add(signature)
             for button in buttons(message):
+                identity = list_proxy(button.text)
                 if endpoints(button.text) & wanted:
-                    matches.append((message, button))
+                    matches.append((message, button, None))
+                elif identity and identity[0] in wanted_hosts:
+                    matches.append((message, button, identity[1]))
             next_buttons = [b for b in buttons(message) if b.text.strip().lower() in ('next', 'next ›', 'next »', '›', '»', 'далее', 'вперёд')]
             if not next_buttons:
                 break
@@ -163,7 +175,13 @@ class MTProxyDialog:
             raise BotProtocolError('proxy_list_too_long')
         if len(matches) != 1:
             raise BotProtocolError('proxy_not_found' if not matches else 'proxy_ambiguous')
-        return await self.click(*matches[0])
+        message, button, listed_tag = matches[0]
+        card = await self.click(message, button)
+        # Совпадения IP недостаточно: порт и тег подтверждаем по открытой
+        # карточке до Set promotion. Несколько кандидатов не выбираем наугад.
+        if listed_tag and card_tag(card, hosts, port) != listed_tag:
+            raise BotProtocolError('tag_changed')
+        return card
 
     async def prepare(self, request):
         try:
