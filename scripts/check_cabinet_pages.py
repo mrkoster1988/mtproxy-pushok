@@ -1434,7 +1434,7 @@ def main():
                 go(advertiser,'dashboard')
                 expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
                 expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
-                assert advertiser.locator('#dashboard-referral').evaluate('e=>e===e.parentElement.lastElementChild')
+                assert advertiser.locator('#dashboard-referral').evaluate("e=>e.nextElementSibling.classList.contains('dashboard-help')&&e.nextElementSibling===e.parentElement.lastElementChild")
                 share=advertiser.locator('#dashboard-referral').get_by_role('link',name='Поделиться реферальной ссылкой',exact=True)
                 expect(share).to_be_visible()
                 from urllib.parse import urlparse,parse_qs
