@@ -1474,7 +1474,11 @@ def main():
                 expect(admin.get_by_label('Скидка за приглашённого, %',exact=True)).to_be_hidden()
                 admin.get_by_label('Награда на бонусный баланс, ₽',exact=True).fill('125.50')
                 admin.get_by_label('Принимать новые приглашения',exact=True).check()
-                admin.get_by_role('button',name='Сохранить условия',exact=True).click()
+                # Значения формы уже заполнены: они не подтверждают завершение сохранения.
+                # Другой пользователь должен читать условия после ответа настоящего API.
+                with admin.expect_response(lambda r:r.url.endswith('/api/v1/admin/growth/settings') and r.request.method=='PUT') as referral_saved:
+                    admin.get_by_role('button',name='Сохранить условия',exact=True).click()
+                assert referral_saved.value.status==200, referral_saved.value.text()
                 expect(admin.get_by_label('Награда за приглашённого',exact=True)).to_have_value('bonus')
                 expect(admin.get_by_label('Награда на бонусный баланс, ₽',exact=True)).to_have_value('125.50')
                 go(advertiser,'growth')
