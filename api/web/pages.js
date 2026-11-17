@@ -187,40 +187,51 @@
  const archiveRows=el('div');content.archive.append(archiveRows);
  const detail=el('div');content.campaign.append(detail);
  content.moderation.append($('queue-filter'),$('queue-count'),$('queue'));
- const operatorNodes=el('div');sponsorPanes.nodes.append($('node-admin'),operatorNodes);
- const diagnosticsPanel=section('Статус размещения'),diagnosticsBody=el('div'),diagnosticsSummary=el('div',undefined,'sponsor-health');
+ sponsorPanes.nodes.append($('node-admin'));
+ const nodeCreate=$('node-create'),nodeSubmit=$('node-form').querySelector('button[type=submit]');
+ nodeSubmit.replaceChildren(window.pushokViews.icon('plus'),document.createTextNode('Добавить'));nodeSubmit.setAttribute('aria-label','Добавить узел');
+ const addNode=window.pushokViews.iconAction(button('',()=>{nodeCreate.open=!nodeCreate.open;if(nodeCreate.open)$('node-form').querySelector('input').focus();}),'plus','Добавить узел');addNode.classList.add('primary');addNode.setAttribute('aria-controls','node-create');addNode.setAttribute('aria-expanded','false');$('node-admin').querySelector('.panel-heading').append(addNode);
+ nodeCreate.addEventListener('toggle',()=>addNode.setAttribute('aria-expanded',String(nodeCreate.open)));nodeCreate.querySelector('summary').textContent='Новый узел';
+ const nodeFormActions=el('div',undefined,'sponsor-form-actions'),nodeCancel=button('Отмена',()=>{nodeCreate.open=false;addNode.focus();});nodeCancel.prepend(window.pushokViews.icon('close'));nodeFormActions.append(nodeSubmit,nodeCancel);$('node-form').append(nodeFormActions);
+ $('node-admin').insertBefore(nodeCreate,$('nodes-list'));
+ const nodeHint=el('p','В реестре — уже установленные прокси. Запись и план в кабинете не устанавливают сервер.','inline-info muted');nodeHint.id='sponsor-node-hint';nodeHint.hidden=true;
+ const nodeInfo=window.pushokViews.iconAction(button('',()=>{nodeHint.hidden=!nodeHint.hidden;nodeInfo.setAttribute('aria-expanded',String(!nodeHint.hidden));}),'info','О реестре узлов');nodeInfo.setAttribute('aria-expanded','false');nodeInfo.setAttribute('aria-controls',nodeHint.id);$('node-admin').querySelector('.panel-heading').append(nodeInfo);$('node-admin').querySelector('.panel-heading').after(nodeHint);
+ $('node-admin').querySelector('.node-registry-note').remove();
+ $('engine-preview').replaceChildren(window.pushokViews.icon('info'),document.createTextNode('Рекомендация'));
+ $('engine-preview').setAttribute('aria-label','Показать рекомендацию');
+ const diagnosticsPanel=section('Статус размещения'),diagnosticsBody=el('div',undefined,'diagnostic-stack'),diagnosticsSummary=el('div',undefined,'sponsor-health');
  diagnosticsPanel.id='promotion-diagnostics';diagnosticsPanel.hidden=true;
  diagnosticsBody.setAttribute('aria-live','polite');
  const diagnosticsHeading=el('div',undefined,'panel-heading'),diagnosticsRefresh=window.pushokViews.iconAction(button('Обновить диагностику',renderDiagnostics),'refresh','Обновить диагностику');
  diagnosticsHeading.append(diagnosticsPanel.querySelector('h2'),diagnosticsRefresh);
- const diagnosticsDetails=window.pushokViews.disclosure('Подробная диагностика',[el('p','Применение тега не подтверждает фактический показ канала.','muted'),diagnosticsBody],'disclosure-panel');diagnosticsDetails.id='sponsor-diagnostics-details';
+ const diagnosticsGuidance=el('p',undefined,'muted'),diagnosticsDetails=window.pushokViews.disclosure('Подробная диагностика',[diagnosticsGuidance,diagnosticsBody,el('p','Применение тега не подтверждает показ канала в Telegram.','diagnostic-note muted')],'disclosure-panel');diagnosticsDetails.id='sponsor-diagnostics-details';
  diagnosticsPanel.append(diagnosticsHeading,diagnosticsSummary,diagnosticsDetails);sponsorPanes.placements.prepend(diagnosticsPanel);
  let diagnosticsRevision=0;
  async function renderDiagnostics(){
   diagnosticsPanel.hidden=me?.role!=='admin';if(me?.role!=='admin')return;
-  const rev=++diagnosticsRevision,session=token;diagnosticsBody.replaceChildren(el('p','Проверяем состояние…'));diagnosticsSummary.replaceChildren(el('p','Проверяем состояние…','muted'));
+  const rev=++diagnosticsRevision,session=token;diagnosticsGuidance.textContent='';diagnosticsBody.replaceChildren(el('p','Проверяем состояние…'));diagnosticsSummary.replaceChildren(el('p','Проверяем состояние…','muted'));
   automationRuntime.replaceChildren(el('p','Проверяем применение тега…','muted'));
   try{
    const data=await api('/admin/promotion-diagnostics');
    if(rev!==diagnosticsRevision||token!==session||me?.role!=='admin')return;
    const status=el('div',undefined,'sponsor-health-copy');status.append(el('strong',data.agent.title));
-   if(data.agent.next_action)status.append(el('p',data.agent.next_action,'muted'));
-   if(data.agent.checked_at)status.append(el('small','Ответ агента · '+date(data.agent.checked_at),'muted'));
-   diagnosticsSummary.replaceChildren(window.pushokViews.icon(data.nodes.some(n=>n.config_applied&&n.agent_recent)?'check':'info'),status);
-   const agent=el('div',undefined,'card');agent.id='promotion-agent-report';agent.dataset.status=data.agent.status;
-   agent.append(el('h3','Последний ответ агента'),el('p',data.agent.title),el('p',data.agent.next_action,'muted'));
-   if(data.agent.checked_at)agent.append(el('p','Время ответа: '+date(data.agent.checked_at),'muted'));
-   if(data.agent.host)agent.append(el('p','Адрес агента: '+data.agent.host+(data.agent.port?':'+data.agent.port:''),'muted'));
+   diagnosticsGuidance.textContent=data.agent.next_action||'';
+   if(data.agent.checked_at)status.append(el('small','Обновлено '+date(data.agent.checked_at),'muted'));
+   diagnosticsSummary.replaceChildren(window.pushokViews.icon('info'),status);
+   function facts(card,rows){const list=el('dl',undefined,'diagnostic-facts');for(const [title,value] of rows){if(value){const row=el('div');row.append(el('dt',title),el('dd',value));list.append(row);}}if(list.childElementCount)card.append(list);}
+   const agent=el('article',undefined,'card diagnostic-card');agent.id='promotion-agent-report';agent.dataset.status=data.agent.status;
+   agent.append(el('h3','Ответ агента'));
+   facts(agent,[['Обновлён',data.agent.checked_at?date(data.agent.checked_at):'Ещё не получен'],['Адрес',data.agent.host?data.agent.host+(data.agent.port?':'+data.agent.port:''):'']]);
    if(data.agent.last_title)agent.append(el('p','Последний результат: '+data.agent.last_title,'muted'));
    diagnosticsBody.replaceChildren(agent);
-   const plans=el('div',undefined,'cards');
+   const plans=el('div',undefined,'diagnostic-stack');
    for(const item of data.nodes){
-    const card=el('div',undefined,'card');card.dataset.diagnosticCode=item.code;
-    card.append(el('h3',item.name),el('p',item.host+':'+item.port,'muted'));
-    if(item.title!==data.agent.title||item.next_action!==data.agent.next_action)card.append(el('p',item.title),el('p',item.next_action));
+    const card=el('article',undefined,'card diagnostic-card');card.dataset.diagnosticCode=item.code;
+    card.append(el('h3',item.name));
+    if(item.title!==data.agent.title)card.append(el('p',item.title,'diagnostic-state'));
+    if(item.next_action&&item.next_action!==data.agent.next_action)card.append(el('p',item.next_action,'muted'));
     if(item.config_applied){card.append(el('p','По расписанию: '+item.plan_title,'muted'),el('p','Тег применён; показ не проверен.','muted'));}
-    if(item.checked_at)card.append(el('p','Ответ по узлу: '+date(item.checked_at),'muted'));
-    if(item.next_start_at)card.append(el('p','Начало: '+date(item.next_start_at),'muted'));
+    facts(card,[['Адрес',item.host+':'+item.port],['Обновлён',item.checked_at?date(item.checked_at):''],['Начало',item.next_start_at?date(item.next_start_at):'']]);
     plans.append(card);
    }
    diagnosticsBody.append(plans);
@@ -235,55 +246,81 @@
  const sponsorEngine=el('select');sponsorEngine.setAttribute('aria-label','Движок спонсорского тега');Object.entries(engineTitles).forEach(([v,t])=>option(sponsorEngine,v,t));
  const sponsorTag=el('input');sponsorTag.type='password';sponsorTag.required=true;sponsorTag.minLength=32;sponsorTag.maxLength=32;sponsorTag.pattern='[0-9a-fA-F]{32}';sponsorTag.autocomplete='off';sponsorTag.setAttribute('aria-label','ad_tag из MTProxyBot');
  function field(title,input){const label=el('label',title);if(!input.hasAttribute('aria-label'))input.setAttribute('aria-label',title);label.append(input);return label;}
- const sponsorSave=el('button','Сохранить регистрацию');sponsorSave.type='submit';
- const sponsorResult=el('p',undefined,'muted');sponsorResult.setAttribute('role','status');
- sponsorForm.append(field('Узел',sponsorNode),field('Движок',sponsorEngine),field('ad_tag из @MTProxyBot · 32 шестнадцатеричных символа',sponsorTag),sponsorSave);
+ const sponsorSave=el('button','Сохранить тег');sponsorSave.type='submit';sponsorSave.setAttribute('aria-label','Сохранить регистрацию');sponsorSave.prepend(window.pushokViews.icon('save'));
+ const sponsorResult=el('p',undefined,'form-feedback');sponsorResult.setAttribute('role','status');
+ sponsorTag.placeholder='32 символа из @MTProxyBot';
+ sponsorForm.append(field('Узел',sponsorNode),field('Движок',sponsorEngine),field('Спонсорский тег',sponsorTag),sponsorSave);
  sponsorPanel.querySelector('h2').remove();
  sponsorPanel.append(el('p','Исходный тег прокси из @MTProxyBot. Привязка рекламируемого канала настраивается отдельно.','muted'),sponsorForm,sponsorResult);
  const sponsorRegistration=window.pushokViews.disclosure('Регистрация спонсорского тега',[sponsorPanel],'disclosure-panel');sponsorRegistration.id='sponsor-registration';sponsorPanes.setup.append(sponsorRegistration);
  sponsorForm.addEventListener('submit',e=>{e.preventDefault();run(async()=>{
-  const data=await api('/admin/proxy-nodes/'+sponsorNode.value+'/sponsor-registration',{method:'PUT',body:{engine:sponsorEngine.value,ad_tag:sponsorTag.value}});
-  sponsorTag.value='';sponsorResult.textContent='Сохранён тег с окончанием '+data.tag_ending+'. Изменения на прокси не применялись.';
+  sponsorResult.textContent='';try{const data=await api('/admin/proxy-nodes/'+sponsorNode.value+'/sponsor-registration',{method:'PUT',body:{engine:sponsorEngine.value,ad_tag:sponsorTag.value}});
+  sponsorTag.value='';sponsorResult.dataset.tone='success';sponsorResult.textContent='Сохранён тег с окончанием '+data.tag_ending+'.';}catch(error){sponsorResult.dataset.tone='error';sponsorResult.textContent=error.message;}
  },sponsorSave);});
  const automationPanel=section('Автоматическое размещение'),automationBody=el('div'),automationRuntime=el('div');
  automationPanel.id='promotion-automation';automationRuntime.id='promotion-automation-runtime';automationRuntime.setAttribute('aria-live','polite');
- automationPanel.append(el('p','Подключите аккаунт владельца один раз. Агент подберёт узел и переключит канал по расписанию.','muted'),automationBody,window.pushokViews.disclosure('Применение на узлах',[automationRuntime],'disclosure-panel'));
- window.pushokViews.info(automationPanel,'Подготовка и ожидание обновления Telegram не уменьшают оплаченный период. Занятые узлы и ручные размещения не переключаются.','Как работает автоматическое размещение');
+ automationPanel.append(automationBody,window.pushokViews.disclosure('Применение на узлах',[automationRuntime],'disclosure-panel'));
+ window.pushokViews.info(automationPanel,'Подключите аккаунт владельца один раз. Агент подберёт свободный узел и переключит канал. Подготовка не уменьшает оплаченный период; занятые узлы и ручные размещения не переключаются.','Как работает автоматическое размещение');
  sponsorPanes.setup.prepend(automationPanel);
- let automationRevision=0,automationFocusRoute='';
+ let automationRevision=0,automationFocusRoute='',automationSession='';
  async function renderAutomation(){
   if(routeParts()[0]==='sponsors'&&routeParts()[1])selectSponsorView('setup');
   void renderDiagnostics();
   automationPanel.hidden=me?.role!=='admin';if(me?.role!=='admin')return;
-  const rev=++automationRevision,session=token;automationBody.replaceChildren(el('p','Загрузка…'));
+  const rev=++automationRevision,session=token;
+  if(automationSession!==session){automationBody.replaceChildren();automationSession='';}
+  if(!automationBody.childElementCount)automationBody.append(window.pushokViews.emptyLine('Загружаем настройки…','refresh'));automationBody.setAttribute('aria-busy','true');
   try{
    const data=await api('/admin/promotion-bindings');if(rev!==automationRevision||token!==session)return;
-   const form=el('form'),node=el('select'),channel=el('select'),tag=el('input'),confirmed=el('input');
+   const form=el('form'),node=el('select'),channel=el('select'),tag=el('input'),confirmed=el('input'),feedback=el('p',undefined,'form-feedback');feedback.setAttribute('role','status');
+   node.name='node';channel.name='channel';tag.name='tag';confirmed.name='confirmed';tag.minLength=32;tag.maxLength=32;tag.placeholder='32 символа из @MTProxyBot';
    node.required=true;channel.required=true;tag.required=true;tag.type='password';tag.pattern='[0-9a-fA-F]{32}';tag.autocomplete='off';confirmed.type='checkbox';confirmed.required=true;
    nodes.forEach(n=>option(node,n.id,n.name+' · '+n.host+':'+n.port));data.channels.forEach(c=>option(channel,c.id,c.title+' · '+c.telegram_url));
    const selectedChannel=routeParts()[1],selectedNode=location.hash.split('/')[3];if(data.channels.some(c=>c.id===selectedChannel))channel.value=selectedChannel;if(nodes.some(n=>n.id===selectedNode))node.value=selectedNode;
-   const submit=el('button','Включить для канала');submit.type='submit';submit.disabled=!nodes.length||!data.channels.length;
-   form.append(field('Узел',node),field('Канал',channel),field('Тег этого канала из @MTProxyBot',tag),field('Я проверил: этот тег связан именно с выбранным каналом в Telegram',confirmed),submit);
-   form.addEventListener('submit',e=>{e.preventDefault();run(async()=>{await api('/admin/promotion-bindings',{method:'PUT',body:{node_id:node.value,channel_id:channel.value,ad_tag:tag.value,telegram_binding_confirmed:confirmed.checked}});tag.value='';await renderAutomation();notice('Связь сохранена. Агент применит тег в пределах назначенного слота.',true);},submit);});
-   const manual=window.pushokViews.disclosure('Ручная привязка готового тега',[form],'disclosure-panel');manual.id='sponsor-manual-binding';manual.open=Boolean(selectedChannel);
-   const autoStatus=el('div',undefined,'cards');autoStatus.setAttribute('aria-live','polite');
+   const submit=el('button','Включить для канала');submit.type='submit';submit.prepend(window.pushokViews.icon('power'));submit.disabled=!nodes.length||!data.channels.length;
+   form.append(field('Узел',node),field('Канал',channel),field('Тег этого канала из @MTProxyBot',tag),field('Я проверил: этот тег связан именно с выбранным каналом в Telegram',confirmed),submit,feedback);
+   form.addEventListener('submit',e=>{e.preventDefault();run(async()=>{feedback.textContent='';try{await api('/admin/promotion-bindings',{method:'PUT',body:{node_id:node.value,channel_id:channel.value,ad_tag:tag.value,telegram_binding_confirmed:confirmed.checked}});tag.value='';confirmed.checked=false;form.closest('details').open=false;await renderAutomation();notice('Связь сохранена. Агент применит тег в пределах назначенного слота.',true);}catch(error){feedback.dataset.tone='error';feedback.textContent=error.message;}},submit);});
+   let manual=window.pushokViews.disclosure('Ручная привязка готового тега',[form],'disclosure-panel');manual.id='sponsor-manual-binding';manual.open=Boolean(selectedChannel);manual.dataset.route=location.hash;
+   const previousManual=automationBody.querySelector('#sponsor-manual-binding'),focused=previousManual?.contains(document.activeElement)?document.activeElement:null;
+   if(previousManual&&previousManual.dataset.route===location.hash){manual=previousManual;
+    for(const [name,items,title] of [['node',nodes,n=>n.name+' · '+n.host+':'+n.port],['channel',data.channels,c=>c.title+' · '+c.telegram_url]]){const select=manual.querySelector('[name='+name+']'),value=select.value;select.replaceChildren();items.forEach(item=>option(select,item.id,title(item)));select.value=value;if(value&&!select.value){manual.querySelector('[name=tag]').value='';manual.querySelector('[name=confirmed]').checked=false;}}
+    manual.querySelector('button[type=submit]').disabled=!nodes.length||!data.channels.length;
+   }
+   const autoStatus=el('div',undefined,'cards sponsor-binding-jobs');autoStatus.setAttribute('aria-live','polite');
    const phaseTitles={inspect:'Проверяем регистрацию прокси',bind:'Привязываем канал в Telegram',propagating:'Ожидаем обновления Telegram',done:'Привязка проверена'};
-   const errorTitles={not_connected:'Нужно подключить аккаунт владельца',revoked:'Подключение отозвано — войдите заново',proxy_not_found:'Прокси не найден в аккаунте владельца',proxy_ambiguous:'В @MTProxyBot несколько записей этого адреса',telegram_flood_wait:'Telegram попросил подождать',target_changed:'Заявка или канал изменились',binding_not_verified:'Бот пока не подтвердил привязку',owner_helper_unavailable:'Служба подключения пока недоступна'};
-   for(const item of data.telegram_automation||[]){const row=el('div',undefined,'card');row.append(el('h3',item.name),el('p',item.error_code?(errorTitles[item.error_code]||'Ответ Telegram требует проверки: '+item.error_code):(phaseTitles[item.phase]||'Проверяем состояние')));if(item.phase!=='done')row.append(el('p','Следующая проверка: '+date(item.retry_at),'muted'));autoStatus.append(row);}
-   if(!autoStatus.childElementCount)autoStatus.append(el('p','Автоматические привязки ещё не запускались. Агент берёт одобренные и оплаченные заявки, когда подходит время подготовки.','muted'));
-   const command=el('code','sudo bash /opt/mtproxy-pushok/scripts/connect_telegram_owner.sh enable');command.style.whiteSpace='pre-wrap';command.style.overflowWrap='anywhere';
-   const connect=window.pushokViews.disclosure('Подключить аккаунт владельца',[el('p','Один раз выполните на VPS. Если вход уже сохранён, повторный код не потребуется.'),command,el('p','Код входа и пароль вводятся только в терминале VPS. Для первичного входа нужны api_id и api_hash с my.telegram.org/apps.','muted')],'disclosure-panel');
-   automationBody.replaceChildren(autoStatus,connect,manual);
+   const errorTitles={not_connected:'Нужно подключить аккаунт владельца',revoked:'Подключение отозвано — войдите заново',automation_disabled:'Автопривязка выключена',proxy_not_found:'Прокси не найден в аккаунте владельца',proxy_ambiguous:'В @MTProxyBot несколько записей этого адреса',telegram_flood_wait:'Telegram попросил подождать',target_changed:'Заявка или канал изменились',binding_not_verified:'Бот пока не подтвердил привязку',owner_helper_unavailable:'Служба подключения пока недоступна',account_mismatch:'Подключён другой аккаунт владельца',connection_busy:'Аккаунт занят другой проверкой',public_channel_required:'Нужен доступный публичный канал',tag_changed:'Тег в Telegram изменился',telegram_unavailable:'Telegram временно недоступен',bot_response_timeout:'Бот не ответил вовремя',ambiguous_bot_response:'Ответ бота неоднозначен',proxy_identity_not_verified:'Адрес прокси не подтверждён',tag_not_verified:'Не удалось прочитать тег',set_promotion_button_missing:'Формат кнопок @MTProxyBot изменился',channel_prompt_not_verified:'Бот не подтвердил запрос канала'};
+   for(const item of data.telegram_automation||[]){
+    const row=el('div',undefined,'card binding-status');
+    const title=item.title||(item.error_code?(errorTitles[item.error_code]||'Формат ответа Telegram требует проверки'):(phaseTitles[item.phase]||'Проверяем состояние'));
+    row.append(el('h3',item.channel_title||item.name),el('small',item.name,'muted'),el('p',title));
+    if(item.channel_url)row.append(el('p',item.channel_url,'muted'));
+    if(item.next_action)row.append(el('p',item.next_action,'muted'));
+    if(item.phase!=='done')row.append(el('p',(item.phase==='propagating'&&!item.error_code?'Проверка после обновления Telegram: ':'Повтор не раньше: ')+date(item.retry_at),'muted'));
+    autoStatus.append(row);
+   }
+   if(!autoStatus.childElementCount)autoStatus.append(window.pushokViews.emptyLine('Нет каналов в подготовке','campaign'));
+   const commandText='sudo bash /opt/mtproxy-pushok/scripts/connect_telegram_owner.sh enable',command=el('code',commandText);
+   const copyCommand=window.pushokViews.iconAction(button('',async()=>{await navigator.clipboard.writeText(commandText);notice('Команда скопирована. Выполните её в терминале VPS.',true); }),'copy','Скопировать команду подключения'),commandRow=el('div',undefined,'sponsor-command');commandRow.append(command,copyCommand);
+   const statusText='sudo bash /opt/mtproxy-pushok/scripts/connect_telegram_owner.sh status',statusRow=el('div',undefined,'sponsor-command');statusRow.append(el('code',statusText),window.pushokViews.iconAction(button('',async()=>{await navigator.clipboard.writeText(statusText);notice('Команда проверки скопирована.',true); }),'copy','Скопировать команду проверки'));
+   const connect=el('details',undefined,'owner-connect disclosure-panel');connect.append(el('summary','Подключение и проверка'),el('p','Один раз выполните на VPS. Если вход уже сохранён, повторный код не потребуется.'),commandRow,el('p','Код входа и пароль вводятся только в терминале VPS. Для первичного входа нужны api_id и api_hash с my.telegram.org/apps.','muted'),el('p','Проверить вход без изменения каналов:'),statusRow);connect.open=Boolean(automationBody.querySelector('.owner-connect')?.open);
+   const owner=data.telegram_owner||{},ownerCard=el('section',undefined,'owner-connection'),ownerHead=el('div',undefined,'owner-connection-heading');ownerCard.id='telegram-owner-status';ownerCard.dataset.connectionState=owner.code||'unknown';ownerCard.dataset.tone=owner.tone||'muted';ownerCard.setAttribute('aria-live','polite');
+   const refreshOwner=window.pushokViews.iconAction(button('',async()=>{await renderAutomation();}),'refresh','Обновить состояние подключения');
+   ownerHead.append(window.pushokViews.icon('user'),el('h3',owner.title||'Подключение ещё не проверено'),refreshOwner);ownerCard.append(ownerHead);
+   if(owner.account_username)ownerCard.append(el('p','@'+owner.account_username,'owner-account'));
+   const ownerDetails=window.pushokViews.disclosure('Подробнее',[el('p',owner.next_action||'Подключите аккаунт владельца на VPS.','muted')],'owner-details inline-help');ownerDetails.open=Boolean(automationBody.querySelector('.owner-details')?.open);ownerCard.append(ownerDetails);
+   if(owner.last_verified_at)ownerDetails.append(el('small','Вход проверен: '+date(owner.last_verified_at),'muted'));
+   if(owner.agent_checked_at)ownerDetails.append(el('small','Отчёт агента: '+date(owner.agent_checked_at),'muted'));
+   automationBody.replaceChildren(ownerCard,autoStatus,connect,manual);automationSession=session;if(focused?.isConnected)focused.focus({preventScroll:true});
    if(routeParts()[0]==='sponsors'&&selectedChannel&&automationFocusRoute!==location.hash){
     automationFocusRoute=location.hash;
     window.scrollTo({top:window.scrollY+automationPanel.getBoundingClientRect().top-bar.getBoundingClientRect().height-12,behavior:'instant'});
     automationPanel.setAttribute('tabindex','-1');automationPanel.focus({preventScroll:true});
    }
-   if(!nodes.length)automationBody.prepend(el('p','Нет узлов. Добавьте прокси во вкладке «Узлы».'));
+   if(!nodes.length){const missing=window.pushokViews.emptyLine('Сначала добавьте узел','server'),jump=window.pushokViews.iconAction(button('',()=>{selectSponsorView('nodes');addNode.click();}),'plus','Добавить первый узел');missing.append(jump);automationBody.prepend(missing);}
    const bindings=el('div',undefined,'sponsor-bindings');
    if(data.bindings.length)bindings.append(el('h3','Сохранённые привязки'));
-   for(const b of data.bindings){const row=el('div',undefined,'sponsor-binding'),copy=el('div');copy.append(el('strong',b.title),el('small',b.name+' · тег …'+b.tag_ending,'muted'));const disable=button('Отключить',async()=>{await api('/admin/promotion-bindings/'+b.proxy_node_id+'/'+b.channel_id,{method:'DELETE'});await renderAutomation();notice('Связь отключена. При следующей проверке агент вернёт исходный тег.',true);});disable.prepend(window.pushokViews.icon('power'));row.append(copy,disable);bindings.append(row);}automationBody.append(bindings);
-  }catch(e){if(rev===automationRevision&&token===session)automationBody.replaceChildren(el('p',e.message));}
+   for(const b of data.bindings){const row=el('div',undefined,'sponsor-binding'),copy=el('div');copy.append(el('strong',b.title),el('small',b.name+' · тег …'+b.tag_ending,'muted'));row.append(window.pushokViews.channelAvatar(b.channel_id,b.title));const disable=button('Отключить',async()=>{await api('/admin/promotion-bindings/'+b.proxy_node_id+'/'+b.channel_id,{method:'DELETE'});await renderAutomation();notice('Связь отключена. При следующей проверке агент вернёт исходный тег.',true);});window.pushokViews.iconAction(disable,'power','Отключить привязку '+b.title);disable.classList.add('danger-text');row.append(copy,disable);bindings.append(row);}if(!data.bindings.length)bindings.append(window.pushokViews.emptyLine('Сохранённых привязок нет','channel'));automationBody.insertBefore(bindings,connect);
+  }catch(e){if(rev===automationRevision&&token===session){automationBody.querySelector('.sponsor-load-error')?.remove();const error=el('div',undefined,'sponsor-load-error');error.setAttribute('role','status');error.append(el('p','Не удалось обновить настройки. '+e.message),window.pushokViews.iconAction(button('',renderAutomation),'refresh','Повторить загрузку настроек'));if(!automationSession)automationBody.replaceChildren(error);else{automationBody.prepend(error);const stale=automationBody.querySelector('#telegram-owner-status');if(stale){stale.dataset.tone='warning';stale.querySelector('h3').textContent='Состояние не обновлено';}}}}finally{if(rev===automationRevision)automationBody.setAttribute('aria-busy','false');}
  }
 
  // Настройки сохраняют отдельные вкладки и проверки роли существующего кода.
@@ -332,7 +369,8 @@
   if(['admin','operator'].includes(me.role))window.pushokViews.sponsors(sponsorQueue,operatorCampaigns);
   onboarding.hidden=false;
   createNotice.hidden=Boolean(tariffs.length);createNotice.textContent='Нет доступных тарифов. Обратитесь к администратору.';
-  sponsorPanel.hidden=me.role!=='admin';sponsorNode.replaceChildren();nodes.forEach(n=>option(sponsorNode,n.id,n.name));if(!nodes.length)option(sponsorNode,'','Нет узлов — добавьте выше или восстановите из удалённых');sponsorNode.disabled=!nodes.length;sponsorSave.disabled=!nodes.length;
+  sponsorPanel.hidden=me.role!=='admin';const savedSponsorNode=sponsorNode.value;sponsorNode.replaceChildren();nodes.forEach(n=>option(sponsorNode,n.id,n.name));if(!nodes.length)option(sponsorNode,'','Нет узлов — добавьте выше или восстановите из удалённых');sponsorNode.disabled=!nodes.length;sponsorSave.disabled=!nodes.length;
+  if(savedSponsorNode){sponsorNode.value=savedSponsorNode;if(!sponsorNode.value)sponsorTag.value='';}
   calendarTariff.replaceChildren();tariffs.forEach(t=>option(calendarTariff,t.id,tariffLabel(t)));calendarTariff.value=$('tariff-select').value;
   botPanel.replaceChildren(el('h2','Продолжить в Telegram'),botLink(),el('p','Кампании, статусы и оплата доступны в боте согласно настройкам сервера.'),el('h3','Сценарии в кабинете'));
   const shortcuts=el('nav',undefined,'bot-shortcuts');shortcuts.setAttribute('aria-label','Сценарии кабинета');[['create','Разместить рекламу'],['campaigns','Мои кампании'],['payments','Оплата'],['help','Помощь']].forEach(([route,text])=>shortcuts.append(link(text,route)));botPanel.append(shortcuts);
@@ -341,7 +379,7 @@
   const approved=own.filter(c=>c.moderation_status==='approved');
   window.pushokViews.paymentOverview(paymentOverview,approved);
   if(state.route!=='payments'||!routeParts()[1])window.pushokViews.campaigns(paymentRows,approved,'payments');
-  operatorNodes.replaceChildren();if(me.role==='operator')table(operatorNodes,nodes.map(n=>[n.name,n.host+':'+n.port,n.status==='active'?'В реестре: активен':'На паузе']),['Узел','Адрес','Статус реестра']);
+  addNode.hidden=me.role!=='admin';nodeCreate.hidden=me.role!=='admin';
   $('sponsor-tab-setup').hidden=me.role!=='admin';sponsorRegistration.hidden=me.role!=='admin';selectSponsorView(sponsorView);
   const placements=operatorCampaigns.filter(c=>!c.archived_at);
   metrics('sponsors',[['Узлы',nodes.length,'В реестре'],['В эфире',placements.filter(c=>c.placement_status==='active').length,'По данным запуска'],['В очереди',placements.filter(c=>c.moderation_status==='approved'&&c.payment_status==='verified'&&['scheduled','not_scheduled'].includes(c.placement_status)).length,'Ожидают запуска']]);
@@ -508,7 +546,7 @@
   if(url.searchParams.has('wallet_topup')){url.searchParams.delete('wallet_topup');url.hash='/wallet';history.replaceState(null,'',url);}
   if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);activate();
- },logout(){window.pushokAppLicense?.reset();window.pushokLinks?.reset();window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
+ },logout(){automationSession='';nodeEditorSession='';nodeCreate.open=false;window.pushokAppLicense?.reset();window.pushokLinks?.reset();window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   bottomNav.querySelector('[data-route=moderation]').hidden=true;bottomNav.style.setProperty('--nav-count',4);
   channelSearch.value='';selectSponsorView('placements');automationRevision++;automationFocusRoute='';automationBody.replaceChildren();automationRuntime.replaceChildren();diagnosticsSummary.replaceChildren();
   [$('order-result'),detail,dashboardReferral,profileShortcut,paymentOverview,paymentRows,content.profile,content.user,content.users,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;

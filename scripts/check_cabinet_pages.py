@@ -28,6 +28,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=ROOT / ".build/cabinet-pages")
     parser.add_argument("--browser-executable")
+    parser.add_argument("--sponsors-only", action="store_true", help="Полный сценарий страницы спонсоров")
     args = parser.parse_args()
     # main.py captures this setting when imported, before test sessions are issued.
     os.environ["SESSION_SIGNING_KEY"] = "browser-test-only-" * 8
@@ -156,6 +157,10 @@ def main():
                         page.locator('#refresh').click()
                     expect(page.locator('#refresh')).to_be_enabled()
 
+                if args.sponsors_only:
+                    from check_sponsor_workspace import check_sponsor_workspace
+                    check_sponsor_workspace(browser, base, output, failures, PostgresIntegration.dsn)
+                    return
                 admin = new_page("admin")
                 go(admin, "sponsors")
                 expect(admin.get_by_role('tab', name='Размещения', exact=True)).to_have_attribute('aria-selected', 'true')
@@ -168,7 +173,7 @@ def main():
                 expect(admin.locator('#node-form')).to_be_hidden()
                 expect(admin.locator('#sponsor-form')).to_be_hidden()
                 admin.get_by_role('tab', name='Узлы', exact=True).click()
-                admin.locator('#node-create > summary').click()
+                admin.locator('#node-admin>.panel-heading').get_by_role('button',name='Добавить узел',exact=True).click()
                 admin.locator('#node-form [name=name]').fill('Тестовый узел')
                 admin.locator('#node-form [name=host]').fill('node.example.org')
                 admin.locator('#node-engine-settings > summary').click()
@@ -182,7 +187,6 @@ def main():
                 expect(admin.locator('#promotion-agent-report')).to_have_attribute('data-status', 'unknown')
                 expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=no_current_campaign]')).to_be_visible()
                 admin.get_by_role('tab', name='Узлы', exact=True).click()
-                admin.locator('#nodes-list .node-actions > summary').click()
                 admin.get_by_role('button', name='Поставить на паузу', exact=True).click()
                 expect(admin.get_by_role('button', name='Возобновить', exact=True)).to_be_visible()
                 expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=node_paused]')).to_have_count(1)
@@ -424,6 +428,8 @@ def main():
                 with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {'PUSHOK_CONTROL_DIR': directory}):
                     report = dict(code='tag_applied', checked_at=datetime.now(timezone.utc).isoformat(),
                                   node_id=plan['node_id'], plan_revision=plan['revision'])
+                    report['telegram_owner']=dict(state='connected',enabled=True,session_saved=True,helper_available=True,
+                        checked_at=datetime.now(timezone.utc).isoformat(),username='test_owner')
                     report_path = Path(directory) / 'promotion-agent.json'
                     report_path.write_text(json.dumps(report))
                     go(admin, 'sponsors')
@@ -432,7 +438,21 @@ def main():
                     expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Тег применён; показ не проверен')
                     expect(node_card).not_to_contain_text('Дождитесь')
                     admin.get_by_role('tab', name='Настройка', exact=True).click()
-                    admin.get_by_text('Ручная привязка готового тега', exact=True).click()
+                    owner_card=admin.locator('#telegram-owner-status')
+                    expect(owner_card).to_contain_text('Автопривязка включена')
+                    expect(owner_card).to_contain_text('@test_owner')
+                    report['telegram_owner']['enabled']=False
+                    report_path.write_text(json.dumps(report))
+                    admin.get_by_role('button',name='Обновить состояние подключения',exact=True).click()
+                    expect(owner_card).to_contain_text('Автопривязка выключена')
+                    admin.get_by_text('Подключение и проверка',exact=True).click()
+                    for width in (320,390):
+                        admin.set_viewport_size({'width':width,'height':844})
+                        owner_card.scroll_into_view_if_needed()
+                        assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                    admin.screenshot(path=str(output/'47-owner-connection-mobile.png'))
+                    if not admin.locator('#sponsor-manual-binding').evaluate('(e)=>e.open'):
+                        admin.get_by_text('Ручная привязка готового тега', exact=True).click()
                     draft_tag = admin.get_by_label('Тег этого канала из @MTProxyBot', exact=True)
                     draft_tag.fill('d' * 32)
                     admin.set_viewport_size({'width': 390, 'height': 844})
@@ -469,6 +489,25 @@ def main():
                     expect(admin.locator('#promotion-diagnostics [data-diagnostic-code=ready]')).to_contain_text('Подтверждения применения текущего плана пока нет')
                     expect(admin.locator('#promotion-automation-runtime')).to_contain_text('Применение текущего плана не подтверждено')
                     expect(draft_tag).to_have_value('d' * 32)
+                    # Отказ проверки канала не должен выглядеть как работающий запуск.
+                    with psycopg.connect(PostgresIntegration.dsn) as connection:
+                        connection.execute('''INSERT INTO telegram_binding_jobs(proxy_node_id,campaign_id,channel_id,channel_url,node_host,node_port,error_code,retry_at)
+                            VALUES(%s,%s,%s,'https://t.me/example_public_channel',%s,%s,'channel_not_broadcast',now()+interval '5 minutes')''',
+                            (fixture['id'],campaign_id,fixture['channel_id'],fixture['host'],fixture['port']))
+                    report_path.write_text(json.dumps(dict(report,code='telegram_binding_pending')))
+                    admin.get_by_role('tab', name='Настройка', exact=True).click()
+                    admin.get_by_role('button',name='Обновить состояние подключения',exact=True).click()
+                    binding_card=admin.locator('.binding-status').filter(has_text='По ссылке находится не канал')
+                    expect(binding_card).to_contain_text('https://t.me/example_public_channel')
+                    expect(binding_card).to_contain_text('Telegram вернул группу или личный аккаунт')
+                    expect(admin.locator('.sponsor-health')).to_contain_text('По ссылке находится не канал')
+                    for width in (320,390):
+                        admin.set_viewport_size({'width':width,'height':844})
+                        binding_card.scroll_into_view_if_needed()
+                        assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                    admin.screenshot(path=str(output/'48-binding-channel-error-mobile.png'))
+                    with psycopg.connect(PostgresIntegration.dsn) as connection:
+                        connection.execute('DELETE FROM telegram_binding_jobs WHERE proxy_node_id=%s',(fixture['id'],))
                     admin.set_viewport_size({'width': 1440, 'height': 1000})
                 # ACK агента автоматически активирует кампанию, без формы проверки.
                 refresh(operator)
@@ -1025,20 +1064,19 @@ def main():
                 admin.set_viewport_size({'width':390,'height':844})
                 go(admin,'sponsors')
                 admin.get_by_role('tab', name='Узлы', exact=True).click()
-                admin.locator('#node-create > summary').click()
+                admin.locator('#node-admin>.panel-heading').get_by_role('button',name='Добавить узел',exact=True).click()
                 admin.locator('#node-form [name=name]').fill('Узел управления')
                 admin.locator('#node-form [name=host]').fill('management-ui.example.org')
                 admin.locator('#engine-mode').select_option('auto')
                 admin.locator('#node-form button[type=submit]').click()
                 node=admin.locator('#nodes-list .card').filter(has_text='Узел управления')
-                node.locator('.node-actions > summary').click()
                 node.get_by_role('button',name='Изменить узел',exact=True).click()
                 node.get_by_label('Название узла',exact=True).fill('Изменённый узел управления')
                 node.get_by_role('button',name='Сохранить изменения',exact=True).click()
                 node=admin.locator('#nodes-list .card').filter(has_text='Изменённый узел управления')
                 expect(node).to_be_visible()
                 admin.once('dialog',lambda dialog:dialog.accept())
-                node.get_by_role('button',name='Удалить',exact=True).click()
+                node.get_by_role('button',name='Удалить узел',exact=True).click()
                 expect(admin.locator('#notice')).to_contain_text('Объект перемещён')
                 go(admin,'archive')
                 admin.get_by_role('button',name='Восстановить',exact=True).click()
@@ -1596,6 +1634,8 @@ def main():
                 check_gift_sharing(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_campaign_analytics import check_campaign_analytics
                 check_campaign_analytics(browser,base,output,failures,PostgresIntegration.dsn)
+                from check_sponsor_workspace import check_sponsor_workspace
+                check_sponsor_workspace(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_application_licenses import check_application_licenses
                 check_application_licenses(browser,base,output,failures,PostgresIntegration.dsn)
                 assert not failures, failures

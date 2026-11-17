@@ -168,3 +168,35 @@ class BindingQueueTests(unittest.TestCase):
         self.assertTrue(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
         with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
             self.assertEqual(promotion_runtime.node_plan(conn,self.node)['state'],'default')
+
+    def test_channel_failure_is_visible_without_claiming_active_preparation(self):
+        from app import promotion_diagnostics
+        from unittest.mock import patch
+        job=self.claim()
+        self.exchange('owner_error',job_id=job,code='channel_not_broadcast')
+        report=dict(code='telegram_binding_pending',recent=True,checked_at=datetime.now(timezone.utc),
+                    node_id=str(self.node['id']),host=self.node['host'],port=self.node['port'])
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn, patch.object(promotion_diagnostics,'read_report',return_value=report):
+            row=next(row for row in binding.public_status(conn) if row['proxy_node_id']==self.node['id'])
+            self.assertEqual(row['error_code'],'channel_not_broadcast')
+            self.assertEqual(row['channel_url'],'https://t.me/sample_channel')
+            result=promotion_diagnostics.diagnostics(conn)
+            node=next(row for row in result['nodes'] if row['node_id']==str(self.node['id']))
+            self.assertEqual(node['title'],'По ссылке находится не канал')
+            self.assertEqual(result['agent']['title'],node['title'])
+            self.assertFalse(node['config_applied'])
+            self.assertFalse(result['display_verified'])
+            self.assertNotIn(self.tag,str(result))
+            report['recent']=False
+            self.assertEqual(promotion_diagnostics.diagnostics(conn)['agent']['title'],'Отчёт агента устарел')
+        self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+
+    def test_propagation_is_waiting_not_an_error_or_active_binding(self):
+        from app import promotion_diagnostics
+        job=self.claim();self.authorize(job)
+        self.exchange('owner_verified',job_id=job,**self.proof)
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            result=promotion_diagnostics.diagnostics(conn)
+            node=next(row for row in result['nodes'] if row['node_id']==str(self.node['id']))
+            self.assertEqual(node['title'],'Привязка проверена — ожидаем обновления Telegram')
+            self.assertFalse(node['config_applied'])

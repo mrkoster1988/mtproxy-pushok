@@ -39,6 +39,11 @@ def publish_status(status):
     code = status.get('code')
     report = dict(code=code if code in REPORT_CODES else 'agent_error',
                   checked_at=datetime.now(timezone.utc).isoformat())
+    try:
+        from automatic_binding import connection_status
+        report['telegram_owner'] = connection_status()
+    except Exception:
+        report['telegram_owner'] = {'state': 'unknown'}
     host, port = status.get('host'), status.get('port')
     if isinstance(host, str) and re.fullmatch(r'[a-zA-Z0-9.:-]{1,253}', host):
         report['host'] = host

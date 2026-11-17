@@ -6,13 +6,13 @@ cd "$(dirname "$0")/.."
 [[ -f /etc/mtproxy-pushok/mtproxy.env ]] || exit 0
 cat > /etc/systemd/system/mtproxy-pushok-promotion.service <<'UNIT'
 [Unit]
-Description=Apply prepared Pushok sponsor tags
+Description=Prepare and apply Pushok sponsor tags
 After=docker.service mtproxy-pushok.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/mtproxy-pushok
 ExecStart=/usr/bin/python3 /opt/mtproxy-pushok/scripts/promotion_agent.py
-TimeoutStartSec=180
+TimeoutStartSec=300
 UMask=0077
 UNIT
 cat > /etc/systemd/system/mtproxy-pushok-promotion.timer <<'UNIT'

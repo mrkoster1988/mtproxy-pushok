@@ -40,8 +40,8 @@ def check_campaign_analytics(browser,base,output,failures,dsn):
     try:
         with patch.dict(os.environ,env):
             page.goto(base+'/#/campaign/'+str(cid));expect(page.locator('body')).to_have_attribute('data-cabinet-loaded','true')
-            area=page.locator('[data-page=campaign] .campaign-analytics');expect(area).to_contain_text('Охват MTProxy')
-            expect(area.locator('dd')).to_have_text(['—','—','—','—','—'])
+            area=page.locator('[data-page=campaign] .campaign-analytics');expect(area).to_contain_text('Статистика ссылки')
+            expect(area.locator('dd')).to_have_text(['—','—','—','—'])
             replies=[{'id':-10084701,'type':'channel','username':'analytics_fixture'},
                      {'status':'administrator','can_invite_users':True},{'invite_link':'https://t.me/+analyticsFixture123'}]
             with patch.object(channel_logos,'_call',side_effect=replies):
@@ -49,13 +49,13 @@ def check_campaign_analytics(browser,base,output,failures,dsn):
                     area.get_by_role('button',name='Подключить подсчёт',exact=True).click()
                 assert enabled.value.ok,enabled.value.text()
             link=area.get_by_role('link',name='Ссылка кампании',exact=True);expect(link).to_be_visible();url=link.get_attribute('href')
-            expect(area.locator('dd')).to_have_text(['—','0','0','0','—'])
+            expect(area.locator('dd')).to_have_text(['0','0','0','—'])
             landing.goto(url);expect(landing.get_by_role('button',name='Открыть канал',exact=True)).to_be_visible()
             landing.reload();landing.get_by_role('button',name='Открыть канал',exact=True).click();expect(landing.locator('[data-invitation-fixture]')).to_be_visible()
             payload=dict(chat_id=-10084701,telegram_user_id=99884702,invite_link='https://t.me/+analyticsFixture123',date=int(time.time()))
             for _ in range(2):
                 r=page.request.post(base+'/api/v1/internal/bot/analytics/join',data=payload,headers={'X-Pushok-Bot-Secret':'e'*64,'X-Pushok-Telegram-Environment':'production'});assert r.ok,r.text()
-            area.get_by_role('button',name='Обновить статистику кампании',exact=True).click();expect(area.locator('dd')).to_have_text(['—','1','1','1','100%'])
+            area.get_by_role('button',name='Обновить статистику кампании',exact=True).click();expect(area.locator('dd')).to_have_text(['1','1','1','100%'])
             area.locator('.analytics-history>summary').click();expect(area.locator('tbody tr')).to_have_count(1)
             page.evaluate("window.analyticsTable=document.querySelector('.campaign-analytics .analytics-days')")
             with page.expect_response(lambda r:r.url.endswith('/analytics')):

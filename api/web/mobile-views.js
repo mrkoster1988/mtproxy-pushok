@@ -4,7 +4,7 @@ window.pushokViews=(()=>{
  function icon(name){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.classList.add('ui-icon');
-  const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg?v=140#pi-'+name);svg.append(use);return svg;
+  const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg?v=151#pi-'+name);svg.append(use);return svg;
  }
  // Иконка всегда имеет доступное имя и подпись при наведении.
  function iconAction(node,name,label){node.replaceChildren(icon(name));node.classList.add('icon-action');node.setAttribute('aria-label',label);node.title=label;return node;}
@@ -166,14 +166,15 @@ window.pushokViews=(()=>{
   if(updatePanel)target.append(updatePanel);
   const logout=button('Выйти',()=>$('logout').click());logout.setAttribute('aria-label','Выйти из аккаунта');logout.className='profile-logout';target.append(logout);
  }
+ function emptyLine(text,name='info'){const row=el('p',undefined,'sponsor-empty');row.append(icon(name),el('span',text));return row;}
  function sponsors(target,list){
   target.replaceChildren();
   const active=list.filter(c=>!c.archived_at&&c.placement_status==='active'),queued=list.filter(c=>!c.archived_at&&c.moderation_status==='approved'&&c.payment_status==='verified'&&['scheduled','not_scheduled'].includes(c.placement_status));
   queued.sort((a,b)=>(a.scheduled_start_at||'9999').localeCompare(b.scheduled_start_at||'9999'));
   for(const [title,items,emptyText] of [['Сейчас в эфире',active,'Активных размещений пока нет'],['Очередь размещений',queued,'Готовых к запуску кампаний нет']]){
    const group=el('section',undefined,'sponsor-placement-group'),heading=el('div',undefined,'section-heading');heading.append(el('h2',title),el('span',String(items.length),'count-pill'));group.append(heading);
-   if(!items.length)group.append(el('p',emptyText,'sponsor-empty'));else{const rows=el('div',undefined,'sponsor-placement-list');items.forEach(c=>rows.append(campaignSummary(c,'sponsors')));group.append(rows);}target.append(group);
+   if(!items.length)group.append(emptyLine(emptyText,'campaign'));else{const rows=el('div',undefined,'sponsor-placement-list');items.forEach(c=>rows.append(campaignSummary(c,'sponsors')));group.append(rows);}target.append(group);
   }
  }
- return {clearLogos,channelAvatar,channelPreview,channelSearch,userAvatar,icon,iconAction,disclosure,info,brand,mascot,profileAvatar,statusSteps,progress,facts,campaigns,channelCards,paymentOverview,profile,sponsors};
+ return {emptyLine,clearLogos,channelAvatar,channelPreview,channelSearch,userAvatar,icon,iconAction,disclosure,info,brand,mascot,profileAvatar,statusSteps,progress,facts,campaigns,channelCards,paymentOverview,profile,sponsors};
 })();

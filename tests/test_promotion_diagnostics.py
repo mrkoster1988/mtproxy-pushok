@@ -136,9 +136,11 @@ class PromotionDiagnosticsTests(unittest.TestCase):
     def test_endpoint_rejects_non_admin_before_database_or_report_read(self):
         with TestClient(main.app) as client, patch.object(main, 'promotion_diagnostics') as read, patch.object(main.psycopg, 'connect') as db:
             self.assertEqual(client.get('/api/v1/admin/promotion-diagnostics').status_code, 401)
+            self.assertEqual(client.get('/api/v1/admin/promotion-bindings').status_code, 401)
             for role in ['advertiser', 'operator']:
                 main.app.dependency_overrides[main.get_current_user] = lambda: dict(id=uuid4(), role=role)
                 self.assertEqual(client.get('/api/v1/admin/promotion-diagnostics').status_code, 403)
+                self.assertEqual(client.get('/api/v1/admin/promotion-bindings').status_code, 403)
             read.assert_not_called(); db.assert_not_called()
 
     def test_database_error_has_no_connection_details(self):

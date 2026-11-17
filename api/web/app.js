@@ -664,18 +664,21 @@ $('tariff-admin-form').addEventListener('submit',e=>{e.preventDefault();run(asyn
  }finally{if(session===token&&me?.role==='admin')$('tariff-admin-fields').disabled=false;}
 },e.submitter);});
 
+let nodeEditorSession='';
 function renderNodes(){
- $('node-admin').hidden=me?.role!=='admin';
- const expanded=new Set([...$('nodes-list').querySelectorAll('.proxy-node')].filter(row=>row.querySelector('.node-actions')?.open).map(row=>row.dataset.nodeId));
+ $('node-admin').hidden=!['admin','operator'].includes(me?.role);
+ const drafts=new Map(nodeEditorSession===token?[...$('nodes-list').querySelectorAll('.proxy-node')].map(row=>[row.dataset.nodeId,[...row.querySelectorAll('.node-actions>form')]]):[]);nodeEditorSession=token;
  $('nodes-list').replaceChildren(...nodes.map(n=>{
   const box=el('div',undefined,'card proxy-node'),head=el('div',undefined,'proxy-node-heading'),copy=el('div');
-  box.dataset.nodeId=n.id;copy.append(el('h3',n.name),el('p',n.host+':'+n.port,'muted'));head.append(window.pushokViews.icon('server'),copy,el('span',n.status==='active'?'В расписании':'На паузе','badge'));box.append(head);
-  box.append(el('p','План: '+(engineTitles[n.target_engine]||'Не выбран'),'proxy-node-engine muted'));
+  box.dataset.nodeId=n.id;copy.append(el('h3',n.name));head.append(window.pushokViews.icon('server'),copy);box.append(head,el('p',n.host+':'+n.port,'proxy-node-address muted'));
+  const meta=el('div',undefined,'proxy-node-meta');meta.append(el('span',n.status==='active'?'В расписании':'На паузе','badge badge--'+(n.status==='active'?'approved':'paused')),el('span',engineTitles[n.target_engine]||'План не выбран','muted'));box.append(meta);
   if(me?.role==='admin'){
-  const actions=window.pushokManagement?.nodeActions(n)||el('details'),controls=actions.querySelector('.node-action-buttons')||actions;actions.open=expanded.has(n.id);box.append(actions);
+  const actions=window.pushokManagement?.nodeActions(n)||el('div'),controls=actions.querySelector('.node-action-buttons')||el('div');head.append(controls);box.append(actions);actions.append(...(drafts.get(n.id)||[]));
   const plan=button('Изменить план движка',()=>{
-   if(box.querySelector('.node-plan-form'))return;
+   actions.querySelector('.management-form')?.remove();
+   if(box.querySelector('.node-plan-form')){box.querySelector('.node-plan-form').remove();return;}
    const form=el('form',undefined,'node-plan-form'),inputs={};
+   form.append(el('h4','План движка'));
    // Редактирование плана относится к этому узлу, а не к скрытой форме добавления.
    for(const [name,title,values,selected] of [
     ['environment','Среда',[['production','Основной сервер'],['staging','Тестовый стенд']],n.target_engine&&n.target_engine!=='official_mtproxy'?'staging':'production'],
@@ -685,19 +688,18 @@ function renderNodes(){
     const label=el('label',title),input=el('select');input.name=name;values.forEach(([v,t])=>option(input,v,t));input.value=selected;label.append(input);form.append(label);inputs[name]=input;
    }
    const toggle=()=>{inputs.preferred_engine.closest('label').hidden=inputs.engine_mode.value!=='manual';};inputs.engine_mode.addEventListener('change',toggle);toggle();
-   form.append(el('p','Сохраняется только план. Работающий прокси не переключается.','muted'));
-   const save=el('button','Сохранить план');save.type='submit';form.append(save,button('Отмена',()=>form.remove()));
-   form.addEventListener('submit',event=>{event.preventDefault();run(async()=>{await api('/admin/proxy-nodes/'+n.id+'/engine-plan',{method:'PATCH',body:engineRequest(form)});await refresh();notice('План сохранён. Проверка и установка выполняются отдельно.',true);},save);});
+   const save=el('button','Сохранить'),cancel=button('Отмена',()=>form.remove()),formActions=el('div',undefined,'sponsor-form-actions');save.type='submit';save.setAttribute('aria-label','Сохранить план');save.prepend(window.pushokViews.icon('save'));cancel.prepend(window.pushokViews.icon('close'));formActions.append(save,cancel);form.append(formActions,window.pushokViews.disclosure('Что изменится',[el('p','Сохраняется только план. Работающий прокси не переключается.','muted')],'inline-help'));
+   form.addEventListener('submit',event=>{event.preventDefault();run(async()=>{await api('/admin/proxy-nodes/'+n.id+'/engine-plan',{method:'PATCH',body:engineRequest(form)});form.remove();await refresh();notice('План сохранён. Проверка и установка выполняются отдельно.',true);},save);});
    actions.append(form);inputs.environment.focus();
-  });plan.replaceChildren(window.pushokViews.icon('settings'),document.createTextNode('План движка'));plan.setAttribute('aria-label','Изменить план движка');controls.append(plan);
+  });window.pushokViews.iconAction(plan,'settings','Изменить план движка');controls.append(plan);
   const pause=button(n.status==='active'?'Поставить на паузу':'Возобновить',async()=>{
    await api('/admin/proxy-nodes/'+n.id+'/status',{method:'PATCH',body:{status:n.status==='active'?'paused':'active'}});
    await refresh();notice('Состояние узла сохранено.',true);
-  });pause.replaceChildren(window.pushokViews.icon('power'),document.createTextNode(n.status==='active'?'Пауза':'Возобновить'));pause.setAttribute('aria-label',n.status==='active'?'Поставить на паузу':'Возобновить');controls.append(pause);
-  const remove=actions.querySelector('.danger-text');if(remove)controls.append(remove);
+  });window.pushokViews.iconAction(pause,'power',n.status==='active'?'Поставить на паузу':'Возобновить');controls.append(pause);
+  const remove=controls.querySelector('.danger-text');if(remove)controls.append(remove);
   }return box;
  }));
- if(!nodes.length)$('nodes-list').append(el('p','Узлов пока нет. Добавьте первый прокси.','sponsor-empty'));
+ if(!nodes.length)$('nodes-list').append(window.pushokViews.emptyLine('Узлов пока нет','server'));
 }
 $('node-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
  const data=Object.fromEntries(new FormData(e.target));data.port=Number(data.port);

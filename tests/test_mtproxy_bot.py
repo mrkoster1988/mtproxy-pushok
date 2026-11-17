@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import AsyncMock
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from mtproxy_bot import MTProxyDialog, BotProtocolError, card_tag, promoted_channel, endpoints, username
+from mtproxy_bot import MTProxyDialog, BotProtocolError, card_tag, promoted_channel, endpoints, username, resolve_channel
 
 TAG='a'*32
 HOST='proxy.example.org'
@@ -39,6 +39,13 @@ class BotParserTests(unittest.TestCase):
         self.assertEqual(promoted_channel(NS(raw_text=content,entities=[NS(offset=offset,url='https://t.me/test_channel')])),'test_channel')
         for bad in ['https://evil.test/sample','https://t.me/+private','@name\n/delete']:
             with self.assertRaises(BotProtocolError):username(bad)
+
+    def test_channel_links_match_supported_cabinet_hosts(self):
+        for link in ('https://telegram.me/Sample_Channel/', 'https://T.ME/Sample_Channel', '@Sample_Channel'):
+            self.assertEqual(username(link), 'sample_channel')
+        for link in ('https://t.me/sample_channel/123', 'https://t.me/sample_channel?start=x',
+                     'https://t.me.evil/sample_channel', 'https://user@t.me/sample_channel'):
+            with self.assertRaises(BotProtocolError):username(link)
 
 
 class BotFlowTests(unittest.IsolatedAsyncioTestCase):
@@ -97,3 +104,46 @@ class BotFlowTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(BotProtocolError,'proxy_ambiguous'):
             await self.dialog.select([HOST],8443)
         self.dialog.click.assert_not_called()
+
+    async def test_active_additional_username_and_bot_primary_name_match_by_id(self):
+        channel=NS(id=321,broadcast=True,username='primary_channel',
+                   usernames=[NS(username='sample_channel',active=True)])
+        self.client.get_entity.return_value=channel
+        self.dialog.select=AsyncMock(return_value=card('primary_channel'))
+        self.dialog.send=AsyncMock();self.dialog.click=AsyncMock()
+        for action in ('inspect','bind'):
+            result=await self.dialog.prepare(dict(self.request,action=action,channel_url='https://telegram.me/sample_channel'))
+            self.assertEqual(result['channel_username'],'sample_channel')
+            self.assertEqual(result['telegram_channel_id'],321)
+        self.dialog.send.assert_not_called();self.dialog.click.assert_not_called()
+
+    async def test_inactive_alias_group_and_mismatched_username_are_distinct(self):
+        self.dialog.select=AsyncMock()
+        for channel,code in [
+            (NS(id=321,broadcast=False,username='sample_channel'),'channel_not_broadcast'),
+            (NS(id=321,broadcast=True,username='primary',usernames=[NS(username='sample_channel',active=False)]),'channel_username_mismatch'),
+        ]:
+            self.client.get_entity.return_value=channel
+            with self.assertRaisesRegex(BotProtocolError,code):await self.dialog.prepare(self.request)
+        with self.assertRaisesRegex(BotProtocolError,'channel_link_invalid'):
+            await self.dialog.prepare(dict(self.request,channel_url='https://t.me/+private'))
+        self.dialog.select.assert_not_called()
+
+    async def test_resolution_errors_do_not_hide_network_or_flood_wait(self):
+        for name,code in [('UsernameNotOccupiedError','channel_not_found'),('ChannelPrivateError','channel_access_denied')]:
+            self.client.get_entity.side_effect=type(name,(Exception,),{})('PRIVATE DETAILS')
+            with self.assertRaisesRegex(BotProtocolError,'^'+code+'$'):
+                await resolve_channel(self.client,'sample_channel')
+        for exc in (OSError('network'),type('FloodWaitError',(Exception,),{})('wait')):
+            self.client.get_entity.side_effect=exc
+            with self.assertRaises(type(exc)) as caught:await resolve_channel(self.client,'sample_channel')
+            self.assertIs(caught.exception,exc)
+
+    async def test_similar_named_different_channel_does_not_verify(self):
+        self.dialog.select=AsyncMock(return_value=card('other_channel'))
+        self.dialog.click=AsyncMock();self.dialog.send=AsyncMock()
+        self.client.get_entity.side_effect=lambda name: NS(id=321 if name=='@sample_channel' else 999,
+                                                         broadcast=True,username=name[1:])
+        with self.assertRaisesRegex(BotProtocolError,'set_promotion_button_missing'):
+            await self.dialog.prepare(self.request)
+        self.dialog.send.assert_not_called();self.dialog.click.assert_not_called()

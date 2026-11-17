@@ -7,14 +7,15 @@ import os
 import sys
 
 from mtproxy_bot import MTProxyDialog, BotProtocolError
-from telegram_owner import PrivateState, DEFAULT_STATE, DEVICE_NAME, TELETHON_VERSION, OwnerError, call
+from telegram_owner import PrivateState, DEFAULT_STATE, DEVICE_NAME, TELETHON_VERSION, OwnerError, call, record_health
 
 
-async def run(client, existing, request):
+async def run(client, existing, request, state):
     try:
         await call(client.connect())
         me = await call(client.get_me())
         if me is None:
+            record_health(state, {'state': 'revoked'})
             raise OwnerError('revoked')
         if getattr(me, 'bot', False) or me.id != existing['user_id']:
             raise OwnerError('account_mismatch')
@@ -23,6 +24,8 @@ async def run(client, existing, request):
         bot = await call(client.get_entity('MTProxyBot'))
         if not bot.bot or str(bot.username).lower() != 'mtproxybot':
             raise OwnerError('unexpected_mtproxy_bot')
+        record_health(state, {'state': 'connected', 'telegram_user_id': me.id,
+                              'username': getattr(me, 'username', None)})
         result = await asyncio.wait_for(MTProxyDialog(client, bot).prepare(request), 100)
         return dict(result, owner_telegram_id=me.id)
     finally:
@@ -45,6 +48,10 @@ def main():
         if request.get('action') not in ('inspect','bind'):
             raise OwnerError('owner_helper_unavailable')
         with PrivateState(DEFAULT_STATE) as state:
+            # Отключение могло произойти после получения задания агентом.
+            # Проверка под той же блокировкой, что использует команда disable.
+            if not state.automatic_enabled():
+                raise OwnerError('automation_disabled')
             existing = state.read()
             if not existing:
                 raise OwnerError('not_connected')
@@ -53,7 +60,7 @@ def main():
                     device_model=DEVICE_NAME, app_version='0.2', lang_code='en', system_lang_code='en',
                     receive_updates=False, catch_up=False, request_retries=0, connection_retries=1,
                     auto_reconnect=False, flood_sleep_threshold=0, timeout=10)
-                result = await run(client, existing, request)
+                result = await run(client, existing, request, state)
                 state.save(dict(existing, session=client.session.save()))
                 return result
             result = asyncio.run(perform())

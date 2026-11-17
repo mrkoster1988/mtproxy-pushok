@@ -20,6 +20,17 @@ class HostBindingTests(unittest.TestCase):
         self.agent=NS(STATE=self.path,ROOT=Path(self.tmp.name),exchange=Mock(side_effect=[self.job,dict(accepted=True)]),
                       atomic=promotion_agent.atomic,apply=Mock())
         self.request=dict(host='proxy.example.org',port=443)
+        connection=patch.object(binding,'connection_status',return_value=dict(enabled=True,helper_available=True,state='connected'))
+        connection.start();self.addCleanup(connection.stop)
+
+    def test_missing_revoked_or_disabled_connection_does_not_reserve_node(self):
+        for connection in [dict(enabled=True,helper_available=True,state='not_connected'),
+                           dict(enabled=True,helper_available=True,state='revoked'),
+                           dict(enabled=False,helper_available=True,state='connected'),
+                           dict(enabled=True,helper_available=False,state='connected')]:
+            with patch.object(binding,'enabled',return_value=True),patch.object(binding,'connection_status',return_value=connection):
+                binding.tick(self.agent,self.request)
+        self.agent.exchange.assert_not_called();self.agent.apply.assert_not_called()
 
     def test_disabled_mode_does_not_change_prepared_tag_workflow(self):
         with patch.object(binding,'enabled',return_value=False):binding.tick(self.agent,self.request)

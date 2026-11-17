@@ -153,6 +153,7 @@ class OwnerConnectionTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 self.run_client(client, action=action, existing=SAVED)
             self.assertTrue((self.path / "owner.json").exists())
+            self.assertEqual(json.loads((self.path / 'health.json').read_text())['state'],'unavailable')
             self.assertNotIn("send_code", client.calls)
             self.assertNotIn("log_out", client.calls)
 
