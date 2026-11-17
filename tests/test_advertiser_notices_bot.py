@@ -103,6 +103,24 @@ class AdvertiserNoticeBotTests(unittest.TestCase):
         self.assertLess(len(payload), 1600)
         self.assertNotIn("x" * 1101, payload)
 
+    def test_ai_rejection_keeps_description_reason_and_signature_last(self):
+        signature = 'С уважением, Агент ИИ'
+        description, reason = 'Описание канала: ' + 'д' * 500, 'Причина отказа: ' + 'п' * 500
+        item = {**notice('rejected', description + '\n\n' + reason + '\n\n' + signature), 'actor_id': 'ai-agent'}
+        text = render_advertiser_notice(item)
+        self.assertIn('отклонена Агентом ИИ', text)
+        self.assertIn(description, text)
+        self.assertIn(reason, text)
+        self.assertEqual(text.count(signature), 1)
+        self.assertTrue(text.endswith(signature))
+        self.assertLess(len(text), 4096)
+        self.assertNotIn('Комментарий модератора', text)
+
+    def test_signature_in_manual_comment_does_not_attribute_it_to_ai(self):
+        text = render_advertiser_notice(notice('rejected', 'С уважением, Агент ИИ'))
+        self.assertIn('отклонена модератором', text)
+        self.assertFalse(text.endswith('С уважением, Агент ИИ'))
+
 
 if __name__ == "__main__":
     unittest.main()

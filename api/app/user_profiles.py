@@ -58,8 +58,9 @@ def router_for(dsn, current_user):
                 GROUP BY topic ORDER BY count(*) DESC,topic NULLS LAST""").fetchall()
             for row in topics:
                 row['label'] = topic_label(row['topic']) if row['topic'] else 'Тема не сохранена'
+            from .channel_ai_connection import active
             return dict(account=account, counts=counts, topics=topics,
-                automatic_rejection_enabled=False, counting='decisions')
+                automatic_rejection_enabled=bool(active('campaign_review')), counting='decisions')
         return db(read)
 
     @router.get('/{uid}/profile')
