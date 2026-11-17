@@ -38,7 +38,7 @@ def check_channel_layout(browser,base,output,failures,dsn):
             page.get_by_role('button',name='Очистить поиск каналов').click();expect(card).to_have_count(1);expect(search).to_be_focused()
             expect(page.get_by_role('button',name='Очистить поиск каналов')).to_be_hidden()
             # Добавление не смешивается со списком; назад и отмена возвращают к нему.
-            add=page.locator('[data-page=channels] .page-heading a')
+            add=page.locator('[data-page=channels] .search-action-row>a')
             add.click();expect(page).to_have_url(base+'/#/channels/new')
             url=page.locator('#channel-form [name=telegram_url]');expect(url).to_be_focused();expect(card).to_be_hidden()
             expect(page.locator('[data-page=channels] .campaign-tabs')).to_be_hidden()
@@ -55,7 +55,7 @@ def check_channel_layout(browser,base,output,failures,dsn):
                 expect(page).to_have_url(base+'/#/channels');expect(card).to_have_count(2)
                 expect(page.locator('#notice')).to_contain_text('Канал добавлен.')
             # Кнопка на карточке должна выбрать именно этот канал в заказе.
-            card.filter(has_text='Новый канал').get_by_role('link',name='Создать кампанию',exact=True).click()
+            card.filter(has_text='Новый канал').get_by_role('link',name='Продвигать канал',exact=True).click()
             expect(page.locator('#order-selected-preview')).to_contain_text('Новый канал')
             page.evaluate("window.cabinet.go('channels')")
             with psycopg.connect(dsn) as conn:conn.execute('UPDATE sponsor_channels SET title=%s WHERE id=%s',('ОченьДлинноеНазваниеКаналаБезПробелов · новости технологий и путешествий',cid))

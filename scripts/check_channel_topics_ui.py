@@ -7,6 +7,11 @@ def check_channel_topics_ui(page, output):
     select=page.locator('#order-topic')
     status=page.locator('#order-topic-status')
     detect=page.locator('#order-topic-detect')
+    def choose(value):
+        label=select.locator('option[value="'+value+'"]').text_content()
+        page.get_by_role('button',name='Тематика канала',exact=True).click()
+        page.get_by_role('dialog',name='Выбор тематики канала').get_by_role('searchbox').fill(label)
+        page.get_by_role('button',name=label,exact=True).click()
 
     def suggestion(route):
         adult='onlysexstickers' in route.request.url
@@ -30,10 +35,10 @@ def check_channel_topics_ui(page, output):
         expect(select).to_have_value('education')
         expect(status).to_contain_text('по публичным публикациям')
         expect(page.locator('#order-summary')).to_contain_text('Образование')
-        select.select_option('health')
+        choose('health')
         page.evaluate('window.pushokOrder.summary()')
         expect(select).to_have_value('health')
-        select.select_option('')
+        choose('')
         page.evaluate('window.pushokOrder.summary()')
         expect(select).to_have_value('')
         expect(status).to_contain_text('не указана')
@@ -45,7 +50,7 @@ def check_channel_topics_ui(page, output):
         detect.click()
         page.wait_for_function('Boolean(window.__topicResolve)')
         expect(page.locator('#order-submit')).to_be_enabled()
-        select.select_option('business')
+        choose('business')
         page.evaluate('''() => {window.__topicResolve(new Response(JSON.stringify({topic:'education',engine:'ai',basis:'posts'}),{headers:{'Content-Type':'application/json'}}));window.fetch=window.__topicFetch;}''')
         expect(select).to_have_value('business')
         expect(status).to_contain_text('Выбрано вами')
@@ -53,7 +58,7 @@ def check_channel_topics_ui(page, output):
         expect(select).to_have_value('adult')
         expect(status).to_contain_text('18+ · Для взрослых')
         expect(page.locator('#order-summary')).to_contain_text('18+ · Для взрослых')
-        select.select_option('health')
+        choose('health')
         page.evaluate('window.pushokOrder.summary()')
         expect(select).to_have_value('health')
         # Смена канала очищает выбор и начинает новый независимый анализ.
@@ -66,10 +71,10 @@ def check_channel_topics_ui(page, output):
         expect(status).to_contain_text('Не удалось определить')
         expect(select).to_have_value('')
         expect(page.locator('#order-submit')).to_be_enabled()
-        select.select_option('other')
+        choose('other')
         page.set_viewport_size({'width':320,'height':740})
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
-        select.scroll_into_view_if_needed()
+        page.get_by_role('button',name='Тематика канала',exact=True).scroll_into_view_if_needed()
         page.screenshot(path=str(output/'46-channel-topics.png'))
         page.set_viewport_size({'width':390,'height':844})
     finally:

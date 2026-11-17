@@ -1,4 +1,5 @@
 """Мобильный каталог, роли по никнейму и управление бонусами с настоящим API/SQL."""
+from ui_test_helpers import open_settings
 from datetime import datetime,timedelta,timezone
 from uuid import uuid4
 import psycopg
@@ -55,7 +56,7 @@ def check_admin_users(browser,base,output,failures,dsn):
             assert badge.evaluate('e=>getComputedStyle(e).color')==color
         admin.screenshot(path=str(output/'54-user-directory.png'),full_page=True)
         operator=launch('operator');go(operator,'user/'+str(ids['advertiser']));expect(operator.locator('[data-page=user] .profile-identity')).to_contain_text('@directory_advertiser');expect(operator.locator('.profile-wallet')).to_have_count(0)
-        go(admin,'settings');admin.locator('#settings-system-tab').click();expect(admin.locator('#team-fields')).to_be_enabled()
+        go(admin,'settings');admin.locator('#settings-system-tab').click();open_settings(admin);expect(admin.locator('#team-fields')).to_be_enabled()
         admin.get_by_label('Пользователь для назначения роли',exact=True).fill('@directory_new_staff');admin.locator('#team-role').select_option('operator');admin.once('dialog',lambda d:d.accept());admin.locator('#team-form button[type=submit]').click();expect(admin.locator('#team-status')).to_contain_text('Роль сохранена')
         with psycopg.connect(dsn) as conn:assert conn.execute('SELECT role FROM users WHERE id=%s',(ids['new_staff'],)).fetchone()[0]=='operator'
         go(admin,'wallet');admin.locator('[data-wallet-section=gifts]>summary').click()

@@ -8,14 +8,14 @@ window.pushokTeam=(()=>{
   const editable=!user.is_owner&&['admin','operator'].includes(me?.role)&&user.id!==me.id&&(me.role==='admin'||user.role!=='admin');
   const label=()=>user.is_owner?'Владелец':roles[user.role]||'Пользователь';
   const badge=el(editable?'button':'span',undefined,'person-role'+(editable?' role-button':'')),editor=el('form',undefined,'role-editor');editor.hidden=true;
-  function paint(){badge.dataset.role=user.is_owner?'owner':user.role;badge.replaceChildren(document.createTextNode(label()+(user.blocked_at?' · Заблокирован':'')));badge.classList.toggle('is-blocked',Boolean(user.blocked_at));if(editable){badge.append(window.pushokViews.icon('edit'));badge.setAttribute('aria-label','Изменить права: '+label());}}
+  function paint(){badge.dataset.role=user.is_owner?'owner':user.role;badge.replaceChildren(document.createTextNode(label()+(user.blocked_at?' · Заблокирован':'')));badge.classList.toggle('is-blocked',Boolean(user.blocked_at));if(editable){badge.setAttribute('aria-label','Изменить права: '+label());}}
   paint();if(!editable)return {badge,editor};
   badge.type='button';badge.setAttribute('aria-expanded','false');editor.id='role-'+crypto.randomUUID();badge.setAttribute('aria-controls',editor.id);
   const session=token,viewer=me.id,current=()=>session===token&&viewer===me?.id&&badge.isConnected;
   const fields=el('fieldset'),title=el('legend','Права пользователя'),select=el('select'),selectLabel=el('label','Роль пользователя'),hint=el('p',undefined,'muted'),feedback=el('p',undefined,'muted'),actions=el('div',undefined,'role-actions');
   select.setAttribute('aria-label','Роль пользователя');for(const role of ['advertiser','operator',...(me.role==='admin'?['admin']:[])])option(select,role,roles[role]);select.value=user.role;selectLabel.append(select);
   const descriptions={advertiser:'Собственные каналы, заявки и оплаты.',operator:'Модерация, назначение операторов и блокировка пользователей. Без управления администраторами и чужими балансами.',admin:'Полный доступ к настройкам, ролям и балансам пользователей.'};
-  const save=window.pushokViews.iconAction(el('button'),'check','Сохранить права');save.type='submit';save.className='primary';
+  const save=window.pushokViews.iconAction(el('button'),'check','Сохранить права');save.type='submit';save.classList.add('primary');
   const cancel=button('Отмена',()=>close()),block=button('',async()=>{
    if(!current())return;const blocked=!user.blocked_at;
    if(!confirm((blocked?'Заблокировать':'Разблокировать')+' доступ пользователю '+window.pushokUsers.caption(user)+'?'+(blocked?' Вход в кабинет и действия через бота будут закрыты. Баланс и оплаченные кампании сохранятся.':'')))return;
@@ -33,7 +33,7 @@ window.pushokTeam=(()=>{
    e.preventDefault();if(fields.disabled||!current()||select.value===user.role)return;const role=select.value;
    if(!confirm('Назначить роль «'+roles[role]+'» пользователю '+window.pushokUsers.caption(user)+'?'))return;
    fields.disabled=true;feedback.textContent='Сохраняем…';
-   try{await api('/admin/team',{method:'PUT',body:{telegram_user_id:user.telegram_user_id,role}});if(!current())return;user.role=role;paint();close();notice('Права сохранены. Пользователю нужно войти заново.',true);}
+   try{await api('/admin/team',{method:'PUT',body:{telegram_user_id:user.telegram_user_id,role}});if(!current())return;user.role=role;document.querySelectorAll('[data-person-id="'+user.id+'"]').forEach(n=>n.dataset.userRole=role);paint();close();notice('Права сохранены. Пользователю нужно войти заново.',true);}
    catch(e){if(current())feedback.textContent=e.message;}finally{fields.disabled=false;}
   });
   actions.append(save,cancel,block);fields.append(title,selectLabel,hint,actions,feedback);editor.append(fields);update();return {badge,editor};

@@ -10,7 +10,7 @@ window.pushokVerification=(()=>{
   const check=document.createElementNS(svg.namespaceURI,'path');check.setAttribute('d','m7 12 3 3 7-7');check.setAttribute('fill','none');check.setAttribute('stroke','white');check.setAttribute('stroke-width','2.4');check.setAttribute('stroke-linecap','round');check.setAttribute('stroke-linejoin','round');svg.append(circle,check);wrap.append(svg);return wrap;
  }
  function label(text,input){const node=el('label',text);input.setAttribute('aria-label',text);node.append(input);return node;}
- function optIn(checked){const input=el('input');input.type='checkbox';input.checked=checked;const node=label('Поздравлять с днём рождения и начислять доступный бонус',input);node.className='verification-opt-in';return {input,node};}
+ function optIn(checked){const input=el('input');input.type='checkbox';input.checked=checked;const node=label('Поздравления и подарок в день рождения',input);node.className='verification-opt-in';return {input,node};}
  function botLink(){
   const username=window.cabinetBotConfig?.telegram_bot_username;
   if(!/^[A-Za-z0-9_]{5,32}$/.test(username||''))return null;
@@ -83,10 +83,10 @@ window.pushokVerification=(()=>{
   card.append(actions,fallback,status);
  }
  function readOnly(data){
-  const box=el('details',undefined,'verification-card verification-private profile-personal');box.append(el('summary','Личные сведения'));
-  if(data.phone_number)box.append(el('p',data.phone_number),el('small','Номер подтверждён '+new Date(data.phone_verified_at).toLocaleDateString('ru-RU'),'muted'));
-  if(data.birthday){const b=data.birthday;box.append(el('p','Дата рождения: '+[String(b.day).padStart(2,'0'),String(b.month).padStart(2,'0'),b.year].filter(Boolean).join('.')));}
-  if(!data.phone_number&&!data.birthday)box.append(el('p','Сведения ещё не добавлены.','muted'));
+  const box=el('details',undefined,'verification-card verification-private profile-personal'),summary=el('summary','Личные сведения'),body=el('div',undefined,'personal-body');box.append(summary,body);
+  if(data.phone_number){const phone=el('div',undefined,'profile-phone');phone.append(el('span','Телефон','muted'),el('strong',data.phone_number));body.append(phone);}
+  if(data.birthday){const b=data.birthday,row=el('div',undefined,'personal-fact');row.append(el('span','Дата рождения:','muted'),el('strong',[String(b.day).padStart(2,'0'),String(b.month).padStart(2,'0'),b.year].filter(Boolean).join('.')));body.append(row);}
+  if(!data.phone_number&&!data.birthday)body.append(el('p','Сведения ещё не добавлены.','muted'));
   return box;
  }
  function profile(target){
@@ -99,35 +99,35 @@ window.pushokVerification=(()=>{
    try{const data=await request('/me/verification');if(!valid())return;paint(data);if(Boolean(me.phone_verified)!==data.phone_verified){me.phone_verified=data.phone_verified;window.cabinet.sync(ownCampaigns);}}catch(e){if(valid())box.replaceChildren(el('summary','Личные сведения'),el('p',e.message,'muted'),button('Повторить',load));}
   }
   function paint(data){
-   const summary=el('summary'),heading=el('span','Личные сведения');summary.append(heading);if(data.phone_verified){const state=el('span',undefined,'profile-verified-state');state.append(badge(),el('span','Верифицирован'));state.title=title;summary.append(state);}box.replaceChildren(summary);box.append(window.pushokProfiles.accountDetails(me));
-   const phone=el('div',undefined,'profile-phone');phone.append(el('span','Номер телефона','muted'),el('strong',data.phone_number||'Не подтверждён'));box.append(phone);
-   if(!data.phone_verified)box.append(button('Подтвердить номер',()=>window.cabinet.go('dashboard')));
-   const privacy=el('small','Номер и дата рождения видны только вам и администратору.','profile-privacy muted');box.append(privacy);
+   const summary=el('summary'),heading=el('span','Личные сведения');summary.append(heading);if(data.phone_verified){const state=el('span',undefined,'profile-verified-state');state.append(badge(),el('span','Верифицирован'));state.title=title;summary.append(state);}const account=box.querySelector('.profile-details')||window.pushokProfiles.accountDetails(me);box.replaceChildren(summary);const body=el('div',undefined,'personal-body');box.append(body);body.append(account);
+   const phone=el('div',undefined,'profile-phone');phone.append(el('span','Номер телефона','muted'),el('strong',data.phone_number||'Не подтверждён'));body.append(phone);
+   if(!data.phone_verified)body.append(button('Подтвердить номер',()=>window.cabinet.go('dashboard')));
+   const privacy=window.pushokViews.disclosure('О личных сведениях',[el('p','Номер и дата рождения видны вам и администратору. Изменение и перенос доступны только владельцу.','muted')],'personal-help');body.append(privacy);
    const form=el('form'),fields=el('div',undefined,'birthday-fields'),day=el('input'),month=el('select'),year=el('input');
    day.type='number';day.min='1';day.max='31';day.inputMode='numeric';day.placeholder='День';day.value=data.birthday?.day||'';
    [['','Месяц'],...['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'].map((m,i)=>[String(i+1),m])].forEach(([value,text])=>{const o=el('option',text);o.value=value;month.append(o);});month.value=data.birthday?.month||'';
    year.type='number';year.min=String(new Date().getFullYear()-120);year.max=String(new Date().getFullYear());year.inputMode='numeric';year.placeholder='—';year.title='Год указывать необязательно';year.value=data.birthday?.year||'';
-   for(const input of [day,month,year])input.disabled=Boolean(data.birthday_locked&&!me.is_owner);
-   fields.append(label('День',day),label('Месяц',month),label('Год',year));form.append(el('h3','День рождения'),fields);
+   for(const input of [day,month,year])input.disabled=Boolean(data.birthday_locked);
+   fields.append(label('День',day),label('Месяц',month),label('Год',year));const birthTitle=el('h3','День рождения');form.append(birthTitle,fields);fields.hidden=Boolean(data.birthday_locked);birthTitle.hidden=Boolean(data.birthday_locked);if(data.birthday_locked){const saved=el('div',undefined,'personal-fact');saved.append(el('span','День рождения','muted'),el('strong',data.birthday?[String(data.birthday.day).padStart(2,'0'),String(data.birthday.month).padStart(2,'0'),data.birthday.year].filter(Boolean).join('.'):'Не указан'));form.prepend(saved);}
    const explanation=value=>value.birthday_locked?'Сохранено. Изменить сведения может только владелец.':value.birthday_source==='telegram'?'Добавлено из профиля Telegram. Можно исправить.':
     value.birthday_source==='manual'?'Дата указана вами.':value.birthday_sync_state==='manual'?'Дата рождения удалена вами.':
     value.birthday_sync_state==='unavailable'?'Telegram не передал дату рождения. Проверьте её доступность в Telegram или укажите день и месяц здесь.':
     value.birthday_sync_state==='failed'?'Не удалось получить дату из Telegram. Повторите проверку через минуту или укажите её здесь.':
     value.birthday_sync_state==='pending'?'Проверяем дату в Telegram. Повторная проверка доступна через минуту.':
     'Дату рождения можно взять из Telegram или указать здесь. Год необязателен.';
-   const source=el('p',explanation(data),'muted');form.append(source);
+   const source=el('p',explanation(data),'muted');source.hidden=Boolean(data.birthday_locked);form.append(source);
    const consent=optIn(data.birthday_opt_in),status=el('p',undefined,'verification-status');status.setAttribute('role','status');form.append(consent.node);
-   let edited=false,syncing=false,lastSyncAt=0;form.addEventListener('input',()=>{edited=true;});form.addEventListener('change',()=>{edited=true;});
+   let edited=false,syncing=false,lastSyncAt=0;function dirty(){edited=true;save.hidden=false;}form.addEventListener('input',dirty);form.addEventListener('change',dirty);
    const importButton=window.pushokViews.iconAction(button('',syncBirthday),'channel','Взять из Telegram');importButton.classList.add('birthday-import');
    importButton.hidden=!data.phone_verified||!data.birthday_opt_in||Boolean(data.birthday)||data.birthday_sync_state==='manual';
-   const save=window.pushokViews.iconAction(el('button'),'check','Сохранить');save.type='submit';const actions=el('div',undefined,'verification-actions');actions.append(save,importButton);form.append(actions,status);box.append(form);
+   const save=window.pushokViews.iconAction(el('button'),'check','Сохранить');save.type='submit';save.hidden=Boolean(data.birthday_locked);const actions=el('div',undefined,'verification-actions');actions.append(save,importButton);form.append(actions,status);body.append(form);
    async function syncBirthday(){
     if(importButton.hidden||syncing)return;syncing=true;lastSyncAt=Date.now();importButton.disabled=true;source.textContent='Проверяем дату рождения в Telegram…';
     try{
      const result=await request('/me/birthday/sync',{method:'POST'});if(!valid()||!box.contains(form))return;
      if(edited){source.textContent='Проверка завершена. Ваши изменения сохраните кнопкой «Сохранить».';return;}
      data=result;source.textContent=explanation(result);
-     if(result.birthday){for(const input of [day,month,year])input.disabled=Boolean(result.birthday_locked&&!me.is_owner);day.value=result.birthday.day;month.value=result.birthday.month;year.value=result.birthday.year||'';importButton.hidden=true;}
+     if(result.birthday){paint(result);}
     }catch{if(valid()&&box.contains(form)&&!edited)source.textContent='Не удалось получить дату из Telegram. Можно повторить проверку или заполнить её вручную.';}
     finally{syncing=false;importButton.disabled=false;}
    }
@@ -137,11 +137,11 @@ window.pushokVerification=(()=>{
     const birthday=day.value?{day:Number(day.value),month:Number(month.value),year:year.value?Number(year.value):null}:null;
     if(birthday){const check=new Date(Date.UTC(birthday.year||2000,birthday.month-1,birthday.day));if(check.getUTCMonth()!==birthday.month-1||check.getUTCDate()!==birthday.day){status.textContent='Проверьте дату рождения.';return;}}
     edited=true;save.disabled=true;status.textContent='Сохраняем…';
-    try{const saved=await api('/me/birthday',{method:'PUT',body:{birthday,birthday_opt_in:consent.input.checked}});if(valid()){data=saved;for(const input of [day,month,year])input.disabled=Boolean(data.birthday_locked&&!me.is_owner);status.textContent='Сведения сохранены.';source.textContent=explanation(data);importButton.hidden=true;}}
+    try{const saved=await api('/me/birthday',{method:'PUT',body:{birthday,birthday_opt_in:consent.input.checked}});if(valid()){paint(saved);notice('Сведения сохранены.',true);}}
     catch(e){if(valid())status.textContent=e.code==='request_validation_failed'||e.status===422?'Проверьте дату рождения.':e.message;}
     finally{save.disabled=false;}
    });
-   window.pushokCommunity.ownerTools(box,uid,data,load);
+   window.pushokCommunity.ownerTools(body,uid,data,load);
    profileSync=()=>{if(location.hash.startsWith('#/profile')&&!edited&&Date.now()-lastSyncAt>=60000)void syncBirthday();};
    profileSync();
   }
