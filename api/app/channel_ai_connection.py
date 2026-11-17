@@ -11,11 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from typing import Literal
 
 from . import control
 
 FILE = 'channel-ai-private.json'
 DEFAULT_MODEL = 'gpt-4.1-mini'
+CAPABILITIES = ('topics', 'campaign_review', 'launch_diagnostics')
 _checks = deque()
 _check_lock = threading.Lock()
 _check_slot = threading.BoundedSemaphore(1)
@@ -27,7 +29,9 @@ def valid(cfg):
             and bool(re.fullmatch(r'[A-Za-z0-9._-]{1,80}', cfg['model']))
             and isinstance(cfg.get('key'), str)
             and (not cfg['key'] or bool(re.fullmatch(r'[A-Za-z0-9_-]{1,512}', cfg['key'])))
-            and (not cfg['enabled'] or bool(cfg['key'])))
+            and (not cfg['enabled'] or bool(cfg['key']))
+            and isinstance(cfg.get('capabilities', ['topics']), list)
+            and all(isinstance(x, str) and x in CAPABILITIES for x in cfg.get('capabilities', ['topics'])))
 
 
 def current():
@@ -49,12 +53,13 @@ def current():
 def public(cfg=None):
     cfg = current() if cfg is None else cfg
     return {k:cfg.get(k) for k in ('enabled', 'model', 'revision', 'source')} | {
-        'key_saved':bool(cfg['key']), 'checked_at':cfg.get('checked_at')}
+        'key_saved':bool(cfg['key']), 'checked_at':cfg.get('checked_at'),
+        'capabilities':cfg.get('capabilities', ['topics'])}
 
 
-def active():
+def active(capability='topics'):
     cfg = current()
-    return (cfg['key'], cfg['model']) if cfg['enabled'] else None
+    return (cfg['key'], cfg['model']) if cfg['enabled'] and capability in cfg.get('capabilities', ['topics']) else None
 
 
 class Configuration(BaseModel):
@@ -64,6 +69,7 @@ class Configuration(BaseModel):
     key: SecretStr | None = None
     clear_key: bool = Field(default=False, strict=True)
     revision: str = Field(min_length=1, max_length=80)
+    capabilities: list[Literal['topics', 'campaign_review', 'launch_diagnostics']] | None = Field(default=None, max_length=3)
 
 
 class PrivateRoute(APIRoute):
@@ -90,7 +96,8 @@ def candidate(data, old):
     if data.clear_key and (key or data.enabled):
         raise HTTPException(422, 'channel_ai_clear_requires_off')
     cfg = dict(enabled=data.enabled, model=data.model,
-               key='' if data.clear_key else key or old['key'])
+               key='' if data.clear_key else key or old['key'],
+               capabilities=sorted(set(data.capabilities if data.capabilities is not None else old.get('capabilities', ['topics']))))
     if not cfg['key'] and cfg['enabled']:
         raise HTTPException(422, 'channel_ai_key_required')
     if not valid(cfg):
@@ -162,8 +169,8 @@ def router_for(dsn, require_admin):
                 raise HTTPException(409, 'channel_ai_changed')
             cfg.update(revision=str(uuid4()), source='settings')
             with psycopg.connect(dsn(), connect_timeout=3) as conn:
-                conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'channel_ai_settings_saved',jsonb_build_object('enabled',%s::boolean,'key_changed',%s::boolean))",
-                             (admin['id'], cfg['enabled'], cfg['key'] != old['key']))
+                conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'channel_ai_settings_saved',jsonb_build_object('enabled',%s::boolean,'key_changed',%s::boolean,'capabilities',%s::text[]))",
+                             (admin['id'], cfg['enabled'], cfg['key'] != old['key'], cfg['capabilities']))
                 control.write(FILE, cfg)
         return public(cfg)
 

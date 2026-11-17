@@ -85,9 +85,8 @@ def ai_config():
     return active()
 
 
-def ai_topic(title, description, posts, config):
-    """Ответ только из enum. Инструкции в канале — данные, а не команды модели."""
-    key, model = config
+def reserve_ai_call():
+    """Общий предел расходов тематики, проверки ключа и помощника за час/процесс."""
     now = time.monotonic()
     with _lock:
         while _ai_calls and now - _ai_calls[0] >= 3600:
@@ -95,6 +94,12 @@ def ai_topic(title, description, posts, config):
         if len(_ai_calls) >= 60:
             raise ValueError('ai_budget_exhausted')
         _ai_calls.append(now)
+
+
+def ai_topic(title, description, posts, config):
+    """Ответ только из enum. Инструкции в канале — данные, а не команды модели."""
+    key, model = config
+    reserve_ai_call()
     schema = {'type':'object', 'properties': {
         'topic': {'type':['string', 'null'], 'enum': [*LABELS, None]},
         'confident': {'type':'boolean'}}, 'required':['topic', 'confident'], 'additionalProperties':False}
