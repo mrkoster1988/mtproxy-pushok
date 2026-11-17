@@ -241,7 +241,7 @@
    diagnosticsBody.append(plans);
    automationRuntime.replaceChildren();
    for(const item of data.nodes){
-    const row=el('article',undefined,'binding-status');row.dataset.runtimeCode=item.code;
+    const row=el('article',undefined,'diagnostic-card');row.dataset.runtimeCode=item.code;
     row.append(el('h3',item.name),el('p',item.title));
     if(item.next_action)row.append(el('p',item.next_action,'muted'));
     row.append(el('p',(!item.agent_recent?'Нет свежего подтверждения агента':item.config_applied?'Тег применён; показ не проверен':'Применение текущего плана не подтверждено')+(item.checked_at?' · '+date(item.checked_at):''),'muted'));
@@ -267,7 +267,7 @@
   sponsorResult.textContent='';try{const data=await api('/admin/proxy-nodes/'+sponsorNode.value+'/sponsor-registration',{method:'PUT',body:{engine:sponsorEngine.value,ad_tag:sponsorTag.value}});
   sponsorTag.value='';sponsorResult.dataset.tone='success';sponsorResult.textContent='Сохранён тег с окончанием '+data.tag_ending+'.';}catch(error){sponsorResult.dataset.tone='error';sponsorResult.textContent=error.message;}
  },sponsorSave);});
- const automationPanel=section('Автоматическое размещение'),automationBody=el('div'),automationRuntime=el('div');
+ const automationPanel=section('Автоматическое размещение'),automationBody=el('div'),automationRuntime=el('div',undefined,'diagnostic-stack');
  automationPanel.id='promotion-automation';automationRuntime.id='promotion-automation-runtime';automationRuntime.setAttribute('aria-live','polite');
  automationPanel.append(automationBody,window.pushokViews.disclosure('Применение на узлах',[automationRuntime],'disclosure-panel'));
  window.pushokViews.info(automationPanel,'Подключите аккаунт владельца один раз. Агент подберёт свободный узел и переключит канал. Подготовка не уменьшает оплаченный период; занятые узлы и ручные размещения не переключаются.','Как работает автоматическое размещение');
