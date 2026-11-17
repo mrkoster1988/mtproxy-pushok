@@ -56,38 +56,14 @@ def miniapp_url():
 
 
 def keyboard():
-    result = {"inline_keyboard": [
-        [{"text": "📢 Разместить рекламу", "callback_data": "advertise"}],
-        [{"text": "📋 Мои кампании", "callback_data": "campaigns"}],
-        [{"text": "📣 Наш канал", "url": CHANNEL_URL},
-         {"text": "❓ Помощь", "callback_data": "help"}],
-    ]}
+    """Главное меню: одна зелёная кнопка размещения рекламы."""
+    button = {"text": "📢 Подключить трафик", "style": "success"}
     url = miniapp_url()
-    proxy = current_proxy_url()
     if url:
-        result['inline_keyboard'][0] = [{'text': '📢 Разместить рекламу', 'web_app': {'url': url + '#/create'}}]
-    if proxy:
-        result['inline_keyboard'].insert(0, [{'text': '🔗 Подключить прокси', 'url': proxy, 'style': 'danger'}])
-    # Необязательные фирменные иконки; без реальных IDs структура кнопок не меняется.
-    icons = configured_icons()
-    # Один стиль на всё меню: неполный набор не смешиваем с обычными эмодзи.
-    required = {"advertise", "campaigns", "channels", "help"}
-    if proxy:
-        required.add('miniapp')
-    if not required.issubset(icons):
-        icons = {}
-    for row in result['inline_keyboard']:
-        for position, button in enumerate(row):
-            action = button.get('callback_data')
-            if action is None and button.get('url') == CHANNEL_URL:
-                action = 'channels'
-            if action is None and proxy and button.get('url') == proxy:
-                action = 'miniapp'
-            if action is None and 'web_app' in button:
-                action = 'advertise'
-            if action:
-                row[position] = decorate(button, action, icons)
-    return result
+        button['web_app'] = {'url': url + '#/create'}
+    else:
+        button['callback_data'] = 'advertise'
+    return {"inline_keyboard": [[decorate(button, 'advertise', configured_icons())]]}
 
 
 def message_for(command):
@@ -305,7 +281,7 @@ def submission_reply(callback, submitter):
 def format_campaigns(campaigns):
     if not campaigns:
         return ("📋 Пока у вас нет заявок в рекламном кабинете.\n"
-                "Нажми «Разместить рекламу», чтобы создать первую кампанию.")
+                "Нажми «Подключить трафик», чтобы создать первую кампанию.")
     moderation = {"draft": "Черновик", "pending": "На модерации",
                   "approved": "Одобрено", "rejected": "Отклонено",
                   "changes_requested": "Нужны исправления"}
