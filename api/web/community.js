@@ -21,7 +21,7 @@ window.pushokCommunity=(()=>{
  }
 
  async function show(target,id){const s=token;target.replaceChildren(el('p','Загрузка…','muted'));try{const u=await person(id);if(s!==token||!target.isConnected)return;
-   const card=el('section',undefined,'profile-identity user-identity public-person'),row=el('div',undefined,'person-line'),copy=window.pushokProfiles.names(u,true);copy.replaceChildren();copy.append(el('strong',names(u),'person-name'));if(u.phone_verified)copy.firstChild.append(window.pushokVerification.badge());
+   const card=el('section',undefined,'profile-identity user-identity public-person'),row=el('div',undefined,'person-line'),copy=window.pushokProfiles.names(u,true);
    if(u.online!==null)copy.append(el('small',u.online?'Онлайн в приложении':'Не в сети','muted'));
    row.append(v().userAvatar(id,names(u)),copy);card.append(row);const role=el('span',u.is_owner?'Владелец':{admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[u.role],'profile-role');role.dataset.role=u.is_owner?'owner':u.role;card.append(role);target.replaceChildren(card);
   }catch(e){if(s===token)target.replaceChildren(el('p',e.message,'empty'));}}
