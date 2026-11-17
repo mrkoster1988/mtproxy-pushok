@@ -7,10 +7,44 @@ import unittest
 from unittest.mock import AsyncMock
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
-from mtproxy_bot import MTProxyDialog, BotProtocolError, card_tag, promoted_channel, endpoints, username, resolve_channel, list_proxy
+from mtproxy_bot import MTProxyDialog, BotProtocolError, card_tag, promoted_channel, endpoints, username, resolve_channel, list_proxy, buttons, snapshot
+
+try:
+    from telethon import Button
+    from telethon.tl import types
+    from telethon.tl.custom.messagebutton import MessageButton
+except ImportError:
+    Button = None
 
 TAG='a'*32
 HOST='proxy.example.org'
+
+
+@unittest.skipUnless(Button is not None, 'Нужна закреплённая версия Telethon')
+class SDKButtonTests(unittest.IsolatedAsyncioTestCase):
+    def wrap(self, original):
+        return MessageButton(None, getattr(original, 'button', original), None, None, 100)
+
+    async def test_installed_sdk_callback_finds_proxy_and_preserves_payload(self):
+        button = self.wrap(Button.inline(HOST+' '+TAG, b'proxy-fixture'))
+        listing = NS(raw_text='Here is the list of all proxies you created:', buttons=[[button]])
+        dialog = MTProxyDialog(None, None)
+        dialog.send = AsyncMock(return_value=listing)
+        dialog.click = AsyncMock(return_value=card())
+        self.assertEqual(await dialog.select([HOST], 8443), dialog.click.return_value)
+        dialog.click.assert_awaited_once_with(listing, button)
+        self.assertEqual(snapshot(listing)[1], ((HOST+' '+TAG, b'proxy-fixture'),))
+
+    def test_only_callback_and_plain_text_are_allowed(self):
+        allowed = [self.wrap(Button.inline('Set promotion', b'fixture')),
+                   self.wrap(Button.text('Next'))]
+        blocked = [self.wrap(Button.url('Set promotion', 'https://example.org')),
+                   self.wrap(Button.request_phone('Next')),
+                   self.wrap(Button.request_location('Next')),
+                   self.wrap(Button.switch_inline('Next', 'fixture')),
+                   self.wrap(Button.buy('Next')),
+                   self.wrap(types.KeyboardInlineButton('Set promotion', types.InlineButtonTypeCallback(b'fixture', requires_password=True)))]
+        self.assertEqual(list(buttons(NS(buttons=[allowed+blocked]))), allowed)
 
 
 def card(target='sample_channel', tag=TAG, host=HOST):

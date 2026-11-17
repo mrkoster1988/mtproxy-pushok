@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.75",
+    version="1.76",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -3010,22 +3010,35 @@ def save_promotion_binding(payload: PromotionBindingRequest, admin: dict = Depen
         raise HTTPException(422, 'telegram_binding_confirmation_required')
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as conn:
+            # Тот же порядок блокировок, что у планировщика и ответов Telegram.
+            if not conn.execute('SELECT pg_try_advisory_xact_lock(736102482) AS ok').fetchone()['ok']:
+                raise HTTPException(409, 'promotion_binding_scheduler_busy')
             node=conn.execute('SELECT id,target_engine,host,port FROM proxy_nodes WHERE id=%s AND archived_at IS NULL FOR UPDATE',(payload.node_id,)).fetchone()
-            if conn.execute("SELECT 1 FROM telegram_binding_jobs WHERE proxy_node_id=%s AND phase<>'done'", (payload.node_id,)).fetchone():
-                raise HTTPException(409,'Автоматика готовит привязку этого узла. Дождитесь завершения.')
             if not node or node['target_engine'] not in (None,'official_mtproxy'):
                 raise HTTPException(409, 'classic_node_required')
             channel=conn.execute('SELECT id,telegram_url FROM sponsor_channels WHERE id=%s AND archived_at IS NULL',(payload.channel_id,)).fetchone()
             if not channel: raise HTTPException(404,'channel_not_found')
+            job = conn.execute("SELECT id,phase,error_code FROM telegram_binding_jobs WHERE proxy_node_id=%s AND phase<>'done' FOR UPDATE", (payload.node_id,)).fetchone()
+            # В inspect внешняя запись ещё не разрешена. Неудачную проверку
+            # можно заменить ручным подтверждением; старый ответ worker будет
+            # отклонён по job_id. bind/propagating не снимаем даже после ошибки:
+            # Telegram мог уже принять переключение канала.
+            if job and (job['phase'] != 'inspect' or not job['error_code']):
+                raise HTTPException(409, 'promotion_binding_busy')
             conn.execute('''INSERT INTO channel_promotion_bindings(proxy_node_id,channel_id,ad_tag,confirmed_by,channel_url,node_host,node_port)
                 VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(proxy_node_id,channel_id) DO UPDATE
                 SET ad_tag=EXCLUDED.ad_tag,confirmed_by=EXCLUDED.confirmed_by,confirmed_at=now(),channel_url=EXCLUDED.channel_url,node_host=EXCLUDED.node_host,node_port=EXCLUDED.node_port''',
                 (payload.node_id,payload.channel_id,payload.ad_tag,admin['id'],channel['telegram_url'],node['host'],node['port']))
+            if job:
+                conn.execute('DELETE FROM telegram_binding_jobs WHERE id=%s', (job['id'],))
             conn.execute('''INSERT INTO audit_events(actor_user_id,event_type,details_json)
-                VALUES(%s,'promotion_binding_confirmed',jsonb_build_object('node_id',%s::text,'channel_id',%s::text))''',
-                (admin['id'],str(payload.node_id),str(payload.channel_id)))
+                VALUES(%s,'promotion_binding_confirmed',jsonb_build_object('node_id',%s::text,'channel_id',%s::text,'replaced_inspection_id',%s::text))''',
+                (admin['id'],str(payload.node_id),str(payload.channel_id),str(job['id']) if job else None))
     except UniqueViolation as exc:
-        raise HTTPException(409,'Этот тег уже привязан к другому каналу или узлу.') from exc
+        raise HTTPException(409,'promotion_tag_already_bound') from exc
+    except psycopg.Error as exc:
+        explain_license_error(exc)
+        raise HTTPException(503, 'database_unavailable') from exc
     return {'saved':True,'tag_ending':payload.ad_tag[-4:]}
 
 
