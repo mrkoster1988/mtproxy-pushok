@@ -540,3 +540,11 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .verification-private>h2{font-size:16px}
 
 .dashboard-hero-actions>a.dashboard-promote-channel{background:#26b96b;color:#052b1b!important}
+
+/* Личные сведения по запросу, статус остаётся в компактной шапке. */
+.cabinet-mode details.profile-personal{display:block;padding:0;overflow:hidden}
+.profile-personal>summary{display:flex;align-items:center;gap:8px;min-height:48px;padding:10px 12px;list-style:none;cursor:pointer;font-size:13px;font-weight:600;box-sizing:border-box}
+.profile-personal>summary::-webkit-details-marker{display:none}.profile-personal>summary:after{content:'⌄';margin-left:auto;color:var(--muted)}.profile-personal[open]>summary:after{transform:rotate(180deg)}
+.profile-verified-state{display:inline-flex;align-items:center;gap:4px;color:#58d994;font-size:11px;font-weight:600}.profile-verified-state .phone-verified-badge{margin:0;width:17px;height:17px;flex-basis:17px}
+.profile-personal[open]>summary{border-bottom:1px solid var(--line-soft)}.cabinet-mode .profile-personal>:not(summary){margin:10px 12px}.profile-personal .profile-phone{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px}.profile-personal .profile-phone>strong{font-size:13px}.profile-personal .profile-privacy{display:block;font-size:10px;line-height:1.4}
+.cabinet-mode .profile-personal form{padding-top:10px;display:grid;gap:8px}.cabinet-mode .profile-personal form h3{font-size:12px}.cabinet-mode .profile-personal form label{font-size:11px}.cabinet-mode .profile-personal .birthday-fields{gap:6px;margin:0}.cabinet-mode .profile-personal .birthday-fields :is(input,select){font-size:13px;min-height:40px;padding:8px}.cabinet-mode .profile-personal .verification-opt-in{font-size:11px}.cabinet-mode .profile-personal form p{font-size:11px}.profile-personal .verification-actions{grid-template-columns:1fr 1fr}
