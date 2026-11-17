@@ -90,6 +90,28 @@ class ProvisioningIntegration(unittest.TestCase):
         self.assertEqual(self.call()['reason'],'no_demand');self.advice.assert_not_called()
         self.assertEqual(self.execute('SELECT count(*) AS n FROM proxy_provisioning_jobs')[0]['n'],0)
 
+    def test_readiness_uses_read_only_transaction_and_does_not_evaluate_or_claim(self):
+        before=self.execute('SELECT * FROM proxy_provisioning_settings')[0]
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            result=provision.handle(conn,dict(action='inspect',host=self.host))
+            self.assertEqual(conn.execute('SHOW transaction_read_only').fetchone()['transaction_read_only'],'on')
+        self.assertEqual(result['policy'],'ready'); self.assertEqual(result['capacity'],'ready')
+        self.assertEqual(self.execute('SELECT * FROM proxy_provisioning_settings')[0],before)
+        self.assertEqual(self.execute('SELECT count(*) AS n FROM proxy_provisioning_jobs')[0]['n'],0)
+        self.assertNotIn('test-private',json.dumps(result)); self.advice.assert_not_called()
+
+    def test_readiness_explains_disabled_ai_pending_and_failed_preparation(self):
+        job=self.call()
+        before=self.execute('SELECT * FROM proxy_provisioning_jobs')[0]
+        self.assertEqual(self.call(action='inspect')['capacity'],'preparation_pending')
+        self.assertEqual(self.execute('SELECT * FROM proxy_provisioning_jobs')[0],before)
+        self.execute("UPDATE proxy_provisioning_jobs SET state='failed' WHERE id=%s",job['job_id'])
+        self.assertEqual(self.call(action='inspect')['capacity'],'preparation_failed')
+        with patch.object(ai,'active',return_value=None):
+            self.assertEqual(self.call(action='inspect')['policy'],'ai_unavailable')
+        self.execute('UPDATE proxy_provisioning_settings SET enabled=false')
+        self.assertEqual(self.call(action='inspect')['policy'],'disabled')
+
     def test_unpaid_paused_rejected_unknown_or_distant_channel_do_not_create(self):
         for change in ("payment_status='awaiting_payment'","moderation_status='rejected'","auto_schedule_paused=true", "requested_start_at=now()+interval '2 days'"):
             self.execute('UPDATE campaigns SET '+change+' WHERE id=%s',self.target)

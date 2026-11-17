@@ -22,7 +22,41 @@ ERRORS = {'resources_low', 'port_busy', 'owner_unavailable', 'registration_uncer
           'ambiguous_bot_response', 'start_failed', 'host_unavailable',
           'policy_changed', 'registration_conflict', 'agent_setup_failed',
           'registration_secret_mismatch', 'connection_busy', 'owner_helper_unavailable',
-          'preparation_interrupted', 'recovery_pending'}
+          'preparation_interrupted', 'recovery_pending', 'native_unavailable', 'timer_unavailable'}
+
+READINESS = {
+    'host': {'ready', 'host_unavailable'},
+    'native': {'ready', 'native_unavailable'},
+    'timers': {'ready', 'timer_unavailable'},
+    'telegram': {'ready', 'owner_unavailable', 'connection_busy', 'telegram_flood_wait'},
+    'resources': {'ready', 'resources_low'},
+    'api': {'ready', 'api_unavailable'},
+    'policy': {'ready', 'disabled', 'ai_unavailable', 'owner_unavailable', 'unknown'},
+    'ports': {'ready', 'port_busy', 'preparation_pending', 'instance_limit', 'unknown'},
+    'capacity': {'ready', 'instance_limit', 'preparation_pending', 'preparation_failed', 'daily_limit', 'unknown'},
+}
+
+
+def readiness_report():
+    from . import control
+    raw = control.read('proxy-readiness.json', {})
+    try:
+        if raw.get('schema') != 1 or not isinstance(raw.get('checks'), dict):
+            return None
+        checks = {key: raw['checks'][key] for key in READINESS}
+        if any(not isinstance(value, str) or value not in READINESS[key] for key, value in checks.items()):
+            return None
+        checked = datetime.fromisoformat(raw['checked_at'])
+        age = (datetime.now(timezone.utc)-checked).total_seconds()
+        if age < 0:
+            return None
+        result = dict(checked_at=checked.isoformat(), recent=age <= 660, checks=checks)
+        retry = datetime.fromisoformat(raw.get('retry_at', '')) if raw.get('retry_at') else None
+        if retry and checks['telegram']=='telegram_flood_wait' and 0 < (retry-datetime.now(timezone.utc)).total_seconds() <= 2147483648:
+            result['retry_at'] = retry.isoformat()
+        return result
+    except (AttributeError, KeyError, TypeError, ValueError, OverflowError):
+        return None
 
 
 class Settings(BaseModel):
@@ -64,7 +98,8 @@ def public(conn):
                 agent['retry_at'] = retry.isoformat()
     except (KeyError,TypeError,ValueError):
         agent = None
-    return dict(cfg, jobs=jobs, agent=agent, ai_ready=bool(channel_ai_connection.active('proxy_provisioning')))
+    return dict(cfg, jobs=jobs, agent=agent, readiness=readiness_report(),
+                ai_ready=bool(channel_ai_connection.active('proxy_provisioning')))
 
 
 def router_for(dsn, require_owner):
@@ -182,6 +217,26 @@ def allowed(conn, cfg):
 
 def handle(conn, request):
     """Вызывается только через docker exec владельцем хоста; не HTTP."""
+    if request['action'] == 'inspect':
+        # Диагностика не берёт задания, не расходует попытки и не вызывает ИИ.
+        conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY')
+        host = str(ipaddress.IPv4Address(request['host']))
+        if not ipaddress.ip_address(host).is_global:
+            raise ValueError('invalid_host')
+        cfg = conn.execute('SELECT * FROM proxy_provisioning_settings WHERE singleton').fetchone()
+        ai_ready = bool(channel_ai_connection.active('proxy_provisioning'))
+        owner_ready = bool(cfg['updated_by'] and conn.execute(
+            "SELECT 1 FROM users WHERE id=%s AND is_owner AND role='admin'", (cfg['updated_by'],)).fetchone())
+        jobs = conn.execute('SELECT state,created_at FROM proxy_provisioning_jobs').fetchall()
+        capacity = ('preparation_pending' if any(j['state']=='pending' for j in jobs) else
+                    'preparation_failed' if any(j['state']=='failed' for j in jobs) else
+                    'instance_limit' if len(jobs)>=cfg['max_instances'] else
+                    'daily_limit' if any(datetime.now(timezone.utc)-j['created_at']<timedelta(days=1) for j in jobs) else 'ready')
+        reserved = conn.execute('SELECT port FROM proxy_nodes WHERE host=%s', (host,)).fetchall()
+        return dict(first_port=cfg['first_port'], max_instances=cfg['max_instances'], capacity=capacity,
+                    reserved_ports=[r['port'] for r in reserved],
+                    policy='disabled' if not cfg['enabled'] else 'ai_unavailable' if not ai_ready else
+                           'owner_unavailable' if not owner_ready else 'ready')
     if not conn.execute('SELECT pg_try_advisory_xact_lock(%s) AS ok',(LOCK,)).fetchone()['ok']:
         return {'state':'wait'}
     cfg = configuration(conn)

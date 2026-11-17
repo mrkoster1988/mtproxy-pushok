@@ -17,7 +17,40 @@ window.pushokProvisioning=(()=>{
   bot_response_timeout:'Telegram не ответил вовремя',start_failed:'Новый экземпляр не запустился',
   policy_changed:'Условия изменились — продолжите подготовку кнопкой ниже',retry_later:'Ожидаем повторную попытку',
   agent_busy:'Агент занят другой операцией',connection_busy:'Аккаунт Telegram занят другой проверкой',
-  agent_setup_failed:'Не удалось установить службу нового экземпляра'};
+  agent_setup_failed:'Не удалось установить службу нового экземпляра',
+  native_unavailable:'Файлы MTProxy отсутствуют или недоступны. Выполните восстановление установки на VPS.',
+  timer_unavailable:'Таймеры автоматики остановлены. Восстановите хостовый агент.',
+  api_unavailable:'Агент не получил настройки из базы. Проверьте службу кабинета.',
+  unknown:'Пока не проверено',instance_limit:'Все разрешённые экземпляры уже созданы',
+  preparation_pending:'Продолжается подготовка ранее созданного экземпляра',
+  preparation_failed:'Сначала завершите подготовку с ошибкой в списке ниже'};
+ function readinessView(report){
+  const card=el('section',undefined,'proxy-readiness');card.id='proxy-readiness';
+  card.append(el('h4','Готовность VPS'));
+  const fresh=report?.recent===true;
+  const title=!report?'Проверка ещё не получена':!fresh?'Проверка устарела':Object.values(report.checks).every(v=>v==='ready')?'Предварительные проверки пройдены':'Есть условия для запуска';
+  card.append(el('p',title,'muted'));
+  if(report?.checked_at)card.append(el('p','Последняя проверка: '+date(report.checked_at),'muted'));
+  if(!fresh)card.append(el('p','Агент проверяет VPS автоматически каждые 5 минут. Нажмите «Обновить», чтобы получить новый отчёт.','muted'));
+  const names={host:'Адрес VPS',native:'Файлы MTProxy',timers:'Запуск по расписанию',telegram:'Сессия Telegram',resources:'Ресурсы VPS',api:'Связь с кабинетом',policy:'Разрешение ИИ',ports:'Порты',capacity:'Лимит экземпляров'};
+  const list=el('ul',undefined,'proxy-readiness-list');
+  for(const [key,name] of Object.entries(names)){
+   const code=report?.checks?.[key]||'unknown',row=el('li'),heading=el('strong',name);
+   const passed=fresh&&code==='ready';
+   heading.prepend(window.pushokViews.icon(passed?'check':'info'));
+   if(passed)row.classList.add('is-ready');
+   const text=code==='ready'?(key==='telegram'?'Сессия сохранена · без запроса в Telegram':'Проверено'):
+    key==='policy'&&code==='ai_unavailable'?'Включите подключение ИИ и разрешение на создание прокси.':
+    labels[code]||'Пока не проверено';
+   row.append(heading,el('span',text,'muted'));list.append(row);
+  }
+  card.append(list);
+  if(fresh&&report.retry_at)card.append(el('p','Telegram: повтор после '+date(report.retry_at),'muted'));
+  card.append(el('p','Готовность VPS не подтверждает регистрацию в Telegram или показ спонсора. Новый прокси создаётся только при очереди и выполнении настроенных условий.','muted'));
+  const help=el('details'),summary=el('summary','Проверить на сервере');
+  help.append(summary,el('p','Команда обновит отчёт без создания прокси и обращения к ИИ или Telegram.','muted'),el('code','sudo python3 /opt/mtproxy-pushok/scripts/proxy_provisioner.py check'));
+  card.append(help);return card;
+ }
  function reset(){generation++;controller?.abort();controller=null;dirty=false;busy=false;session='';$('proxy-provisioning-settings')?.replaceChildren();}
  async function load(force=false){
   const host=$('proxy-provisioning-settings');if(!host||!me?.is_owner){reset();return;}
@@ -56,7 +89,7 @@ window.pushokProvisioning=(()=>{
     }catch(error){if(valid())status.textContent=error.code==='provisioning_ai_required'?'Сначала включите ИИ и разрешение на создание прокси.':error.code==='provisioning_changed'?'Настройки изменились в другом окне. Нажмите «Обновить».':'Не удалось сохранить настройки.';}
     finally{if(valid()){busy=false;fields.disabled=false;}}
    });
-   content.append(info,form,status);
+   content.append(info,form,status,readinessView(saved.readiness));
    const jobs=el('div',undefined,'proxy-provisioning-jobs');
    for(const job of saved.jobs){
     const card=el('article',undefined,'proxy-provisioning-job');
