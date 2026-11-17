@@ -21,7 +21,8 @@ ERRORS = {'resources_low', 'port_busy', 'owner_unavailable', 'registration_uncer
           'telegram_flood_wait', 'telegram_unavailable', 'bot_response_timeout',
           'ambiguous_bot_response', 'start_failed', 'host_unavailable',
           'policy_changed', 'registration_conflict', 'agent_setup_failed',
-          'registration_secret_mismatch', 'connection_busy', 'owner_helper_unavailable'}
+          'registration_secret_mismatch', 'connection_busy', 'owner_helper_unavailable',
+          'preparation_interrupted', 'recovery_pending'}
 
 
 class Settings(BaseModel):
@@ -55,7 +56,12 @@ def public(conn):
         agent = {}
     try:
         age = (datetime.now(timezone.utc)-datetime.fromisoformat(agent['checked_at'])).total_seconds()
+        retry_at = agent.get('retry_at')
         agent = {'code':agent['code'],'checked_at':agent['checked_at'],'recent':0<=age<=660}
+        if isinstance(retry_at,str):
+            retry = datetime.fromisoformat(retry_at)
+            if retry.tzinfo and 0 < (retry-datetime.now(timezone.utc)).total_seconds() <= 2147483648:
+                agent['retry_at'] = retry.isoformat()
     except (KeyError,TypeError,ValueError):
         agent = None
     return dict(cfg, jobs=jobs, agent=agent, ai_ready=bool(channel_ai_connection.active('proxy_provisioning')))
@@ -94,6 +100,9 @@ def router_for(dsn, require_owner):
             cfg = configuration(conn)
             if not allowed(conn,cfg):
                 raise HTTPException(409,'provisioning_ai_required')
+            current = conn.execute('SELECT error_code,retry_at FROM proxy_provisioning_jobs WHERE id=%s FOR UPDATE',(job_id,)).fetchone()
+            if current and current['error_code']=='telegram_flood_wait' and current['retry_at']>datetime.now(timezone.utc):
+                raise HTTPException(409,'provisioning_telegram_cooldown')
             if conn.execute("SELECT 1 FROM proxy_provisioning_jobs WHERE state='pending' AND id<>%s",(job_id,)).fetchone():
                 raise HTTPException(409,'provisioning_busy')
             row = conn.execute('''UPDATE proxy_provisioning_jobs j SET state='pending',attempts=0,
@@ -176,11 +185,41 @@ def handle(conn, request):
     if not conn.execute('SELECT pg_try_advisory_xact_lock(%s) AS ok',(LOCK,)).fetchone()['ok']:
         return {'state':'wait'}
     cfg = configuration(conn)
-    if not allowed(conn,cfg):
-        return {'state':'disabled'}
     host = str(ipaddress.IPv4Address(request['host']))
     if not ipaddress.ip_address(host).is_global:
         raise ValueError('invalid_host')
+    # Восстановление работает и после отключения ИИ: рабочий узел не останавливаем,
+    # незавершённый экземпляр можно убрать без новой регистрации Telegram.
+    if request['action'] in ('recover','interrupted','complete'):
+        identity_field = 'proxy_node_id' if request['action']=='recover' else 'id'
+        requested = request.get('node_id' if identity_field=='proxy_node_id' else 'job_id')
+        recovered = conn.execute(f'''SELECT j.*,n.host,n.port,n.status,n.archived_at FROM proxy_provisioning_jobs j
+            JOIN proxy_nodes n ON n.id=j.proxy_node_id WHERE j.{identity_field}=%s FOR UPDATE OF j,n''',(requested,)).fetchone()
+        if not recovered or recovered['host']!=host or (request['action']=='recover' and recovered['port']!=request.get('port')):
+            return {'state':'unknown','accepted':False}
+        if request['action'] in ('recover','interrupted') and recovered['state']!='active':
+            in_use = recovered['status']=='active' or conn.execute('''SELECT 1 FROM campaigns
+                WHERE proxy_node_id=%s AND placement_status='active' UNION ALL SELECT 1 FROM promotion_runtime
+                WHERE proxy_node_id=%s AND state='applied' ''',(recovered['proxy_node_id'],recovered['proxy_node_id'])).fetchone()
+            if in_use:
+                return {'state':'unknown','accepted':False}
+        permitted = allowed(conn,cfg) and recovered['policy_revision']==cfg['revision'] and not recovered['archived_at']
+        if request['action']=='recover':
+            return {'state':'active' if recovered['state']=='active' else 'pending' if recovered['state']=='pending' and permitted else 'blocked',
+                    'job_id':str(recovered['id'])}
+        if request['action']=='interrupted':
+            if recovered['state']=='active':
+                return {'accepted':False}  # Подтверждённый экземпляр здесь не изменяется.
+            conn.execute('''UPDATE proxy_provisioning_jobs SET
+                state=CASE WHEN NOT %s OR attempts>=5 OR state='failed' THEN 'failed' ELSE 'pending' END,
+                error_code=COALESCE(error_code,%s),updated_at=now() WHERE id=%s''',
+                (bool(permitted),'preparation_interrupted' if permitted else 'policy_changed',recovered['id']))
+            return {'accepted':True}
+        if recovered['state']=='active':
+            registered = conn.execute('SELECT ad_tag FROM proxy_sponsor_registrations WHERE proxy_node_id=%s',(recovered['proxy_node_id'],)).fetchone()
+            return {'accepted':bool(registered and request.get('ready') is True and registered['ad_tag']==request.get('tag'))}
+    if not allowed(conn,cfg):
+        return {'state':'disabled','accepted':False}
     if request['action'] == 'settings':
         return {k:cfg[k] for k in ('enabled','first_port','max_instances')}
     job = conn.execute('''SELECT j.*,n.host,n.port,n.archived_at FROM proxy_provisioning_jobs j
@@ -196,19 +235,20 @@ def handle(conn, request):
         if request['action'] == 'failed':
             code = request.get('code') if request.get('code') in ERRORS else 'host_unavailable'
             delay = request.get('retry_seconds',900)
-            delay = max(900,min(604800,delay)) if type(delay) is int else 900
+            ceiling = 2147483647 if code=='telegram_flood_wait' else 604800
+            delay = max(900,min(ceiling,delay)) if type(delay) is int else 900
             conn.execute('''UPDATE proxy_provisioning_jobs SET error_code=%s,
                 state=CASE WHEN attempts>=5 OR %s='registration_uncertain' THEN 'failed' ELSE 'pending' END,
                 retry_at=now()+(%s*interval '1 second'),updated_at=now() WHERE id=%s''',(code,code,delay,job['id']))
             return {'accepted':True}
         tag = request.get('tag')
         if not isinstance(tag,str) or not re.fullmatch('[a-f0-9]{32}',tag) or tag == '0'*32 or request.get('ready') is not True:
-            return {'accepted':False}
+            return {'accepted':False,'reason':'tag_not_verified'}
         if conn.execute('''SELECT 1 FROM proxy_sponsor_registrations WHERE ad_tag=%s AND proxy_node_id<>%s
             UNION ALL SELECT 1 FROM channel_promotion_bindings WHERE ad_tag=%s AND proxy_node_id<>%s
             UNION ALL SELECT 1 FROM telegram_binding_jobs WHERE ad_tag=%s AND proxy_node_id<>%s''',
             (tag,job['proxy_node_id'],tag,job['proxy_node_id'],tag,job['proxy_node_id'])).fetchone():
-            return {'accepted':False}
+            return {'accepted':False,'reason':'registration_conflict'}
         conn.execute('''INSERT INTO proxy_sponsor_registrations(proxy_node_id,engine,ad_tag,registered_by_user_id)
             VALUES(%s,'official_mtproxy',%s,%s) ON CONFLICT(proxy_node_id) DO UPDATE SET
             ad_tag=EXCLUDED.ad_tag,registered_by_user_id=EXCLUDED.registered_by_user_id,registered_at=now()''',
@@ -224,6 +264,9 @@ def handle(conn, request):
     if job:
         if job['host'] != host or job['policy_revision'] != cfg['revision'] or job['archived_at']:
             return {'state':'wait','reason':'policy_changed'}
+        if job['attempts'] >= 5 and job['retry_at'] <= datetime.now(timezone.utc):
+            conn.execute("UPDATE proxy_provisioning_jobs SET state='failed',error_code=COALESCE(error_code,'preparation_interrupted'),updated_at=now() WHERE id=%s",(job['id'],))
+            return {'state':'wait','reason':'preparation_interrupted'}
         if job['attempts'] >= 5 or job['retry_at'] > datetime.now(timezone.utc):
             return {'state':'wait','reason':'retry_later'}
     else:
@@ -267,7 +310,7 @@ def handle(conn, request):
         conn.execute("INSERT INTO proxy_nodes(id,name,host,port,status,target_engine,engine_selection_mode) VALUES(%s,%s,%s,%s,'paused','official_mtproxy','auto')",(node_id,'MTProxy · Авто '+str(port),host,port))
         job = conn.execute('''INSERT INTO proxy_provisioning_jobs(proxy_node_id,owner_id,policy_revision)
             VALUES(%s,%s,%s) RETURNING *''',(node_id,cfg['updated_by'],cfg['revision'])).fetchone() | {'host':host,'port':port}
-    conn.execute("UPDATE proxy_provisioning_jobs SET attempts=attempts+1,retry_at=now()+interval '15 minutes',updated_at=now() WHERE id=%s",(job['id'],))
+    conn.execute("UPDATE proxy_provisioning_jobs SET attempts=attempts+1,error_code=NULL,retry_at=now()+interval '15 minutes',updated_at=now() WHERE id=%s",(job['id'],))
     return {'state':'provision','job_id':str(job['id']),'node_id':str(job['proxy_node_id']),
             'host':host,'port':job['port']}
 

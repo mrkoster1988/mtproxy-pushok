@@ -174,7 +174,7 @@ def main():
                     from check_channel_ai_ui import check_channel_ai_ui
                     admin = new_page('admin',390)
                     go(admin,'settings');admin.locator('#settings-system-tab').click()
-                    check_channel_ai_ui(admin,new_page('advertiser'),new_page('operator'),new_page,go,output)
+                    check_channel_ai_ui(admin,new_page('advertiser'),new_page('operator'),new_page,go,output,PostgresIntegration.dsn)
                     from check_campaign_assistant_ui import check_campaign_assistant_ui
                     check_campaign_assistant_ui(new_page,go,output,PostgresIntegration.dsn)
                     if failures:raise AssertionError(failures)
@@ -593,7 +593,7 @@ def main():
                 go(admin, 'settings')
                 admin.locator('#settings-system-tab').click()
                 from check_channel_ai_ui import check_channel_ai_ui
-                check_channel_ai_ui(admin, advertiser, operator, new_page, go, output)
+                check_channel_ai_ui(admin, advertiser, operator, new_page, go, output,PostgresIntegration.dsn)
                 expect(admin.locator('#team-fields')).to_be_enabled()
                 for field in ('loading-title-fields','team-fields','default-sponsor-fields'):
                     assert admin.locator('#'+field).evaluate('(e)=>getComputedStyle(e).borderTopWidth')=='0px'

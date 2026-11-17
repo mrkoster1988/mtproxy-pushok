@@ -10,8 +10,10 @@ window.pushokProvisioning=(()=>{
   registration_uncertain:'Telegram не подтвердил создание. Проверьте /myproxies перед повтором.',
   registration_prompt_invalid:'Ответ @MTProxyBot изменился — нужна проверка',proxy_not_found:'Регистрация ещё не найдена',
   registration_secret_mismatch:'Регистрация не соответствует секрету экземпляра',
+  registration_conflict:'Этот тег уже занят другим узлом',tag_not_verified:'Тег нового экземпляра не подтверждён',
   proxy_ambiguous:'Не удалось однозначно определить прокси',proxy_identity_not_verified:'Адрес прокси не подтверждён',
-  telegram_flood_wait:'Telegram ограничил частоту запросов',telegram_unavailable:'Telegram временно недоступен',
+  telegram_flood_wait:'Ждём окончания паузы Telegram',telegram_unavailable:'Telegram временно недоступен',
+  recovery_pending:'Сверяем результат запуска с базой',preparation_interrupted:'Подготовка была прервана',
   bot_response_timeout:'Telegram не ответил вовремя',start_failed:'Новый экземпляр не запустился',
   policy_changed:'Условия изменились — продолжите подготовку кнопкой ниже',retry_later:'Ожидаем повторную попытку',
   agent_busy:'Агент занят другой операцией',connection_busy:'Аккаунт Telegram занят другой проверкой',
@@ -42,6 +44,7 @@ window.pushokProvisioning=(()=>{
    const agent=saved.agent;
    status.textContent=!saved.ai_ready?'В настройках ИИ выше включите разрешение на создание прокси.':!agent?.recent?'Нет свежего отчёта. После обновления VPS агент появится здесь.':labels[agent.code]||'Проверьте состояние подготовки.';
    if(agent?.checked_at)content.append(el('p','Агент проверен: '+date(agent.checked_at),'muted'));
+   if(agent?.recent&&agent.retry_at)content.append(el('p','Telegram: следующая попытка после '+date(agent.retry_at),'muted'));
    const actions=el('div',undefined,'ai-settings-actions'),save=el('button','Сохранить','primary'),refresh=el('button','Обновить');save.type='submit';save.id='proxy-provisioning-save';refresh.type='button';refresh.addEventListener('click',()=>load(true));actions.append(save,refresh);fields.append(actions);form.append(fields);
    form.addEventListener('input',()=>{dirty=true;status.textContent='Есть несохранённые изменения.';});
    form.addEventListener('submit',async event=>{
@@ -58,13 +61,15 @@ window.pushokProvisioning=(()=>{
    for(const job of saved.jobs){
     const card=el('article',undefined,'proxy-provisioning-job');
     card.append(el('strong',job.name),el('p',job.host+':'+job.port,'muted'),el('p',job.state==='active'?'Создан · '+(job.status==='active'?'Доступен для размещений':'На паузе'):labels[job.error_code]||'Подготовка · попыток: '+job.attempts,'muted'));
-    if(job.state==='pending')card.append(el('p','Повтор не раньше: '+date(job.retry_at),'muted'));
+    const cooling=()=>job.error_code==='telegram_flood_wait'&&Date.parse(job.retry_at)>Date.now();
+    if(job.state==='pending'||cooling())card.append(el('p','Повтор не раньше: '+date(job.retry_at),'muted'));
     if(job.state!=='active'){
-     const retry=el('button','Продолжить подготовку');retry.type='button';retry.disabled=!saved.enabled||!saved.ai_ready;
-     retry.addEventListener('click',async()=>{if(busy||!valid())return;busy=true;retry.disabled=true;
+     const retry=el('button',cooling()?'Пауза Telegram':'Продолжить подготовку');retry.type='button';retry.disabled=!saved.enabled||!saved.ai_ready||cooling();
+     if(cooling())card.append(el('p',job.state==='pending'?'Продолжим автоматически после паузы.':'После паузы обновите состояние и продолжите подготовку.','muted'));
+     retry.addEventListener('click',async()=>{if(busy||!valid()||cooling())return;busy=true;retry.disabled=true;
       try{await api('/admin/proxy-provisioning/'+job.id+'/retry',{method:'POST',signal});if(valid()){busy=false;await load(true);if(ownSession===token&&me?.is_owner)$('proxy-provisioning-card').open=true;}}
-      catch(error){if(valid())status.textContent='Не удалось продолжить. Проверьте настройки и обновите состояние.';}
-      finally{if(valid()){busy=false;retry.disabled=false;}}
+      catch(error){if(valid())status.textContent=error.code==='provisioning_telegram_cooldown'?'Пауза Telegram ещё действует. Обновите состояние, чтобы увидеть время повтора.':'Не удалось продолжить. Проверьте настройки и обновите состояние.';}
+      finally{if(valid()){busy=false;retry.disabled=!saved.enabled||!saved.ai_ready||cooling();}}
      });card.append(retry);
     }
     jobs.append(card);
