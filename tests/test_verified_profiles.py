@@ -258,6 +258,89 @@ class VerificationIntegration(unittest.TestCase):
         self.assertIsNone(removed['birthday'])
         self.assertFalse(removed['birthday_opt_in'])
 
+    def test_profile_import_uses_own_private_chat_and_optional_year(self):
+        self.verify()
+        reply = {'ok': True, 'result': {'id': self.tg, 'type': 'private',
+                 'birthdate': {'day': 29, 'month': 2}}}
+        opener = Mock()
+        opener.open.return_value = io.BytesIO(json.dumps(reply).encode())
+        with patch.dict(os.environ, {'TELEGRAM_BOT_TOKEN': 'fixture-token'}), \
+             patch.object(verified, 'build_opener', return_value=opener):
+            result = self.request('POST', '/me/birthday/sync')
+        request = opener.open.call_args.args[0]
+        self.assertEqual(json.loads(request.data), {'chat_id': self.tg})
+        self.assertTrue(request.full_url.endswith('/botfixture-token/getChat'))
+        self.assertEqual(opener.open.call_args.kwargs['timeout'], 3)
+        self.assertEqual(result['birthday'], {'day': 29, 'month': 2, 'year': None})
+        self.assertEqual(result['birthday_source'], 'telegram')
+        self.assertEqual(result['birthday_sync_state'], 'imported')
+        self.assertTrue(result['phone_verified'])
+
+    def test_missing_birthday_and_failed_lookup_are_distinct_and_retryable(self):
+        self.verify()
+        with patch.object(verified, 'telegram_birthday', return_value=None) as lookup:
+            result = self.request('POST', '/me/birthday/sync')
+            self.assertEqual(result['birthday_sync_state'], 'unavailable')
+            self.assertIsNone(result['birthday'])
+            self.request('POST', '/me/birthday/sync')
+            lookup.assert_called_once_with(self.tg)  # Сервер ограничивает повторы.
+        self.db("UPDATE verified_profiles SET birthday_sync_checked_at=now()-interval '2 minutes' WHERE user_id=%s", (self.uid,))
+        with patch.object(verified, 'telegram_birthday', side_effect=TimeoutError('fixture')):
+            result = self.request('POST', '/me/birthday/sync')
+            self.assertEqual(result['birthday_sync_state'], 'failed')
+            self.assertTrue(result['phone_verified'])
+        self.db("UPDATE verified_profiles SET birthday_sync_checked_at=now()-interval '2 minutes' WHERE user_id=%s", (self.uid,))
+        with patch.object(verified, 'telegram_birthday', return_value=verified.Birthday(day=3, month=4)):
+            self.assertEqual(self.request('POST', '/me/birthday/sync')['birthday']['day'], 3)
+
+    def test_import_does_not_read_unverified_opted_out_other_or_test_profile(self):
+        with patch.object(verified, 'telegram_birthday') as lookup:
+            self.request('POST', '/me/birthday/sync')
+            self.verify()
+            self.actor = {'id': self.other, 'telegram_user_id': self.tg+1, 'role': 'operator'}
+            self.request('POST', '/me/birthday/sync')
+            self.actor = {'id': self.uid, 'telegram_user_id': self.tg, 'role': 'advertiser'}
+            with patch.dict(os.environ, {'PUSHOK_TELEGRAM_TEST_ENVIRONMENT': '1'}):
+                self.request('POST', '/me/birthday/sync')
+            self.db('UPDATE verified_profiles SET birthday_opt_in=false WHERE user_id=%s', (self.uid,))
+            self.request('POST', '/me/birthday/sync')
+            lookup.assert_not_called()
+
+    def test_late_import_cannot_overwrite_manual_edit_or_restore_deleted_birthday(self):
+        self.verify()
+        def while_fetching(uid):
+            self.assertEqual(self.request('POST', '/me/birthday/sync')['birthday_sync_state'], 'pending')
+            self.request('PUT', '/me/birthday', json={'birthday': {'day': 10, 'month': 5}, 'birthday_opt_in': True})
+            return verified.Birthday(day=3, month=4)
+        with patch.object(verified, 'telegram_birthday', side_effect=while_fetching) as lookup:
+            result = self.request('POST', '/me/birthday/sync')
+            self.assertEqual(result['birthday'], {'day': 10, 'month': 5, 'year': None})
+            self.assertEqual(result['birthday_source'], 'manual')
+            lookup.assert_called_once_with(self.tg)
+        self.request('PUT', '/me/birthday', json={'birthday': None, 'birthday_opt_in': True})
+        with patch.object(verified, 'telegram_birthday') as lookup:
+            result = self.request('POST', '/me/birthday/sync')
+            self.assertIsNone(result['birthday'])
+            self.assertEqual(result['birthday_sync_state'], 'manual')
+            lookup.assert_not_called()
+        self.update += 1
+        self.verify(birthday={'day': 3, 'month': 4})
+        self.assertIsNone(self.request('GET', '/me/verification')['birthday'])
+
+    def test_wrong_chat_or_invalid_date_does_not_import(self):
+        self.verify()
+        for chat in ({'id': self.tg+1, 'type': 'private', 'birthdate': {'day': 1, 'month': 1}},
+                     {'id': self.tg, 'type': 'group', 'birthdate': {'day': 1, 'month': 1}},
+                     {'id': self.tg, 'type': 'private', 'birthdate': {'day': 31, 'month': 2}}):
+            self.db('UPDATE verified_profiles SET birthday_sync_checked_at=NULL WHERE user_id=%s', (self.uid,))
+            opener = Mock()
+            opener.open.return_value = io.BytesIO(json.dumps({'ok': True, 'result': chat}).encode())
+            with patch.dict(os.environ, {'TELEGRAM_BOT_TOKEN': 'fixture-token'}), \
+                 patch.object(verified, 'build_opener', return_value=opener):
+                result = self.request('POST', '/me/birthday/sync')
+            self.assertEqual(result['birthday_sync_state'], 'failed')
+            self.assertIsNone(result['birthday'])
+
     def test_annual_bonus_atomic_concurrency_date_changes_and_next_year(self):
         self.verify(birthday={'day': 29, 'month': 2})
         self.db('UPDATE birthday_settings SET bonus_amount=10000')

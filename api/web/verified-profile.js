@@ -1,6 +1,6 @@
 'use strict';
 window.pushokVerification=(()=>{
- let profileNode=null,profileUser=null,pollEpoch=0,activeAttempt=null;
+ let profileNode=null,profileUser=null,profileSync=null,pollEpoch=0,activeAttempt=null;
  const title='Номер подтверждён в puShok';
  Object.assign(errors,{verification_request_expired:'Запрос истёк. Нажмите «Подтвердить номер» ещё раз.',own_telegram_contact_required:'Отправьте свой контакт кнопкой Telegram.',phone_invalid:'Telegram передал некорректный номер. Повторите подтверждение.'});
  function badge(){
@@ -40,14 +40,12 @@ window.pushokVerification=(()=>{
   return data.phone_verified;
  }
  function home(target){
-  if(!me){target.replaceChildren();delete target.dataset.state;return;}
+  if(!me||me.phone_verified){target.replaceChildren();target.hidden=true;delete target.dataset.state;return;}
+  target.hidden=false;
   const key=me.id+':'+Boolean(me.phone_verified);if(target.dataset.state===key)return;target.dataset.state=key;
   target.replaceChildren();const card=el('section',undefined,'verification-card');target.append(card);
   const heading=el('div',undefined,'verification-heading'),copy=el('div');
-  heading.append(me.phone_verified?badge():window.pushokViews.icon('user'),copy);card.append(heading);
-  if(me.phone_verified){
-   card.classList.add('verification-complete');copy.append(el('strong',title));const link=el('a','Мой профиль');link.href='#/profile';card.append(link);return;
-  }
+  heading.append(window.pushokViews.icon('user'),copy);card.append(heading);
   copy.append(el('h2','Подтвердите свой номер'),el('p','Номер будет виден вам и администратору.'));
   const help=el('details',undefined,'verification-consent');help.append(el('summary','Какие сведения сохранятся'),el('p','Ваш номер будет виден вам и администратору. Доступную дату рождения из Telegram используем для поздравлений и ежегодного бонуса по условиям puShok. Год рождения необязателен. Это подтверждение номера внутри puShok.'));card.append(help);
   const consent=optIn(true),status=el('p',undefined,'verification-status');status.setAttribute('role','status');card.append(consent.node);
@@ -71,7 +69,7 @@ window.pushokVerification=(()=>{
     status.textContent='Telegram передал контакт. Ждём подтверждения бота…';
     const deadline=Date.now()+12000;
     while(valid()&&Date.now()<deadline){
-     if(await refreshStatus(session,signal,Math.min(8000,deadline-Date.now()))){if(valid())notice('Номер подтверждён. Данные сохранены в профиле.',true);return;}
+     if(await refreshStatus(session,signal,Math.min(8000,deadline-Date.now())))return;
      await pause(Math.min(2000,Math.max(0,deadline-Date.now())),signal);
     }
     if(valid()){status.textContent='Бот пока не подтвердил контакт. Проверьте статус позже или подтвердите номер через бота.';fallback.hidden=false;}
@@ -92,12 +90,13 @@ window.pushokVerification=(()=>{
   return box;
  }
  function profile(target){
-  if(profileNode&&profileUser===me.id){target.append(profileNode);return;}
+  if(profileNode&&profileUser===me.id){target.append(profileNode);profileSync?.();return;}
+  profileSync=null;
   const uid=me.id,session=token;profileUser=uid;const box=profileNode=el('section',undefined,'verification-card profile-personal');target.append(box);
   box.append(el('h2','Личные сведения'),el('p','Загружаем сведения…','muted'));
   const valid=()=>session===token&&me?.id===uid&&profileNode===box;
   async function load(){
-   try{const data=await api('/me/verification');if(!valid())return;paint(data);if(Boolean(me.phone_verified)!==data.phone_verified){me.phone_verified=data.phone_verified;window.cabinet.sync(ownCampaigns);}}catch(e){if(valid())box.replaceChildren(el('h2','Личные сведения'),el('p',e.message,'muted'),button('Повторить',load));}
+   try{const data=await request('/me/verification');if(!valid())return;paint(data);if(Boolean(me.phone_verified)!==data.phone_verified){me.phone_verified=data.phone_verified;window.cabinet.sync(ownCampaigns);}}catch(e){if(valid())box.replaceChildren(el('h2','Личные сведения'),el('p',e.message,'muted'),button('Повторить',load));}
   }
   function paint(data){
    box.replaceChildren(el('h2','Личные сведения'));
@@ -109,19 +108,40 @@ window.pushokVerification=(()=>{
    [['','Месяц'],...['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'].map((m,i)=>[String(i+1),m])].forEach(([value,text])=>{const o=el('option',text);o.value=value;month.append(o);});month.value=data.birthday?.month||'';
    year.type='number';year.min=String(new Date().getFullYear()-120);year.max=String(new Date().getFullYear());year.inputMode='numeric';year.placeholder='—';year.title='Год указывать необязательно';year.value=data.birthday?.year||'';
    fields.append(label('День',day),label('Месяц',month),label('Год',year));form.append(el('h3','День рождения'),fields);
-   const source=el('p',data.birthday_source==='telegram'?'Добавлено из профиля Telegram. Можно исправить.':'Если Telegram не передал дату, укажите день и месяц здесь.','muted');form.append(source);
+   const explanation=value=>value.birthday_source==='telegram'?'Добавлено из профиля Telegram. Можно исправить.':
+    value.birthday_source==='manual'?'Дата указана вами.':value.birthday_sync_state==='manual'?'Дата рождения удалена вами.':
+    value.birthday_sync_state==='unavailable'?'Telegram не передал дату рождения. Проверьте её доступность в Telegram или укажите день и месяц здесь.':
+    value.birthday_sync_state==='failed'?'Не удалось получить дату из Telegram. Повторите проверку через минуту или укажите её здесь.':
+    value.birthday_sync_state==='pending'?'Проверяем дату в Telegram. Повторная проверка доступна через минуту.':
+    'Дату рождения можно взять из Telegram или указать здесь. Год необязателен.';
+   const source=el('p',explanation(data),'muted');form.append(source);
    const consent=optIn(data.birthday_opt_in),status=el('p',undefined,'verification-status');status.setAttribute('role','status');form.append(consent.node);
-   const save=el('button','Сохранить');save.type='submit';form.append(save,status);box.append(form);
+   let edited=false,syncing=false,lastSyncAt=0;form.addEventListener('input',()=>{edited=true;});form.addEventListener('change',()=>{edited=true;});
+   const importButton=button('Взять из Telegram',syncBirthday);importButton.classList.add('birthday-import');
+   importButton.hidden=!data.phone_verified||!data.birthday_opt_in||Boolean(data.birthday)||data.birthday_sync_state==='manual';
+   const save=el('button','Сохранить');save.type='submit';const actions=el('div',undefined,'verification-actions');actions.append(save,importButton);form.append(actions,status);box.append(form);
+   async function syncBirthday(){
+    if(importButton.hidden||syncing)return;syncing=true;lastSyncAt=Date.now();importButton.disabled=true;source.textContent='Проверяем дату рождения в Telegram…';
+    try{
+     const result=await request('/me/birthday/sync',{method:'POST'});if(!valid()||!box.contains(form))return;
+     if(edited){source.textContent='Проверка завершена. Ваши изменения сохраните кнопкой «Сохранить».';return;}
+     data=result;source.textContent=explanation(result);
+     if(result.birthday){day.value=result.birthday.day;month.value=result.birthday.month;year.value=result.birthday.year||'';importButton.hidden=true;}
+    }catch{if(valid()&&box.contains(form)&&!edited)source.textContent='Не удалось получить дату из Telegram. Можно повторить проверку или заполнить её вручную.';}
+    finally{syncing=false;importButton.disabled=false;}
+   }
    form.addEventListener('submit',async event=>{
     event.preventDefault();if(save.disabled)return;
     if((day.value||month.value||year.value)&&(!day.value||!month.value)){status.textContent='Укажите день и месяц. Год можно не заполнять.';return;}
     const birthday=day.value?{day:Number(day.value),month:Number(month.value),year:year.value?Number(year.value):null}:null;
     if(birthday){const check=new Date(Date.UTC(birthday.year||2000,birthday.month-1,birthday.day));if(check.getUTCMonth()!==birthday.month-1||check.getUTCDate()!==birthday.day){status.textContent='Проверьте дату рождения.';return;}}
-    save.disabled=true;status.textContent='Сохраняем…';
-    try{await api('/me/birthday',{method:'PUT',body:{birthday,birthday_opt_in:consent.input.checked}});if(valid()){status.textContent='Сведения сохранены.';source.textContent=birthday?'Дата указана вами.':'Дата рождения удалена.';}}
+    edited=true;save.disabled=true;status.textContent='Сохраняем…';
+    try{await api('/me/birthday',{method:'PUT',body:{birthday,birthday_opt_in:consent.input.checked}});if(valid()){status.textContent='Сведения сохранены.';source.textContent=birthday?'Дата указана вами.':'Дата рождения удалена.';importButton.hidden=true;}}
     catch(e){if(valid())status.textContent=e.code==='request_validation_failed'||e.status===422?'Проверьте дату рождения.':e.message;}
     finally{save.disabled=false;}
    });
+   profileSync=()=>{if(location.hash.startsWith('#/profile')&&!edited&&Date.now()-lastSyncAt>=60000)void syncBirthday();};
+   profileSync();
   }
   void load();
  }
@@ -136,6 +156,6 @@ window.pushokVerification=(()=>{
   const save=el('button','Сохранить'),status=el('p',undefined,'verification-status');save.type='submit';status.setAttribute('role','status');form.append(save,status);
   form.addEventListener('submit',async event=>{event.preventDefault();if(save.disabled)return;save.disabled=true;try{await api('/admin/birthday-settings',{method:'PUT',body:{congratulations_enabled:enabled.checked,bonus_amount:Math.round(Number(amount.value)*100)}});if(session===token)status.textContent='Настройки сохранены.';}catch(e){if(session===token)status.textContent=e.message;}finally{save.disabled=false;}});
  }
- function reset(){activeAttempt?.abort();activeAttempt=null;pollEpoch++;profileNode=null;profileUser=null;document.querySelectorAll('#birthday-settings,#dashboard-verification').forEach(n=>{n.replaceChildren();delete n.dataset.state;});}
+ function reset(){activeAttempt?.abort();activeAttempt=null;pollEpoch++;profileNode=null;profileUser=null;profileSync=null;document.querySelectorAll('#birthday-settings,#dashboard-verification').forEach(n=>{n.replaceChildren();delete n.dataset.state;});}
  return {badge,home,profile,readOnly,settings,reset};
 })();
