@@ -1743,10 +1743,15 @@ def main():
                 expect(advertiser.locator('#workspace')).to_be_hidden()
                 print('PASS: real API/SQL forms, roles, lifecycle, upload/download, reports, routing and mobile widths')
             except Exception:
+                import traceback
+                traceback.print_exc()
                 for page in browser.contexts:
                     for tab in page.pages:
                         if not tab.is_closed():
-                            tab.screenshot(path=str(output / ('failure-' + str(id(tab)) + '.png')), full_page=True)
+                            try:
+                                tab.screenshot(path=str(output / ('failure-' + str(id(tab)) + '.png')), full_page=True, timeout=5000)
+                            except Exception:
+                                pass  # Сбой снимка не должен скрывать исходную ошибку проверки.
                 raise
             finally:
                 browser.close()

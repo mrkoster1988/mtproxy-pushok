@@ -50,10 +50,13 @@ def inspect(host, *, source='scheduled'):
             checks[name] = failure
 
     address = None
+    alias = None
     try:
         address = host.primary_host()
+        alias = host.primary_alias()
         checks['host'] = 'ready'
     except (OSError, ValueError, KeyError):
+        address = None
         checks['host'] = 'host_unavailable'
     probe('native', lambda: native_ready(host.BASE, host.BINARY), 'native_unavailable')
     probe('timers', timers_ready, 'timer_unavailable')
@@ -76,7 +79,7 @@ def inspect(host, *, source='scheduled'):
     if address:
         try:
             # Этот action выполняется в read-only транзакции и не вызывает модель.
-            cfg = host.exchange(dict(action='inspect', host=address))
+            cfg = host.exchange(dict(action='inspect', host=address, primary_host=alias))
         except BlockingIOError:
             checks['api'] = 'agent_busy'
             return finish()
@@ -103,6 +106,10 @@ def inspect(host, *, source='scheduled'):
         # Ответ кабинета уже проверен. Ошибка локального порта не отменяет его.
         try:
             checks.update(api='ready', policy=cfg['policy'], capacity=cfg['capacity'])
+            if isinstance(cfg.get('queue'), dict):
+                report['queue'] = {key: cfg['queue'][key] for key in
+                    ('node_count','campaign_count','delayed_count','max_delay_seconds','wait_minutes','limited')
+                    if key in cfg['queue']}
             revision = cfg.get('policy_revision')
             if isinstance(revision, str):
                 try:

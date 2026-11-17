@@ -44,6 +44,9 @@ def check_management_navigation(browser, base, output, failures, dsn):
         menu = admin.get_by_role('navigation', name='Управление', exact=True)
         expect(menu.get_by_role('link', name='Настройки', exact=True)).to_have_count(0)
         expect(menu.locator('a[href^="#/management/"]')).to_have_count(len(sections))
+        expect(menu.get_by_role('link',name='Бонусы и акции',exact=True)).to_have_attribute('href','#/growth')
+        expect(admin.locator('.profile-menu a[href="#/growth"]')).to_have_count(1)
+        expect(menu.get_by_role('link',name='Версия и обновления',exact=True)).to_have_attribute('href','#/profile/updates')
         for key, (label, selectors) in sections.items():
             menu.get_by_role('link', name=label, exact=True).click()
             expect(admin).to_have_url(base + '/#/management/' + key)
