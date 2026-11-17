@@ -169,6 +169,7 @@ window.pushokApproval=(()=>{
     }),'upload','Прикрепить скриншот №'+report.id);form.append(upload);entry.append(form,feedback);window.pushokControls.fieldActions(input,[upload]);}
    }
   }),'history','Журнал проверок'));
+  if(me.role==='admin'){const panel=details('Возврат оплаты',box,'wallet','campaign-refunds');panel.parentElement.addEventListener('toggle',()=>{if(panel.parentElement.open&&!panel.dataset.loaded){panel.dataset.loaded='true';window.pushokRefunds.load(c,panel);}});}
   if(!c.archived_at)archivedQueue();
  }
  async function download(path,name){const session=token;const response=await fetch('/api/v1'+path,{headers:{Authorization:'Bearer '+token}});if(!response.ok)throw Error('Не удалось скачать файл. Обновите состояние.');const blob=await response.blob();if(session!==token||!me)return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}

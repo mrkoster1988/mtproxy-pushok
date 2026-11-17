@@ -445,6 +445,7 @@ EOF
     database/060_proxy_gateway.sql
     database/061_proxy_reserve.sql
     database/062_owner_migration_recovery.sql
+    database/063_campaign_refunds.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"
