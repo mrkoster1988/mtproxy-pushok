@@ -112,7 +112,7 @@ def settle(conn, now=None):
                         if amount:
                             entry=post(conn,item['user_id'],'BONUS',amount,'gift_credit',
                                 f"hall:{row['id']}:{metric}:{item['user_id']}",
-                                f"Доска почёта · {METRICS[metric]} · место {rank} · {start.date()}")['id']
+                                f"Доска почёта · {METRICS[metric]} · место {rank} · {start.astimezone(MOSCOW).date()}")['id']
                         conn.execute('''INSERT INTO hall_results(period_id,metric,user_id,rank,score,bonus_amount,entry_id)
                             VALUES(%s,%s,%s,%s,%s,%s,%s)''',(row['id'],metric,item['user_id'],rank,item['score'],amount,entry))
                 conn.execute('UPDATE hall_periods SET closed_at=%s WHERE id=%s',(now,row['id']))
