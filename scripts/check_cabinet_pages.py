@@ -15,6 +15,7 @@ import sys
 import threading
 import time
 import tempfile
+from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -72,7 +73,12 @@ def main():
     thread = None
     sock = None
     failures = []
+    proxy_fixtures = ExitStack()
     try:
+        # Изолируем файлы подключения от VPS и используем один источник для обоих API.
+        proxy_dir = proxy_fixtures.enter_context(tempfile.TemporaryDirectory(prefix='pushok-ui-proxy-'))
+        proxy_file = Path(proxy_dir) / 'proxy-link.json'
+        proxy_fixtures.enter_context(patch('app.proxy_link.LINK_FILE', proxy_file))
         sessions = {}
         session_ids = {}
         with psycopg.connect(PostgresIntegration.dsn) as connection:
@@ -299,8 +305,20 @@ def main():
                 expect(advertiser.locator('[data-page=dashboard] .campaign-tile')).to_have_count(0)
                 proxy=advertiser.get_by_role('link',name='Подключить прокси',exact=True)
                 expect(proxy).to_be_visible()
-                advertiser.evaluate("window.cabinet.config({telegram_bot_username:'fixture_bot',proxy_url:'https://t.me/proxy?server=proxy.example.org&port=443&secret=ddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'})")
-                expect(proxy).to_have_attribute('href','https://t.me/proxy?server=proxy.example.org&port=443&secret=ddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')
+                expect(proxy).to_have_attribute('aria-disabled', 'true')
+                proxy_url = 'https://t.me/proxy?server=proxy.example.org&port=443&secret=ddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+                proxy_file.write_text(json.dumps({'url': proxy_url}), encoding='utf-8')
+                # Не подменяем DOM: поздний /me/proxy-connection раньше стирал
+                # вручную заданный href. Проверяем настоящий API и повторную загрузку.
+                assert advertiser.request.get(base + '/api/v1/public-config').json()['proxy_url'] == proxy_url
+                assert advertiser.request.get(base + '/api/v1/me/proxy-connection',
+                    headers={'Authorization': 'Bearer ' + sessions['advertiser']}).json()['url'] == proxy_url
+                advertiser.reload()
+                expect(proxy).to_have_attribute('href', proxy_url)
+                advertiser.evaluate('async () => { await window.pushokGateway.connection(true); }')
+                expect(proxy).to_have_attribute('href', proxy_url)
+                expect(proxy).not_to_have_attribute('aria-disabled', 'true')
+                print('PASS: dashboard proxy link from real API survives connection refresh', flush=True)
                 assert proxy.evaluate("e=>getComputedStyle(e).backgroundColor==='rgb(217, 71, 80)'")
                 expect(advertiser.locator(".dashboard-hero-actions").get_by_role("link",name="Продвигать канал",exact=True)).to_be_visible()
                 assert proxy.evaluate("e=>e.nextElementSibling.textContent==='Продвигать канал'")
@@ -1814,6 +1832,7 @@ def main():
             thread.join(timeout=10)
         if sock:
             sock.close()
+        proxy_fixtures.close()
         release_patcher.stop()
         logo_patcher.stop()
         avatar_patcher.stop()
