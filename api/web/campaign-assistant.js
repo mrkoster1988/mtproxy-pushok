@@ -3,11 +3,13 @@
 window.pushokAssistant=(()=>{
  const requests=new Set();
  function reset(){for(const controller of requests)controller.abort();requests.clear();}
- function panel(c){
+ function panel(c,{expanded=false,decisionNode=null}={}){
   const host=el('details',undefined,'campaign-assistant'),heading=el('summary');
   heading.append(window.pushokViews.icon('info'),el('span','ИИ-помощник'));host.append(heading);
+  if(expanded){host.open=true;host.classList.add('assistant-open');heading.addEventListener('click',e=>e.preventDefault());}
   const body=el('div',undefined,'assistant-body'),status=el('p','Разбор заявки, рекомендации и черновик комментария.','muted');
   const actions=el('div',undefined,'assistant-actions'),output=el('section',undefined,'assistant-output');
+  const saved=el('section',undefined,'assistant-saved');if(expanded)body.append(saved);
   status.setAttribute('role','status');status.setAttribute('aria-live','polite');body.append(status,actions,output);host.append(body);
   let busy=false,loaded=false,epoch=0;const session=token,uid=me.id;
   const valid=()=>host.isConnected&&host.getClientRects().length>0&&session===token&&uid===me?.id&&['admin','operator'].includes(me?.role);
@@ -28,7 +30,7 @@ window.pushokAssistant=(()=>{
     const details=el('details',undefined,'assistant-evidence'),summary=el('summary','На чём основан вывод');details.append(summary);
     review.evidence.forEach(item=>{const quote=el('figure');quote.append(el('figcaption',item.source_label),el('blockquote',item.text));details.append(quote);});card.append(details);
    }
-   card.append(el('p',review.limitation,'muted'));output.append(card);
+   output.append(card);window.pushokControls.help(card,[el('p',review.limitation,'muted')],'Границы проверки контента');
   }
   function render(result){
    output.replaceChildren();output.append(el('p','Снимок: '+date(result.generated_at),'muted'));
@@ -49,7 +51,7 @@ window.pushokAssistant=(()=>{
      status.textContent='Черновик вставлен. Проверьте текст и выберите решение в форме. Он ещё не отправлен.';
     }));output.append(tools);
    }
-   output.append(el('p','Рекомендации могут быть неточными. Изменения и отправка сообщения выполняются вами в форме заявки.','muted'));
+
   }
   async function analyze(kind){
    if(busy||!valid())return;busy=true;const version=++epoch;
@@ -64,15 +66,21 @@ window.pushokAssistant=(()=>{
   async function load(){
    if(loaded||!valid())return;loaded=true;status.textContent='Проверяем доступные возможности…';
    try{
-    const data=await request('/operator/ai-capabilities');if(!valid())return;actions.replaceChildren();
+    const [data,moderation]=await Promise.all([request('/operator/ai-capabilities'),expanded?request('/community/moderation/'+c.id):Promise.resolve(null)]);if(!valid())return;actions.replaceChildren();
+    if(expanded){
+     const check=moderation?.check;saved.replaceChildren();
+     if(check){saved.append(el('p',check.reason),el('time','Проверено: '+date(check.attempted_at)));}
+     else saved.append(el('p',c.moderation_status==='pending'?'Заявка ожидает проверки. Сохранённого разбора пока нет.':'Сохранённого разбора ИИ для этой заявки нет.'));
+     if(check?.approved_by_agent&&decisionNode){const link=el('a','Агент ИИ');link.href='#/user/ai-agent';link.addEventListener('click',()=>window.pushokProfiles.setBackRoute('moderation/'+c.id));decisionNode.replaceChildren(document.createTextNode('Одобрено: '),link);decisionNode.classList.add('ai-decision');}
+    }
     for(const [id,kind,title] of [['campaign_review','review','Разобрать заявку'],['launch_diagnostics','launch','Проверить запуск']]){
      if(data.capabilities.includes(id)){const b=button(title,()=>analyze(kind));b.dataset.analysisKind=kind;actions.append(b);}
     }
-    status.textContent=actions.childElementCount?'Выберите задачу. Анализ запускается только по нажатию.':'Помощник выключен. Владелец может включить его в настройках ИИ.';
-    if(me.is_owner){const link=el('a','Подключение и права ИИ');link.href='#/management/automation';body.append(link);}
+    status.textContent=actions.childElementCount?'':'Новый анализ сейчас недоступен.';
+    window.pushokControls.help(host,[el('p','Показан сохранённый разбор. Новый анализ запускается кнопкой. Рекомендации помощника не меняют заявку: решение отправляется штатной формой.')],'О работе ИИ-помощника');
    }catch{if(valid()){loaded=false;status.textContent='Не удалось загрузить возможности.';actions.replaceChildren(button('Повторить',load));}}
   }
-  host.addEventListener('toggle',()=>{if(host.open)void load();});return host;
+  host.addEventListener('toggle',()=>{if(host.open)void load();});if(expanded)setTimeout(()=>void load(),0);return host;
  }
  return {panel,reset};
 })();

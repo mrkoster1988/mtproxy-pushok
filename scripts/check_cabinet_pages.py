@@ -36,6 +36,7 @@ def main():
     parser.add_argument("--campaign-cards-only", action="store_true", help="Карточки кампаний во всех разделах")
     parser.add_argument("--verification-only", action="store_true", help="Подтверждение контакта, профиль и настройки подарка")
     parser.add_argument("--ai-only", action="store_true", help="Подключение ИИ, хранение ключа и роли")
+    parser.add_argument("--controls-only", action="store_true")
     args = parser.parse_args()
     # main.py captures this setting when imported, before test sessions are issued.
     os.environ["SESSION_SIGNING_KEY"] = "browser-test-only-" * 8
@@ -164,6 +165,11 @@ def main():
                         page.locator('#refresh').click()
                     expect(page.locator('#refresh')).to_be_enabled()
 
+                if args.controls_only:
+                    from check_unified_controls import check_unified_controls
+                    check_unified_controls(browser,base,output,failures,PostgresIntegration.dsn)
+                    print('PASS: unified controls, payment density and AI profile')
+                    return
                 if args.moderation_only:
                     from check_moderation_layout import check_moderation_layout
                     check_moderation_layout(browser,base,output,failures,PostgresIntegration.dsn)
@@ -536,7 +542,7 @@ def main():
                     expect(advertiser.locator('.automation-panel')).to_contain_text('Размещение запущено автоматически')
                     advertiser.get_by_role('button',name='Отчёт по кампании',exact=True).click()
                     expect(advertiser.locator('.campaign-report')).to_contain_text('История действий')
-                    expect(advertiser.locator('.report-observations')).not_to_have_attribute('open','')
+                    expect(advertiser.locator('.report-observations')).to_have_count(0)
                     advertiser.evaluate("""() => {
                         window.__openAutomation=document.querySelector('.automation-panel');
                         window.__openReport=document.querySelector('.campaign-report');
@@ -1705,6 +1711,8 @@ def main():
                 admin.set_viewport_size({'width':390,'height':1500})
                 personal_row.evaluate('(node) => scrollTo(0, node.getBoundingClientRect().top + scrollY - 140)')
                 personal_row.screenshot(path=str(output/'45-personal-gift-report-mobile.png'))
+                from check_unified_controls import check_unified_controls
+                check_unified_controls(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_moderation_layout import check_moderation_layout
                 check_moderation_layout(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_management_navigation import check_management_navigation

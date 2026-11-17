@@ -125,7 +125,7 @@ class CampaignReportTests(unittest.TestCase):
         script = (ROOT / "api/web/app.js").read_text(encoding="utf-8")
         self.assertIn("Отчёт по кампании", script)
         self.assertIn("/campaigns/'+c.id+'/report", script)
-        self.assertIn("Количество просмотров здесь не измеряется", script)
+        self.assertIn("Количество просмотров спонсора здесь не измеряется", script)
 
 if __name__ == "__main__":
     unittest.main()
