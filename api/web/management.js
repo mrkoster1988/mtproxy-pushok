@@ -80,7 +80,7 @@ window.pushokManagement=(()=>{
    const f=editor(box,'Запись узла',[
     {name:'name',label:'Название узла',value:n.name},{name:'host',label:'Адрес узла',value:n.host},{name:'port',label:'Порт узла',value:n.port,type:'number',min:1,max:65535}
    ],v=>api('/admin/proxy-nodes/'+n.id,{method:'PATCH',body:{name:v.name.value.trim(),host:v.host.value.trim(),port:Number(v.port.value)}}));
-   f.append(window.pushokViews.disclosure('Что изменится',[el('p','Изменяется запись в кабинете. Настройка прокси на VPS выполняется отдельно.','muted')],'inline-help'));
+   f.append(el('p','Изменяется запись в кабинете. Настройка прокси на VPS выполняется отдельно.','muted block-note'));
   });window.pushokViews.iconAction(edit,'edit','Изменить узел');controls.append(edit);
   const remove=archive(controls,'/admin/proxy-nodes/'+n.id,'Удалить узел из реестра? Будущие размещения вернутся на подбор. Активные показы сохранятся у оператора; прокси на VPS продолжит работать.','sponsors');window.pushokViews.iconAction(remove,'close','Удалить узел');remove.classList.add('danger-text');return box;
  }

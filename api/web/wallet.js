@@ -40,7 +40,7 @@ window.pushokWallet=(()=>{
    const [key,title,name]=entry,d=el('details',undefined,'disclosure-panel wallet-disclosure'),summary=el('summary',title);summary.prepend(window.pushokViews.icon(name));d.dataset.walletSection=key;
    d.open=Boolean(expanded[key]||(key==='topups'&&data.topups.some(t=>['created','pending','review'].includes(t.status))));
    if(key==='topup')d.classList.add('wallet-topup-disclosure');
-   d.addEventListener('toggle',()=>{if(d.isConnected)expanded[key]=d.open;});p.before(d);h.remove();d.append(summary,p);
+   d.addEventListener('toggle',()=>{if(d.isConnected)expanded[key]=d.open;if(d.open&&p.loadReview&&!p.reviewLoaded){p.reviewLoaded=true;void p.loadReview().catch(()=>{p.reviewLoaded=false;p.replaceChildren(el('p','Не удалось загрузить платежи.'),button('Повторить',()=>p.loadReview()));});}});p.before(d);h.remove();d.append(summary,p);
   }
  }
 
@@ -125,7 +125,7 @@ window.pushokWallet=(()=>{
   const c={value:'RUB'};
   const limit=field(f,'Максимум за одну заявку','text',value(prefs.per_campaign_limit,c.value));limit.inputMode='decimal';limit.required=true;
   const bonus=field(f,'Сначала расходовать бонусные рубли (для RUB)','checkbox');bonus.checked=prefs.use_bonus;
-  f.append(el('p','Согласие действует для всех ваших одобренных заявок, в том числе созданных ранее. Списывается цена заявки после скидки в пределах указанного лимита. При недостатке средств заявка ждёт пополнения. Уже выставленный внешний счёт сначала нужно завершить. Проверка выполняется раз в минуту.','muted'));
+  f.append(el('p','Согласие действует для всех ваших одобренных заявок, в том числе созданных ранее. Списывается цена заявки после скидки в пределах указанного лимита. При недостатке средств заявка ждёт пополнения. Уже выставленный внешний счёт сначала нужно завершить. Проверка выполняется раз в минуту.','muted block-note'));
   submit(f,'Сохранить автосписание',async()=>{await api('/wallet/preferences',{method:'PUT',body:{auto_pay:enabled.checked,currency:c.value,per_campaign_limit:limit.value?minor(limit.value,c.value):0,use_bonus:bonus.checked}});notice(enabled.checked?'Автосписание включено в указанных пределах.':'Автосписание выключено.',true);await load(target);});
   p.append(f);root.append(p);
  }
@@ -133,7 +133,7 @@ window.pushokWallet=(()=>{
   const p=panel(admin?'Журнал пользователя':'История операций');p.classList.add('wallet-journal');if(!data.entries.length)p.append(el('p','Движений средств пока нет. Неоплаченные и закрытые счета показаны выше.','empty'));
   data.entries.forEach(e=>{const row=el('article',undefined,'card wallet-entry');row.dataset.direction=e.delta>0?'credit':'debit';
    const direct=e.source==='direct';row.append(el('h3',(e.delta>0?'+':'')+amount(e.delta,e.currency)),el('p',direct?'Оплата кампании · '+(e.provider==='telegram_stars'?'Telegram Stars':'СБП')+(e.payment_status==='refunded'?' · Возвращена':''):e.kind==='payment'&&e.automatic?'Автооплата размещения':kinds[e.kind]||e.kind));
-   const more=window.pushokViews.disclosure(date(e.created_at),[el('p',e.reason)],'wallet-entry-details');row.append(more);
+   const at=el('time',date(e.created_at));at.dateTime=e.created_at;row.append(at);const more=window.pushokViews.disclosure('Детали',[el('p',e.reason)],'wallet-entry-details');row.append(more);
    if(direct)more.append(el('p','Прямая оплата. Внутренний баланс не изменялся.','muted'));else more.append(el('p','Остаток после операции: '+amount(e.balance_after,e.currency),'muted'),el('p','Проводка №'+e.entry_number,'muted'));
    if(e.actor_telegram_id)more.append(el('p','Автор: '+(e.actor_username?'@'+e.actor_username+' · ':'')+e.actor_telegram_id,'muted'));
    if(e.campaign_id&&(admin||!['referral_reward','referral_reversal'].includes(e.kind))){const a=el('a','Открыть заявку →');a.href='#/'+(e.archived_at?'archive/':admin?'moderation/':'create/')+e.campaign_id;more.append(a);}
@@ -151,7 +151,7 @@ window.pushokWallet=(()=>{
   if(!/^[1-9][0-9]{0,15}$/.test(adminTelegram)){
    try{const users=await api('/admin/wallet/users?query='+encodeURIComponent(adminTelegram));if(!current())return;
     node.replaceChildren(el('p',users.length?'Выберите пользователя:':'Пользователь не найден. Попросите его открыть кабинет и скопировать ID из профиля.','muted'));
-    for(const user of users){const row=el('article',undefined,'card');row.append(window.pushokProfiles.compact(user),button('Открыть баланс',async()=>{adminTelegram=String(user.telegram_user_id);adminPage=0;await adminLookup();}));node.append(row);}
+    for(const user of users){const row=el('article',undefined,'card wallet-search-user');row.append(window.pushokProfiles.compact(user),button('Открыть баланс',async()=>{adminTelegram=String(user.telegram_user_id);adminPage=0;await adminLookup();}));node.append(row);}
    }catch(e){if(current())node.replaceChildren(el('p',e.message,'wallet-lookup-error'));}return;
   }
   try{data=await api('/admin/wallet/users/'+encodeURIComponent(adminTelegram)+'?page='+adminPage);}
@@ -163,7 +163,7 @@ window.pushokWallet=(()=>{
   const adjust=panel('Ручная операция'),f=el('form'),c=currencies(f,'Счёт','',true),direction=field(f,'Операция','select');opt(direction,'Начислить','credit');opt(direction,'Списать','debit');if(data.balances.XTR<0)opt(c,'Погасить прежнюю задолженность Stars','XTR');
   const a=field(f,'Сумма операции','text');a.required=true;a.inputMode='decimal';
   const reason=field(f,'Основание (видно пользователю)','text');reason.required=true;reason.minLength=3;reason.maxLength=500;
-  f.append(el('p','Для подарка выберите «Бонусные рубли». Начисления RUB означают подтверждённые средства; укажите основание. Прежняя задолженность Stars корректируется только до нуля по подтверждённому основанию. Записи нельзя удалить: ошибку отменяйте отдельной корректировкой.','muted'));
+  f.append(el('p','Для подарка выберите «Бонусные рубли». Начисления RUB означают подтверждённые средства; укажите основание. Прежняя задолженность Stars корректируется только до нуля по подтверждённому основанию. Записи нельзя удалить: ошибку отменяйте отдельной корректировкой.','muted block-note'));
   submit(f,'Провести операцию',async()=>{await remembered('/admin/wallet/users/'+data.user.telegram_user_id+'/adjust',{currency:c.value,direction:direction.value,amount:minor(a.value,c.value),reason:reason.value});notice('Операция сохранена в журнале.',true);});adjust.append(f);node.append(adjust);
   node.append(button('Скачать CSV (последние 10 000 операций)',async()=>{const response=await fetch('/api/v1/admin/wallet/users/'+data.user.telegram_user_id+'/export',{headers:{Authorization:'Bearer '+token}});if(!response.ok)throw Error('Не удалось получить журнал.');const url=URL.createObjectURL(await response.blob()),a=el('a');a.href=url;a.download='wallet-'+data.user.telegram_user_id+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}));
   entries(node,data,true,async page=>{adminPage=page;await adminLookup();});
@@ -181,25 +181,25 @@ window.pushokWallet=(()=>{
    if(data.enabled){topupForm(root,data);redeemGift(root);}else root.append(el('p','Внутренний баланс выключен. Остатки и история сохранены, новые пополнения и списания остановлены. Ранее выставленные счета продолжают проверяться. Заявки можно оплачивать напрямую.','wallet-warning'));
    topupList(root,data);autopay(root,data);telegramStars(root);
    if(me.role==='admin'){
-    const admin=panel('Управление балансами'),f=el('form'),tg=field(f,'Пользователь: @никнейм или ID','text',adminTelegram);tg.required=true;tg.placeholder='Telegram ID, @username или имя';tg.maxLength=100;f.prepend(el('p','Поиск по Telegram ID, @username или имени. Пользователь появляется после входа в puShok.','muted'));
+    const admin=panel('Управление балансами'),f=el('form'),tg=field(f,'Пользователь: @никнейм или ID','text',adminTelegram);tg.required=true;tg.placeholder='Telegram ID, @username или имя';tg.maxLength=100;f.prepend(Object.assign(el('p','Поиск по Telegram ID, @username или имени. Пользователь появляется после входа в puShok.','muted'),{className:'muted block-note'}));
     submit(f,'Найти пользователя',async()=>{adminTelegram=tg.value.trim();adminPage=0;await adminLookup();});f.append(button('К моему балансу',()=>{adminSeq++;adminTelegram='';adminPage=0;tg.value='';adminTarget?.replaceChildren();const section=f.closest('details');if(section)section.open=false;expanded.admin=false;node.scrollIntoView({block:'start'});}));admin.append(f);adminTarget=el('div',undefined,'wallet-admin-result');admin.append(adminTarget);root.append(admin);
-    const review=panel('Сверка пополнений');review.append(button('Показать последние 30 пополнений',async()=>{const rows=await api('/admin/wallet/topups');if(session!==token||uid!==me?.id||version!==epoch)return;let list=review.querySelector('.wallet-review');if(list)list.remove();list=el('div',undefined,'wallet-review');rows.forEach(t=>{const r=el('article',undefined,'card wallet-topup-review'),head=el('div',undefined,'wallet-topup-head');head.append(window.pushokProfiles.compact(t),el('strong',amount(t.amount,t.currency)));r.append(head,el('p',(statuses[t.status]||t.status)+(t.test_mode?' · Тест':'')+' · '+date(t.created_at),'muted'));const more=window.pushokViews.disclosure('Подробности платежа',[el('p','#'+t.id,'growth-code')]);if(t.review_reason)more.append(el('p','Нужна сверка: '+t.review_reason));r.append(more);list.append(r);});const unmatched=await api('/admin/wallet/unmatched-stars');if(session!==token||uid!==me?.id||version!==epoch)return;
+    const review=panel('Сверка пополнений');review.loadReview=async()=>{const rows=await api('/admin/wallet/topups');if(session!==token||uid!==me?.id||version!==epoch)return;let list=review.querySelector('.wallet-review');if(list)list.remove();list=el('div',undefined,'wallet-review');rows.forEach(t=>{const r=el('article',undefined,'card wallet-topup-review'),head=el('div',undefined,'wallet-topup-head');head.append(window.pushokProfiles.compact(t),el('strong',amount(t.amount,t.currency)));r.append(head,el('p',(statuses[t.status]||t.status)+(t.test_mode?' · Тест':'')+' · '+date(t.created_at),'muted'));const more=el('div',undefined,'wallet-payment-details');more.setAttribute('aria-label','Подробности платежа');more.append(el('p','Счёт #'+t.id,'growth-code'));if(t.review_reason)more.append(el('p','Нужна сверка: '+t.review_reason));r.append(more);list.append(r);});const unmatched=await api('/admin/wallet/unmatched-stars');if(session!==token||uid!==me?.id||version!==epoch)return;
      unmatched.receipts.forEach(r=>{const card=el('article',undefined,'card');card.append(el('h3','Неразобранное поступление Stars'),el('p','Telegram ID '+r.payer_telegram_user_id+' · '+r.total_amount+' Stars'),el('p','Запись #'+r.id+' · '+r.reason_code),el('p','Сверьте поступление и плательщика в Telegram. Не начисляйте средства повторно без проверки.','muted'));list.append(card);});
      unmatched.refunds.forEach(r=>{const card=el('article',undefined,'card');card.append(el('h3','Неразобранный возврат Stars'),el('p','Telegram ID '+r.telegram_user_id+' · '+r.amount+' Stars'),el('p',r.charge_id,'growth-code'));list.append(card);});
-     review.append(list);}));root.append(review);
+     if(!rows.length&&!unmatched.receipts.length&&!unmatched.refunds.length)list.append(el('p','Пополнений для сверки нет.','wallet-review-empty'));review.replaceChildren(list);};root.append(review);
    }
    if(me.role==='admin'){const gifts=await api('/admin/wallet/gifts?page='+giftPage+'&deleted='+giftDeleted+(giftDeleted?'':'&archived='+giftArchived));if(version!==epoch||session!==token||uid!==me?.id)return;adminGifts(root,gifts);}
    entries(root,journal,false,async page=>{historyPage=page;await load(node);});
-   foldPanels(root,data);node.replaceChildren(root);if(adminTelegram&&adminTarget)await adminLookup();
+   foldPanels(root,data);root.querySelectorAll('.block-note').forEach(n=>n.setAttribute('data-note',''));node.replaceChildren(root);if(adminTelegram&&adminTarget)await adminLookup();
   }catch(e){if(version===epoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить',()=>load(node)));}
  }
  function telegramStars(root){
   const p=panel('Мои Stars в Telegram'),link=el('a','Открыть мои Stars в Telegram ↗','ui-button');link.href='tg://settings/stars';
-  p.append(link,window.pushokViews.disclosure('Если ссылка не открылась',[el('p','Telegram → Настройки → Мои звёзды. Личный баланс и вся история Stars находятся в Telegram. Здесь показаны только операции puShok.','muted')]));root.append(p);
+  const note=el('p','Telegram → Настройки → Мои звёзды. Личный баланс и вся история Stars находятся в Telegram. Здесь показаны только операции puShok.','muted block-note');p.append(link,note);root.append(p);
  }
  function redeemGift(root){
   const p=panel('Активировать подарочный код'),f=el('form'),code=field(f,'Подарочный код на баланс','text');code.required=true;code.maxLength=64;code.placeholder='GIFT-…';code.autocomplete='off';
-  p.append(el('p','Код начисляет бонусные рубли один раз на пользователя. Ими можно оплатить рублёвую заявку в веб-кабинете; в Mini App оплата проходит Stars. Обмена бонусов на Stars или деньги нет.','muted'));
+  p.append(Object.assign(el('p','Код начисляет бонусные рубли один раз на пользователя. Ими можно оплатить рублёвую заявку в веб-кабинете; в Mini App оплата проходит Stars. Обмена бонусов на Stars или деньги нет.','muted block-note'),{className:'muted block-note'}));
   submit(f,'Получить подарок',async()=>{const result=await api('/wallet/gifts/redeem',{method:'POST',body:{code:code.value.trim().toUpperCase()}});notice(result.already_redeemed?'Этот подарок уже зачислен. Повторного начисления нет.':'Начислено '+amount(result.amount,'BONUS'),true);await load(target);});p.append(f);root.append(p);
  }
  function giftStatus(g){return 'До '+date(g.expires_at)+' · '+(g.deleted_at?'Удалён':!g.active?'Выключен':g.expired?'Срок истёк':g.used>=g.max_uses?'Лимит исчерпан':'Действует');}
@@ -256,7 +256,7 @@ window.pushokWallet=(()=>{
    try{const data=await api('/admin/wallet/gifts/'+g.id+'/redemptions?page='+page);if(!valid())return;
     Object.assign(g,data.gift,{used:data.total});row.querySelector('.wallet-gift-summary').textContent=amount(g.amount,'BONUS')+' · активаций '+g.used+' из '+g.max_uses;row.querySelector('.wallet-gift-status').textContent=giftStatus(g);syncGiftActions(row,g);
     box.replaceChildren(el('h4','Активации подарка'),el('p','Получателей: '+data.total+' · начислено '+amount(data.credited,'BONUS')),
-     el('p','Это начисления по коду. Последующие расходы и корректировки смотрите в журнале пользователя.','muted'));
+     el('p','Это начисления по коду. Последующие расходы и корректировки смотрите в журнале пользователя.','muted block-note'));
     if(!data.items.length)box.append(el('p','Этот код ещё никто не активировал.'));
     for(const e of data.items){const item=el('article',undefined,'card');item.append(el('strong','Telegram ID '+e.telegram_user_id),el('p',(e.username?'@'+e.username+' · ':'')+(e.first_name||'Пользователь')),el('p','+'+amount(e.amount,'BONUS')),el('p',date(e.created_at)+' · проводка №'+e.entry_number,'muted'));box.append(item);}
     const nav=el('div',undefined,'inline-actions');if(data.page>0)nav.append(button('Предыдущие активации',()=>show(data.page-1)));if((data.page+1)*data.page_size<data.total)nav.append(button('Следующие активации',()=>show(data.page+1)));

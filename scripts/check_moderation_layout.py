@@ -99,7 +99,7 @@ def check_moderation_layout(browser, base, output, failures, dsn):
         admin.set_viewport_size({'width': 390, 'height': 844})
         admin.screenshot(path=str(output / 'moderation-scheduled-closed.png'), full_page=True)
         # Click real disclosure controls: DOM rewrites must not break toggle handlers.
-        for title in ('Тариф и скидка', 'ИИ-помощник', 'Изменить или удалить заявку', 'История и документы'):
+        for title in ('Тариф и скидка', 'Изменить или удалить заявку', 'История и документы'):
             card.locator('summary').filter(has_text=title).click()
         expect(card.locator('.campaign-pricing')).to_contain_text('Условия можно менять только до оплаты')
         tools = card.get_by_role('group', name='Действия заявки', exact=True)
@@ -114,7 +114,7 @@ def check_moderation_layout(browser, base, output, failures, dsn):
         card.get_by_role('button', name='Отмена', exact=True).click()
         card.get_by_role('button', name='Отчёт по кампании', exact=True).click()
         expect(card.locator('.campaign-report')).to_contain_text('История действий')
-        expect(card.locator('.report-cell').filter(has_text='Оплата')).to_contain_text('Без оплаты')
+        expect(card.locator('.campaign-tile')).to_contain_text('Без оплаты')
         card.get_by_role('button', name='Журнал проверок', exact=True).click()
         expect(card.locator('.observation-panel')).to_contain_text('Проверок пока нет')
         admin.set_viewport_size({'width': 390, 'height': 844})

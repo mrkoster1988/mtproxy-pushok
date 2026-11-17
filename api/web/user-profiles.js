@@ -21,17 +21,15 @@ window.pushokProfiles=(()=>{
   return copy;
  }
  function advertiser(c){
-  const user={id:c.advertiser_user_id,first_name:c.advertiser_first_name,last_name:c.advertiser_last_name,username:c.advertiser_username};
-  const section=el('section',undefined,'approval-advertiser'),row=el(user.id?'a':'div',undefined,'advertiser-identity person-line');
-  section.append(el('span','Рекламодатель','person-caption'));
-  if(user.id){row.href='#/user/'+user.id;row.setAttribute('aria-label','Открыть профиль рекламодателя');row.addEventListener('click',()=>{returnRoute='moderation/'+c.id;});}
-  row.append(views().userAvatar(user.id,person(user).name||person(user).username),names(user));
-  if(user.id)row.append(views().icon('chevron'));section.append(row);return section;
+  const user={id:c.advertiser_user_id,telegram_user_id:c.advertiser_telegram_user_id,first_name:c.advertiser_first_name,last_name:c.advertiser_last_name,username:c.advertiser_username};
+  const section=el('article',undefined,'card directory-user approval-advertiser'),row=compact(user,'moderation/'+c.id);
+  row.classList.add('advertiser-identity');row.setAttribute('aria-label','Открыть профиль рекламодателя');
+  section.append(row,el('span','Рекламодатель','person-role'));return section;
  }
  function compact(user,back='wallet'){
   const id=user.user_id||user.id,row=el(id?'a':'div',undefined,'user-summary person-line'),copy=names(user);
   if(id){row.href='#/user/'+id;row.setAttribute('aria-label','Открыть профиль пользователя');row.addEventListener('click',()=>{returnRoute=back;});}
-  copy.append(el('small','ID '+user.telegram_user_id,'muted'));
+  if(user.telegram_user_id)copy.append(el('small','ID '+user.telegram_user_id,'muted'));
   row.append(views().userAvatar(id,person(user).name||person(user).username),copy);return row;
  }
  function accountDetails(user){
@@ -65,8 +63,24 @@ window.pushokProfiles=(()=>{
    const personal=target.parentElement.querySelector('.profile-personal');if(personal){const details=personal.querySelector('.profile-details');if(details)details.replaceWith(accountDetails(data.user));else personal.append(accountDetails(data.user));}
   }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p','Обзор не обновлён. '+e.message,'muted'),button('Повторить',()=>ownOverview(target)));}
  }
+ function agentCard(back='users'){
+  const card=el('article',undefined,'card directory-user ai-agent-card'),row=el('a',undefined,'user-summary person-line'),avatar=el('span',undefined,'user-avatar agent-avatar'),copy=el('div',undefined,'person-copy');
+  avatar.append(views().icon('moderation'));copy.append(el('strong','Агент ИИ','person-name'),el('small','Решения и статистика','muted'));row.append(avatar,copy);row.href='#/user/ai-agent';row.addEventListener('click',()=>{returnRoute=back;});card.append(row,el('span','Служебный аккаунт','person-role'));return card;
+ }
+ async function showAgent(target){
+  const session=token;target.replaceChildren(el('p','Загрузка статистики…','muted'));target.classList.add('ai-agent-profile');
+  try{const data=await api('/users/ai-agent/profile');if(session!==token||!target.isConnected||location.hash!=='#/user/ai-agent')return;
+   const card=agentCard(),stats=el('dl',undefined,'ai-agent-stats');card.querySelector('a').removeAttribute('href');
+   for(const [key,title] of [['approved','Одобрено'],['rejected','Отклонено'],['review','Передано сотруднику'],['campaigns','Проверено кампаний']]){const cell=el('div');cell.append(el('dt',title),el('dd',String(data.counts[key])));stats.append(cell);}
+   const section=el('section',undefined,'panel');section.append(el('h2','Решения по темам'));const table=el('table',undefined,'ai-topic-table'),head=el('tr');['Тематика','Одобрено','Отклонено','На проверку'].forEach(t=>head.append(el('th',t)));const thead=el('thead');thead.append(head);table.append(thead);const body=el('tbody');
+   for(const t of data.topics){const row=el('tr');[t.label,t.approved,t.rejected,t.review].forEach(v=>row.append(el('td',String(v))));body.append(row);}table.append(body);section.append(data.topics.length?table:el('p','Решений пока нет.','empty'));
+   target.replaceChildren(card,stats,section);
+   window.pushokControls.help(section,[el('p','Считаются сохранённые решения за всё время, включая повторные проверки. Передача сотруднику не является отказом. Автоматическое отклонение сейчас выключено. Темы фиксируются на момент решения; у старых записей тема может отсутствовать.'),el('p','Повторов из-за временной недоступности: '+data.counts.retry+'. Последнее решение: '+date(data.counts.last_decision_at))],'Как считается статистика агента');
+  }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p',e.message,'empty'),button('Повторить',()=>showAgent(target)));}
+ }
  function show(target,uid){
   if(!['admin','operator'].includes(me?.role)){target.replaceChildren();return;}
+  target.classList.remove('ai-agent-profile');if(uid==='ai-agent'){void showAgent(target);return;}
   const session=token,viewer=me?.id;let archived=false,campaignPage=0,channelPage=0,serial=0;
   target.replaceChildren(el('p','Загрузка профиля…','muted'));
   const valid=()=>session===token&&viewer===me?.id&&['admin','operator'].includes(me?.role)&&target.isConnected&&location.hash==='#/user/'+uid;
@@ -125,5 +139,5 @@ window.pushokProfiles=(()=>{
   }
   void load();
  }
- return {names,compact,identity,accountDetails,advertiser,ownOverview,show,setBackRoute:route=>{returnRoute=route;},backRoute:()=>returnRoute};
+ return {agentCard,names,compact,identity,accountDetails,advertiser,ownOverview,show,setBackRoute:route=>{returnRoute=route;},backRoute:()=>returnRoute};
 })();

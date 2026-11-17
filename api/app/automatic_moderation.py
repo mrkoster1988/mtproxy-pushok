@@ -45,7 +45,7 @@ def service_once(dsn,limit=3):
         with psycopg.connect(dsn,connect_timeout=3,row_factory=dict_row) as c:
             # Один короткий захват на все процессы, без блокировки БД во время сети.
             c.execute("SELECT pg_advisory_xact_lock(hashtextextended('ai-moderation',0))")
-            row=c.execute("""SELECT c.id,c.updated_at,c.advertiser_user_id,sc.id channel_id,sc.telegram_url,sc.telegram_channel_id
+            row=c.execute("""SELECT c.id,c.updated_at,c.advertiser_user_id,c.topic,sc.id channel_id,sc.telegram_url,sc.telegram_channel_id
                 FROM campaigns c JOIN sponsor_channels sc ON sc.id=c.channel_id
                 LEFT JOIN ai_moderation_checks a ON a.campaign_id=c.id
                 WHERE c.moderation_status='pending' AND c.archived_at IS NULL AND sc.archived_at IS NULL
@@ -82,6 +82,6 @@ def service_once(dsn,limit=3):
                 c.execute("UPDATE campaigns SET moderation_status='approved',payment_status='awaiting_payment',moderator_comment=%s,updated_at=now() WHERE id=%s",('Автоматически одобрено ИИ: '+reason,row['id']))
 
                 done+=1
-            c.execute('INSERT INTO ai_moderation_events(campaign_id,decision,reason,revision) VALUES(%s,%s,%s,%s)',(row['id'],decision,reason,revision))
+            c.execute('INSERT INTO ai_moderation_events(campaign_id,decision,reason,revision,topic) VALUES(%s,%s,%s,%s,%s)',(row['id'],decision,reason,revision,row['topic']))
             c.execute('UPDATE ai_moderation_checks SET decision=%s,reason=%s WHERE campaign_id=%s AND snapshot=%s AND revision=%s',(decision,reason,row['id'],row['updated_at'],revision))
     return {'status':'ok','approved':done}
