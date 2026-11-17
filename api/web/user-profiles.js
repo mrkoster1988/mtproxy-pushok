@@ -34,7 +34,10 @@ window.pushokProfiles=(()=>{
   copy.append(el('small','ID '+user.telegram_user_id,'muted'));
   row.append(views().userAvatar(id,person(user).name||person(user).username),copy);return row;
  }
- function identity(user){
+ function invited(count){
+  const row=el('div',undefined,'profile-invited');row.append(views().icon('users'),el('span','Приглашено'),el('strong',String(count)));return row;
+ }
+ function identity(user,count){
   const section=el('section',undefined,'profile-identity user-identity'),row=el('div',undefined,'person-line'),copy=names(user,true);
   const access=window.pushokTeam.roleControl(user);copy.append(access.badge);
   row.append(views().userAvatar(user.id,person(user).name||person(user).username),copy);section.append(row,access.editor);
@@ -45,6 +48,7 @@ window.pushokProfiles=(()=>{
    catch{notice('Не удалось скопировать. Можно выделить ID в сведениях об аккаунте.');}
   }),'copy','Скопировать ID');id.append(copyId);details.append(id);
   if(user.created_at)details.append(el('p','В кабинете с '+new Date(user.created_at).toLocaleDateString('ru-RU'),'muted'));
+  if(Number.isInteger(count))section.append(invited(count));
   section.append(details);return section;
  }
  function balance(data,user){
@@ -62,7 +66,7 @@ window.pushokProfiles=(()=>{
  async function ownOverview(target){
   const session=token,uid=me?.id;target.replaceChildren(el('p','Загрузка обзора…','muted'));
   try{const data=await api('/users/'+uid+'/profile');if(session!==token||uid!==me?.id||!target.isConnected)return;
-   target.replaceChildren(stats(data.counts,key=>window.cabinet.go({current:'campaigns/mine',channels:'channels',archived:'archive'}[key])));
+   target.replaceChildren(stats(data.counts,key=>window.cabinet.go({current:'campaigns/mine',channels:'channels',archived:'archive'}[key])),invited(data.counts.invited));
    const details=target.previousElementSibling?.querySelector('.profile-details');
    if(details&&data.user.created_at)details.append(el('p','В кабинете с '+new Date(data.user.created_at).toLocaleDateString('ru-RU'),'muted'));
   }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p','Обзор не обновлён. '+e.message,'muted'),button('Повторить',()=>ownOverview(target)));}
@@ -94,7 +98,7 @@ window.pushokProfiles=(()=>{
   function paint(data){
    const channelSection=el('section',undefined,'profile-section profile-channels'),campaignSection=el('section',undefined,'profile-section profile-campaigns');
    const overview=stats(data.counts,key=>{if(key==='channels')channelSection.scrollIntoView({block:'start'});else{archived=key==='archived';campaignPage=0;void load();}});
-   target.replaceChildren(identity(data.user),...(data.verification?[window.pushokVerification.readOnly(data.verification)]:[]),...(me.role==='admin'&&data.wallet?[balance(data.wallet,data.user)]:[]),overview,channelSection,campaignSection);
+   target.replaceChildren(identity(data.user,data.counts.invited),...(data.verification?[window.pushokVerification.readOnly(data.verification)]:[]),...(me.role==='admin'&&data.wallet?[balance(data.wallet,data.user)]:[]),overview,channelSection,campaignSection);
    channelSection.append(el('h2','Каналы'));
    const channelList=el('div',undefined,'profile-list');channelSection.append(channelList);
    if(!data.channels.length)channelList.append(el('p','Каналов пока нет.','empty'));

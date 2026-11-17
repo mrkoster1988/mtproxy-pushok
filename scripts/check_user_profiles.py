@@ -45,6 +45,7 @@ def check_user_profiles(browser, base, output, failures, dsn):
             card.get_by_role('link',name='Открыть профиль рекламодателя').click()
             profile=admin.locator('[data-page=user]');expect(profile.locator('.person-name')).to_have_text('Мария Зиброва')
             expect(profile.locator('.user-avatar img')).to_have_count(1)
+            expect(profile.locator('.profile-invited')).to_have_text('Приглашено0')
             assert profile.locator('.profile-identity').inner_text().count('@ZibrovaM')==1
             expect(profile.locator('.profile-campaign-row')).to_have_count(10)
             profile.locator('.profile-campaigns').get_by_role('button',name='Следующая страница').click()
