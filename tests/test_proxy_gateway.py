@@ -115,6 +115,11 @@ class GatewayTests(unittest.TestCase):
         servers=[];process=None
         with tempfile.TemporaryDirectory() as tmp:
             try:
+                with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as probe:
+                    probe.bind(str(Path(tmp)/'probe.sock'))
+            except PermissionError:
+                self.skipTest('Среда запрещает Unix socket; реальный reload проверяется в Linux CI')
+            try:
                 for label in (b'A:',b'B:'):
                     server=socketserver.ThreadingTCPServer(('127.0.0.1',0),Echo);server.daemon_threads=True;server.label=label
                     threading.Thread(target=server.serve_forever,daemon=True).start();servers.append(server)
@@ -125,29 +130,35 @@ class GatewayTests(unittest.TestCase):
                     if port<65000 and host.provisioner.free_port(port+1):break
                 cfg=dict(port=port,interests_enabled=True,topics=['technology'])
                 nodes=[dict(id=str(uuid4()),address='127.0.0.1',port=s.server_address[1],topic='technology' if i==0 else 'travel') for i,s in enumerate(servers)]
-                path=Path(tmp)/'haproxy.cfg';path.write_text(host.configuration(cfg,nodes))
+                path=Path(tmp)/'haproxy.cfg';runtime=str(Path(tmp)/'status.sock')
+                path.write_text(host.configuration(cfg,nodes,runtime_socket=runtime))
                 binary=os.environ.get('PUSHOK_TEST_HAPROXY') or shutil.which('haproxy')
                 subprocess.run([binary,'-c','-f',str(path)],capture_output=True,check=True,timeout=10)
-                process=subprocess.Popen([binary,'-W','-db','-f',str(path)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+                stderr=Path(tmp)/'haproxy.log'
+                with stderr.open('w') as output:
+                    process=subprocess.Popen([binary,'-W','-db','-f',str(path)],stdout=output,stderr=output)
                 def request(port):
                     with socket.create_connection(('127.0.0.1',port),timeout=1) as s:
                         s.sendall(b'test');return s.recv(64)
                 for _ in range(40):
+                    self.assertIsNone(process.poll(),stderr.read_text())
                     try:
                         if request(port+1)==b'A:test':break
                     except OSError:pass
                     time.sleep(.1)
                 self.assertEqual(request(port+1),b'A:test')
                 self.assertIn(request(port),(b'A:test',b'B:test'))
+                old_pid=host.worker_pid(runtime);self.assertIsNotNone(old_pid)
                 # Реальный мягкий reload master-worker, как в systemd-службе.
                 nodes[0]['topic']='travel';nodes[1]['topic']='technology'
-                path.write_text(host.configuration(cfg,nodes));process.send_signal(signal.SIGUSR2)
+                path.write_text(host.configuration(cfg,nodes,runtime_socket=runtime));process.send_signal(signal.SIGUSR2)
                 for _ in range(40):
                     try:
                         if request(port+1)==b'B:test':break
                     except OSError:pass
                     time.sleep(.1)
                 self.assertEqual(request(port+1),b'B:test')
+                self.assertNotEqual(host.worker_pid(runtime),old_pid)
                 servers[1].shutdown();servers[1].server_close()
                 for _ in range(100):
                     try:

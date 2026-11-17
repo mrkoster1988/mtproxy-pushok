@@ -23,6 +23,7 @@ CONFIG = DIRECTORY/'haproxy.cfg'
 SERVICE = 'mtproxy-pushok-gateway.service'
 CONTROL = ROOT/'.control'
 HAPROXY = '/usr/sbin/haproxy'
+RUNTIME_SOCKET = '/run/mtproxy-pushok-gateway/status.sock'
 
 
 def ports(settings):
@@ -38,9 +39,11 @@ def ports(settings):
     return result
 
 
-def configuration(settings, nodes):
+def configuration(settings, nodes, *, runtime_socket=RUNTIME_SOCKET):
     """Чистая генерация; все адреса/идентификаторы проверяются до записи."""
     listeners = ports(settings)
+    if not re.fullmatch(r'/[a-zA-Z0-9_./-]{1,240}',runtime_socket) or '..' in Path(runtime_socket).parts:
+        raise ValueError('invalid_socket')
     if not 1 <= len(nodes) <= 4:
         raise ValueError('no_nodes')
     seen = set()
@@ -52,6 +55,7 @@ def configuration(settings, nodes):
         if type(n['port']) is not int or not 1024 <= n['port'] <= 65535 or n['port'] in listeners.values():
             raise ValueError('port_busy')
     lines = ['global','  nbthread 2','  maxconn 4096','  hard-stop-after 30m',
+             f'  stats socket {runtime_socket} mode 600 level user',
              'defaults','  mode tcp','  timeout connect 3s','  timeout client 24h',
              '  timeout server 24h','  retries 2','  option redispatch','']
     for topic,port in listeners.items():
@@ -139,6 +143,22 @@ def previous_ports():
         return set()
 
 
+def worker_pid(path=RUNTIME_SOCKET):
+    """USR2 асинхронен: новый PID рабочего процесса подтверждает принятие конфига."""
+    try:
+        with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as client:
+            client.settimeout(.5);client.connect(path);client.sendall(b'show info\n')
+            data=b''
+            while len(data)<16384:
+                part=client.recv(min(4096,16384-len(data)))
+                if not part:break
+                data+=part
+        match=re.search(rb'^Pid: ([0-9]+)$',data,re.M)
+        return int(match[1]) if match else None
+    except OSError:
+        return None
+
+
 def apply(settings, nodes):
     text = configuration(settings,nodes)
     DIRECTORY.mkdir(mode=0o755,parents=True,exist_ok=True)
@@ -156,9 +176,16 @@ def apply(settings, nodes):
         if shutil.which('ufw') and 'Status: active' in provisioner.command('ufw','status'):
             for port in ports(settings).values():
                 provisioner.command('ufw','allow',str(port)+'/tcp','comment','Pushok gateway')
+        old_pid=worker_pid() if running else None
         atomic(CONFIG,text,mode=0o644)
         try:
             provisioner.command('systemctl','reload' if running else 'start',SERVICE)
+            deadline=time.monotonic()+4
+            while True:
+                new_pid=worker_pid()
+                if new_pid and new_pid!=old_pid:break
+                if time.monotonic()>=deadline:raise RuntimeError('start_failed')
+                time.sleep(.1)
             if not active():
                 raise RuntimeError('start_failed')
             # Проверяем listeners после reload, не объявляем успешным только exit code.
@@ -184,6 +211,7 @@ def apply(settings, nodes):
 
 def tick(status):
     host, primary_port, secret = load_proxy(provisioner.BASE/'mtproxy.env')
+    host=host.lower()
     public = provisioner.primary_host()
     settings = exchange(list(dict.fromkeys([host,public])))
     status.update(revision=settings['revision'],port=settings['port'],interests_enabled=settings['interests_enabled'])

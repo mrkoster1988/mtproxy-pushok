@@ -17,6 +17,8 @@ After=network-online.target mtproxy-pushok.service
 [Service]
 Type=simple
 DynamicUser=yes
+RuntimeDirectory=mtproxy-pushok-gateway
+RuntimeDirectoryMode=0700
 LimitNOFILE=16384
 ExecStart=/usr/sbin/haproxy -W -db -f /var/lib/mtproxy-pushok-gateway/haproxy.cfg
 ExecReload=/bin/kill -USR2 $MAINPID
