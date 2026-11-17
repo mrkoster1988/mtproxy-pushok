@@ -38,7 +38,7 @@ def check_unified_controls(browser,base,output,failures,dsn):
         field.fill('@controls_user');search.click();expect(area.get_by_role('button',name='Открыть баланс',exact=True)).to_be_visible()
         review=page.locator('[data-wallet-section=review]');review.locator(':scope>summary').click();expect(review.locator('.wallet-topup-review').filter(has_text='@controls_user')).to_be_visible();expect(review.locator('.wallet-topup-review').filter(has_text='@controls_user').locator('.wallet-payment-details')).to_be_visible();expect(review.locator('.wallet-review details')).to_have_count(0)
         history=page.locator('[data-wallet-section=history]');history.locator(':scope>summary').click();expect(history.locator('.wallet-entry')).to_have_count(5)
-        page.set_viewport_size({'width':390,'height':844});assert history.bounding_box()['height']<640
+        page.set_viewport_size({'width':390,'height':844});assert history.bounding_box()['height']<470
         history.screenshot(path=str(output/'controls-history-390.png'));review.screenshot(path=str(output/'controls-payments-390.png'));area.screenshot(path=str(output/'controls-balance-search-390.png'))
         go('moderation/'+str(cid));expect(page.locator('.ai-decision')).to_have_text('Одобрено: Агент ИИ');expect(page.locator('.assistant-saved')).to_contain_text('Образовательный канал');expect(page.locator('.campaign-assistant')).to_have_attribute('open','')
         expect(page.locator('.campaign-assistant a[href*="management"]')).to_have_count(0)

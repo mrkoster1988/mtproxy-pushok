@@ -133,7 +133,7 @@ window.pushokWallet=(()=>{
   const p=panel(admin?'Журнал пользователя':'История операций');p.classList.add('wallet-journal');if(!data.entries.length)p.append(el('p','Движений средств пока нет. Неоплаченные и закрытые счета показаны выше.','empty'));
   data.entries.forEach(e=>{const row=el('article',undefined,'card wallet-entry');row.dataset.direction=e.delta>0?'credit':'debit';
    const direct=e.source==='direct';row.append(el('h3',(e.delta>0?'+':'')+amount(e.delta,e.currency)),el('p',direct?'Оплата кампании · '+(e.provider==='telegram_stars'?'Telegram Stars':'СБП')+(e.payment_status==='refunded'?' · Возвращена':''):e.kind==='payment'&&e.automatic?'Автооплата размещения':kinds[e.kind]||e.kind));
-   const at=el('time',date(e.created_at));at.dateTime=e.created_at;row.append(at);const more=window.pushokViews.disclosure('Детали операции',[el('p',e.reason)],'wallet-entry-details');row.append(more);
+   const at=el('time',date(e.created_at));at.dateTime=e.created_at;row.append(at);const more=window.pushokViews.disclosure('Детали',[el('p',e.reason)],'wallet-entry-details');row.append(more);
    if(direct)more.append(el('p','Прямая оплата. Внутренний баланс не изменялся.','muted'));else more.append(el('p','Остаток после операции: '+amount(e.balance_after,e.currency),'muted'),el('p','Проводка №'+e.entry_number,'muted'));
    if(e.actor_telegram_id)more.append(el('p','Автор: '+(e.actor_username?'@'+e.actor_username+' · ':'')+e.actor_telegram_id,'muted'));
    if(e.campaign_id&&(admin||!['referral_reward','referral_reversal'].includes(e.kind))){const a=el('a','Открыть заявку →');a.href='#/'+(e.archived_at?'archive/':admin?'moderation/':'create/')+e.campaign_id;more.append(a);}
@@ -151,7 +151,7 @@ window.pushokWallet=(()=>{
   if(!/^[1-9][0-9]{0,15}$/.test(adminTelegram)){
    try{const users=await api('/admin/wallet/users?query='+encodeURIComponent(adminTelegram));if(!current())return;
     node.replaceChildren(el('p',users.length?'Выберите пользователя:':'Пользователь не найден. Попросите его открыть кабинет и скопировать ID из профиля.','muted'));
-    for(const user of users){const row=el('article',undefined,'card');row.append(window.pushokProfiles.compact(user),button('Открыть баланс',async()=>{adminTelegram=String(user.telegram_user_id);adminPage=0;await adminLookup();}));node.append(row);}
+    for(const user of users){const row=el('article',undefined,'card wallet-search-user');row.append(window.pushokProfiles.compact(user),button('Открыть баланс',async()=>{adminTelegram=String(user.telegram_user_id);adminPage=0;await adminLookup();}));node.append(row);}
    }catch(e){if(current())node.replaceChildren(el('p',e.message,'wallet-lookup-error'));}return;
   }
   try{data=await api('/admin/wallet/users/'+encodeURIComponent(adminTelegram)+'?page='+adminPage);}
