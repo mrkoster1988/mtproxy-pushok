@@ -51,7 +51,7 @@ def check_user_profiles(browser, base, output, failures, dsn):
             profile.locator('.profile-campaigns').get_by_role('button',name='Следующая страница').click()
             expect(profile.locator('.profile-campaign-row')).to_have_count(1)
             profile.get_by_role('button',name='Архив · 1',exact=True).click()
-            expect(profile.locator('.profile-campaign-row')).to_contain_text('Завершено')
+            expect(profile.locator('.profile-campaign-row')).to_contain_text('Завершена')
             profile.get_by_role('button',name='Отчёт кампании '+str(campaigns[11])[:8]).click()
             expect(profile.locator('.campaign-report')).to_contain_text('Тестирование')
             profile.get_by_role('button',name='Текущие · 11',exact=True).click()

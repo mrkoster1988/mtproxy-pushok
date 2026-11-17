@@ -31,6 +31,7 @@ def main():
     parser.add_argument("--browser-executable")
     parser.add_argument("--sponsors-only", action="store_true", help="Полный сценарий страницы спонсоров")
     parser.add_argument("--interface-only", action="store_true")
+    parser.add_argument("--campaign-cards-only", action="store_true", help="Карточки кампаний во всех разделах")
     parser.add_argument("--verification-only", action="store_true", help="Подтверждение контакта, профиль и настройки подарка")
     parser.add_argument("--ai-only", action="store_true", help="Подключение ИИ, хранение ключа и роли")
     args = parser.parse_args()
@@ -161,6 +162,12 @@ def main():
                         page.locator('#refresh').click()
                     expect(page.locator('#refresh')).to_be_enabled()
 
+                if args.campaign_cards_only:
+                    from check_campaign_cards import check_campaign_cards
+                    check_campaign_cards(browser, base, output, failures, PostgresIntegration.dsn)
+                    if failures:raise AssertionError(failures)
+                    print('PASS: unified campaign cards, actions, archive and mobile widths')
+                    return
                 if args.interface_only:
                     from check_interface import check_interface
                     check_interface(browser,base,output,failures,PostgresIntegration.dsn)
@@ -351,7 +358,7 @@ def main():
                 first_tile.locator('.tile-heading > .icon-action').click()
                 expect(advertiser.locator('[data-page=campaign]')).to_be_visible()
                 go(advertiser, 'campaign/'+campaign_id)
-                expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На модерации')
+                expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На проверке')
                 expect(advertiser.locator('[data-page=campaign] .campaign-progress [aria-current=step]')).to_contain_text('Модерация')
 
                 operator = new_page('operator')
@@ -360,7 +367,7 @@ def main():
                 operator.get_by_text('Исправления или отказ', exact=True).click()
                 operator.get_by_label('Комментарий рекламодателю', exact=True).fill('Уточните название канала')
                 operator.get_by_role('button', name='Отправить решение', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Нужны исправления')
+                expect(operator.locator('#queue .campaign-steps')).to_contain_text('Исправить')
                 refresh(advertiser)
                 expect(advertiser.locator('[data-page=campaign]')).to_contain_text('Уточните название канала')
                 advertiser.get_by_role('button', name='Исправить канал', exact=True).click()
@@ -368,7 +375,7 @@ def main():
                 advertiser.get_by_role('button', name='Сохранить исправления', exact=True).click()
                 expect(advertiser.locator('.correction-form')).to_have_count(0)
                 advertiser.get_by_role('button', name='Отправить повторно', exact=True).click()
-                expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На модерации')
+                expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На проверке')
                 refresh(operator)
                 expect(operator.get_by_role('button', name='Одобрить канал', exact=True)).to_be_visible()
                 operator.set_viewport_size({'width': 390, 'height': 844})
@@ -376,7 +383,7 @@ def main():
                 assert operator.evaluate('document.documentElement.scrollWidth <= innerWidth + 2')
                 operator.set_viewport_size({'width': 1440, 'height': 1000})
                 operator.get_by_role('button', name='Одобрить канал', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Ожидает оплаты')
+                expect(operator.locator('#queue .campaign-steps')).to_contain_text('К оплате')
                 refresh(advertiser)
                 go(advertiser, 'payments/' + campaign_id)
                 advertiser.get_by_role('button', name='Реквизиты и сумма', exact=True).click()
@@ -389,7 +396,7 @@ def main():
                 advertiser.locator('[data-page=payments]').get_by_label('Подтверждение оплаты', exact=True).set_input_files(
                     {"name": "test-receipt.png", "mimeType": "image/png", "buffer": image_bytes.getvalue()})
                 advertiser.get_by_role('button', name='Загрузить чек', exact=True).click()
-                expect(advertiser.locator('[data-page=payments]')).to_contain_text('Чек на проверке')
+                expect(advertiser.locator('[data-page=payments] .campaign-steps')).to_contain_text('Проверка')
                 refresh(operator)
                 operator.get_by_role('button', name='Посмотреть чеки', exact=True).click()
                 with operator.expect_download() as receipt:
@@ -403,7 +410,7 @@ def main():
                 advertiser.locator('[data-page=payments]').get_by_label('Подтверждение оплаты', exact=True).set_input_files(
                     {"name": "test-receipt-again.png", "mimeType": "image/png", "buffer": image_bytes.getvalue()})
                 advertiser.get_by_role('button', name='Загрузить чек', exact=True).click()
-                expect(advertiser.locator('[data-page=payments]')).to_contain_text('Чек на проверке')
+                expect(advertiser.locator('[data-page=payments] .campaign-steps')).to_contain_text('Проверка')
                 refresh(operator)
                 operator.get_by_label('Проверил поступление денег, сумму и назначение платежа', exact=True).check()
                 operator.get_by_role('button', name='Подтвердить оплату', exact=True).click()
@@ -431,7 +438,7 @@ def main():
                 operator.get_by_label('Прокси-узел', exact=True).select_option(index=1)
                 operator.get_by_label('Начало размещения', exact=True).fill(tomorrow + 'T12:00')
                 operator.get_by_role('button', name='Назначить слот', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Запланировано')
+                expect(operator.locator('#queue .campaign-steps')).to_contain_text('В очереди')
 
                 operator.locator('summary').filter(has_text='Изменить или удалить заявку').click()
                 operator.get_by_role('button', name='Изменить слот', exact=True).click()
@@ -441,7 +448,7 @@ def main():
                 operator.locator('summary').filter(has_text='Изменить или удалить заявку').click()
                 operator.once('dialog', lambda dialog: dialog.accept())
                 operator.get_by_role('button', name='Снять будущий слот', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Слот не назначен')
+                expect(operator.locator('#queue .campaign-steps')).to_contain_text('Не начата')
                 expect(operator.locator('#queue')).to_contain_text('Оплачено')
                 # После снятия слота пауза снимается видимой кнопкой, без поиска в details.
                 resume = operator.get_by_role('button', name='Возобновить автоподбор', exact=True)
@@ -453,7 +460,7 @@ def main():
                 operator.locator('summary').filter(has_text='Изменить расписание').click()
                 operator.get_by_label('Начало размещения', exact=True).fill(tomorrow + 'T12:00')
                 operator.get_by_role('button', name='Назначить слот', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Запланировано')
+                expect(operator.locator('#queue .campaign-steps')).to_contain_text('В очереди')
 
                 # Move the isolated fixture into its active window; no VPS is used.
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
@@ -562,7 +569,7 @@ def main():
                     admin.set_viewport_size({'width': 1440, 'height': 1000})
                 # ACK агента автоматически активирует кампанию, без формы проверки.
                 refresh(operator)
-                expect(operator.locator('#queue')).to_contain_text('Размещение активно')
+                expect(operator.locator('#queue .campaign-steps')).to_contain_text('Активна')
                 # Вернуть только эту изолированную кампанию к отдельному ручному сценарию.
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('DELETE FROM channel_promotion_bindings WHERE proxy_node_id=%s', (fixture['id'],))
@@ -578,13 +585,13 @@ def main():
                 operator.get_by_label('Что увидели при проверке', exact=True).fill('Тест: в своём подключённом Telegram без подписки видна отметка спонсора')
                 # Без явного подтверждения показа форма не отправляется.
                 operator.get_by_role('button', name='Подтвердить показ и активировать', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Запланировано')
+                expect(operator.locator('#queue .campaign-steps')).to_contain_text('В очереди')
                 assert operator.get_by_label('Я подключён к этому прокси, не подписан на канал и вижу отметку «Спонсор прокси»', exact=True).evaluate('(el) => el.validity.valueMissing')
                 operator.get_by_label('Скриншот проверки (необязательно)', exact=True).set_input_files(
                     {"name": "test-display.png", "mimeType": "image/png", "buffer": image_bytes.getvalue()})
                 operator.get_by_label('Я подключён к этому прокси, не подписан на канал и вижу отметку «Спонсор прокси»', exact=True).check()
                 operator.get_by_role('button', name='Подтвердить показ и активировать', exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Размещение активно')
+                expect(operator.locator('#queue .campaign-steps')).to_contain_text('Активна')
                 operator.locator('summary').filter(has_text='История и документы').click()
                 operator.get_by_role('button', name='Журнал проверок', exact=True).click()
                 expect(operator.locator('.observation-panel')).to_contain_text('Показ виден')
@@ -595,7 +602,7 @@ def main():
                 assert 18 <= bounds['width'] <= 24 and 18 <= bounds['height'] <= 24, bounds
                 confirmation.check()
                 operator.get_by_role('button', name='Подтвердить завершение', exact=True).click()
-                expect(operator.locator('#queue')).not_to_contain_text('Размещение активно')
+                expect(operator.locator('#queue')).not_to_contain_text('Активна')
                 refresh(advertiser)
                 go(advertiser, 'archive/'+campaign_id)
                 expect(advertiser.locator('.campaign-report')).to_contain_text('История действий')
@@ -679,11 +686,11 @@ def main():
                 expect(advertiser.locator('#order-result')).to_be_visible()
                 sbp_cid=advertiser.evaluate("location.hash.split('/')[2]")
                 go(advertiser, 'campaign/'+sbp_cid)
-                expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На модерации')
+                expect(advertiser.locator('[data-page=campaign] .campaign-steps')).to_contain_text('На проверке')
                 refresh(operator)
                 go(operator, 'moderation/'+sbp_cid)
                 operator.get_by_role('button',name='Одобрить канал',exact=True).click()
-                expect(operator.locator('#queue')).to_contain_text('Ожидает оплаты')
+                expect(operator.locator('#queue .campaign-steps')).to_contain_text('К оплате')
                 refresh(advertiser)
                 go(advertiser,'payments/'+sbp_cid)
                 expect(advertiser.locator('.sbp-checkout')).to_contain_text('Новые счета СБП выключены')
@@ -707,7 +714,7 @@ def main():
                     with advertiser.expect_response(lambda r:r.url.endswith('/sbp/reconcile')):
                         advertiser.goto(base+'/?sbp_campaign='+sbp_cid)
                     expect(advertiser.locator('.sbp-checkout')).to_contain_text('Ожидается результат платежа')
-                    expect(advertiser.locator('[data-page=payments] .campaign-steps')).to_contain_text('Ожидает оплаты')
+                    expect(advertiser.locator('[data-page=payments] .campaign-steps')).to_contain_text('К оплате')
                     with psycopg.connect(PostgresIntegration.dsn) as connection:
                         aid=connection.execute("UPDATE payment_attempts SET sbp_requires_review=true WHERE campaign_id=%s AND provider='sbp' RETURNING id",(sbp_cid,)).fetchone()[0]
                     go(admin,'settings')
@@ -1168,7 +1175,7 @@ def main():
                 pending.locator('summary').click()
                 pending_row=pending.locator('.approval-summary').filter(has_text='Счёт в архиве')
                 expect(pending_row).to_contain_text('Счёт ещё не закрыт')
-                pending_row.get_by_role('button',name='Открыть для завершения').click()
+                pending_row.get_by_role('link',name='Открыть для завершения').click()
                 expect(archive_card).to_contain_text('Заявка уже удалена')
                 expect(archive_card.get_by_role('button',name='🗑️ Удалить',exact=True)).to_have_count(0)
                 expect(archive_card.get_by_role('button',name='Назначить слот',exact=True)).to_have_count(0)
@@ -1677,6 +1684,8 @@ def main():
                 admin.set_viewport_size({'width':390,'height':1500})
                 personal_row.evaluate('(node) => scrollTo(0, node.getBoundingClientRect().top + scrollY - 140)')
                 personal_row.screenshot(path=str(output/'45-personal-gift-report-mobile.png'))
+                from check_campaign_cards import check_campaign_cards
+                check_campaign_cards(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_campaign_pricing import check_campaign_pricing
                 check_campaign_pricing(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_bonus_links import check_bonus_links

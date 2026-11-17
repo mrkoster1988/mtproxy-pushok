@@ -1,5 +1,6 @@
 """Профиль доступен владельцу и сотрудникам; фото не раскрывает токен Bot API."""
 from uuid import UUID
+from .channel_topics import label as topic_label
 
 import psycopg
 from psycopg.rows import dict_row
@@ -57,12 +58,14 @@ def router_for(dsn, current_user):
                 LIMIT %s OFFSET %s''', (uid, PAGE_SIZE, channel_page * PAGE_SIZE)).fetchall()
             campaigns = conn.execute(f'''SELECT c.id,c.channel_id,ch.title AS channel_title,
                 ch.telegram_url AS channel_url,c.tariff_name_snapshot,c.duration_seconds_snapshot,
-                c.price_kopecks_snapshot,c.currency_snapshot,c.moderation_status,c.payment_status,
+                c.price_kopecks_snapshot,c.currency_snapshot,c.topic,c.moderation_status,c.payment_status,
                 c.placement_status,c.requested_start_at,c.scheduled_start_at,c.scheduled_end_at,c.archived_at,
                 CASE WHEN c.pricing_version=1 THEN c.stars_price_snapshot ELSE t.stars_price_xtr END AS stars_price_snapshot
                 FROM campaigns c JOIN sponsor_channels ch ON ch.id=c.channel_id JOIN tariffs t ON t.id=c.tariff_id
                 WHERE c.advertiser_user_id=%s AND {ARCHIVED}=%s ORDER BY c.created_at DESC,c.id DESC
                 LIMIT %s OFFSET %s''', (uid, archived, PAGE_SIZE, campaign_page * PAGE_SIZE)).fetchall()
+            for campaign in campaigns:
+                campaign['topic_label'] = topic_label(campaign['topic'])
             from .hall_of_fame import medal_history
             private = {'medals': medal_history(conn, uid)}
             private['frame_rank'] = conn.execute('''SELECT min(rank) rank FROM hall_results WHERE user_id=%s AND rank<=10

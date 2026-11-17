@@ -5,6 +5,7 @@ from uuid import UUID
 import json
 
 import psycopg
+from .channel_topics import label as topic_label
 from .license_errors import explain as explain_license_error
 from psycopg.rows import dict_row
 from psycopg.errors import ExclusionViolation, UniqueViolation
@@ -291,7 +292,17 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
                 if kind=='channels':condition=' AND owner_user_id=%s';params=[user['id']]
                 if kind=='campaigns' and user['role'] not in ('operator','admin'):condition=' AND advertiser_user_id=%s';params=[user['id']]
                 if kind=='campaigns':
-                    rows=conn.execute('SELECT c.id,sc.title,c.channel_id,sc.telegram_url AS channel_url,c.archived_at,c.placement_status,c.payment_status,c.scheduled_start_at,c.scheduled_end_at FROM campaigns c JOIN sponsor_channels sc ON sc.id=c.channel_id WHERE c.archived_at IS NOT NULL'+condition+' ORDER BY c.archived_at DESC LIMIT 100',params).fetchall()
+                    rows=conn.execute('''SELECT c.id,sc.title,sc.title AS channel_title,c.channel_id,
+                        sc.telegram_url AS channel_url,c.archived_at,c.moderation_status,
+                        c.placement_status,c.payment_status,c.requested_start_at,
+                        c.scheduled_start_at,c.scheduled_end_at,c.topic,c.tariff_name_snapshot,
+                        c.duration_seconds_snapshot,c.price_kopecks_snapshot,
+                        CASE WHEN c.pricing_version=1 THEN c.stars_price_snapshot ELSE t.stars_price_xtr END AS stars_price_snapshot,
+                        c.currency_snapshot FROM campaigns c JOIN sponsor_channels sc ON sc.id=c.channel_id
+                        JOIN tariffs t ON t.id=c.tariff_id
+                        WHERE c.archived_at IS NOT NULL'''+condition+' ORDER BY c.archived_at DESC LIMIT 100',params).fetchall()
+                    for row in rows:
+                        row['topic_label'] = topic_label(row['topic'])
                 else:
                     rows=conn.execute(f'SELECT id,{title} AS title,archived_at FROM {table} WHERE archived_at IS NOT NULL'+condition+' ORDER BY archived_at DESC LIMIT 100',params).fetchall()
                 result.extend({**row,'kind':kind} for row in rows)
