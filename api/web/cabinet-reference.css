@@ -529,7 +529,10 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .birthday-settings form>label{margin:0}
 .verification-private>h2{font-size:16px}
 
-.dashboard-hero-actions>a.dashboard-promote-channel{background:#26b96b;color:#052b1b!important}
+.cabinet-mode .dashboard-promote-channel,.cabinet-mode .invite-toggle{display:flex;justify-content:center;align-items:center;box-sizing:border-box;width:100%;min-height:44px;padding:10px 16px;background:#26b96b;color:#052b1b!important;border:0;border-radius:9px;font-weight:700;text-decoration:none}
+.dashboard-promote-channel{margin-bottom:12px}
+.invite-details img{display:block;width:min(100%,246px);height:auto;margin:16px auto;image-rendering:pixelated}
+.invite-details[hidden]{display:none}
 
 /* Личные сведения по запросу, статус остаётся в компактной шапке. */
 .cabinet-mode details.profile-personal{display:block;padding:0;overflow:hidden}

@@ -58,7 +58,10 @@ def check_interface(browser,base,output,failures,dsn):
         expect(page).to_have_url(base+'/#/users')
         for route in ('channels','campaigns'):
             page.evaluate('r=>window.cabinet.go(r)',route);row=page.locator('[data-page='+route+'] .search-action-row');expect(row).to_be_visible()
-            a=row.locator('input[type=search]').bounding_box();b=row.locator(':scope>.icon-action').bounding_box();assert abs(a['y']+a['height']/2-b['y']-b['height']/2)<3
+            if route=='channels':
+                a=row.locator('input[type=search]').bounding_box();b=row.locator(':scope>.icon-action').bounding_box();assert abs(a['y']+a['height']/2-b['y']-b['height']/2)<3
+            else:
+                expect(page.get_by_role('link',name='Продвигать канал',exact=True)).to_be_visible()
         page.evaluate("window.cabinet.go('dashboard')");expect(page.locator('.home-leaders h2')).to_have_text('Лидеры месяца')
         page.evaluate("window.cabinet.go('profile')")
         menu=page.get_by_role('navigation',name='Управление',exact=True)

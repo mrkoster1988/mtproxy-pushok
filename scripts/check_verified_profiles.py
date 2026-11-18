@@ -100,11 +100,7 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             expect(card).to_be_empty()
             dashboard = page.locator('[data-page=dashboard]')
             expect(dashboard.get_by_text('Продвигайте свой канал', exact=True)).to_have_count(0)
-            expect(dashboard.locator('.dashboard-promote-channel')).to_be_visible()
-            empty = dashboard.locator('.dashboard-campaigns .empty-state')
-            expect(empty).to_have_css('background-color', 'rgb(16, 40, 59)')
-            expect(empty).to_have_css('border-top-style', 'solid')
-            expect(empty.locator('a[href="#/create"]')).to_be_hidden()
+            expect(dashboard.locator('.dashboard-promote-channel,.dashboard-campaigns')).to_have_count(0)
             for width in (320, 390):
                 page.set_viewport_size({'width': width, 'height': 844})
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')

@@ -1,5 +1,10 @@
 """Серверный расчёт предложений; лимиты списываются атомарно вместе с заявкой."""
+import base64
 import hashlib
+from functools import lru_cache
+from io import BytesIO
+
+import qrcode
 import json
 import os
 import re
@@ -13,6 +18,13 @@ from psycopg.rows import dict_row
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from .bot_routes import _verify_bot_secret
+
+
+@lru_cache(maxsize=128)
+def invitation_qr(link: str) -> str:
+    buffer = BytesIO()
+    qrcode.make(link, box_size=6, border=4).save(buffer, format='PNG')
+    return 'data:image/png;base64,' + base64.b64encode(buffer.getvalue()).decode('ascii')
 
 
 class Input(BaseModel):
@@ -269,7 +281,7 @@ def router_for(get_dsn, get_user, require_admin):
             bound = conn.execute('SELECT 1 FROM growth_referrals WHERE referred_user_id=%s', (user['id'],)).fetchone()
             bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
             link = 'https://t.me/'+bot+'?start=r_'+code if re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot) else None
-            return {**settings, 'code':code, 'link':link, 'invited':count, 'bound':bool(bound),
+            return {**settings, 'code':code, 'link':link, 'invite_qr':invitation_qr(link) if link and settings['referrals_enabled'] else None, 'invited':count, 'bound':bool(bound),
                     'coupons':coupons, 'bonus_rewards':bonus, 'invitations':invitations}
         return db(action)
 
