@@ -1,8 +1,8 @@
 'use strict';
 // Страницы используют общие формы и действия app.js, без второго набора API.
 (() => {
- Object.assign(errors,{stars_environment_changed:'Среда Telegram для этого счёта изменилась. Обратитесь к владельцу; не оплачивайте повторно.',invalid_telegram_environment:'Владелец должен проверить режим Telegram на сервере.',telegram_environment_mismatch:'Среды бота и кабинета не совпадают. Нужна проверка владельца.',stars_checkout_disabled_until_acceptance:'Оплата Stars выключена до приёмки.',stars_link_unavailable:'Telegram временно недоступен. Счёт сохранён; повтор не меняет его сумму.',stars_payment_processing:'Платёж уже обрабатывается. Обновите статус, не оплачивайте повторно.',stars_bot_changed:'Бот для оплаты изменился. Нужна проверка владельца.',stars_price_not_configured:'Цена Stars для тарифа ещё не настроена.'});
- Object.assign(errors,{sbp_test_mode_mismatch:'Режим провайдера не совпадает с настройками сервера. Счёт не открыт; нужна проверка владельца.'});
+ Object.assign(errors,{stars_environment_changed:'Среда Telegram для этого счёта изменилась. Обратитесь к разработчику; не оплачивайте повторно.',invalid_telegram_environment:'Разработчик должен проверить режим Telegram на сервере.',telegram_environment_mismatch:'Среды бота и кабинета не совпадают. Нужна проверка разработчика.',stars_checkout_disabled_until_acceptance:'Оплата Stars выключена до приёмки.',stars_link_unavailable:'Telegram временно недоступен. Счёт сохранён; повтор не меняет его сумму.',stars_payment_processing:'Платёж уже обрабатывается. Обновите статус, не оплачивайте повторно.',stars_bot_changed:'Бот для оплаты изменился. Нужна проверка разработчика.',stars_price_not_configured:'Цена Stars для тарифа ещё не настроена.'});
+ Object.assign(errors,{sbp_test_mode_mismatch:'Режим провайдера не совпадает с настройками сервера. Счёт не открыт; нужна проверка разработчика.'});
  Object.assign(errors,{sbp_checkout_disabled_until_acceptance:'СБП выключена до настройки и приёмки.',another_payment_in_progress:'У заявки уже открыт другой платёж. Сначала проверьте его результат.',sbp_provider_unavailable:'Провайдер временно недоступен. Не оплачивайте повторно; повторный выпуск использует тот же ключ.',sbp_verification_requires_review:'Платёж не прошёл сверку. Не платите повторно; обратитесь к оператору.',sbp_creation_requires_review:'Результат выпуска счёта неизвестен слишком долго. Нужна проверка оператора.',sbp_configuration_changed:'Платёжные настройки изменились. Нужна проверка оператора.',sbp_invoice_not_created:'Счёт ещё не выпущен.',campaign_not_payable:'Заявка сейчас не ожидает новую оплату.'});
  Object.assign(errors,{sponsor_engine_mismatch:'Движок тега не совпадает с планом узла.',sponsor_tag_already_registered:'Этот тег уже зарегистрирован на другом узле.',sponsor_registration_not_found:'Сначала сохраните регистрацию спонсорского тега.',proxy_node_not_found:'Узел не найден. Обновите список.'});
  const state={campaigns:[],search:'',filter:'',scope:'all',route:'',bot:null,ready:false,loaded:false,renderKey:'',selectedKey:''};
@@ -115,6 +115,10 @@
   const layout=el('div',undefined,'page-layout'),body=el('div',undefined,'page-content');
   layout.append(body);page.append(layout);pages[name]=page;content[name]=body;stage.append(page);
  });
+ const profileMain=el('div',undefined,'page-content profile-main'),aboutDeveloper=el('div',undefined,'profile-developer');
+ const logoutButton=button('Выйти',()=>$('logout').click());
+ logoutButton.setAttribute('aria-label','Выйти из аккаунта');logoutButton.className='profile-logout';
+ content.profile.append(profileMain,aboutDeveloper,logoutButton);
  // Постоянная справка не занимает экран настроек; статусы сервера остаются на виду.
  document.querySelectorAll('#settings-tariffs .tariff-builder>p.muted:not([id]),#settings-system>.core-health>p:not([id]),#loading-title-fields>p.muted').forEach(p=>p.setAttribute('data-note',''));
  const updatePanel=$('software-updates');
@@ -341,8 +345,8 @@
   ['Как указать канал?','Используйте публичную ссылку https://t.me/channel. Исправления доступны в черновике или по запросу модератора.'],
   ['Цена и Stars','Цена фиксируется в заявке. RUB и XTR настраиваются отдельно, автоматического курса нет.'],
   ['Дата размещения','Выберите желаемое начало. После оплаты система назначит полный свободный период. Если выбранное время занято, размещение начнётся в ближайшее подходящее время после него.'],
-  ['Как оплатить?',miniAppMode?'Откройте карточку оплаты заявки и выберите Stars. Успешность проверяется сервером.':'Откройте заявку. Реквизиты доступны после настройки владельцем. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
-  [miniAppMode?'Telegram Stars':'Stars и СБП',miniAppMode?'Счёт Stars можно открыть в карточке оплаты, если приём включён владельцем.':'Stars оформляются в Telegram-боте. СБП доступна только во внешнем кабинете после настройки владельцем. Возврат из банка не подтверждает оплату: результат сверяется сервером.'],
+  ['Как оплатить?',miniAppMode?'Откройте карточку оплаты заявки и выберите Stars. Успешность проверяется сервером.':'Откройте заявку. Реквизиты доступны после настройки разработчиком. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
+  [miniAppMode?'Telegram Stars':'Stars и СБП',miniAppMode?'Счёт Stars можно открыть в карточке оплаты, если приём включён разработчиком.':'Stars оформляются в Telegram-боте. СБП доступна только во внешнем кабинете после настройки разработчиком. Возврат из банка не подтверждает оплату: результат сверяется сервером.'],
   ['Что значит «Активно»?','Агент подтвердил применение тега и работу прокси. После окончания агент снимает или сменяет тег и завершает кампанию. Это не счётчик показов Telegram.'],
   ['Не удаётся выполнить действие','Обновите данные, проверьте комментарий и текущий статус. При завершении сессии войдите снова. Не повторяйте оплату вслепую.']
  ];
@@ -377,7 +381,7 @@
   channelRows.classList.add('channel-manager');
   renderChannels();
   window.pushokViews.campaigns(summaryRows,[...state.campaigns].sort((a,b)=>({changes_requested:0}[a.moderation_status]??{awaiting_payment:1}[a.payment_status]??{active:2}[a.placement_status]??3)-({changes_requested:0}[b.moderation_status]??{awaiting_payment:1}[b.payment_status]??{active:2}[b.placement_status]??3)).slice(0,2));renderList();
-  window.pushokViews.profile(content.profile,updatePanel);
+  window.pushokViews.profile(profileMain,updatePanel);
   if(['admin','operator'].includes(me.role))window.pushokViews.sponsors(sponsorQueue,operatorCampaigns);
   onboarding.hidden=false;
   createNotice.hidden=Boolean(tariffs.length);createNotice.textContent='Нет доступных тарифов. Обратитесь к администратору.';
@@ -409,7 +413,7 @@
    if(data.payment_status==='verified'){panel.append(el('p','Оплата подтверждена сервером.'));return;}
    if(data.amount_xtr)panel.append(el('p','К оплате','eyebrow'),el('strong',data.amount_xtr+' XTR','checkout-amount'));
    if(!data.available)panel.append(el('p','Оплата Stars выключена до настройки и приёмки.'));
-   if(data.available&&!data.amount_xtr)panel.append(el('p','Цена Stars ещё не настроена владельцем.'));
+   if(data.available&&!data.amount_xtr)panel.append(el('p','Цена Stars ещё не настроена разработчиком.'));
    if(data.processing)panel.append(el('p','Платёж обрабатывается. Не оплачивайте повторно.'));
    else if(data.available&&data.amount_xtr&&data.payment_status==='awaiting_payment'){
     const pay=button('Оплатить '+data.amount_xtr+' XTR',async()=>{
@@ -514,7 +518,7 @@
   if(name==='payments'&&id){
    paymentRows.replaceChildren();const c=state.campaigns.find(c=>c.id===id&&c.moderation_status==='approved');
    paymentRows.append(link('← Все оплаты','payments'));
-   if(c){const panel=el('section',undefined,'panel sbp-checkout');paymentRows.append(card(c,false),panel,botLink(),el('p',miniAppMode?'Статус оплаты Stars обновляется по данным сервера.':'Stars: продолжите в Telegram-боте, если приём включён. Ручной чек — запасной способ по инструкции владельца.','muted'));void renderSbp(c,panel);}
+   if(c){const panel=el('section',undefined,'panel sbp-checkout');paymentRows.append(card(c,false),panel,botLink(),el('p',miniAppMode?'Статус оплаты Stars обновляется по данным сервера.':'Stars: продолжите в Telegram-боте, если приём включён. Ручной чек — запасной способ по инструкции разработчика.','muted'));void renderSbp(c,panel);}
    else paymentRows.append(el('p','Заявка недоступна или ещё не одобрена.'));
   }
   const updatedCard=pages[name]?.querySelector('.campaign-detail');
@@ -559,6 +563,7 @@
   updatePanel.hidden=me.role!=='admin';
   if(me.role==='admin'&&['profile','dashboard'].includes(name))refreshSoftware();
   if(name==='management'){window.pushokInterface.settings();window.pushokInterface.showManagement(section);if(previousRoute!=='management')run(loadAdminSettings);else if(section==='payments')run(()=>renderSBPReview());}
+  if(name==='profile')window.pushokDeveloper.open(aboutDeveloper);
   if(name==='profile'&&section==='management')$('profile-management')?.scrollIntoView({block:'start',behavior:'instant'});
   if(miniAppMode)window.pushokMiniApp.syncNavigation();
   if(name==='profile'&&section==='updates'&&me.role==='admin'){
@@ -570,11 +575,11 @@
   const url=new URL(location.href),returned=url.searchParams.get('sbp_campaign');
   if(url.searchParams.has('wallet_topup')){url.searchParams.delete('wallet_topup');url.hash='/wallet';history.replaceState(null,'',url);}
   if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
-  state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+({admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[me.role]||me.role);activate();
+  state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+window.pushokTeam.displayRole(me);activate();
  },logout(){resetPaymentSettings();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();window.pushokVerification.reset();automationSession='';nodeEditorSession='';nodeCreate.open=false;window.pushokAppLicense?.reset();window.pushokLinks?.reset();window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   bottomNav.querySelector('[data-route=moderation]').hidden=true;bottomNav.style.setProperty('--nav-count',5);
   channelSearch.value='';selectSponsorView('placements');automationRevision++;automationFocusRoute='';automationBody.replaceChildren();automationRuntime.replaceChildren();diagnosticsSummary.replaceChildren();
-  [$('order-result'),detail,dashboardReferral,profileShortcut,paymentOverview,paymentRows,content.profile,content.user,content.users,content.hall,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
+  [$('order-result'),detail,dashboardReferral,profileShortcut,paymentOverview,paymentRows,profileMain,aboutDeveloper,content.user,content.users,content.hall,sponsorQueue,reportRows,archiveRows,channelRows,summaryRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());

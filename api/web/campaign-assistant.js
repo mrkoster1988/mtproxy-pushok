@@ -60,7 +60,7 @@ window.pushokAssistant=(()=>{
     const result=await request('/operator/campaigns/'+c.id+'/ai-analysis',{method:'POST',body:{kind}});
     if(!valid()||version!==epoch)return;render(result);
     status.textContent=result.engine==='ai'?'Разбор готов. Изменения не выполнялись.':'ИИ временно недоступен. Показаны проверки системы.';
-   }catch(error){if(valid()&&version===epoch){status.textContent={campaign_ai_disabled:'Эта возможность ИИ выключена владельцем.',campaign_ai_limited:'Слишком много запросов. Повторите через минуту.',campaign_ai_changed:'Данные или настройки изменились. Обновите заявку и повторите.'}[error.code]||'Не удалось подготовить разбор. Повторите запрос.';}}
+   }catch(error){if(valid()&&version===epoch){status.textContent={campaign_ai_disabled:'Эта возможность ИИ выключена разработчиком.',campaign_ai_limited:'Слишком много запросов. Повторите через минуту.',campaign_ai_changed:'Данные или настройки изменились. Обновите заявку и повторите.'}[error.code]||'Не удалось подготовить разбор. Повторите запрос.';}}
    finally{if(valid()&&version===epoch){busy=false;actions.querySelectorAll('button').forEach(b=>b.disabled=false);}}
   }
   async function load(){

@@ -45,7 +45,7 @@ def router_for(get_dsn, require_admin, require_operator):
         response.headers['Cache-Control'] = 'private, no-store'
         try:
             with psycopg.connect(get_dsn(), row_factory=dict_row, connect_timeout=3) as conn:
-                return conn.execute("SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,blocked_at FROM users WHERE role IN ('admin','operator') ORDER BY role,telegram_user_id").fetchall()
+                return conn.execute("SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,has_launched_ads,blocked_at FROM users WHERE role IN ('admin','operator') ORDER BY role,telegram_user_id").fetchall()
         except psycopg.Error as exc:
             explain_license_error(exc)
             raise HTTPException(503, 'database_unavailable') from exc

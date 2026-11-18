@@ -45,6 +45,13 @@ def check_admin_users(browser,base,output,failures,dsn):
         expect(sort).to_have_value('name')
         search=admin.get_by_label('Поиск пользователей',exact=True)
         expect(search).to_have_value('@directory_advertiser')
+        category=admin.locator('.directory-search').get_by_label('Категория пользователя',exact=True)
+        category.select_option('user')
+        expect(row).to_have_count(1)
+        expect(row.locator(':scope > .person-role')).to_have_text('Пользователь')
+        category.select_option('advertiser')
+        expect(row).to_have_count(0)
+        category.select_option('user')
         search.fill('')
         admin.locator('.directory-search button[type=submit]').click()
         for width in (320,390):
@@ -54,15 +61,18 @@ def check_admin_users(browser,base,output,failures,dsn):
             for card in admin.locator('.user-directory .directory-user').all():
                 identity=card.locator('.user-summary').bounding_box();badge=card.locator(':scope > .person-role').bounding_box()
                 assert badge['x']>=identity['x']+identity['width']+6
-                assert abs(badge['y']+badge['height']-identity['y']-identity['height'])<2
+                name=card.locator('.person-name').first.bounding_box()
+                assert abs(badge['y']-name['y'])<=4
                 assert card.bounding_box()['height']<160
             assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         for role,color in (('admin','rgb(255, 140, 152)'),('operator','rgb(114, 229, 165)')):
-            admin.locator('.directory-search').get_by_label('Роль пользователя',exact=True).select_option(role)
+            admin.locator('.directory-search').get_by_label('Категория пользователя',exact=True).select_option(role)
             badge=admin.locator('.directory-user>.person-role[data-role='+role+']').first
             expect(badge).to_be_visible()
             assert badge.evaluate('e=>getComputedStyle(e).color')==color
-        admin.screenshot(path=str(output/'54-user-directory.png'),full_page=True)
+        category.select_option('user')
+        expect(admin.locator('.directory-user>.person-role[data-role=user]').first).to_be_visible()
+        admin.screenshot(path=str(output/'54-user-directory.png'))
         operator=launch('operator');go(operator,'user/'+str(ids['advertiser']));expect(operator.locator('[data-page=user] .profile-identity')).to_contain_text('@directory_advertiser');expect(operator.locator('.profile-wallet')).to_have_count(0)
         go(admin,'management/payments');open_management(admin,'people');expect(admin.locator('#team-fields')).to_be_enabled()
         admin.get_by_label('Пользователь для назначения роли',exact=True).fill('@directory_new_staff');admin.locator('#team-role').select_option('operator');admin.once('dialog',lambda d:d.accept());admin.locator('#team-form button[type=submit]').click();expect(admin.locator('#team-status')).to_contain_text('Роль сохранена')

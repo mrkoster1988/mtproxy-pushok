@@ -56,7 +56,7 @@ window.pushokMiniApp=(()=>{
   try{
    const config=await api('/miniapp/config');
    title.textContent=config.loading_title||'Пушок готовит кабинет…';
-   if(!config.enabled){message('Mini App пока не включён владельцем. Попробуйте позже.');return;}
+   if(!config.enabled){message('Mini App пока не включён разработчиком. Попробуйте позже.');return;}
    const publicConfig=await api('/public-config');window.cabinetBotConfig=publicConfig;window.cabinet?.config(publicConfig);
    app=await sdk();
    if(!app?.initData){clear();message('Откройте Mini App из меню Telegram-бота.');return;}
@@ -83,7 +83,7 @@ window.pushokMiniApp=(()=>{
    await enter();panel.hidden=true;document.body.classList.remove('miniapp-loading');syncNavigation();await window.pushokLinks.apply();
   }catch(e){
    if(!token)message(e.code==='user_blocked'?e.message:e.message==='sdk_unavailable'?'Не удалось загрузить компонент приложения. Проверьте соединение и повторите.':
-    'Вход не завершён. Закройте Mini App и откройте заново. Если ошибка повторяется, обратитесь к владельцу.',e.message==='sdk_unavailable'||!e.status||e.status>=500);
+    'Вход не завершён. Закройте Mini App и откройте заново. Если ошибка повторяется, обратитесь к разработчику.',e.message==='sdk_unavailable'||!e.status||e.status>=500);
    else message('Не удалось загрузить кабинет. Проверьте соединение и повторите.',true);
   }finally{busy=false;retry.disabled=false;}
  }

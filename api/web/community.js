@@ -26,7 +26,7 @@ window.pushokCommunity=(()=>{
  async function show(target,id){const s=token;target.replaceChildren(el('p','Загрузка…','muted'));try{const u=await person(id);if(s!==token||!target.isConnected)return;
    const card=el('section',undefined,'profile-identity user-identity public-person'),row=el('div',undefined,'person-line'),copy=window.pushokProfiles.names(u,true);
    if(u.online!==null)copy.append(el('small',u.online?'Онлайн в приложении':'Не в сети','muted'));
-   row.append(v().userAvatar(id,names(u)),copy);card.append(row);const role=el('span',u.is_owner?'Владелец':{admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'}[u.role],'profile-role');role.dataset.role=u.is_owner?'owner':u.role;card.append(role);target.replaceChildren(card);
+   row.append(v().userAvatar(id,names(u)),copy);card.append(row);const role=el('span',window.pushokTeam.displayRole(u),'profile-role');role.dataset.role=u.is_owner?'owner':u.role;card.append(role);target.replaceChildren(card);
   }catch(e){if(s===token)target.replaceChildren(el('p',e.message,'empty'));}}
  function invited(id,count){
   const box=el('details',undefined,'panel profile-invited-block'),head=el('summary'),list=el('div',undefined,'invitees'),feedback=el('p',undefined,'invite-feedback'),actions=el('div',undefined,'invite-actions');
@@ -89,6 +89,6 @@ window.pushokCommunity=(()=>{
  for(const event of ['pointerdown','keydown','touchstart'])document.addEventListener(event,()=>{activeAt=Date.now();},{passive:true});
  async function heartbeat(){if(!token||!me||me.is_owner||document.hidden||Date.now()-activeAt>120000)return;try{await api('/community/presence',{method:'POST'});}catch{}}
  setInterval(()=>{void heartbeat();if(!document.hidden&&token)document.querySelectorAll('.user-avatar[data-user-id]').forEach(n=>{if(n.getClientRects().length)updateAvatar(n,n.dataset.userId);});},60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){activeAt=Date.now();void heartbeat();}});setTimeout(heartbeat,3000);
- Object.assign(errors,{personal_details_locked:'Сведения уже сохранены. Изменить их может только владелец.',phone_verification_required:'Перед созданием кампании подтвердите номер в профиле.',personal_transfer_target_filled:'У нового аккаунта уже есть личные сведения.',personal_transfer_empty:'Нет сведений для переноса.',personal_transfer_same_user:'Выберите другой аккаунт.'});
+ Object.assign(errors,{personal_details_locked:'Сведения уже сохранены. Изменить их может только разработчик.',phone_verification_required:'Перед созданием кампании подтвердите номер в профиле.',personal_transfer_target_filled:'У нового аккаунта уже есть личные сведения.',personal_transfer_empty:'Нет сведений для переноса.',personal_transfer_same_user:'Выберите другой аккаунт.'});
  return {decorate,show,invited,leaders,ownerTools,backRoute:()=>returnRoute};
 })();

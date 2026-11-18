@@ -125,7 +125,7 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             with patch.object(verified, 'telegram_birthday', return_value=verified.Birthday(day=11, month=11)):
                 personal.get_by_role('button', name='Взять из Telegram', exact=True).click()
                 expect(personal.get_by_label('День', exact=True)).to_have_value('11')
-            expect(personal).to_contain_text('Изменить сведения может только владелец')
+            expect(personal).to_contain_text('Изменить сведения может только разработчик')
             expect(personal.get_by_label('День', exact=True)).to_be_disabled()
             expect(personal.get_by_label('Месяц', exact=True)).to_be_disabled()
             expect(personal.get_by_role('button', name='Сохранить', exact=True)).to_be_hidden()

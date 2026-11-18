@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.100",
+    version="1.101",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -96,6 +96,7 @@ class SessionResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
+    has_launched_ads: bool = False
     is_owner: bool = False
     phone_verified: bool = False
     id: UUID
@@ -408,7 +409,7 @@ def get_current_user(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             user = connection.execute(
                 """
-                SELECT u.id, u.telegram_user_id, u.role, u.is_owner, u.first_name, u.last_name,
+                SELECT u.id, u.telegram_user_id, u.role, u.is_owner, u.has_launched_ads, u.first_name, u.last_name,
                        u.username, u.blocked_at, s.id AS session_id, s.login_surface,
                        EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=u.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
                 FROM users AS u
@@ -2762,7 +2763,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=136" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=1.101" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
