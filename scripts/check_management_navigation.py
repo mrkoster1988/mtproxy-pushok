@@ -53,6 +53,11 @@ def check_management_navigation(browser, base, output, failures, dsn):
             expect(admin.locator('[data-page=management] h1')).to_have_text(label)
             expect(admin.locator('.cabinet-topbar .mobile-brand strong')).to_have_text(label)
             expect(admin.locator('.settings-nav:visible')).to_have_count(0)
+            if key == 'automation':
+                group=admin.locator('.automation-settings-list')
+                expect(group.locator('.ai-settings-card')).to_have_count(4)
+                assert group.locator('.ai-settings-card').evaluate_all(
+                    "cards=>cards.every(card=>!card.parentElement.closest('details'))")
             open_settings(admin)
             for selector in selectors:
                 expect(admin.locator(selector)).to_have_count(1)

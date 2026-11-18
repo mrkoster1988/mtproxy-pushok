@@ -1,4 +1,5 @@
 """Регрессии приглашённых, компактных форм и категорий настроек."""
+import re
 from uuid import uuid4
 import psycopg
 from playwright.sync_api import expect
@@ -25,6 +26,15 @@ def check_interface(browser,base,output,failures,dsn):
     try:
         page.goto(base+'/#/profile');expect(page.locator('body')).to_have_attribute('data-cabinet-loaded','true')
         box=page.locator('.profile-invited-block');box.locator(':scope>summary').click();expect(box.locator('.invitee')).to_have_count(20)
+        submit=box.get_by_role('button',name='Привязать пользователя')
+        for width in (320,390):
+            page.set_viewport_size({'width':width,'height':844})
+            expect(submit).to_have_text('Привязать пользователя')
+            expect(submit.locator('use')).to_have_attribute('href',re.compile(r'#pi-plus$'))
+            bounds=[node.bounding_box() for node in (box,box.locator('.invitee').first,box.locator('.user-picker-line'),submit)]
+            card,*rows=bounds
+            assert all(abs(row['x']-rows[0]['x'])<1 and abs(row['width']-rows[0]['width'])<1 for row in rows)
+            assert rows[0]['x']-card['x']>=12 and submit.bounding_box()['height']>=44
         box.get_by_role('button',name='Ещё приглашённые').click();expect(box.get_by_role('button',name='Повторить загрузку приглашённых')).to_be_visible();expect(box.locator('.invitee')).to_have_count(20)
         box.get_by_role('button',name='Повторить загрузку приглашённых').click();expect(box.locator('.invitee')).to_have_count(22);assert len(attempted)==2
         assert len(set(box.locator('[data-user-id]').evaluate_all('(ns)=>ns.map(n=>n.dataset.userId)')))==22

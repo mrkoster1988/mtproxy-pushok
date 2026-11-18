@@ -22,6 +22,24 @@ class LaunchFixes(unittest.TestCase):
   self.env.start();self.client=TestClient(main.app)
  def tearDown(self):
   main.app.dependency_overrides.clear();self.env.stop();self.temp.cleanup()
+ def test_automatic_updates_owner_setting_and_cancel_pending(self):
+  url='/api/v1/admin/control/auto-update'
+  def enable(value):
+   return self.client.put(url,json={'enabled':value})
+  self.assertEqual(enable(True).status_code,401)
+  main.app.dependency_overrides[main.get_current_user]=lambda:dict(id='u',role='admin',is_owner=False)
+  self.assertEqual(enable(True).status_code,403)
+  main.app.dependency_overrides[main.get_current_user]=lambda:dict(id='u',role='admin',is_owner=True)
+  self.assertEqual(enable(True).status_code,409)
+  control.write('installed.json',{'version':2})
+  self.assertEqual(enable(True).status_code,200)
+  self.assertTrue(self.client.get('/api/v1/admin/control').json()['auto_enabled'])
+  control.write('request.json',{'action':'update','actor':'automatic'})
+  self.assertEqual(enable(False).status_code,200)
+  self.assertIsNone(control.read('request.json'))
+  control.write('request.json',{'action':'update','actor':'u'})
+  self.assertEqual(enable(False).status_code,200)
+  self.assertEqual(control.read('request.json')['actor'],'u')
  def test_free_tariff_validation(self):
   args=dict(name='Бесплатно',duration_seconds=86400,price_kopecks=0,stars_price_xtr=0,is_active=True)
   self.assertIsNone(main.TariffSettingsUpdate(**args).stars_price_xtr)

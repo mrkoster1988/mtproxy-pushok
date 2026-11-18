@@ -53,8 +53,10 @@ window.pushokGateway=(()=>{
   if(dirty&&!force)return;
   const version=++settingsEpoch,session=token,user=me.id;
   const current=()=>version===settingsEpoch&&session===token&&user===me?.id&&me?.is_owner;
-  const saved=await api('/admin/proxy-gateway');if(!current())return;dirty=false;
-  const box=el('details',undefined,'ai-settings-card');box.id='proxy-gateway-card';box.append(el('summary','Единый вход и интересы'));
+  const saved=await api('/admin/proxy-gateway');if(!current()||(!force&&dirty))return;dirty=false;
+  const box=el('details',undefined,'ai-settings-card');box.id='proxy-gateway-card';box.open=host.querySelector('#proxy-gateway-card')?.open??false;
+  const heading=el('summary'),title=el('span','Единый вход и интересы','ai-settings-title');
+  title.prepend(window.pushokViews.icon('server'));heading.append(title);box.append(heading);
   const content=el('div',undefined,'ai-settings-content'),form=el('form'),fields=el('fieldset');
   function checkbox(title,id,value){const label=el('label',title,'ai-switch'),input=el('input');input.type='checkbox';input.id=id;input.checked=value;label.append(input);fields.append(label);return input;}
   const enabled=checkbox('Включить единый адрес','proxy-gateway-enabled',saved.enabled);
@@ -72,7 +74,7 @@ window.pushokGateway=(()=>{
    if(agent.nodes===1)content.append(el('p','Сейчас подключён один узел. Для резерва включите «Подготовить один резервный прокси» в разделе «ИИ · Новые прокси».','muted'));
   }
   const help=el('details');help.append(el('summary','Первое подключение на VPS'),el('p','После обновления проекта выполните команду один раз. Она установит HAProxy и службу проверки. Основной MTProxy продолжит работать. У провайдера VPS разрешите показанные выше TCP-порты.','muted'),el('code','sudo bash /opt/mtproxy-pushok/scripts/install_proxy_gateway.sh --install-dependency'),el('p','Старые дополнительные экземпляры без общего ключа исключаются. После планового перезапуска они смогут участвовать. Уже сохранённые прямые ссылки остаются прямыми — для единого входа подключитесь заново с главной.','muted'));content.append(help);
-  form.onsubmit=e=>{e.preventDefault();void run(async()=>{fields.disabled=true;try{await api('/admin/proxy-gateway',{method:'PUT',body:{enabled:enabled.checked,port:Number(port.value),interests_enabled:interests.checked,revision:saved.revision}});if(current()){dirty=false;await load(true);notice('Настройки сохранены. Агент применит их после проверки.',true);}}finally{fields.disabled=false;}},save);};
+  form.onsubmit=e=>{e.preventDefault();void run(async()=>{fields.disabled=true;try{await api('/admin/proxy-gateway',{method:'PUT',body:{enabled:enabled.checked,port:Number(port.value),interests_enabled:interests.checked,revision:saved.revision}});if(box.isConnected&&session===token&&user===me?.id&&me?.is_owner){dirty=false;await load(true);notice('Настройки сохранены. Агент применит их после проверки.',true);}}finally{fields.disabled=false;}},save);};
   box.append(content);host.replaceChildren(box);
  }
  return {profile,load,connection,reset};

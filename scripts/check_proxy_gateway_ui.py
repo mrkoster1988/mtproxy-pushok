@@ -36,15 +36,15 @@ def check_proxy_gateway_ui(new_page, go, output, dsn):
             with psycopg.connect(dsn) as conn:
                 assert conn.execute('SELECT count(*) FROM user_proxy_interests').fetchone()[0]==0
             go(admin,'management/automation','management')
-            # Внешние разделы настроек являются disclosure.
-            admin.locator('#proxy-gateway-settings').evaluate("node=>{for(let p=node.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;}")
+            host=admin.locator('#proxy-gateway-settings')
+            assert host.evaluate("node=>!node.closest('details')")
             admin.locator('#proxy-gateway-card > summary').click()
             expect(admin.locator('#proxy-gateway-enabled')).not_to_be_checked()
             admin.locator('#proxy-gateway-enabled').check()
             admin.locator('#proxy-gateway-interests').check()
-            admin.get_by_role('button',name='Сохранить единый вход',exact=True).click()
-            expect(admin.locator('#proxy-gateway-card')).not_to_have_attribute('open','')
-            admin.locator('#proxy-gateway-card > summary').click()
+            with admin.expect_response(lambda r: r.url.endswith('/admin/proxy-gateway') and r.request.method=='GET'):
+                admin.get_by_role('button',name='Сохранить единый вход',exact=True).click()
+            expect(admin.locator('#proxy-gateway-status')).to_be_visible()
             expect(admin.locator('#proxy-gateway-enabled')).to_be_checked()
             expect(admin.locator('#proxy-gateway-interests')).to_be_checked()
             expect(admin.locator('#proxy-gateway-card')).to_contain_text('10443–10468')

@@ -815,9 +815,10 @@ run(async()=>{
 });
 
 let displayedVersion=null,softwareControl=null,softwareRelease=null,softwareSession=null;
-let controlFlight=null,releaseFlight=null,lastReleaseRequest=0;
+let controlFlight=null,releaseFlight=null,lastReleaseRequest=0,autoSaveSession=null;
 function clearSoftware(){
  displayedVersion=null;softwareControl=null;softwareRelease=null;softwareSession=null;controlFlight=null;releaseFlight=null;lastReleaseRequest=0;
+ autoSaveSession=null;$('software-auto-row').hidden=true;$('software-auto-status').textContent='';
  $('software-updates').hidden=true;$('software-update-notice').hidden=true;
  $('software-installed').textContent='Получаем версию…';$('software-available').textContent='Проверяем…';
  $('software-update-status').textContent='';$('software-release-status').textContent='Проверяем наличие новой версии…';$('software-checked').textContent='Проверка ещё не выполнена.';$('software-changelog').hidden=true;$('software-update').disabled=true;
@@ -844,8 +845,19 @@ function renderSoftware(){
  else if(c.update.at)status+=' '+date(c.update.at);
  $('software-update-status').textContent=status;
  }
- $('software-update').disabled=!c?.updater_installed||busy||r?.state!=='available';
- $('software-update').textContent=busy?(c.requested?'Ожидаем запуск…':'Обновление выполняется…'):r?.state==='available'?'Установить v'+r.available_version:'Установить обновление';
+ const auto=$('software-auto'),owner=me.is_owner===true;
+ $('software-auto-row').hidden=!owner;
+ auto.disabled=!owner||!c?.auto_supported||autoSaveSession===token;
+ if(autoSaveSession!==token)auto.checked=c?.auto_enabled===true;
+ const autoStatus=$('software-auto-status');
+ autoStatus.textContent=!owner||!c?'':!c.auto_supported?'Для автообновления требуется новая версия службы на VPS.':c.auto_enabled?'Сервер проверяет стабильные выпуски каждый час, даже при закрытом приложении.':'Автообновление выключено.';
+ if(owner&&c?.auto_enabled&&c.auto_checked_at){
+  autoStatus.textContent+=' Последняя проверка: '+date(c.auto_checked_at)+'.';
+  if(c.auto_check_state==='unavailable')autoStatus.textContent+=' Не удалось получить версию. Сервер повторит проверку.';
+ }
+ const retry=c?.update?.state==='failed'&&r?.state==='current';
+ $('software-update').disabled=!c?.updater_installed||busy||!(r?.state==='available'||retry);
+ $('software-update').textContent=busy?(c.requested?'Ожидаем запуск…':'Обновление выполняется…'):r?.state==='available'?'Установить v'+r.available_version:retry?'Повторить установку v'+r.available_version:'Установить обновление';
  const banner=$('software-update-notice');
  if(banner){banner.hidden=r?.state!=='available';$('software-update-notice-text').textContent=r?.state==='available'?'Доступно обновление v'+r.available_version+' · установлено v'+r.installed_version:'';}
 }
@@ -888,6 +900,16 @@ $('payment-switches').addEventListener('submit',event=>{event.preventDefault();r
  await api('/admin/control/payments',{method:'PUT',body:{stars:$('enable-stars').checked,sbp:$('enable-sbp').checked}});
  await loadAdminSettings();notice('Настройки оплаты сохранены.');
 });});
+$('software-auto').addEventListener('change',()=>run(async()=>{
+ const session=token,enabled=$('software-auto').checked;
+ if(!me?.is_owner||autoSaveSession===session)return;
+ autoSaveSession=session;renderSoftware();
+ try{
+  const result=await api('/admin/control/auto-update',{method:'PUT',body:{enabled}});
+  if(session===token&&softwareControl)softwareControl.auto_enabled=result.enabled;
+  if(session===token)await loadControl();
+ }finally{if(session===token){autoSaveSession=null;renderSoftware();}}
+}));
 $('software-check').addEventListener('click',()=>refreshSoftware(true));
 $('software-update').addEventListener('click',()=>run(async()=>{
  $('software-update').disabled=true;
