@@ -359,6 +359,8 @@ function card(c,op,{compact=false}={}){
  const box=el('section',undefined,'campaign-detail');
  box.append(window.pushokViews.campaignSummary(c,op?'moderation':'campaign',{actions:false}));
  const timing=window.pushokViews.disclosure('Этапы и сроки размещения',[window.pushokViews.progress(c),window.pushokViews.facts(c)],'inline-help campaign-timing');
+ const timingHeading=timing.querySelector('summary');
+ timingHeading.prepend(window.pushokViews.icon('calendar'));timingHeading.append(window.pushokViews.icon('chevron'));
  box.append(timing);
  let reportButton;
  if(!op){

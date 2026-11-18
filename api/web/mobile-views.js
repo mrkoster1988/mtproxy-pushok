@@ -169,7 +169,7 @@ window.pushokViews=(()=>{
   return 'Запуск в свободный период, не раньше чем через 1 час после подтверждения канала в Telegram';
  }
  function facts(c){const list=el('dl',undefined,'campaign-facts');
-  [['Размещение','Прокси-спонсорство'],['Тариф',c.tariff_name_snapshot],['Срок',duration(c)],['Стоимость',price(c)],...(c.requested_start_at?[['Желаемое начало',date(c.requested_start_at)]]:[]),['Начало',date(c.scheduled_start_at)],['Окончание',date(c.scheduled_end_at)]].forEach(([k,v])=>{list.append(el('dt',k),el('dd',v||'—'));});return list;
+  [['Размещение','Прокси-спонсорство'],['Тариф',c.tariff_name_snapshot],['Срок',duration(c)],['Стоимость',price(c)],...(c.requested_start_at?[['Желаемое начало',launchTime(c.requested_start_at)]]:[]),['Начало',c.scheduled_start_at?launchTime(c.scheduled_start_at):'Не назначено'],['Окончание',c.scheduled_end_at?launchTime(c.scheduled_end_at):'Не назначено']].forEach(([k,v])=>{list.append(el('dt',k),el('dd',v||'—'));});return list;
  }
  function price(c){return c.price_kopecks_snapshot===0?'Без оплаты':miniAppMode?(c.stars_price_snapshot>0?c.stars_price_snapshot+' XTR':'Цена Stars не задана'):money(c.price_kopecks_snapshot);}
  // Единая карточка во всех разделах; контекст меняет только действия и переходы.

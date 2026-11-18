@@ -57,3 +57,15 @@
 .campaign-stat-action svg { flex:none; width:18px; height:18px; }
 .directory-search > label.directory-sort { grid-row:3!important; display:grid; grid-template-columns:auto minmax(0,1fr); }
 .directory-search > label:not(.directory-sort) { grid-row:4!important; }
+
+.cabinet-mode .campaign-detail > .campaign-timing {
+  min-width:0; margin:10px 0; padding:0 14px; border:1px solid var(--line); border-radius:14px; background:var(--surface);
+}
+.campaign-timing > summary {
+  display:flex; align-items:center; gap:10px; min-height:48px; color:var(--text); font-size:14px; font-weight:600;
+  list-style:none;
+}
+.campaign-timing > summary::-webkit-details-marker { display:none; }
+.campaign-timing > summary .ui-icon { flex:none; width:18px; height:18px; }
+.campaign-timing > summary .ui-icon:last-child { margin-left:auto; transform:rotate(90deg); }
+.campaign-timing[open] > summary .ui-icon:last-child { transform:rotate(-90deg); }
