@@ -244,7 +244,11 @@
             <div id="sbp-connection" hidden></div>
           </section>
           <section class="payment-group" aria-labelledby="wallet-settings-title">
-            <header class="payment-header"><h2 id="wallet-settings-title">Внутренний баланс</h2></header>
+            <header class="payment-header">
+              <h2 id="wallet-settings-title">Внутренний баланс</h2>
+              <button type="button" id="wallet-settings-info" class="icon-action" aria-label="О внутреннем балансе" aria-controls="wallet-settings-help" aria-expanded="false"><svg class="ui-icon" aria-hidden="true" viewBox="0 0 24 24"><use href="/assets/pushok-icons.svg?v=188#pi-info"></use></svg></button>
+            </header>
+            <p id="wallet-settings-help" class="inline-info muted" hidden>При выключении баланса остановятся пополнения, оплата с баланса и активация подарочных кодов. Остатки, история, возвраты и подтверждение выставленных счетов сохранятся. Пользователям потребуется заново включить автосписание. Прямая оплата заявок продолжит работать.</p>
             <div id="wallet-settings"></div>
           </section>
           <section class="payment-group" aria-labelledby="payment-review-title">

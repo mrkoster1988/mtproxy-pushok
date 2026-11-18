@@ -270,6 +270,8 @@ window.pushokWallet=(()=>{
  }
  async function walletSettings(){
   const node=$('wallet-settings'),session=token,uid=me?.id,seq=++settingsEpoch;if(!node||me?.role!=='admin')return;
+  const info=$('wallet-settings-info'),help=$('wallet-settings-help');
+  info.onclick=()=>{help.hidden=!help.hidden;info.setAttribute('aria-expanded',String(!help.hidden));};
   node.replaceChildren(el('p','Загружаем настройки баланса…'));
   try{const data=await api('/admin/wallet/settings');if(seq!==settingsEpoch||session!==token||uid!==me?.id)return;
    const form=el('form'),row=el('label',undefined,'payment-method'),symbol=el('span',undefined,'payment-symbol payment-wallet');
