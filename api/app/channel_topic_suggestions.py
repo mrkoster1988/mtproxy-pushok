@@ -11,6 +11,7 @@ import re
 import threading
 import time
 from urllib.request import Request, build_opener, ProxyHandler
+from urllib.error import HTTPError
 
 from . import public_channels
 from .channel_logos import NoRedirect
@@ -34,7 +35,7 @@ class PublicPosts(HTMLParser):
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if re.fullmatch(re.escape(self.username) + r'/[0-9]+', attrs.get('data-post',''), re.I):
-            self.message = {'text':'', 'media':False}
+            self.message = {'text':'', 'media':False, 'truncated':False}
             self.message_depth = len(self.stack)+1
         if self.message is not None:
             classes = attrs.get('class','')
@@ -59,10 +60,12 @@ class PublicPosts(HTMLParser):
         if not self.stack:
             return
         if self.depth == len(self.stack) and self.stack[-1][0] == tag:
-            text = ' '.join(''.join(self.parts).split())[:1200]
+            text = ' '.join(''.join(self.parts).split())
             if self.message is not None:
-                self.message['text'] = text
-            if len(text) >= 20 and text not in self.posts:
+                self.message['truncated'] = len(text) > 1200
+                self.message['text'] = text[:1200]
+            text = text[:1200]
+            if text and text not in self.posts:
                 self.posts.append(text)
                 self.posts = self.posts[-8:]
             self.depth, self.parts = None, []
@@ -83,7 +86,7 @@ def read_url(request, timeout, limit):
     return raw
 
 
-def public_parser(username):
+def public_parser(username, *, report_transient=False):
     if environment_name() != 'production':
         return None
     try:
@@ -92,7 +95,15 @@ def public_parser(username):
         parser = PublicPosts(username)
         parser.feed(raw.decode('utf-8'))
         return parser
-    except (OSError, ValueError, TypeError):
+    except HTTPError as exc:
+        if report_transient and (exc.code in (408, 429) or exc.code >= 500):
+            raise
+        return None
+    except OSError:
+        if report_transient:
+            raise
+        return None
+    except (ValueError, TypeError):
         return None
 
 
@@ -103,11 +114,14 @@ def public_posts(username):
 
 def public_sample(username):
     """Одна выборка с покрытием: пропущенные медиа нельзя считать проверенными."""
-    parser = public_parser(username)
+    try:
+        parser = public_parser(username, report_transient=True)
+    except OSError:
+        return {'posts':[], 'fully_textual':False, 'temporary_failure':True}
     messages = parser.messages if parser else []
     complete = bool(messages) and parser.message is None and all(
-        not m['media'] and len(m['text']) >= 20 for m in messages)
-    return {'posts':[m['text'] for m in messages if len(m['text']) >= 20], 'fully_textual':complete}
+        not m['media'] and not m['truncated'] and len(m['text']) >= 20 for m in messages)
+    return {'posts':[m['text'] for m in messages if m['text']], 'fully_textual':complete}
 
 
 def ai_config():

@@ -32,6 +32,85 @@ window.pushokApproval=(()=>{
  function advertiser(c){
   return window.pushokProfiles.advertiser(c);
  }
+ function rejectionReason(c){
+  const dialog=el('dialog',undefined,'moderation-reason-dialog');
+  const form=el('form'),heading=el('h2','Отклонить заявку');
+  heading.id='moderation-reason-'+c.id;
+  dialog.setAttribute('aria-labelledby',heading.id);
+  form.append(heading,el('p',c.channel_title||c.channel_url||'#'+c.id.slice(0,8)));
+  const comment=note(form,'Причина отказа для рекламодателя');
+  const cancel=button('Отмена',()=>dialog.close());
+  const submit=el('button','Отклонить');submit.type='submit';
+  const actions=el('div',undefined,'moderation-reason-actions');actions.append(cancel,submit);
+  form.append(actions);dialog.append(form);document.body.append(dialog);
+  return new Promise(resolve=>{
+   let reason=null;
+   const leave=()=>dialog.close();
+   window.addEventListener('hashchange',leave);
+   dialog.addEventListener('close',()=>{
+    window.removeEventListener('hashchange',leave);dialog.remove();resolve(reason);
+   },{once:true});
+   comment.addEventListener('input',()=>comment.setCustomValidity(''));
+   form.addEventListener('submit',event=>{
+    event.preventDefault();
+    const text=comment.value.trim();
+    if(text.length<comment.minLength){
+     comment.setCustomValidity('Опишите причину отказа подробнее.');comment.reportValidity();return;
+    }
+    reason=text;dialog.close();
+   });
+   dialog.showModal();comment.focus();
+  });
+ }
+ const decisionsInFlight=new Set();
+ const needsDecision=c=>c&&!c.archived_at&&c.moderation_status==='pending'&&c.moderation_check==='review';
+ function saveModeration(c,body){
+  return api('/operator/campaigns/'+c.id+'/moderation',{method:'POST',body});
+ }
+ function moderationSummary(c,options){
+  const row=window.pushokViews.campaignSummary(c,'moderation',{actions:false,...options});
+  if(!needsDecision(c))return row;
+  const period=row.querySelector('.tile-period'),tools=el('span',undefined,'quick-moderation-actions');
+  tools.setAttribute('role','group');tools.setAttribute('aria-label','Решение по заявке');
+  const session=token,user=me.id;
+  const authorized=()=>session===token&&me?.id===user&&['admin','operator'].includes(me.role);
+  async function decide(decision){
+   if(!authorized()||decisionsInFlight.has(c.id))return;
+   decisionsInFlight.add(c.id);
+   try{
+    const body={decision};
+    if(decision==='rejected'){
+     body.comment=await rejectionReason(c);
+     if(!body.comment)return;
+    }
+    if(!authorized()||!needsDecision(campaigns.find(item=>item.id===c.id)))return;
+    let result;
+    try{
+     result=await saveModeration(c,body);
+    }catch(error){
+     if(error.code==='campaign_not_pending'&&authorized()){
+      await refresh();notice('Эта заявка уже обработана. Очередь обновлена.');return;
+     }
+     throw error;
+    }
+    if(!authorized())return;
+    const current=campaigns.find(item=>item.id===c.id);
+    if(current){
+     current.moderation_status=result.moderation_status;current.payment_status=result.payment_status;
+     current.moderator_comment=result.moderator_comment;
+    }
+    render();
+    try{await refresh();}catch{if(authorized())notice('Решение сохранено. Обновите список заявок.');return;}
+    if(authorized())notice(decision==='approved'?'Канал одобрен.':'Заявка отклонена. Причина сохранена.',true);
+   }finally{decisionsInFlight.delete(c.id);}
+  }
+  for(const [decision,icon,label] of [['rejected','close','Отклонить заявку'],['approved','check','Одобрить заявку']]){
+   const control=window.pushokViews.iconAction(button('',()=>decide(decision)),icon,label);
+   control.classList.add('quick-'+decision);tools.append(control);
+  }
+  period.classList.add('quick-moderation-period');period.append(tools);
+  return row;
+ }
  function render(){
   if(!me||!['admin','operator'].includes(me.role))return;
   const parts=location.hash.replace(/^#\/?/,'').split('/');
@@ -44,7 +123,7 @@ window.pushokApproval=(()=>{
   if(!c){
    if(selected)root.append(el('p','Заявка не найдена или недоступна. Обновите список.','empty'));
    if(!list.length)root.append(el('p','Заявок в этой очереди нет.','empty'));
-   for(const item of list){const row=window.pushokViews.campaignSummary(item,'moderation',{actions:false,openLabel:'Разобрать заявку'});row.classList.add('approval-summary');root.append(row);}
+   for(const item of list){const row=moderationSummary(item,{openLabel:'Разобрать заявку'});row.classList.add('approval-summary');root.append(row);}
    archivedQueue();return;
   }
   const box=el('article',undefined,'approval-card');box.dataset.campaignId=c.id;root.append(box);
@@ -53,7 +132,7 @@ window.pushokApproval=(()=>{
   const choices=campaigns.filter(item=>!item.archived_at||item.id===c.id);
   option(choose,'','Все заявки');for(const item of choices)option(choose,item.id,(item.archived_at?'Удалена · ':'')+(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;choose.hidden=choices.length===1;
   choose.addEventListener('change',()=>{selected=choose.value;window.cabinet.go(selected?'moderation/'+selected:'moderation');});navigation.append(choose);box.append(navigation);
-  box.append(window.pushokViews.campaignSummary(c,'moderation',{actions:false,route:'moderation',openLabel:'Все заявки'}),advertiser(c));
+  box.append(moderationSummary(c,{route:'moderation',openLabel:'Все заявки'}),advertiser(c));
 
   if(c.archived_at){
    const banner=el('section',undefined,'card approval-archive-notice');banner.setAttribute('role','status');
@@ -89,11 +168,11 @@ window.pushokApproval=(()=>{
    content.append(el('h3','Проверка платежа удалённой заявки'),el('p','История оплаты сохранена. Архивирование не отменяет выставленный счёт у платёжной системы. Когда счёт будет закрыт, заявка исчезнет из этого раздела и останется в «Удалённых».','block-note'),button('Проверить статус оплаты',refresh));
   }else if(c.moderation_status==='pending'){
    content.append(el('h3','1. Проверьте канал'),el('p','Откройте канал выше, проверьте содержание и выберите решение.'));
-   content.append(button('Одобрить канал',()=>perform(()=>post('moderation',{decision:'approved'}),'Канал одобрен. Статус оплаты — в этой карточке.')));
+   content.append(button('Одобрить канал',()=>perform(()=>saveModeration(c,{decision:'approved'}),'Канал одобрен. Статус оплаты — в этой карточке.')));
    const extra=details('Исправления или отказ',content),f=el('form'),decision=el('select');
    option(decision,'changes_requested','Запросить исправления');option(decision,'rejected','Отклонить канал');field(f,'Решение',decision);
    const comment=note(f,'Комментарий рекламодателю'),submit=el('button','Отправить решение');submit.type='submit';f.append(submit);extra.append(f);
-   f.addEventListener('submit',e=>{e.preventDefault();if(f.reportValidity())void perform(()=>post('moderation',{decision:decision.value,comment:comment.value.trim()}),'Решение отправлено рекламодателю.');});
+   f.addEventListener('submit',e=>{e.preventDefault();if(f.reportValidity())void perform(()=>saveModeration(c,{decision:decision.value,comment:comment.value.trim()}),'Решение отправлено рекламодателю.');});
   }else if(c.moderation_status!=='approved')content.append(el('h3',c.moderation_status==='rejected'?'Заявка отклонена':'Ожидаем рекламодателя'),el('p',c.moderation_status==='rejected'?'Рекламодатель увидит причину отказа и сможет создать новую заявку.':'Рекламодатель должен исправить и отправить заявку на проверку.'));
   else if(c.payment_status==='proof_submitted'){
    const block=form('2. Проверьте оплату','Подтвердить оплату',()=>post('payment-review',{decision:'verified'}));

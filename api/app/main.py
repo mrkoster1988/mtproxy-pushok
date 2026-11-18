@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.92",
+    version="1.93",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -231,6 +231,9 @@ class CampaignResponse(BaseModel):
     price_kopecks_snapshot: int
     currency_snapshot: str
     moderation_status: str
+    moderation_check: Literal['review', 'retry'] | None = None
+    moderation_reason: str | None = None
+    moderation_attempted_at: datetime | None = None
     payment_status: str
     placement_status: str
     requested_start_at: datetime | None
@@ -699,9 +702,14 @@ def list_campaigns(
                        c.currency_snapshot, c.moderation_status, c.payment_status,
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
                        c.scheduled_end_at, c.moderator_comment,
-                       latest_proof.review_comment AS payment_review_comment
+                       latest_proof.review_comment AS payment_review_comment,
+                       ac.decision AS moderation_check, NULLIF(ac.reason, '') AS moderation_reason,
+                       ac.attempted_at AS moderation_attempted_at
                 FROM campaigns AS c
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
+                LEFT JOIN ai_moderation_checks ac ON ac.campaign_id = c.id AND ac.snapshot = c.updated_at
+                    AND c.moderation_status = 'pending' AND c.archived_at IS NULL
+                    AND (ac.decision = 'review' OR (ac.decision = 'retry' AND ac.reason <> ''))
                 LEFT JOIN LATERAL (
                     SELECT p.review_comment
                     FROM payment_proofs AS p
@@ -804,7 +812,7 @@ def moderate_campaign(
                                           THEN 'awaiting_payment' ELSE payment_status END,
                     moderator_comment = %s,
                     updated_at = now()
-                WHERE id = %s AND moderation_status = 'pending'
+                WHERE id = %s AND moderation_status = 'pending' AND archived_at IS NULL
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
                           duration_seconds_snapshot, price_kopecks_snapshot,
                           currency_snapshot, moderation_status, payment_status,
@@ -1809,9 +1817,14 @@ def list_operator_campaigns(
                        c.currency_snapshot, c.moderation_status, c.payment_status,
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
                        c.scheduled_end_at, c.moderator_comment,
-                       latest_proof.review_comment AS payment_review_comment
+                       latest_proof.review_comment AS payment_review_comment,
+                       ac.decision AS moderation_check, NULLIF(ac.reason, '') AS moderation_reason,
+                       ac.attempted_at AS moderation_attempted_at
                 FROM campaigns AS c
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
+                LEFT JOIN ai_moderation_checks ac ON ac.campaign_id = c.id AND ac.snapshot = c.updated_at
+                    AND c.moderation_status = 'pending' AND c.archived_at IS NULL
+                    AND (ac.decision = 'review' OR (ac.decision = 'retry' AND ac.reason <> ''))
                 JOIN users AS u ON u.id = c.advertiser_user_id
                 LEFT JOIN LATERAL (
                     SELECT p.review_comment

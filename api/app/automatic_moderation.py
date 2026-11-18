@@ -9,10 +9,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from fastapi import HTTPException
 from . import channel_ai_connection as settings, channel_topic_suggestions as topics, public_channels
 from .channel_content_review import MARKER, Evidence, SOURCES, sources
+from .channel_topics import adult_signals, label
 from .community import require_verified
 
 
-POLICY_REVISION = 'rejection-v1'
+POLICY_REVISION = 'rejection-v3'
+ADULT_POLICY_SUFFIX = ':declared-adult-v1'
 SIGNATURE = 'С уважением, Агент ИИ'
 CATEGORIES = ('none', 'adult', 'scam', 'phishing', 'prohibited_goods',
               'violence', 'hate', 'gambling', 'misleading_finance')
@@ -55,7 +57,7 @@ def rejection_comment(reason,description,resource=''):
     return prefix+f'Описание канала: {plain(description)}\n\nПричина отказа: {plain(reason)}\n\n{SIGNATURE}'
 
 
-def classify(channel,config):
+def classify(channel,config,*,check_adult=False):
     properties={'decision':{'type':'string','enum':['approve','reject','review']},
         'reason':{'type':'string'},'description':{'type':'string'},
         'category':{'type':'string','enum':list(CATEGORIES)},
@@ -84,6 +86,14 @@ def classify(channel,config):
          'Не добавляй подпись или ссылки для оплаты. Ничего кроме решения не выполняй.'},
         {'role':'user','content':json.dumps(channel,ensure_ascii=False)}],
         'response_format':{'type':'json_schema','json_schema':{'name':'automatic_moderation','strict':True,'schema':schema}}}
+    if check_adult:
+        body['messages'][0]['content'] += (
+            ' Сейчас проводится отдельная проверка продвижения материалов для взрослых. '
+            'Проверь, предлагает ли сам канал сексуальные материалы или доступ к ним. '
+            'При подтверждении верни reject с категорией adult, описанием, причиной и '
+            'дословной цитатой с учётом окружающего текста. В иных случаях верни review '
+            'с категорией none. Одна возрастная пометка или цитирование в новости не доказывает продвижение.'
+        )
     topics.reserve_ai_call()
     raw=topics.read_url(Request('https://api.openai.com/v1/chat/completions',data=json.dumps(body).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+config[0]},method='POST'),8,16384)
     choice=json.loads(raw)['choices'][0]
@@ -91,12 +101,55 @@ def classify(channel,config):
     return Decision.model_validate_json(choice['message']['content'])
 
 
+def moderation_result(row, config):
+    if row['topic'] == 'adult':
+        topic_label = label('adult')
+        reason = 'Каналы категории «18+ · Для взрослых» не допускаются к рекламному размещению.'
+        description = f'В заявке указана категория «{topic_label}».'
+        return 'rejected', reason, description, 'adult', [{'source':'campaign_topic','quote':topic_label}]
+
+    decision,reason='review','Недостаточно доступных текстов для автоматического одобрения.'
+    description,category,evidence='','none',[]
+    try:
+        chat=public_channels.lookup(row['telegram_url'],fresh=True,expected_id=row['telegram_channel_id'])
+        sample=topics.public_sample(chat['username'])
+        posts=sample['posts']
+        channel={'title':chat['title'][:255],'description':chat.get('description','')[:2000],'posts':posts}
+        texts = sources(channel)
+        if texts:
+            answer=validate_answer(classify(channel,config),channel)
+            marked = any(MARKER.search(text) or adult_signals(text) or
+                         'для взрослых' in text.casefold() for text in texts.values())
+            if answer.decision != 'reject' and marked and not sample.get('temporary_failure'):
+                focused = validate_answer(classify(channel,config,check_adult=True),channel)
+                if focused.decision == 'reject' and focused.category == 'adult':
+                    answer = focused
+                elif focused.decision == 'review' and answer.decision == 'approve':
+                    answer = focused
+            reason,description,category=answer.reason,answer.description,answer.category
+            evidence=[item.model_dump() for item in answer.evidence]
+            if answer.decision=='reject':decision='rejected'
+            elif answer.decision=='approve':
+                if marked:
+                    reason='Есть маркировка или упоминания 18+. Контекст требует проверки сотрудником.'
+                elif not sample['fully_textual']:
+                    reason='Есть медиа или неполные тексты. Требуется проверка сотрудником.'
+                elif len(posts)>=3 and sum(len(t.strip()) for t in posts)>=300:decision='approved'
+                else:reason='Недостаточно доступных текстов для автоматического одобрения.'
+        if sample.get('temporary_failure') and decision == 'review':
+            decision,reason='retry','Не удалось загрузить публикации Telegram. Повтор через 5 минут.'
+    except (HTTPException,OSError,ValueError,TypeError,KeyError,IndexError):
+        decision,reason='retry','Проверка временно недоступна. Заявка не одобрена; повтор через 5 минут.'
+        description,category,evidence='','none',[]
+    return decision, reason, description, category, evidence
+
+
 def service_once(dsn,limit=3):
     config=settings.active('campaign_review')
     if not config:return {'status':'disabled'}
     settings_revision=settings.current()['revision']
-    revision=settings_revision+':'+POLICY_REVISION
-    done=rejected=0
+    base_revision=settings_revision+':'+POLICY_REVISION
+    counts = dict(approved=0, rejected=0, review=0, retry=0)
     for _ in range(min(limit,3)):
         with psycopg.connect(dsn,connect_timeout=3,row_factory=dict_row) as c:
             # Один короткий захват на все процессы, без блокировки БД во время сети.
@@ -105,41 +158,22 @@ def service_once(dsn,limit=3):
                 FROM campaigns c JOIN sponsor_channels sc ON sc.id=c.channel_id
                 LEFT JOIN ai_moderation_checks a ON a.campaign_id=c.id
                 WHERE c.moderation_status='pending' AND c.archived_at IS NULL AND sc.archived_at IS NULL
-                AND (a.campaign_id IS NULL OR a.snapshot<>c.updated_at OR a.revision<>%s
+                AND (a.campaign_id IS NULL OR a.snapshot<>c.updated_at OR a.revision<>(%s || CASE WHEN c.topic='adult' THEN %s ELSE '' END)
                     OR (a.decision='retry' AND a.attempted_at<now()-interval '5 minutes'))
-                ORDER BY a.attempted_at NULLS FIRST,c.created_at,c.id LIMIT 1 FOR UPDATE OF c SKIP LOCKED""",(revision,)).fetchone()
+                ORDER BY a.attempted_at NULLS FIRST,c.created_at,c.id LIMIT 1 FOR UPDATE OF c SKIP LOCKED""",(base_revision,ADULT_POLICY_SUFFIX)).fetchone()
             if not row:break
+            revision = base_revision + (ADULT_POLICY_SUFFIX if row['topic'] == 'adult' else '')
             c.execute("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision) VALUES(%s,%s,%s)
                 ON CONFLICT(campaign_id) DO UPDATE SET snapshot=EXCLUDED.snapshot,revision=EXCLUDED.revision,
                 attempted_at=now(),decision='retry',reason='',description='',category='none',evidence='[]'::jsonb""",(row['id'],row['updated_at'],revision))
-        decision,reason='review','Недостаточно доступных текстов для автоматического одобрения.'
-        description,category,evidence='','none',[]
-        try:
-            chat=public_channels.lookup(row['telegram_url'],fresh=True,expected_id=row['telegram_channel_id'])
-            sample=topics.public_sample(chat['username'])
-            posts=sample['posts']
-            channel={'title':chat['title'][:255],'description':chat.get('description','')[:2000],'posts':posts}
-            if sources(channel):
-                answer=validate_answer(classify(channel,config),channel)
-                reason,description,category=answer.reason,answer.description,answer.category
-                evidence=[item.model_dump() for item in answer.evidence]
-                if answer.decision=='reject':decision='rejected'
-                elif answer.decision=='approve':
-                    if MARKER.search(' '.join([channel['title'],channel['description'],*posts])):
-                        reason='Есть маркировка или упоминания 18+. Контекст требует проверки сотрудником.'
-                    elif not sample['fully_textual']:
-                        reason='Есть медиа или неполные тексты. Требуется проверка сотрудником.'
-                    elif len(posts)>=3 and sum(len(t.strip()) for t in posts)>=300:decision='approved'
-                    else:reason='Недостаточно доступных текстов для автоматического одобрения.'
-        except (HTTPException,OSError,ValueError,TypeError,KeyError,IndexError):
-            decision,reason='retry','Проверка временно недоступна. Заявка не одобрена; повтор через 5 минут.'
-            description,category,evidence='','none',[]
+        decision,reason,description,category,evidence = moderation_result(row, config)
         with psycopg.connect(dsn,connect_timeout=3,row_factory=dict_row) as c:
             if settings.active('campaign_review')!=config or settings.current()['revision']!=settings_revision:continue
             actor=c.execute('SELECT blocked_at FROM users WHERE id=%s FOR SHARE',(row['advertiser_user_id'],)).fetchone()
-            current=c.execute('SELECT moderation_status,updated_at,archived_at FROM campaigns WHERE id=%s FOR UPDATE',(row['id'],)).fetchone()
+            current=c.execute('SELECT moderation_status,updated_at,archived_at,topic,channel_id FROM campaigns WHERE id=%s FOR UPDATE',(row['id'],)).fetchone()
             channel=c.execute('SELECT telegram_url,telegram_channel_id,archived_at FROM sponsor_channels WHERE id=%s FOR SHARE',(row['channel_id'],)).fetchone()
             if not current or current['moderation_status']!='pending' or current['updated_at']!=row['updated_at'] or current['archived_at']:continue
+            if current['topic']!=row['topic'] or current['channel_id']!=row['channel_id']:continue
             if not channel or channel['archived_at'] or channel['telegram_url']!=row['telegram_url'] or channel['telegram_channel_id']!=row['telegram_channel_id']:continue
             if not actor or actor['blocked_at']:
                 decision,reason='review','Аккаунт заблокирован.'
@@ -161,8 +195,8 @@ def service_once(dsn,limit=3):
                 c.execute('''UPDATE bot_advertiser_notice_outbox SET ai_moderation_event_id=%s
                     WHERE campaign_id=%s AND decision=%s AND created_at=transaction_timestamp()
                     AND ai_moderation_event_id IS NULL''',(event['id'],row['id'],decision))
-                done+=int(decision=='approved');rejected+=int(decision=='rejected')
             c.execute('''UPDATE ai_moderation_checks SET decision=%s,reason=%s,description=%s,category=%s,evidence=%s
                 WHERE campaign_id=%s AND snapshot=%s AND revision=%s''',
                 (decision,reason,description,category,Jsonb(evidence),row['id'],row['updated_at'],revision))
-    return {'status':'ok','approved':done,'rejected':rejected}
+            counts[decision] += 1
+    return {'status':'ok', **counts}

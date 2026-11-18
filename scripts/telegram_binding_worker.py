@@ -10,6 +10,17 @@ from mtproxy_bot import MTProxyDialog, BotProtocolError
 from telegram_owner import PrivateState, DEFAULT_STATE, DEVICE_NAME, TELETHON_VERSION, OwnerError, TelegramCooldown, call, record_health
 
 
+def failure_site(exc):
+    """Только имя операции и тип исключения; без текста, аргументов и переменных."""
+    operation = 'worker'
+    frame = exc.__traceback__
+    while frame:
+        if frame.tb_frame.f_globals.get('__name__') == 'mtproxy_bot':
+            operation = frame.tb_frame.f_code.co_name
+        frame = frame.tb_next
+    return operation + '/' + type(exc).__name__
+
+
 async def run(client, existing, request, state):
     try:
         state.require_available(existing['user_id'])
@@ -78,7 +89,10 @@ def main():
         if type(exc).__name__ == 'FloodWaitError':
             code, delay = 'telegram_flood_wait', max(300, int(exc.seconds))
         # Никаких сырых сообщений Telegram, телефонных номеров или сессий.
-        print(json.dumps(dict(ok=False, code=code, retry_seconds=delay)))
+        result = dict(ok=False, code=code, retry_seconds=delay)
+        if code == 'telegram_unavailable':
+            result['failure_site'] = failure_site(exc)
+        print(json.dumps(result))
 
 
 if __name__ == '__main__':

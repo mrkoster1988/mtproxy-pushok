@@ -5,6 +5,12 @@ import time
 from urllib.parse import parse_qs, urlparse
 
 
+CARD_HEADER = re.compile(
+    r'^[ \t]*(?:proxy(?: server)?|прокси(?:-сервер)?)(?:\s*:\s*|\s+)'
+    r'([a-z0-9][a-z0-9.-]*):(\d{1,5})\s+(?:with (?:the )?tag|с тегом)\s*'
+    r'`?([a-f0-9]{32})(?!\w)', re.I | re.M)
+
+
 class BotProtocolError(Exception):
     pass
 
@@ -83,10 +89,7 @@ def card_tag(message, hosts, port):
     # переводы могут содержать «server» и двоеточие после «Proxy».
     # Тег принимаем только из заголовка с проверенным адресом и портом,
     # а не из названия продвигаемого канала или произвольного текста.
-    for host, shown_port, tag in re.findall(
-            r'(?im)^[ \t]*(?:proxy(?: server)?|прокси(?:-сервер)?)(?:\s*:\s*|\s+)'
-            r'([a-z0-9][a-z0-9.-]*):(\d{1,5})\s+(?:with (?:the )?tag|с тегом)\s*'
-            r'`?([a-f0-9]{32})(?!\w)', text(message)):
+    for host, shown_port, tag in CARD_HEADER.findall(text(message)):
         if (host.lower(), int(shown_port)) not in wanted:
             raise BotProtocolError('proxy_identity_not_verified')
         tags.add(tag)
@@ -174,6 +177,17 @@ class MTProxyDialog:
         matches, pages = [], set()
         wanted_hosts = {h.lower() for h in hosts}
         wanted = {(h, port) for h in wanted_hosts}
+        # /myproxies иногда сразу открывает карточку узла вместо списка.
+        direct = CARD_HEADER.match(text(message).lstrip())
+        if direct:
+            if (direct[1].lower(), int(direct[2])) in wanted:
+                card_tag(message, hosts, port)
+                return message
+            back = [b for b in buttons(message) if b.text.strip().casefold() in
+                    ('« back to list', 'back to list', '« к списку', 'к списку')]
+            if len(back) != 1:
+                raise BotProtocolError('proxy_identity_not_verified')
+            message = await self.click(message, back[0])
         for _ in range(10):
             signature = snapshot(message)
             if signature in pages:

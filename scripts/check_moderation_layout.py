@@ -13,7 +13,7 @@ def check_moderation_layout(browser, base, output, failures, dsn):
     from app import main
     tokens, contexts, telegram_ids = {}, [], {}
     owner, channel, tariff, node = [uuid4() for _ in range(4)]
-    cases = {state: uuid4() for state in ('pending', 'payment', 'schedule', 'scheduled', 'active', 'completed', 'archived')}
+    cases = {state: uuid4() for state in ('pending', 'payment', 'schedule', 'scheduled', 'active', 'completed', 'archived', 'approve_review', 'reject_review')}
     with psycopg.connect(dsn) as conn:
         conn.execute("INSERT INTO users(id,telegram_user_id,role,first_name) VALUES(%s,%s,'advertiser','Рекламодатель')", (owner, int(owner.hex[:12], 16)))
         for role in ('admin', 'operator'):
@@ -33,8 +33,12 @@ def check_moderation_layout(browser, base, output, failures, dsn):
             conn.execute("""INSERT INTO campaigns(id,advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,
                 duration_seconds_snapshot,price_kopecks_snapshot,stars_price_snapshot,currency_snapshot,
                 moderation_status,payment_status,placement_status) VALUES(%s,%s,%s,%s,'Пробник',10800,0,1,'RUB',%s,%s,%s)""",
-                         (cid, owner, channel, tariff, 'pending' if state == 'pending' else 'approved',
-                          'awaiting_payment' if state in ('pending', 'payment') else 'verified', 'not_scheduled'))
+                         (cid, owner, channel, tariff, 'pending' if state in ('pending', 'approve_review', 'reject_review') else 'approved',
+                          'awaiting_payment' if state in ('pending', 'payment', 'approve_review', 'reject_review') else 'verified', 'not_scheduled'))
+            if state in ('approve_review', 'reject_review'):
+                conn.execute("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision,decision,reason)
+                    SELECT id, updated_at, 'ui-test', 'review', 'Требуется проверка сотрудником.'
+                    FROM campaigns WHERE id=%s""", (cid,))
             if placement != 'not_scheduled':
                 conn.execute("INSERT INTO proxy_nodes(id,name,host,port) VALUES(%s,%s,'layout.example.org',%s)", (cid, 'Узел ' + state, 8443 + offset))
                 conn.execute("UPDATE campaigns SET placement_status=%s,proxy_node_id=%s,scheduled_start_at=now()+%s*interval '1 day',scheduled_end_at=now()+%s*interval '1 day'+interval '3 hours' WHERE id=%s", (placement, cid, offset, offset, cid))
@@ -166,6 +170,38 @@ def check_moderation_layout(browser, base, output, failures, dsn):
                 footer = mini.locator('.mobile-bottom-nav').bounding_box()
                 assert box['y'] >= header['y'] + header['height'] and box['y'] + box['height'] <= footer['y']
             mini.screenshot(path=str(output / 'moderation-miniapp-actions.png'))
+            mini.evaluate("cabinet.go('moderation')")
+            def tile(state):
+                return mini.locator(f'#queue .approval-summary[data-campaign-id="{cases[state]}"]')
+            expect(tile('pending').locator('.quick-moderation-actions')).to_have_count(0)
+            reject = tile('reject_review').get_by_role('button', name='Отклонить заявку', exact=True)
+            for width in (320, 390):
+                mini.set_viewport_size({'width': width, 'height': 844})
+                row = tile('reject_review').locator('.tile-period')
+                expect(row).to_contain_text('Дата — по согласованию')
+                expect(reject).to_be_visible()
+                assert row.evaluate("""p=>{
+                    const bounds=p.getBoundingClientRect();
+                    const [no,yes]=Array.from(p.querySelectorAll('button'),b=>b.getBoundingClientRect());
+                    return Math.abs(bounds.right-yes.right)<2 && no.right<=yes.left+1 &&
+                           Math.abs(no.top-yes.top)<1 && no.width>=44 && yes.height>=44;
+                }""")
+            reject.click()
+            dialog = mini.get_by_role('dialog', name='Отклонить заявку')
+            dialog.get_by_role('button', name='Отмена', exact=True).click()
+            expect(reject).to_be_visible()
+            reject.click()
+            reason = 'Размещение не соответствует условиям тарифа.'
+            dialog.get_by_label('Причина отказа для рекламодателя').fill(reason)
+            dialog.get_by_role('button', name='Отклонить', exact=True).click()
+            expect(tile('reject_review')).to_contain_text('Отклонена')
+            tile('approve_review').get_by_role('button', name='Одобрить заявку', exact=True).click()
+            expect(tile('approve_review').locator('.quick-moderation-actions')).to_have_count(0)
+            with psycopg.connect(dsn) as conn:
+                assert conn.execute('SELECT moderation_status, moderator_comment FROM campaigns WHERE id=%s',
+                                    (cases['reject_review'],)).fetchone() == ('rejected', reason)
+                assert conn.execute('SELECT moderation_status FROM campaigns WHERE id=%s',
+                                    (cases['approve_review'],)).fetchone() == ('approved',)
     finally:
         for context in contexts:
             context.close()

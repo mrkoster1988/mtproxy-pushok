@@ -52,8 +52,13 @@ def check_unified_controls(browser,base,output,failures,dsn):
         history=page.locator('[data-wallet-section=history]');history.locator(':scope>summary').click();expect(history.locator('.wallet-entry')).to_have_count(5)
         page.set_viewport_size({'width':390,'height':844});assert history.bounding_box()['height']<470
         history.screenshot(path=str(output/'controls-history-390.png'));review.screenshot(path=str(output/'controls-payments-390.png'));area.screenshot(path=str(output/'controls-balance-search-390.png'))
-        go('moderation/'+str(cid));expect(page.locator('.ai-decision')).to_have_text('Одобрено: Агент ИИ');expect(page.locator('.assistant-saved')).to_contain_text('Образовательный канал');expect(page.locator('.campaign-assistant')).to_have_attribute('open','')
-        expect(page.locator('.campaign-assistant a[href*="management"]')).to_have_count(0)
+        go('moderation/'+str(cid))
+        assistant_panel = page.locator('#queue .campaign-assistant')
+        saved_review = assistant_panel.locator('.assistant-saved')
+        expect(page.locator('#queue .ai-decision')).to_have_text('Одобрено: Агент ИИ')
+        expect(saved_review).to_contain_text('Образовательный канал')
+        expect(assistant_panel).to_have_attribute('open','')
+        expect(assistant_panel.locator('a[href*="management"]')).to_have_count(0)
         # Автозагрузка истории сообщает об ошибке на месте и повторяется без закрытия блока.
         report_url='**/api/v1/campaigns/'+str(cid)+'/report'
         page.route(report_url,lambda r:r.fulfill(status=503,json={'detail':'test_unavailable'}))
@@ -126,10 +131,10 @@ def check_unified_controls(browser,base,output,failures,dsn):
         page.reload();expect(page.locator('body')).to_have_attribute('data-cabinet-loaded','true')
         go('moderation/'+str(rejected))
         expect(page.locator('.ai-decision')).to_have_text('Отклонено: Агент ИИ')
-        expect(page.locator('.assistant-saved')).to_contain_text('Описание канала: Канал публикует рекламу казино.')
-        expect(page.locator('.assistant-saved')).to_contain_text('Причина отказа: Продвижение азартных игр.')
-        page.locator('.assistant-saved summary').click()
-        expect(page.locator('.assistant-saved blockquote')).to_have_text('Реклама казино')
+        expect(saved_review).to_contain_text('Описание канала: Канал публикует рекламу казино.')
+        expect(saved_review).to_contain_text('Причина отказа: Продвижение азартных игр.')
+        saved_review.locator('summary').click()
+        expect(saved_review.locator('blockquote')).to_have_text('Реклама казино')
         page.locator('summary').filter(has_text='История и документы').click()
         expect(page.locator('.campaign-report')).to_contain_text('Отклонено: Агент ИИ')
         for width in (320,390,768):

@@ -22,7 +22,7 @@ def check_campaign_assistant_ui(new_page, go, output, dsn):
             conn.execute("""INSERT INTO campaigns(id,advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,moderation_status)
                 VALUES(%s,%s,%s,%s,'ИИ тест',3600,30000,'RUB','pending')""",(cid,uid,channel,tariff))
         page.evaluate('refresh()');go(page,'moderation/'+str(cid))
-        panel=page.locator('.campaign-assistant');expect(panel).to_have_attribute('open','')
+        panel=page.locator('#queue .campaign-assistant');expect(panel).to_have_attribute('open','')
         expect(panel.get_by_role('button',name='Разобрать заявку',exact=True)).to_be_visible()
         # Открытие панели само не вызывает платный анализ.
         response={'summary':'<img src=x onerror="window.aiInjected=true"> Нужна проверка публикаций.',
@@ -91,10 +91,10 @@ def check_campaign_assistant_ui(new_page, go, output, dsn):
         panel.get_by_role('button',name='Разобрать заявку',exact=True).click()
         page.wait_for_function('Boolean(window.__assistantResolve)')
         # Таймер обновления не должен удалять карточку и отменять незавершённый анализ.
-        assert page.evaluate('''async () => {const card=document.querySelector('.campaign-assistant');
+        assert page.evaluate('''async () => {const card=document.querySelector('#queue .campaign-assistant');
             document.querySelectorAll('details[open]:not(.assistant-open)').forEach(d=>d.open=false);
             await refreshStatuses();return window.pushokAssistant.isBusy() && card.isConnected
-              && card===document.querySelector('.campaign-assistant');}''')
+              && card===document.querySelector('#queue .campaign-assistant');}''')
         page.evaluate('''() => {window.cabinet.logout();window.__assistantResolve(new Response(JSON.stringify({engine:'ai',advice:{summary:'LATE-PRIVATE-RESULT',checks:[],next_steps:[],advertiser_message:''},facts:[]} ),{headers:{'Content-Type':'application/json'}}));window.fetch=window.__assistantFetch;}''')
         expect(page.locator('#queue')).to_be_empty()
         assert page.evaluate('me') is None
