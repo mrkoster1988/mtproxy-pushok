@@ -17,7 +17,7 @@ window.pushokWallet=(()=>{
   wallet_gift_unavailable:'Код недоступен: проверьте получателя, срок действия и лимит активаций.',wallet_gift_expired:'Укажите срок действия в будущем.',
   wallet_request_conflict:'Этот запрос уже использован с другими данными. Обновите журнал и проверьте операцию.',
   wallet_insufficient_funds:'Недостаточно средств. Пополните баланс или уменьшите сумму.',
-  wallet_limit_exceeded:'Превышен предел остатка на балансе.',wallet_stars_only_in_telegram:'В Telegram размещение оплачивается напрямую Stars. Рублёвый баланс используется в веб-кабинете.',
+  wallet_limit_exceeded:'Превышен предел остатка на балансе.',wallet_stars_only_in_telegram:'В Telegram размещение оплачивается напрямую Stars. Для рублёвой заявки в веб-кабинете выберите «Оплатить с баланса» и «Сначала использовать бонусные рубли».',
   wallet_campaign_not_payable:'Заявка ещё не готова к оплате или уже имеет открытый счёт. Проверьте её статус.',
   wallet_price_changed:'Цена изменилась. Обновите карточку перед оплатой.',wallet_provider_refund_debt:'Есть задолженность после возврата платежа или отмены награды. Проверьте журнал и обратитесь в поддержку.',
   wallet_payment_refunded:'Эта оплата уже возвращена. Для нового размещения создайте заявку.',
@@ -321,7 +321,7 @@ window.pushokWallet=(()=>{
    if(['verified','refunded'].includes(c.payment_status)){container.hidden=true;return;}
    if(!data.enabled){container.append(el('p','Внутренний баланс выключен администратором. Используйте прямую оплату заявки.','muted'));return;}
    if(!data.payable){container.append(el('p','Оплата с баланса станет доступна после одобрения заявки, если по ней нет открытого внешнего счёта.','muted'));return;}
-   if((miniAppMode||data.stars_only)&&!data.balances.XTR){container.append(el('p','В Telegram — прямая оплата Stars. Рублёвый баланс используется в веб-кабинете.','muted'));return;}
+   if((miniAppMode||data.stars_only)&&!data.balances.XTR){container.append(el('p','В Telegram — прямая оплата Stars. Для рублёвой заявки в веб-кабинете выберите «Оплатить с баланса» и «Сначала использовать бонусные рубли».','muted'));return;}
    container.append(el('h3',(miniAppMode||data.stars_only)?'Использовать прежний остаток Stars':'Оплатить с баланса'));const form=el('form'),curr=currencies(form,'Списать со счёта',miniAppMode||data.stars_only),bonus=field(form,'Сначала использовать бонусные рубли','checkbox');bonus.checked=data.bonus_spending_enabled;if(!miniAppMode&&!data.stars_only&&data.balances.XTR>0)opt(curr,names.XTR,'XTR');
    const total=el('p');form.append(total);const b=submit(form,'Оплатить с баланса',async()=>{const currency=curr.value;await api('/wallet/campaigns/'+c.id+'/pay',{method:'POST',body:{currency,use_bonus:bonus.checked,expected_amount:currency==='RUB'?data.amount_rub:data.amount_xtr}});notice('Размещение оплачено с баланса.',true);await refresh();});
    function state(){const currency=curr.value,price=currency==='RUB'?data.amount_rub:data.amount_xtr,available=data.balances[currency]+(currency==='RUB'&&bonus.checked?data.balances.BONUS:0);bonus.parentElement.hidden=currency!=='RUB'||!data.bonus_spending_enabled;total.textContent=price?'К оплате '+amount(price,currency)+' · доступно '+amount(available,currency):'Цена Stars не настроена для этой заявки.';b.disabled=data.has_debt||!price||available<price;}

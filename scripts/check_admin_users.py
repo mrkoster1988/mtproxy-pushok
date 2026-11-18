@@ -32,8 +32,8 @@ def check_admin_users(browser,base,output,failures,dsn):
     try:
         admin=launch('admin');go(admin,'campaigns')
         expect(admin.locator('#campaigns')).to_contain_text('Кампания из каталога')
-        admin.get_by_role('button',name='Мои кампании',exact=True).click();expect(admin.locator('#campaigns')).to_contain_text('У вас нет текущих личных кампаний')
-        admin.get_by_role('button',name='Все кампании',exact=True).click();expect(admin.locator('#campaigns')).to_contain_text('Кампания из каталога')
+        expect(admin.get_by_role('button',name='Мои кампании',exact=True)).to_have_count(0)
+        expect(admin.get_by_role('button',name='Все кампании',exact=True)).to_have_count(0)
         card=admin.locator('.campaign-tile').filter(has_text='Кампания из каталога');card.get_by_role('link',name='Открыть кампанию Кампания из каталога').click();expect(admin.locator('#queue')).to_contain_text('Кампания из каталога')
         go(admin,'profile');admin.get_by_role('link',name='Пользователи',exact=True).click()
         sort=admin.get_by_label('Сортировка пользователей',exact=True)

@@ -355,9 +355,9 @@ function showCampaignReport(c, box,{refresh=false,embedded=false}={}){
  }).finally(()=>{if(current())panel.setAttribute('aria-busy','false');});
 }
 
-function card(c,op,{compact=false}={}){
+function card(c,op,{compact=false,showPayment=false}={}){
  const box=el('section',undefined,'campaign-detail');
- box.append(window.pushokViews.campaignSummary(c,op?'moderation':'campaign',{actions:false}));
+ box.append(window.pushokViews.campaignSummary(c,op?'moderation':'campaign',{actions:showPayment}));
  const timing=window.pushokViews.disclosure('Этапы и сроки размещения',[window.pushokViews.progress(c),window.pushokViews.facts(c)],'inline-help campaign-timing');
  const timingHeading=timing.querySelector('summary');
  timingHeading.prepend(window.pushokViews.icon('calendar'));timingHeading.append(window.pushokViews.icon('chevron'));

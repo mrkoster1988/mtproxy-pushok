@@ -1,7 +1,7 @@
 "use strict";
 window.pushokLinks=(()=>{
  let pending='',busy=false;
- const valid=value=>/^(?:wallet_GIFT-[A-F0-9]{24}|offer_[a-f0-9]{32})$/.test(value||'');
+ const valid=value=>/^(?:wallet_GIFT-[A-F0-9]{24}|(?:offer|pay)_[a-f0-9]{32})$/.test(value||'');
  function capture(value){pending=valid(value)?value:'';}
  function share(payload,text){
   const bot=window.cabinetBotConfig?.telegram_bot_username;
@@ -38,7 +38,10 @@ window.pushokLinks=(()=>{
   const payload=pending,session=token,uid=me.id;
   const current=()=>session===token&&uid===me?.id;
   try{
-   if(payload.startsWith('wallet_')){
+   if(payload.startsWith('pay_')){
+    const id=payload.slice(4).replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,'$1-$2-$3-$4-$5');
+    pending='';window.cabinet.go('payments/'+id);
+   }else if(payload.startsWith('wallet_')){
     const result=await api('/wallet/gifts/redeem',{method:'POST',body:{code:payload.slice(7)}});
     if(!current())return;pending='';window.cabinet.go('wallet');
     setTimeout(()=>{if(current())notice(result.already_redeemed?'Подарок уже на вашем балансе.':'Подарок получен: '+money(result.amount)+' бонусами.',true);},0);
