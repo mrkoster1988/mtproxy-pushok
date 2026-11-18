@@ -30,7 +30,8 @@ window.pushokCommunity=(()=>{
   }catch(e){if(s===token)target.replaceChildren(el('p',e.message,'empty'));}}
  function invited(id,count){
   const box=el('details',undefined,'panel profile-invited-block'),head=el('summary'),list=el('div',undefined,'invitees'),feedback=el('p',undefined,'invite-feedback'),actions=el('div',undefined,'invite-actions');
-  head.append(v().icon('users'),el('span','Приглашено'),el('strong',String(count)),v().icon('chevron'));feedback.setAttribute('role','status');box.append(head,list,feedback,actions);
+  head.append(v().icon('users'),el('span','Приглашено'),el('strong',String(count)),v().icon('chevron'));feedback.setAttribute('role','status');
+  const body=el('div',undefined,'invite-body');body.append(list,feedback,actions);box.append(head,body);
   let loaded=false,nextPage=0,busy=false;const s=token,seen=new Set();
   const more=v().iconAction(button('',load),'plus','Ещё приглашённые');actions.append(more);actions.hidden=true;
   async function load(){if(busy||s!==token)return;busy=true;more.disabled=true;feedback.textContent='Загрузка…';box.setAttribute('aria-busy','true');
@@ -49,16 +50,25 @@ window.pushokCommunity=(()=>{
    finally{busy=false;more.disabled=false;box.setAttribute('aria-busy','false');}
   }
   if(me?.role==='admin'){
-   const form=el('form'),picker=window.pushokUsers.picker(form,{label:'Кого пригласил этот пользователь'}),submit=el('button','Назначить приглашённого');submit.type='submit';form.append(submit);box.append(form);
+   const form=el('form',undefined,'invite-form');
+   const submit=el('button','Привязать пользователя','primary invite-submit');
+   let assigning=false;
+   function syncSubmit(){submit.disabled=assigning||!picker.input.value.trim();}
+   const picker=window.pushokUsers.picker(form,{label:'Добавить приглашённого',onSelect:syncSubmit});
+   submit.type='submit';submit.prepend(v().icon('plus'));form.append(submit);body.append(form);syncSubmit();
    form.addEventListener('submit',async event=>{
-    event.preventDefault();if(submit.disabled)return;submit.disabled=true;
+    event.preventDefault();if(submit.disabled)return;assigning=true;syncSubmit();
     try{
      const friend=await picker.resolve();if(!friend||!box.isConnected||s!==token)return;
+     const chosenText=picker.input.value;
      await api('/admin/growth/referrals/'+friend.id,{method:'PUT',body:{inviter_user_id:id}});
      if(!box.isConnected||s!==token)return;
      const profile=await api('/users/'+id+'/profile');head.querySelector('strong').textContent=String(profile.counts.invited);
+     if(picker.input.value===chosenText){
+      picker.input.value='';picker.input.dispatchEvent(new Event('input',{bubbles:true}));
+     }
      nextPage=0;seen.clear();list.replaceChildren();await load();notice('Приглашённый назначен.',true);
-    }catch(e){feedback.textContent=e.message;}finally{submit.disabled=false;}
+    }catch(e){feedback.textContent=e.message;}finally{assigning=false;syncSubmit();}
    });
   }
   box.addEventListener('toggle',()=>{if(box.open&&!loaded)void load();});return box;

@@ -20,6 +20,14 @@ def version_key(value):
     return tuple(map(int, value.split('.')))
 
 
+def readme_version(readme):
+    versions = re.findall(r'(?m)^Версия проекта:\s*v(\d+\.\d+)\.$', readme)
+    if len(versions) != 1:
+        raise ValueError('invalid_release')
+    version_key(versions[0])
+    return versions[0]
+
+
 def _json(path):
     request = github_access.request(path, user_agent='Pushok-release-check')
     with urllib.request.urlopen(request, timeout=3) as response:
@@ -49,11 +57,8 @@ def check(installed_version):
                 if document.get('encoding') != 'base64':
                     raise ValueError('invalid_encoding')
                 readme = base64.b64decode(document['content']).decode('utf-8')
-                versions = re.findall(r'(?m)^Версия проекта:\s*v(\d+\.\d+)\.$', readme)
-                if len(versions) != 1:
-                    raise ValueError('invalid_release')
-                version_key(versions[0])
-                result.update(state='checked', available_version=versions[0], commit=sha,
+                version = readme_version(readme)
+                result.update(state='checked', available_version=version, commit=sha,
                               checked_at=result['attempted_at'])
             except (OSError, ValueError, KeyError, TypeError, AttributeError):
                 pass

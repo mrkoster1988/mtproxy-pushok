@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.96",
+    version="1.97",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2942,13 +2942,35 @@ class PaymentSwitches(BaseModel):
 def control_status(response: Response, admin=Depends(require_admin)):
     response.headers['Cache-Control'] = 'no-store'
     cfg = sbp_checkout.settings()
+    installed = control.read('installed.json')
+    auto_check = control.read('auto-check.json') or {}
     return {'version': app.version, 'stars': stars_invoices_enabled(),
             'sbp': cfg['enabled'], 'sbp_configured': cfg['configured'],
             'sbp_test_mode': cfg['test_mode'],
-            'updater_installed': control.read('installed.json') is not None,
+            'updater_installed': installed is not None,
+            'auto_supported': (installed or {}).get('version') == 2,
+            'auto_enabled': (control.read('auto-update.json') or {}).get('enabled') is True,
+            'auto_checked_at': auto_check.get('checked_at'), 'auto_check_state': auto_check.get('state'),
             'update': control.read('status.json', {'state': 'idle'}),
             'requested_at': (control.read('request.json') or {}).get('at'),
             'requested': control.read('request.json') is not None}
+
+class AutoUpdateSettings(BaseModel):
+    enabled: bool = Field(strict=True)
+
+
+@app.put('/api/v1/admin/control/auto-update', tags=['admin'])
+def control_auto_update(payload: AutoUpdateSettings, owner=Depends(require_owner)):
+    with control.locked():
+        if (control.read('installed.json') or {}).get('version') != 2:
+            raise HTTPException(409, 'updater_bootstrap_required')
+        control.write('auto-update.json', {'enabled': payload.enabled, 'actor': str(owner['id']), 'at': control.now()})
+        pending = control.read('request.json') or {}
+        if not payload.enabled and pending.get('actor') == 'automatic':
+            (control.root() / 'request.json').unlink(missing_ok=True)
+            (control.root() / 'auto-check.json').unlink(missing_ok=True)
+    return {'enabled': payload.enabled}
+
 
 @app.put('/api/v1/admin/control/payments', tags=['admin'])
 def control_payments(payload: PaymentSwitches, admin=Depends(require_admin)):

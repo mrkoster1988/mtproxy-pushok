@@ -1,6 +1,6 @@
 'use strict';
 window.pushokProvisioning=(()=>{
- let generation=0,controller=null,dirty=false,busy=false,session='';
+ let generation=0,controller=null,dirty=false,busy=false,session='',expanded;
  const labels={disabled:'Выключено',no_demand:'Дополнительный прокси пока не требуется',waiting:'Ожидаем проверку очереди',
   wait:'ИИ решил подождать следующей оценки очереди',
   provisioning:'Готовим новый прокси',active:'Прокси создан',ready:'Агент готов',
@@ -83,20 +83,23 @@ window.pushokProvisioning=(()=>{
   details.append(el('p','Проверено: '+date(report.checked_at),'muted'),el('p','Учитываются одобренные и оплаченные заявки с подтверждённым каналом. Заявки на паузе, с ошибкой привязки или уже начатым показом исключены. Создание также зависит от разрешений, ресурсов и лимитов.','muted'));
   card.append(details);return card;
  }
- function reset(){generation++;controller?.abort();controller=null;dirty=false;busy=false;session='';$('proxy-provisioning-settings')?.replaceChildren();}
+ function reset(){expanded=undefined;generation++;controller?.abort();controller=null;dirty=false;busy=false;session='';$('proxy-provisioning-settings')?.replaceChildren();}
  async function load(force=false){
   const host=$('proxy-provisioning-settings');if(!host||!me?.is_owner){reset();return;}
   if(!force&&session===token&&(dirty||busy))return;
   controller?.abort();controller=new AbortController();const signal=controller.signal;
   const current=++generation,ownSession=token,user=me.id;session=token;
   const valid=()=>current===generation&&ownSession===token&&user===me?.id&&me?.is_owner;
+  const previous=host.querySelector('#proxy-provisioning-card');
+  if(previous)expanded=previous.open;
   host.replaceChildren(el('p','Проверяем автосоздание прокси…','muted'));
   try{
    const saved=await api('/admin/proxy-provisioning',{signal});if(!valid())return;
    dirty=false;busy=false;
-   const box=el('details',undefined,'ai-settings-card');box.id='proxy-provisioning-card';
+   const box=el('details',undefined,'ai-settings-card');box.id='proxy-provisioning-card';box.open=expanded??false;
    const heading=el('summary'),title=el('span','ИИ · Новые прокси','ai-settings-title');
-   title.prepend(window.pushokViews.icon('server'));heading.append(title,el('span',saved.enabled?'Включено':'Выключено','ai-state'));box.append(heading);
+   const badge=el('span',saved.enabled?'Включено':'Выключено','ai-state');badge.classList.toggle('active',saved.enabled);
+   title.prepend(window.pushokViews.icon('server'));heading.append(title,badge);box.append(heading);
    const content=el('div',undefined,'ai-settings-content'),form=el('form'),fields=el('fieldset');
    const info=el('p','При нехватке слотов ИИ может создать дополнительный экземпляр на этом VPS. Серверы не покупаются. Новые подключения распределяются между готовыми прокси; отдельный порт сам по себе не увеличивает аудиторию.','muted block-note');
    const row=el('label','Разрешить автоматическое создание','ai-switch'),enabled=el('input');enabled.type='checkbox';enabled.id='proxy-provisioning-enabled';enabled.checked=saved.enabled;row.append(enabled);fields.append(row);
@@ -124,7 +127,7 @@ window.pushokProvisioning=(()=>{
     busy=true;fields.disabled=true;status.textContent='Сохраняем…';
     try{
      await api('/admin/proxy-provisioning',{method:'PUT',signal,body:{enabled:enabled.checked,reserve_enabled:reserve.checked,max_instances:Number(maximum.value),wait_minutes:Number(wait.value),first_port:Number(port.value),revision:saved.revision}});
-     if(valid()){busy=false;dirty=false;await load(true);if(ownSession===token&&me?.is_owner){const fresh=$('proxy-provisioning-card');if(fresh)fresh.open=true;}}
+     if(valid()){busy=false;dirty=false;await load(true);}
     }catch(error){if(valid())status.textContent=error.code==='provisioning_ai_required'?'Сначала включите ИИ и разрешение на создание прокси.':error.code==='provisioning_changed'?'Настройки изменились в другом окне. Нажмите «Обновить».':'Не удалось сохранить настройки.';}
     finally{if(valid()){busy=false;fields.disabled=false;}}
    });
@@ -140,7 +143,7 @@ window.pushokProvisioning=(()=>{
      const retry=el('button',cooling()?'Пауза Telegram':'Продолжить подготовку');retry.type='button';retry.disabled=!saved.enabled||!saved.ai_ready||cooling();
      if(cooling())card.append(el('p',job.state==='pending'?'Продолжим автоматически после паузы.':'После паузы обновите состояние и продолжите подготовку.','muted'));
      retry.addEventListener('click',async()=>{if(busy||!valid()||cooling())return;busy=true;retry.disabled=true;
-      try{await api('/admin/proxy-provisioning/'+job.id+'/retry',{method:'POST',signal});if(valid()){busy=false;await load(true);if(ownSession===token&&me?.is_owner)$('proxy-provisioning-card').open=true;}}
+      try{await api('/admin/proxy-provisioning/'+job.id+'/retry',{method:'POST',signal});if(valid()){busy=false;await load(true);}}
       catch(error){if(valid())status.textContent=error.code==='provisioning_telegram_cooldown'?'Пауза Telegram ещё действует. Обновите состояние, чтобы увидеть время повтора.':'Не удалось продолжить. Проверьте настройки и обновите состояние.';}
       finally{if(valid()){busy=false;retry.disabled=!saved.enabled||!saved.ai_ready||cooling();}}
      });card.append(retry);
