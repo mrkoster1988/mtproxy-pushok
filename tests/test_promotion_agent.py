@@ -210,6 +210,19 @@ class AgentTests(unittest.TestCase):
             agent.tick()
         self.assertEqual(json.loads(self.state.read_text())['baseline'],'d'*32)
 
+    def test_binding_cleanup_cannot_restore_stale_tag_after_same_cycle_activation(self):
+        def preparation(_agent, _request):
+            self.env.write_text(agent.tag_text(self.env.read_text(), ''))
+            self.state.unlink(missing_ok=True)
+        with patch('automatic_binding.tick', side_effect=preparation), \
+                patch.object(agent, 'exchange', side_effect=[self.plan, {'accepted':True}]), \
+                patch.object(agent, 'apply'):
+            agent.tick()
+        self.assertEqual(json.loads(self.state.read_text())['baseline'], '')
+        with patch.object(agent, 'apply') as apply:
+            agent.restore()
+        apply.assert_called_once_with('')
+
     def test_idle_unmanaged_does_not_restart(self):
         with patch.object(agent,'exchange',side_effect=[dict(state='idle',revision='c'*64),{'accepted':True}]),patch.object(agent,'apply') as apply:
             agent.tick();apply.assert_not_called()

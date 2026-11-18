@@ -47,6 +47,203 @@ class SDKButtonTests(unittest.IsolatedAsyncioTestCase):
                    self.wrap(types.KeyboardInlineButton('Set promotion', types.InlineButtonTypeCallback(b'fixture', requires_password=True)))]
         self.assertEqual(list(buttons(NS(buttons=[allowed+blocked]))), allowed)
 
+    async def test_select_multiple_ports_with_real_sdk_and_edited_keyboard(self):
+        for port in (8443, 9443):
+            with self.subTest(port=port):
+                client = EditingProxyBot([[(8443, TAG), (9443, 'c'*32)]])
+                result = await MTProxyDialog(client, client.bot).select([HOST], port)
+                self.assertEqual(card_tag(result, [HOST], port), TAG if port == 8443 else 'c'*32)
+                self.assertEqual(client.invalid_clicks, 0)
+                self.assertEqual(client.opened[-1], port)
+
+    async def test_paginated_candidates_reopen_their_current_keyboard(self):
+        client = EditingProxyBot([[(8443, TAG)], [(9443, 'c'*32)]])
+        result = await MTProxyDialog(client, client.bot).select([HOST], 8443)
+        self.assertEqual(card_tag(result, [HOST], 8443), TAG)
+        self.assertEqual(client.invalid_clicks, 0)
+
+    async def test_multiple_ports_still_reject_missing_and_ambiguous_identity(self):
+        for pages, port, code in (([[(8443,TAG),(9443,'c'*32)]],10443,'proxy_not_found'),
+                                  ([[(8443,TAG),(8443,'c'*32)]],8443,'proxy_ambiguous')):
+            client = EditingProxyBot(pages)
+            with self.subTest(code=code), self.assertRaisesRegex(BotProtocolError, '^'+code+'$'):
+                await MTProxyDialog(client, client.bot).select([HOST], port)
+            self.assertEqual(client.invalid_clicks, 0)
+
+    async def test_reopening_list_handles_myproxies_returning_a_direct_card(self):
+        client = EditingProxyBot([[(8443,TAG),(9443,'c'*32)]], direct_after_open=True)
+        result = await MTProxyDialog(client, client.bot).select([HOST], 8443)
+        self.assertEqual(card_tag(result, [HOST], 8443), TAG)
+        self.assertEqual(client.invalid_clicks, 0)
+
+    async def test_click_refuses_keyboard_changed_since_inspection(self):
+        client = EditingProxyBot([[(8443,TAG)]])
+        dialog = MTProxyDialog(client,client.bot)
+        listing = await dialog.send('/myproxies')
+        button = listing.buttons[0][0]
+        client.render(listing.id, proxy=(8443,TAG))
+        with self.assertRaisesRegex(BotProtocolError, '^bot_button_expired$'):
+            await dialog.click(listing,button)
+        self.assertEqual(client.invalid_clicks, 0)
+        self.assertEqual(client.callback_attempts, 0)
+
+    async def test_callback_race_reopens_list_once_without_unbounded_retries(self):
+        for rejected in (1,9):
+            client = EditingProxyBot([[(8443,TAG)]], reject_callbacks=rejected)
+            dialog = MTProxyDialog(client,client.bot)
+            with self.subTest(rejected=rejected):
+                if rejected == 1:
+                    self.assertEqual(card_tag(await dialog.select([HOST],8443),[HOST],8443),TAG)
+                else:
+                    with self.assertRaisesRegex(BotProtocolError, '^bot_button_expired$'):
+                        await dialog.select([HOST],8443)
+                self.assertEqual(client.callback_attempts,2)
+                self.assertEqual(client.commands,['/myproxies','/myproxies'])
+
+    async def test_full_binding_updates_only_selected_proxy_and_verifies_fresh_card(self):
+        client = EditingProxyBot([[(8443,TAG),(9443,'c'*32)]], direct_after_open=True)
+        dialog = MTProxyDialog(client,client.bot)
+        request = dict(action='bind',hosts=[HOST],port=8443,expected_tag=TAG,
+                       channel_url='https://t.me/new_channel')
+        result = await dialog.prepare(request)
+        self.assertEqual(result['channel_username'],'new_channel')
+        self.assertEqual(client.promotions[(8443,TAG)],'new_channel')
+        self.assertEqual(client.promotions.get((9443,'c'*32),'sample_channel'),'sample_channel')
+        self.assertEqual(client.submissions,['https://t.me/new_channel'])
+        self.assertEqual(client.invalid_clicks,0)
+        # Повтор после потерянного подтверждения только проверяет результат.
+        await dialog.prepare(request)
+        self.assertEqual(client.submissions,['https://t.me/new_channel'])
+
+    async def test_expired_promotion_button_does_not_repeat_channel_write(self):
+        client = EditingProxyBot([[(8443,TAG),(9443,'c'*32)]])
+        client.reject_promotion = 1
+        dialog = MTProxyDialog(client,client.bot)
+        request = dict(action='bind',hosts=[HOST],port=8443,expected_tag=TAG,
+                       channel_url='https://t.me/new_channel')
+        with self.assertRaisesRegex(BotProtocolError,'^bot_button_expired$'):
+            await dialog.prepare(request)
+        self.assertEqual(client.submissions,[])
+        self.assertEqual(client.reject_promotion,0)
+        self.assertEqual((await dialog.prepare(request))['channel_username'],'new_channel')
+        self.assertEqual(client.submissions,['https://t.me/new_channel'])
+
+    async def test_expired_menu_cannot_be_mistaken_for_unregistered_proxy(self):
+        from unittest.mock import Mock
+        from uuid import uuid4
+        client = EditingProxyBot([[(8443,TAG)]], reject_callbacks=9)
+        state = Mock(read_file=Mock(return_value=None))
+        # HOST для регистрации обязан быть публичным IPv4; список здесь
+        # открываем для него с тем же SDK и текущими callback.
+        from unittest.mock import patch
+        with patch(__name__+'.HOST','8.8.8.8'):
+            with self.assertRaisesRegex(BotProtocolError,'^bot_button_expired$'):
+                await MTProxyDialog(client,client.bot).register(dict(
+                    host='8.8.8.8',port=9443,secret='b'*32,node_id=str(uuid4())),state)
+        self.assertEqual(client.commands,['/myproxies','/myproxies'])
+        state.save_file.assert_not_called()
+
+    async def test_flood_wait_is_not_retried_as_a_stale_keyboard(self):
+        from telethon.errors import FloodWaitError
+        class LimitedBot(EditingProxyBot):
+            async def __call__(self, request):
+                raise FloodWaitError(request,capture=600)
+        client = LimitedBot([[(8443,TAG)]])
+        with self.assertRaises(FloodWaitError) as failure:
+            await MTProxyDialog(client,client.bot).select([HOST],8443)
+        self.assertEqual(failure.exception.seconds,600)
+        self.assertEqual(client.commands,['/myproxies'])
+
+
+class EditingProxyBot:
+    """Bot edits one message; Telegram rejects callbacks absent from its current keyboard.
+
+    Uses real pinned-SDK MessageButton.click and GetBotCallbackAnswerRequest,
+    so a cached button cannot silently succeed as it did with AsyncMock.
+    """
+    def __init__(self, pages, *, direct_after_open=False, reject_callbacks=0):
+        self.pages, self.bot = pages, NS(id=123)
+        self.messages, self.actions = {}, {}
+        self.next_id, self.generation = 1, 0
+        self.invalid_clicks, self.opened = 0, []
+        self.direct_after_open, self.shown_proxy = direct_after_open, None
+        self.reject_callbacks, self.callback_attempts, self.commands = reject_callbacks, 0, []
+        self.reject_promotion, self.pending_proxy = 0, None
+        self.promotions, self.submissions = {}, []
+
+    def render(self, msg_id, page=0, proxy=None):
+        self.generation += 1
+        self.shown_proxy = proxy
+        self.actions[msg_id] = {}
+        rows = []
+        options = ([('« Back to list', ('list', 0)),('Edit promotion',('promotion',proxy))] if proxy else
+                   [(HOST+' '+tag, ('proxy', (port,tag))) for port,tag in self.pages[page]])
+        if proxy is None and page+1 < len(self.pages):
+            options.append(('Next ›', ('list', page+1)))
+        for index, (label, action) in enumerate(options):
+            data = f'fixture:{self.generation}:{index}'.encode()
+            self.actions[msg_id][data] = action
+            original = Button.inline(label, data)
+            rows.append([MessageButton(self, getattr(original,'button',original), self.bot, self.bot, msg_id)])
+        value = (f'Proxy {HOST}:{proxy[0]} with the tag {proxy[1]}.\nPromoted channel: @{self.promotions.get(proxy,"sample_channel")}.'
+                 if proxy else f'Your proxies, page {page}')
+        message = NS(id=msg_id,raw_text=value,buttons=rows,entities=[],out=False,sender_id=self.bot.id)
+        self.messages[msg_id] = message
+        return message
+
+    async def send_message(self, peer, value, **kwargs):
+        self.commands.append(value)
+        sent = NS(id=self.next_id, out=True, sender_id=42)
+        if value == '/myproxies':
+            self.pending_proxy = None
+            self.render(self.next_id+1, proxy=self.shown_proxy if self.direct_after_open else None)
+        else:
+            assert self.pending_proxy and value.startswith('https://t.me/'), value
+            self.submissions.append(value)
+            self.promotions[self.pending_proxy] = value.rsplit('/',1)[1]
+            self.pending_proxy = None
+            self.messages[self.next_id+1] = NS(id=self.next_id+1,raw_text='Success',
+                buttons=[],entities=[],out=False,sender_id=self.bot.id)
+        self.next_id += 2
+        return sent
+
+    async def get_entity(self, name):
+        return NS(id=321 if name=='@new_channel' else 654,broadcast=True,username=name[1:])
+
+    async def get_messages(self, peer, *, ids=None, min_id=None, limit=None):
+        if ids is not None:
+            return self.messages.get(ids)
+        return [m for i,m in sorted(self.messages.items(),reverse=True) if min_id is None or i>min_id][:limit]
+
+    async def __call__(self, request):
+        from telethon.errors import DataInvalidError
+        from telethon.tl.functions.messages import GetBotCallbackAnswerRequest
+        assert isinstance(request, GetBotCallbackAnswerRequest)
+        self.callback_attempts += 1
+        if self.reject_callbacks:
+            self.reject_callbacks -= 1
+            self.invalid_clicks += 1
+            raise DataInvalidError(request)
+        action = self.actions.get(request.msg_id,{}).get(request.data)
+        if action is None:
+            self.invalid_clicks += 1
+            raise DataInvalidError(request)
+        if action[0] == 'promotion':
+            if self.reject_promotion:
+                self.reject_promotion -= 1
+                raise DataInvalidError(request)
+            self.pending_proxy = action[1]
+            self.actions[request.msg_id] = {}
+            self.messages[request.msg_id] = NS(id=request.msg_id,
+                raw_text='Send a public channel link',buttons=[],entities=[],out=False,sender_id=self.bot.id)
+            return NS()
+        if action[0] == 'proxy':
+            self.opened.append(action[1][0])
+            self.render(request.msg_id, proxy=action[1])
+        else:
+            self.render(request.msg_id, page=action[1])
+        return NS()
+
 
 def card(target='sample_channel', tag=TAG, host=HOST):
     return NS(id=100,raw_text=f'Address: {host}:8443\nSecret: '+ 'b'*32 + f'\nTag: {tag}\nPromoted channel: @{target}',entities=[])
@@ -150,6 +347,21 @@ class BotFlowTests(unittest.IsolatedAsyncioTestCase):
         self.client=NS(get_entity=AsyncMock(return_value=NS(id=321,broadcast=True,username='sample_channel')))
         self.dialog=MTProxyDialog(self.client,NS(id=123))
         self.request=dict(action='bind',hosts=[HOST],port=8443,expected_tag=TAG,channel_url='https://t.me/sample_channel')
+
+    async def test_inspection_distinguishes_another_channel_from_unknown_promotion(self):
+        wanted = NS(id=321, broadcast=True, username='sample_channel')
+        other = NS(id=654, broadcast=True, username='other_channel')
+        self.client.get_entity.side_effect = [wanted, other]
+        self.dialog.select = AsyncMock(return_value=card('other_channel'))
+        result = await self.dialog.prepare(dict(self.request, action='inspect'))
+        self.assertTrue(result['promotion_mismatch'])
+        self.assertEqual(result['observed_channel_id'], 654)
+        self.assertIsNone(result['channel_username'])
+        self.client.get_entity.side_effect = [wanted, ValueError('unavailable')]
+        result = await self.dialog.prepare(dict(self.request, action='inspect'))
+        self.assertFalse(result['promotion_mismatch'])
+        self.assertIsNone(result['observed_channel_id'])
+
 
     async def test_myproxies_opens_card_directly_inspect_then_bind_and_read_back(self):
         empty = NS(id=11, raw_text=f'Proxy {HOST}:8443 with the tag {TAG}.\nPromoted channel: n/a.\nHow can I help?', entities=[])

@@ -14,6 +14,8 @@ window.pushokProvisioning=(()=>{
   registration_conflict:'Этот тег уже занят другим узлом',tag_not_verified:'Тег нового экземпляра не подтверждён',
   proxy_ambiguous:'Не удалось однозначно определить прокси',proxy_identity_not_verified:'Адрес прокси не подтверждён',
   telegram_flood_wait:'Ждём окончания паузы Telegram',telegram_unavailable:'Telegram временно недоступен',
+  bot_button_expired:'Кнопка @MTProxyBot изменилась — повторим с новым списком',
+  proxy_list_changed:'Список прокси изменился — повторно проверим нужный узел',
   recovery_pending:'Сверяем результат запуска с базой',preparation_interrupted:'Подготовка была прервана',
   bot_response_timeout:'Telegram не ответил вовремя',start_failed:'Новый экземпляр не запустился',
   policy_changed:'Условия изменились — продолжите подготовку кнопкой ниже',retry_later:'Ожидаем повторную попытку',

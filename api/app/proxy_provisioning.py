@@ -19,6 +19,7 @@ ERRORS = {'resources_low', 'port_busy', 'owner_unavailable', 'registration_uncer
           'registration_prompt_invalid', 'proxy_not_found', 'proxy_ambiguous',
           'proxy_identity_not_verified', 'tag_not_verified', 'tag_changed',
           'telegram_flood_wait', 'telegram_unavailable', 'bot_response_timeout',
+          'bot_button_expired', 'proxy_list_changed',
           'ambiguous_bot_response', 'start_failed', 'host_unavailable',
           'policy_changed', 'registration_conflict', 'agent_setup_failed',
           'registration_secret_mismatch', 'connection_busy', 'owner_helper_unavailable',

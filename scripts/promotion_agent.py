@@ -233,7 +233,9 @@ def tick(status=None):
             restore()
     else:
         status['code'] = 'apply_failed'
-        baseline=json.loads(STATE.read_text())['baseline'] if STATE.exists() else cfg.get('MT_PROXY_TAG','')
+        # Подготовка могла снять прежний тег и удалить checkpoint в этом же
+        # цикле. Не возвращаем уже недействительную связь из старого снимка env.
+        baseline=json.loads(STATE.read_text())['baseline'] if STATE.exists() else parse_env(ENV.read_text()).get('MT_PROXY_TAG','')
         # Незавершённая попытка требует возврата к исходному тегу, даже если
         # новый слот ещё не истёк, кабинет недоступен или идёт обновление.
         saved = dict(baseline=baseline, expires_at=plan.get('expires_at',253402214400), restore_required=True)

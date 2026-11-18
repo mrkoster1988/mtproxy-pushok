@@ -82,9 +82,17 @@ def tick(agent, request):
     job = agent.exchange(dict(request, action='owner_claim', probe_cached=True))
     if job.get('state') == 'probe':
         observed = helper(agent.ROOT, dict(job, action='inspect'))
-        if observed.get('ok') and observed.get('promotion_empty') is True and observed.get('tag') == job['expected_tag']:
-            agent.exchange(dict(request, action='owner_empty_cached', probe_cached=True,
-                                probe_at=job['probe_at'], channel_id=job['channel_id'], tag=observed['tag']))
+        if observed.get('ok') and observed.get('tag') == job['expected_tag']:
+            empty = observed.get('promotion_empty') is True
+            mismatch = (observed.get('promotion_mismatch') is True
+                        and observed.get('channel_username') is None
+                        and all(type(observed.get(k)) is int and observed[k] > 0
+                                for k in ('telegram_channel_id', 'observed_channel_id'))
+                        and observed['telegram_channel_id'] != observed['observed_channel_id'])
+            if empty or mismatch:
+                agent.exchange(dict(request, action='owner_empty_cached' if empty else 'owner_mismatch_cached',
+                                    probe_cached=True, probe_at=job['probe_at'], channel_id=job['channel_id'],
+                                    **{k:v for k,v in observed.items() if k != 'ok'}))
         return
     if job.get('state') != 'job':
         return

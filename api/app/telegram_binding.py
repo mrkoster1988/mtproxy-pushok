@@ -10,6 +10,7 @@ ERRORS = {
     'public_channel_required', 'proxy_identity_not_verified', 'tag_not_verified',
     'proxy_not_found', 'proxy_ambiguous', 'proxy_list_loop', 'proxy_list_ambiguous',
     'proxy_list_too_long', 'ambiguous_bot_response', 'bot_response_timeout', 'tag_changed',
+    'bot_button_expired', 'proxy_list_changed',
     'set_promotion_button_missing', 'channel_prompt_not_verified', 'binding_not_verified',
     'telegram_unavailable', 'telegram_flood_wait', 'owner_helper_unavailable', 'target_changed',
     'tag_used_by_other_node', 'node_busy',
@@ -18,6 +19,8 @@ ERRORS = {
 }
 
 CHANNEL_ERRORS = {
+    'bot_button_expired': ('Кнопка @MTProxyBot уже изменилась', 'Агент заново откроет список прокси при следующей попытке. Повторный вход в Telegram не требуется.'),
+    'proxy_list_changed': ('Список прокси в Telegram изменился', 'Агент повторно получит список и проверит адрес, порт и тег перед привязкой канала.'),
     'proxy_not_found': ('Прокси не найден в аккаунте владельца', 'Откройте @MTProxyBot → /myproxies в подключённом аккаунте и сверьте адрес и порт узла. Если тег уже связан с нужным каналом, сохраните его в «Ручной привязке готового тега».'),
     'public_channel_required': ('Канал не прошёл проверку', 'Обновлённый агент уточнит причину при следующей попытке. Проверьте ссылку на канал в заявке.'),
     'channel_link_invalid': ('Неверная ссылка на канал', 'Нужна ссылка вида https://t.me/username или https://telegram.me/username. Ссылка на отдельный пост или приглашение не подходит.'),
@@ -31,6 +34,14 @@ CHANNEL_ERRORS = {
 def channel_feedback(code):
     title, action = CHANNEL_ERRORS[code]
     return {'title': title, 'next_action': action}
+
+
+def verified_mismatch(request):
+    """Host worker подтвердил два разных публичных канала по числовым ID."""
+    return (request.get('promotion_mismatch') is True and request.get('channel_username') is None
+            and all(type(request.get(k)) is int and request[k] > 0
+                    for k in ('telegram_channel_id', 'observed_channel_id'))
+            and request['telegram_channel_id'] != request['observed_channel_id'])
 
 
 def resolve(conn, request):
@@ -171,11 +182,13 @@ def handle(conn, request):
                        FROM telegram_binding_jobs WHERE proxy_node_id=%s FOR UPDATE""",
                        (node['id'],)).fetchone()
     action = request['action']
-    if (action in ('owner_claim','owner_empty_cached') and request.get('probe_cached') is True
+    if (action in ('owner_claim','owner_empty_cached','owner_mismatch_cached') and request.get('probe_cached') is True
             and (not job or job['phase'] == 'done') and node['status'] == 'active'
             and not node['archived_at'] and node['target_engine'] in (None, 'official_mtproxy')):
         cached = cached_target(conn, node, request.get('channel_id'))
-        if action == 'owner_empty_cached':
+        if action in ('owner_empty_cached','owner_mismatch_cached'):
+            if action == 'owner_mismatch_cached' and not verified_mismatch(request):
+                return {'accepted': False}
             # Запоздавший ответ не отменяет более новое ручное или автоматическое подтверждение.
             if cached and cached['last_probe_at'] and cached['last_probe_at'].isoformat() == request.get('probe_at') and (
                     cached['confirmed_at'] < cached['last_probe_at'] and cached['ad_tag'] == request.get('tag')
@@ -284,9 +297,11 @@ def handle(conn, request):
     if job['telegram_channel_id'] != request['telegram_channel_id']:
         return {'accepted': False}
     if request.get('channel_username') != wanted:
-        if (job['phase'] == 'propagating' and job['due']
-                and request.get('promotion_empty') is True and request.get('channel_username') is None):
-            # Карточка того же узла явно показывает n/a. Старый час больше не действует.
+        if (job['phase'] == 'propagating' and job['due'] and job['matured']
+                and request.get('channel_username') is None
+                and (request.get('promotion_empty') is True or verified_mismatch(request))):
+            # После паузы тот же узел явно показывает n/a или другой проверенный
+            # канал. Повторяем привязку; неопределённый ответ её не сбрасывает.
             conn.execute("""UPDATE telegram_binding_jobs SET phase='bind',verified_at=NULL,
                 bot_message_id=NULL,retry_at=now(),error_code=NULL,updated_at=now() WHERE id=%s""", (job['id'],))
             conn.execute("""UPDATE campaigns SET placement_status='not_scheduled',proxy_node_id=NULL,
