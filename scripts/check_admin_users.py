@@ -58,7 +58,7 @@ def check_admin_users(browser,base,output,failures,dsn):
                 assert card.bounding_box()['height']<160
             assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         for role,color in (('admin','rgb(255, 140, 152)'),('operator','rgb(114, 229, 165)')):
-            admin.get_by_label('Роль пользователя',exact=True).select_option(role)
+            admin.locator('.directory-search').get_by_label('Роль пользователя',exact=True).select_option(role)
             badge=admin.locator('.directory-user>.person-role[data-role='+role+']').first
             expect(badge).to_be_visible()
             assert badge.evaluate('e=>getComputedStyle(e).color')==color
