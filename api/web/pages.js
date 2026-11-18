@@ -147,9 +147,7 @@
  const reset=button('',async()=>{state.search='';state.filter='';search.value='';filter.value='';renderList();});
  window.pushokViews.iconAction(reset,'close','Сбросить поиск и фильтр');
  search.addEventListener('input',()=>{state.search=search.value.trim();renderList();});
- filter.addEventListener('change',()=>{state.filter=filter.value;renderList();});const campaignTools=el('div',undefined,'search-action-row');campaignTools.append(searchForm);listTools.append(campaignTools,filter,reset);content.campaigns.append(listTools,$('campaigns'));
- const campaignScope=el('nav',undefined,'campaign-scope');campaignScope.setAttribute('aria-label','Чьи кампании');
- for(const [value,title] of [['all','Все кампании'],['mine','Мои кампании']]){const b=button(title,()=>go(value==='mine'?'campaigns/mine':'campaigns'));b.dataset.scope=value;campaignScope.append(b);}listTools.before(campaignScope);
+ filter.addEventListener('change',()=>{state.filter=filter.value;renderList();});const campaignTools=el('div',undefined,'search-action-row');campaignTools.classList.add('campaign-filters');campaignTools.append(searchForm,filter);listTools.append(campaignTools,reset);content.campaigns.append(listTools,$('campaigns'));
  // Архив всегда виден рядом с текущими кампаниями, без поиска в настройках.
  for(const name of ['campaigns','archive','channels','calendar']){
   const tabs=el('nav',undefined,'campaign-tabs');tabs.setAttribute('aria-label','Разделы кампаний');
@@ -160,7 +158,7 @@
  const heroCopy=el('div',undefined,'dashboard-hero-copy');
  heroCopy.append(el('h2','Добро пожаловать в puShok'),el('p','Подключайтесь к MTProxy'));
  const heroActions=el('div',undefined,'dashboard-hero-actions');
- const connectProxy=el('a','Подключить прокси','dashboard-connect-proxy');connectProxy.setAttribute('role','link');connectProxy.tabIndex=0;connectProxy.setAttribute('aria-disabled','true');connectProxy.title='Ссылка подключения ещё не настроена';connectProxy.addEventListener('click',event=>{if(!connectProxy.hasAttribute('href')){event.preventDefault();notice('Ссылка подключения прокси пока не настроена.');}});const promoteChannel=link('Продвигать канал','create');promoteChannel.classList.add('dashboard-promote-channel');heroActions.append(connectProxy);campaignScope.before(promoteChannel);
+ const connectProxy=el('a','Подключить прокси','dashboard-connect-proxy');connectProxy.setAttribute('role','link');connectProxy.tabIndex=0;connectProxy.setAttribute('aria-disabled','true');connectProxy.title='Ссылка подключения ещё не настроена';connectProxy.addEventListener('click',event=>{if(!connectProxy.hasAttribute('href')){event.preventDefault();notice('Ссылка подключения прокси пока не настроена.');}});const promoteChannel=link('Продвигать канал','create');promoteChannel.classList.add('dashboard-promote-channel');heroActions.append(connectProxy);listTools.before(promoteChannel);
  const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
  dashboardHero.append(heroCopy,dashboardMascot,heroActions);
  const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardReferral=el('div');dashboardReferral.id='dashboard-referral';dashboardIntro.append(dashboardHero);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
@@ -356,8 +354,7 @@
   return safeChannel('https://t.me/'+state.bot,'Открыть @'+state.bot);
  }
  function renderList(){
-  const staff=['admin','operator'].includes(me?.role);campaignScope.hidden=!staff;campaignScope.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.scope===state.scope)));
-  search.placeholder=staffCampaigns()?'Канал, номер заявки или @рекламодатель':'Поиск кампаний по каналу или номеру';
+  search.placeholder='Поиск кампаний';
   const list=filtered();reset.hidden=!state.search&&!state.filter;window.pushokViews.campaigns($('campaigns'),list,staffCampaigns()?'sponsors':'campaign');
   $('campaign-count').textContent=list.length+' заявок';
   if(!list.length){empty($('campaigns'),state.search||state.filter?'Поиск не дал результатов. Измените запрос или сбросьте фильтр.':staffCampaigns()?'Текущих кампаний нет. Завершённые и удалённые доступны в архиве.':'У вас нет текущих личных кампаний. Завершённые доступны в архиве.');$('campaigns').append(link('Открыть архив','archive'));}
@@ -509,7 +506,7 @@
   }
   if(name==='campaign'){
    detail.replaceChildren();const c=state.campaigns.find(c=>c.id===id);
-   if(c){detail.append(card(c,false));void renderPromotionStatus(c,detail);metrics('campaign',[]);}
+   if(c){detail.append(card(c,false,{showPayment:true}));void renderPromotionStatus(c,detail);metrics('campaign',[]);}
    else{empty(detail,'Кампания отсутствует в рабочем списке или недоступна вашему аккаунту. Завершённые кампании находятся в архиве.');detail.append(link('Открыть архив','archive/'+id));metrics('campaign',[]);}
   }
   paymentOverview.hidden=name==='payments'&&Boolean(id);

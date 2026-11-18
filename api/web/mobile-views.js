@@ -216,10 +216,17 @@ window.pushokViews=(()=>{
   const meta=el('dl',undefined,'tile-meta campaign-tile-facts');for(const [label,value] of [['Тариф',c.tariff_name_snapshot||'—'],['Срок',duration(c)],['Стоимость',price(c)]]){const cell=el('div');cell.append(el('dt',label),el('dd',value));meta.append(cell);}item.append(meta);
   if(!actions)return item;
   const payment=()=>iconAction(link('','payments/'+c.id,c.payment_status==='awaiting_payment'&&c.price_kopecks_snapshot>0),'wallet',c.payment_status==='verified'?'Посмотреть оплату':c.price_kopecks_snapshot===0?'Посмотреть размещение':'Оплатить');
+  const payable=!c.archived_at && c.moderation_status==='approved' && c.payment_status==='awaiting_payment' && c.price_kopecks_snapshot>0;
+  if(payable && ['campaign','payments','sponsors'].includes(mode)){
+   const own=mode!=='sponsors' || c.advertiser_user_id===me?.id;
+   const action=own?link('Оплатить','payments/'+c.id):window.pushokLinks.share('pay_'+c.id.replaceAll('-',''),'Оплата размещения в puShok');
+   if(!own)action.replaceChildren(document.createTextNode('Поделиться ссылкой на оплату'));
+   action.prepend(icon(own?'wallet':'share'));action.classList.add('campaign-pay-action');item.append(action);
+   return item;
+  }
   if(mode==='reports'){
    const tools=campaignTools(item);tools.append(iconAction(button('',()=>showCampaignReport(c,item)),'chart','История кампании'));if(!miniAppMode)tools.append(iconAction(button('',()=>downloadCampaignCsv(c)),'download','Скачать CSV'));
   }else if(mode==='payments')campaignTools(item).append(payment());
-  else if(mode==='campaign'&&c.moderation_status==='approved'&&c.payment_status==='awaiting_payment'&&c.price_kopecks_snapshot>0)campaignTools(item).append(payment());
   else if(mode==='campaign'&&c.moderation_status==='changes_requested')campaignTools(item).append(iconAction(link('','campaign/'+c.id),'edit','Исправить кампанию'));
   return item;
  }

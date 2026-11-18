@@ -62,6 +62,13 @@ def check_interface(browser,base,output,failures,dsn):
                 a=row.locator('input[type=search]').bounding_box();b=row.locator(':scope>.icon-action').bounding_box();assert abs(a['y']+a['height']/2-b['y']-b['height']/2)<3
             else:
                 expect(page.get_by_role('link',name='Продвигать канал',exact=True)).to_be_visible()
+                for width in (320,390):
+                    page.set_viewport_size({'width':width,'height':844})
+                    search=row.locator('input[type=search]').bounding_box()
+                    status=row.get_by_role('combobox').bounding_box()
+                    assert abs(search['y']+search['height']/2-status['y']-status['height']/2)<3
+                    assert search['x']+search['width']<=status['x'] and status['x']+status['width']<=width
+
         page.evaluate("window.cabinet.go('dashboard')");expect(page.locator('.home-leaders h2')).to_have_text('Лидеры месяца')
         page.evaluate("window.cabinet.go('profile')")
         menu=page.get_by_role('navigation',name='Управление',exact=True)
