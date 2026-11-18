@@ -1,0 +1,92 @@
+/* Страница управления платежами использует общие цвета кабинета. */
+#settings-payments {
+  display:grid; gap:22px; min-width:0; margin:0 0 20px; padding:0; border:0; background:transparent;
+}
+#settings-payments[hidden] { display:none; }
+#settings-payments .payment-group {
+  min-width:0; padding:18px 20px; background:var(--surface); border:1px solid var(--line); border-radius:16px;
+}
+#settings-payments .payment-header {
+  display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px;
+}
+#settings-payments .payment-header h2 { font-size:19px; line-height:1.25; letter-spacing:-.035em; margin:0; }
+#settings-payments .payment-header a {
+  display:inline-flex; align-items:center; min-height:44px; font-size:13px; color:var(--mint);
+  text-underline-offset:4px; white-space:nowrap;
+}
+#settings-payments form, #payment-switch-fields { margin:0; padding:0; border:0; min-width:0; background:none; }
+#settings-payments label.payment-method {
+  display:grid; grid-template-columns:40px minmax(0,1fr) auto; align-items:center; gap:12px;
+  min-height:68px; margin:0; padding:12px 0; color:var(--text); cursor:pointer; text-align:start;
+}
+#settings-payments .payment-method + .payment-method { border-top:1px solid var(--line-soft); }
+.payment-symbol {
+  display:grid; place-items:center; width:40px; height:40px; border-radius:12px;
+}
+#settings-payments .payment-symbol .ui-icon { width:22px; height:22px; color:inherit; }
+.payment-stars { color:#ffd478; background:#3c3530; }
+.payment-sbp { color:#60ded3; background:#143e42; }
+.payment-wallet { color:#a9c9ff; background:#203a53; }
+.payment-copy,.payment-choice { display:grid; gap:3px; min-width:0; }
+.payment-copy strong { color:var(--text); font-size:16px; line-height:1.25; }
+.payment-copy small,.payment-choice small { color:var(--muted); font-size:12px; font-weight:400; line-height:1.35; }
+.payment-choice { justify-items:end; text-align:right; max-width:90px; }
+#payment-config-note[data-mode=test] { color:#ffd478; }
+#payment-config-note[data-mode=live] { color:var(--mint); }
+#settings-payments .payment-choice input[type=checkbox] {
+  order:0; appearance:none; display:block; position:relative; width:40px; min-width:40px; height:24px; min-height:24px;
+  margin:0; padding:0; border:1px solid #678297; border-radius:99px; background:#233d50; cursor:pointer;
+}
+#settings-payments .payment-choice input[type=checkbox]::before {
+  content:""; display:block; position:absolute; inset:3px auto auto 3px;
+  width:16px; height:16px; margin:0; border:0; border-radius:50%; background:#cadae5; transform:none;
+}
+#settings-payments .payment-choice input:checked { background:var(--mint); border-color:var(--mint); }
+#settings-payments .payment-choice input:checked::before { transform:translateX(16px); background:#092d31; }
+#settings-payments .payment-choice input:disabled { opacity:.55; cursor:default; }
+#settings-payments :focus-visible { outline:2px solid var(--mint); outline-offset:3px; }
+.payment-form-footer { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px 14px; margin-top:6px; }
+#settings-payments .payment-save {
+  width:auto; min-width:0; min-height:44px; margin:0; padding:9px 16px; border-radius:11px;
+  font:inherit; font-weight:650; white-space:normal;
+}
+#settings-payments .payment-save.primary { background:var(--mint); color:#06282a; border:1px solid var(--mint); }
+#settings-payments .payment-save.secondary-button { color:var(--mint); background:transparent; border:1px solid var(--line); }
+#payment-switch-feedback,.wallet-setting-feedback,#settings-payments-note { margin:0; color:var(--muted); font-size:13px; }
+#settings-payments [role=status]:empty,.wallet-setting-feedback:empty { display:none; }
+#settings-payments .payment-fold { margin:14px 0 0; background:none; border:0; border-top:1px solid var(--line); border-radius:0; }
+#settings-payments .payment-fold > summary {
+  display:flex; align-items:center; justify-content:space-between; gap:14px; min-height:48px; margin:0; padding:6px 0;
+  color:var(--text); font-weight:600; cursor:pointer; list-style:none;
+}
+#settings-payments .payment-fold > summary::-webkit-details-marker { display:none; }
+#settings-payments .payment-fold > summary::after {
+  content:""; flex:0 0 auto; width:7px; height:7px; margin-right:5px; border:solid var(--mint);
+  border-width:0 2px 2px 0; transform:rotate(45deg);
+}
+#settings-payments .payment-fold[open] > summary::after { transform:rotate(225deg); }
+#settings-payments .merchant-fold > p { margin:0 0 12px; color:var(--muted); font-size:13px; }
+#settings-payments .merchant-fields { display:grid; grid-template-columns:1fr 1fr; gap:12px 16px; }
+#settings-payments .merchant-fields label { margin:0; min-width:0; }
+#settings-payments .merchant-fields .merchant-secret { grid-column:2; grid-row:1; }
+#settings-payments .merchant-fields .merchant-test { justify-content:flex-start; }
+#settings-payments .merchant-hint { color:var(--muted); font-size:12px; margin:0; align-self:center; }
+#settings-payments .merchant-fields .payment-save { justify-self:end; }
+.payment-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:16px 0 8px; }
+.payment-metrics > div + div { border-left:1px solid var(--line); padding-left:18px; }
+#settings-payments .payment-metrics h3 { margin:0 0 10px; font-size:14px; }
+#settings-payments .payment-metrics dl { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 12px; margin:0; }
+.payment-metrics dt { color:var(--muted); font-size:13px; }
+.payment-metrics dd { margin:0; text-align:end; font-weight:630; font-size:13px; font-variant-numeric:tabular-nums; }
+#settings-payments #sbp-review-list { margin:0; padding:0; min-width:0; }
+#sbp-review-list .settings-method { padding:12px 0; margin:0; border:0; border-top:1px solid var(--line-soft); border-radius:0; background:none; overflow-wrap:anywhere; }
+@media (max-width:540px) {
+  #settings-payments { gap:14px; }
+  #settings-payments .payment-group { padding:13px 14px; }
+  #settings-payments .payment-header h2 { font-size:17px; }
+  #settings-payments label.payment-method { grid-template-columns:34px minmax(0,1fr) auto; gap:9px; }
+  .payment-symbol { width:34px; height:34px; border-radius:10px; }
+  #settings-payments .merchant-fields,.payment-metrics { grid-template-columns:1fr; }
+  #settings-payments .merchant-fields .merchant-secret { grid-column:auto; grid-row:auto; }
+  .payment-metrics > div + div { padding:12px 0 0; border-left:0; border-top:1px solid var(--line-soft); }
+}

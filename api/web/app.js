@@ -78,30 +78,61 @@ $('loading-title-form').addEventListener('submit',async event=>{
  }catch{status.textContent='Не удалось сохранить. Повторите попытку.';}
  finally{fields.disabled=false;}
 });
+let paymentEditorSession=null;
+const paymentMethods=['stars','sbp'];
+function paymentDraft(){
+ let dirty=false;
+ for(const method of paymentMethods){
+  const input=$('enable-'+method);
+  if(!input.hasAttribute('data-saved'))continue;
+  const changed=String(input.checked)!==input.dataset.saved;
+  dirty=dirty||changed;
+  $('settings-'+method+'-status').textContent=input.disabled?'Недоступен':input.checked?'Включён':'Выключен';
+ }
+ $('payment-switch-feedback').textContent=dirty?'Есть изменения':'';
+}
+function showPaymentControls(config,replaceDraft){
+ for(const method of paymentMethods){
+  const input=$('enable-'+method);
+  if(replaceDraft||paymentEditorSession!==token||String(input.checked)===input.dataset.saved)input.checked=config[method];
+  input.dataset.saved=String(config[method]);
+ }
+ paymentEditorSession=token;
+ $('enable-sbp').disabled=!config.sbp_configured;
+ if(!config.sbp_configured)$('enable-sbp').checked=false;
+ const note=$('payment-config-note');
+ note.textContent=config.sbp_configured?(config.sbp_test_mode?'Тестовый магазин':'Рабочий магазин'):(me.is_owner?'Подключите магазин ЮKassa':'Магазин подключает владелец');
+ note.dataset.mode=config.sbp_configured?(config.sbp_test_mode?'test':'live'):'missing';
+ $('payment-switch-fields').disabled=false;
+ paymentDraft();
+}
+function resetPaymentSettings(){
+ paymentEditorSession=null;
+ $('payment-switch-fields').disabled=true;
+ for(const method of paymentMethods){
+  const input=$('enable-'+method);input.checked=false;delete input.dataset.saved;
+  $('settings-'+method+'-status').textContent='Загрузка…';
+ }
+ $('payment-config-note').textContent='';$('payment-switch-feedback').textContent='';
+ $('sbp-review-list').replaceChildren();$('wallet-settings').replaceChildren();
+ window.pushokSBP?.reset();
+ for(const cell of document.querySelectorAll('.payment-metrics dd'))cell.textContent='—';
+ $('settings-payments-note').textContent='';
+}
 async function renderPaymentSettings(){
  if(me?.role!=='admin')return;
- const target=$('settings-payments-note');
- target.textContent='Получение фактических данных из базы...';
+ const session=token,valid=()=>session===token&&me?.role==='admin';
  try{
-  const report=await api('/admin/payments/status');
-  const stars=report.stars,sbp=report.sbp;
-  $('settings-stars-status').textContent=stars.invoice_enabled_in_server_config?
-   'Приём Stars включён. Проверьте оплату первым заказом.':
-   'Приём Stars выключен. Включите переключатель выше и сохраните.';
-  $('settings-stars-counts').textContent=
-   'Тарифов с ценой XTR: '+stars.priced_active_tariffs+
-   ' · Оплат зарегистрировано в БД: '+stars.recorded_successes+
-   ' · Нужна ручная сверка: '+stars.needs_manual_review;
-  $('settings-sbp-status').textContent=sbp.checkout_enabled?
-   'Приём СБП включён · '+(sbp.test_mode?'тестовый режим.':'реальные платежи.'):
-   'Приём СБП выключен. Настройте магазин и включите переключатель.';
-  $('settings-sbp-status').textContent+=' Фоновая сверка: '+(sbp.background_enabled?'разрешена сервером':'выключена')+
-   ' · Ожидают проверки: '+sbp.pending_checks+' · Нужна ручная сверка: '+sbp.needs_manual_review;
-  target.textContent='Статус заказа меняется после подтверждения платежа провайдером.';
+  const {stars,sbp}=await api('/admin/payments/status');if(!valid())return;
+  const values={'stars-tariffs':stars.priced_active_tariffs,'stars-success':stars.recorded_successes,
+   'stars-review':stars.needs_manual_review,'sbp-success':sbp.recorded_successes,'sbp-pending':sbp.pending_checks,
+   'sbp-review':sbp.needs_manual_review,'sbp-background':sbp.background_enabled?'Включена':'Выключена'};
+  for(const [key,value] of Object.entries(values))$('payment-'+key).textContent=String(value);
+  $('settings-payments-note').textContent='';
  }catch(e){
-  $('settings-stars-status').textContent='Не удалось получить состояние Stars.';
-  $('settings-sbp-status').textContent='Нет подтверждения подключения СБП.';
-  target.textContent='Статус платежей недоступен: '+e.message;
+  if(!valid())return;
+  for(const cell of document.querySelectorAll('.payment-metrics dd'))cell.textContent='—';
+  $('settings-payments-note').textContent='Не удалось загрузить данные сверки. '+e.message;
  }
 }
 let sbpReviewRequest=0;
@@ -861,20 +892,26 @@ function renderSoftware(){
  const banner=$('software-update-notice');
  if(banner){banner.hidden=r?.state!=='available';$('software-update-notice-text').textContent=r?.state==='available'?'Доступно обновление v'+r.available_version+' · установлено v'+r.installed_version:'';}
 }
-async function loadControl({payments=false}={}){
+async function loadControl({payments=false,replaceDraft=false}={}){
  if(me?.role!=='admin')return;
  const session=token;
  // Requests are shared only within this authenticated session.
  if(softwareSession!==session){softwareControl=null;softwareRelease=null;displayedVersion=null;controlFlight=null;releaseFlight=null;lastReleaseRequest=0;softwareSession=session;}
  if(!controlFlight){const pending=api('/admin/control');controlFlight=pending;pending.finally(()=>{if(controlFlight===pending)controlFlight=null;}).catch(()=>{});}
- const c=await controlFlight;
+ let c;
+ try{c=await controlFlight;}catch(error){
+  if(payments&&session===token&&me?.role==='admin'){
+   $('payment-switch-fields').disabled=true;
+   $('payment-switch-feedback').textContent='Не удалось загрузить настройки. Обновите раздел.';
+  }
+  throw error;
+ }
  if(session!==token||me?.role!=='admin')return;
  if(displayedVersion&&displayedVersion!==c.version&&c.update.state==='succeeded'){location.reload();return;}
  displayedVersion=c.version;softwareControl=c;
  if(payments){
  void window.pushokSBP?.load();
- $('enable-stars').checked=c.stars;$('enable-sbp').checked=c.sbp;$('enable-sbp').disabled=!c.sbp_configured;
- $('payment-config-note').textContent=c.sbp_configured?(c.sbp_test_mode?'СБП: тестовый магазин. Реальные списания не включены.':'СБП: рабочий магазин настроен.'):'Подключите магазин ЮKassa в форме «Подключение СБП».';
+ showPaymentControls(c,replaceDraft);
  }
  renderSoftware();
 }
@@ -896,10 +933,21 @@ async function refreshSoftware(force=false){
  try{await loadControl();}catch(e){if(session!==token||me?.role!=='admin')return;softwareControl=null;$('software-update-status').textContent='Кабинет временно недоступен. Повторная проверка через 10 секунд…';$('software-update').disabled=true;}
  if(session===token&&me?.role==='admin')await checkSoftware(force);
 }
-$('payment-switches').addEventListener('submit',event=>{event.preventDefault();run(async()=>{
- await api('/admin/control/payments',{method:'PUT',body:{stars:$('enable-stars').checked,sbp:$('enable-sbp').checked}});
- await loadAdminSettings();notice('Настройки оплаты сохранены.');
-});});
+$('payment-switches').addEventListener('change',paymentDraft);
+$('payment-switches').addEventListener('submit',event=>{
+ event.preventDefault();const fields=$('payment-switch-fields');
+ if(fields.disabled||me?.role!=='admin'||paymentEditorSession!==token)return;
+ const session=token;fields.disabled=true;
+ run(async()=>{
+  try{
+   await api('/admin/control/payments',{method:'PUT',body:{stars:$('enable-stars').checked,sbp:$('enable-sbp').checked}});
+  }catch(error){if(session===token)fields.disabled=false;throw error;}
+  if(session!==token)return;
+  await loadControl({payments:true,replaceDraft:true});
+  await Promise.all([renderPaymentSettings(),renderSBPReview()]);
+  if(session===token)notice('Настройки оплаты сохранены.',true);
+ });
+});
 $('software-auto').addEventListener('change',()=>run(async()=>{
  const session=token,enabled=$('software-auto').checked;
  if(!me?.is_owner||autoSaveSession===session)return;

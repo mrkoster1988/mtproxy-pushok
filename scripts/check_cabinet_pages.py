@@ -1125,6 +1125,11 @@ def main():
                 with patch.dict(os.environ, {'PUSHOK_CONTROL_DIR':str(Path(PostgresIntegration.storage.name)/'control'),
                                            'TELEGRAM_BOT_TOKEN':'123456:fixture_token_for_browser'}):
                     admin.locator('#enable-stars').check()
+                    draft_notice = admin.locator('#payment-switch-feedback')
+                    if draft_notice.is_visible():
+                        expect(draft_notice).to_have_text('Есть изменения')
+                        admin.evaluate('loadControl({payments:true})')
+                        expect(admin.locator('#enable-stars')).to_be_checked()
                     admin.locator('#payment-switches button').click()
                     expect(admin.locator('#notice')).to_contain_text('Настройки оплаты сохранены')
                     expect(admin.locator('#enable-stars')).to_be_checked()
@@ -1717,6 +1722,9 @@ def main():
                 open_management(admin,'payments')
                 expect(admin.get_by_label('Включить внутренний баланс',exact=True)).to_be_checked()
                 admin.get_by_label('Включить внутренний баланс',exact=True).uncheck()
+                admin.evaluate('() => window.pushokWallet.settings()')
+                expect(admin.get_by_label('Включить внутренний баланс',exact=True)).not_to_be_checked()
+                expect(admin.locator('.wallet-settings-state')).to_have_text('Не сохранено')
                 admin.get_by_role('button',name='Сохранить настройку баланса',exact=True).click()
                 expect(admin.locator('.wallet-settings-state')).to_have_text('Баланс выключен')
                 go(advertiser,'wallet')

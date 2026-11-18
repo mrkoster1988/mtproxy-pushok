@@ -269,14 +269,41 @@ window.pushokWallet=(()=>{
   const history=window.pushokViews.iconAction(button('',()=>{if(box.hidden)return show();seq++;box.hidden=true;}),'chart','История активаций');actions.append(history);row.append(box);
  }
  async function walletSettings(){
-  const node=$('wallet-settings'),session=token,uid=me?.id,seq=++settingsEpoch;if(!node||me?.role!=='admin')return;
-  node.replaceChildren(el('p','Загружаем настройки баланса…'));
-  try{const data=await api('/admin/wallet/settings');if(seq!==settingsEpoch||session!==token||uid!==me?.id)return;
-   const p=panel('Внутренний баланс'),f=el('form'),enabled=field(f,'Включить внутренний баланс','checkbox');enabled.checked=data.enabled;
-   const state=el('p',data.enabled?'Баланс включён':'Баланс выключен','wallet-settings-state');p.append(state);enabled.addEventListener('change',()=>{state.textContent=enabled.checked===data.enabled?(data.enabled?'Баланс включён':'Баланс выключен'):(enabled.checked?'Будет включён после сохранения':'Будет выключен после сохранения');});
-   window.pushokViews.info(p,'Выключение останавливает новые пополнения, оплату с баланса и активацию подарочных кодов. Остатки, история, возвраты и подтверждения уже выставленных счетов сохраняются. Автосписания выключатся у всех: после включения каждый пользователь разрешает их заново. Прямая оплата заявок продолжает работать.','О внутреннем балансе');
-   submit(f,'Сохранить настройку баланса',async()=>{await api('/admin/wallet/settings',{method:'PUT',body:{enabled:enabled.checked}});notice('Настройка баланса сохранена.',true);await walletSettings();});p.append(f);node.replaceChildren(p);
-  }catch(e){if(seq===settingsEpoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить настройку баланса',walletSettings));}
+  const node=$('wallet-settings'),session=token,uid=me?.id;
+  if(!node||me?.role!=='admin')return;
+  const editing=()=>Boolean(node.querySelector('form[data-dirty],form[aria-busy="true"]'));
+  if(editing())return;
+  const seq=++settingsEpoch;
+  const info=$('wallet-settings-info'),help=$('wallet-settings-help');
+  info.onclick=()=>{help.hidden=!help.hidden;info.setAttribute('aria-expanded',String(!help.hidden));};
+  if(!node.querySelector('form'))node.replaceChildren(el('p','Загружаем настройки баланса…'));
+  try{const data=await api('/admin/wallet/settings');if(seq!==settingsEpoch||session!==token||uid!==me?.id||editing())return;
+   const form=el('form'),row=el('label',undefined,'payment-method'),symbol=el('span',undefined,'payment-symbol payment-wallet');
+   symbol.append(window.pushokViews.icon('wallet'));
+   const copy=el('span',undefined,'payment-copy');copy.append(el('strong','Оплата с баланса'),el('small','Пополнения и подарочные коды'));
+   const choice=el('span',undefined,'payment-choice'),enabled=el('input'),state=el('small',data.enabled?'Баланс включён':'Баланс выключен','wallet-settings-state');
+   enabled.type='checkbox';enabled.checked=data.enabled;enabled.setAttribute('aria-label','Включить внутренний баланс');
+   choice.append(enabled,state);row.append(symbol,copy,choice);form.append(row);
+   const feedback=el('p',undefined,'wallet-setting-feedback');feedback.setAttribute('role','status');
+   enabled.addEventListener('change',()=>{
+    form.toggleAttribute('data-dirty',enabled.checked!==data.enabled);
+    state.textContent=enabled.checked===data.enabled?(data.enabled?'Баланс включён':'Баланс выключен'):'Не сохранено';
+    feedback.textContent=enabled.checked===data.enabled?'':enabled.checked?'Баланс станет доступен после сохранения.':'После сохранения пополнения и оплата с баланса остановятся. Автооплату пользователям потребуется включить заново.';
+   });
+   form.append(feedback);
+   const save=submit(form,'Сохранить настройку баланса',async()=>{
+    form.setAttribute('aria-busy','true');enabled.disabled=true;
+    try{
+     await api('/admin/wallet/settings',{method:'PUT',body:{enabled:enabled.checked}});
+     if(session!==token||uid!==me?.id||!form.isConnected)return;
+     data.enabled=enabled.checked;form.removeAttribute('data-dirty');feedback.textContent='';
+     state.textContent=data.enabled?'Баланс включён':'Баланс выключен';
+     notice('Настройка баланса сохранена.',true);
+    }finally{enabled.disabled=false;form.removeAttribute('aria-busy');}
+   });
+   save.className='payment-save secondary-button';const footer=el('div',undefined,'payment-form-footer');footer.append(save);form.append(footer);
+   node.replaceChildren(form);
+  }catch(e){if(seq===settingsEpoch&&session===token&&!editing())node.replaceChildren(el('p',e.message),button('Повторить настройку баланса',walletSettings));}
  }
  async function payment(c,container){
   const session=token,uid=me?.id;container.hidden=false;container.replaceChildren(el('p','Проверяем возможность оплаты с баланса…'));
