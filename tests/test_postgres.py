@@ -2004,6 +2004,11 @@ class PostgresIntegration(unittest.TestCase):
             self.request('DELETE','/admin/promotion-bindings/'+str(f['node'])+'/'+str(default_id))
             with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
                 plan=handle(conn,request);self.assertEqual(plan['state'],'idle');self.assertEqual(plan['reason'],'default_binding_missing')
+                # Во время ожидания резерв без тега не превращает будущий запуск в сбой.
+                conn.execute("UPDATE campaigns SET placement_status='scheduled',archived_at=NULL,scheduled_start_at=now()+interval '2 hours',scheduled_end_at=now()+interval '3 hours' WHERE id=%s", (f['campaign'],))
+                self.assertEqual(handle(conn,request)['reason'], 'waiting_start')
+                handle(conn,dict(request,action='failure',code='default_binding_missing'))
+                self.assertIsNone(conn.execute("SELECT 1 FROM promotion_incidents WHERE proxy_node_id=%s AND resolved_at IS NULL", (f['node'],)).fetchone())
             main.app.dependency_overrides[main.get_current_user]=lambda:{'id':f['stranger'],'role':'advertiser'}
             self.request('GET','/admin/default-sponsor',expected=403)
             self.request('PUT','/admin/default-sponsor',json=dict(channel_id=None),expected=403)
@@ -2023,6 +2028,9 @@ class PostgresIntegration(unittest.TestCase):
             self.assertEqual(conn.execute("SELECT count(*) AS n FROM campaign_notice_outbox WHERE campaign_id=%s AND event_type='started' AND recipient_user_id=%s",(f['campaign'],owner)).fetchone()['n'],1)
             conn.execute("UPDATE campaigns SET placement_status='active' WHERE id=%s",(f['campaign'],))
             self.assertEqual(conn.execute("SELECT count(*) AS n FROM campaign_notice_outbox WHERE campaign_id=%s AND event_type='started' AND recipient_user_id=%s",(f['campaign'],owner)).fetchone()['n'],1)
+            record_failure(conn,f['node'],'default_binding_missing')
+            self.assertIsNone(conn.execute("SELECT 1 FROM campaign_notice_outbox WHERE campaign_id=%s AND reason='default_binding_missing'", (f['campaign'],)).fetchone())
+            self.assertIsNotNone(conn.execute("SELECT 1 FROM campaign_notice_outbox WHERE campaign_id IS NULL AND reason='default_binding_missing' AND recipient_user_id=%s AND audience='staff'", (f['admin'],)).fetchone())
             record_failure(conn,f['node'],'apply_failed');record_failure(conn,f['node'],'apply_failed')
             self.assertEqual(conn.execute("SELECT count(*) AS n FROM campaign_notice_outbox WHERE campaign_id=%s AND event_type='failed' AND recipient_user_id=%s",(f['campaign'],owner)).fetchone()['n'],1)
             conn.execute('UPDATE promotion_incidents SET resolved_at=now() WHERE proxy_node_id=%s',(f['node'],))

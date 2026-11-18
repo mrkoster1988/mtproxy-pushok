@@ -24,6 +24,15 @@ class LifecycleNoticeTests(unittest.TestCase):
         sent=[]
         deliver_lifecycle_notices(lambda route,payload:[item] if route.endswith('/claim') else {'acknowledged':True},sent.append,'https://example.com/miniapp')
         self.assertTrue(sent[0]['reply_markup']['inline_keyboard'][0][0]['web_app']['url'].endswith('#/sponsors'))
+    def test_default_sponsor_notice_opens_node_diagnostics(self):
+        item=self.item()
+        item.update(event_type='failed', audience='staff', reason='default_binding_missing', campaign_id=None)
+        sent=[]
+        deliver_lifecycle_notices(lambda route,payload:[item] if route.endswith('/claim') else {},sent.append,'https://example.com/miniapp')
+        self.assertIn('резервного канала', sent[0]['text'])
+        self.assertNotIn('Заявка:', sent[0]['text'])
+        self.assertTrue(sent[0]['reply_markup']['inline_keyboard'][0][0]['web_app']['url'].endswith('#/sponsors'))
+
     def test_network_failure_keeps_notice_unacknowledged(self):
         item=self.item();calls=[]
         def api(route,payload):calls.append(route);return [item]

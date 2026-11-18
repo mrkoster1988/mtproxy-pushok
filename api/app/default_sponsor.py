@@ -23,6 +23,8 @@ def fallback_plan(conn, node, waiting):
     if not row:
         return waiting
     if row['archived_at'] or not row['ad_tag'] or not row['current']:
+        if waiting.get('reason') in ('waiting_start', 'period_ended'):
+            return waiting
         return dict(state='idle',node_id=str(node['id']),reason='default_binding_missing')
     return dict(state='default',node_id=str(node['id']),reason='default_sponsor',
                 default_channel_id=str(row['channel_id']),tag=row['ad_tag'])
