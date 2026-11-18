@@ -263,7 +263,6 @@ window.pushokViews=(()=>{
   groups.forEach(([title,items])=>{const group=el('section',undefined,'profile-group'),menu=el('nav',undefined,'profile-menu');if(title==='Управление')group.id='profile-management';menu.setAttribute('aria-label',title);group.append(el('h2',title));
    items.forEach(([route,name,text])=>{const a=link(text,route);a.prepend(icon(name));const arrow=icon('chevron');arrow.classList.add('menu-chevron');a.append(arrow);menu.append(a);});group.append(menu);sections.append(group);});target.append(sections);
   if(updatePanel)target.append(updatePanel);
-  const logout=button('Выйти',()=>$('logout').click());logout.setAttribute('aria-label','Выйти из аккаунта');logout.className='profile-logout';target.append(logout);
  }
  function emptyLine(text,name='info'){const row=el('p',undefined,'sponsor-empty');row.append(icon(name),el('span',text));return row;}
  function sponsors(target,list){

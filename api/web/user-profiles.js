@@ -1,7 +1,6 @@
 'use strict';
 window.pushokProfiles=(()=>{
  let returnRoute='moderation';
- const roles={admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель'};
  Object.assign(errors,{user_profile_not_found:'Профиль не найден или недоступен вашему аккаунту.'});
  const views=()=>window.pushokViews;
  function person(user){
@@ -24,7 +23,7 @@ window.pushokProfiles=(()=>{
   const user={id:c.advertiser_user_id,telegram_user_id:c.advertiser_telegram_user_id,first_name:c.advertiser_first_name,last_name:c.advertiser_last_name,username:c.advertiser_username};
   const section=el('article',undefined,'card directory-user approval-advertiser'),row=compact(user,'moderation/'+c.id);
   row.classList.add('advertiser-identity');row.setAttribute('aria-label','Открыть профиль рекламодателя');
-  section.append(row,el('span','Рекламодатель','person-role'));return section;
+  section.append(row,el('span','Автор заявки','person-role'));return section;
  }
  function compact(user,back='wallet'){
   const id=user.user_id||user.id,row=el(id?'a':'div',undefined,'user-summary person-line'),copy=names(user);
@@ -39,7 +38,7 @@ window.pushokProfiles=(()=>{
  }
  function identity(user){
   const section=el('section',undefined,'profile-identity user-identity'),row=el('div',undefined,'person-line'),copy=names(user,true);
-  const access=window.pushokTeam.roleControl(user);access.badge.classList.add('profile-role');access.badge.dataset.role=user.is_owner?'owner':user.role;
+  const access=window.pushokTeam.roleControl(user);access.badge.classList.add('profile-role');
   row.append(views().userAvatar(user.id,person(user).name||person(user).username),copy);section.append(access.badge,row,access.editor);return section;
  }
  function balance(data,user){

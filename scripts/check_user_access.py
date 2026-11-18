@@ -36,7 +36,7 @@ def check_user_access(browser,base,output,failures,dsn):
         expect(editor).to_be_hidden();assert state()[0]==role
     try:
         admin=launch('admin');profile(admin,'target');card=admin.locator('[data-page=user] .profile-identity')
-        card.get_by_role('button',name='Изменить права: Рекламодатель',exact=True).click()
+        card.get_by_role('button',name='Изменить права: Пользователь',exact=True).click()
         expect(card.locator('.role-editor option')).to_have_count(3)
         expect(card.get_by_role('button',name='Сохранить права',exact=True)).to_be_disabled()
         for width in (320,390):

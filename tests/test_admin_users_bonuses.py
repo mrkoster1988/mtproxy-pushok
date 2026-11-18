@@ -27,6 +27,47 @@ class AdminUsersBonuses(unittest.TestCase):
         main.app.dependency_overrides[main.get_current_user]=lambda:self.actor
         self.addCleanup(main.app.dependency_overrides.clear)
 
+    def test_directory_category_tracks_actual_launch(self):
+        def matches(category):
+            return self.request('GET','/admin/users',params={'category':category,'query':self.handle})['total']
+        self.assertEqual(matches('user'),1)
+        self.assertEqual(matches('advertiser'),0)
+        channel, campaign, node = uuid4(), uuid4(), uuid4()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("INSERT INTO proxy_nodes(id,name,host,port) VALUES(%s,'Тест',%s,443)",(node,node.hex+'.example.org'))
+            conn.execute("INSERT INTO sponsor_channels(id,owner_user_id,title,telegram_url) VALUES(%s,%s,'Канал','https://t.me/test_launch')",(channel,self.owner))
+            conn.execute("""INSERT INTO campaigns(id,channel_id,tariff_id,advertiser_user_id,
+                tariff_name_snapshot,duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,
+                placement_status,proxy_node_id,scheduled_start_at,scheduled_end_at)
+                VALUES(%s,%s,%s,%s,'Тест',3600,0,'RUB','scheduled',%s,now(),now()+interval '1 hour')""",
+                (campaign,channel,self.tariff,self.owner,node))
+        self.assertEqual(matches('user'),1)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET placement_status='active' WHERE id=%s",(campaign,))
+            conn.execute("UPDATE campaigns SET placement_status='cancelled',archived_at=now() WHERE id=%s",(campaign,))
+        self.assertEqual(matches('user'),0)
+        self.assertEqual(matches('advertiser'),1)
+        self.assertTrue(self.request('GET',f'/users/{self.owner}/profile')['user']['has_launched_ads'])
+
+    def test_developer_text_permissions_and_concurrent_edits(self):
+        path='/community/developer'
+        initial=self.request('GET',path)
+        change=dict(description='Кратко о разработчике',history='История кабинета',revision=initial['revision'])
+        self.request('PUT',path,403,json=change)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE users SET is_owner=true WHERE id=%s',(self.admin,))
+        try:
+            saved=self.request('PUT',path,json=change)
+            self.assertEqual(saved['history'],change['history'])
+            self.request('PUT',path,409,json=change)
+            self.request('PUT',path,422,json={**change,'description':'  '})
+            self.actor={'id':self.other,'role':'advertiser'}
+            self.assertEqual(self.request('GET',path),saved)
+            self.request('PUT',path,403,json={**change,'revision':saved['revision']})
+        finally:
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute('UPDATE users SET is_owner=false WHERE id=%s',(self.admin,))
+
     def test_directory_sort_applies_before_pagination(self):
         marker='ordering_'+self.owner.hex[:12]
         with psycopg.connect(self.dsn) as conn:

@@ -44,7 +44,7 @@ def require_verified(conn,uid):
 
 
 def person(conn,uid):
-    row=conn.execute('''SELECT id,first_name,last_name,username,role,is_owner,
+    row=conn.execute('''SELECT id,first_name,last_name,username,role,is_owner,has_launched_ads,
        CASE WHEN is_owner THEN NULL ELSE coalesce(last_seen_at>now()-interval '2 minutes',false) END AS online
        FROM users WHERE id=%s AND blocked_at IS NULL''',(uid,)).fetchone()
     if not row:raise HTTPException(404,'user_profile_not_found')
@@ -59,6 +59,13 @@ class PersonalEdit(BaseModel):
     model_config=ConfigDict(extra='forbid')
     phone_number:str|None=Field(default=None,pattern=r'^\+[0-9]{7,15}$')
     birthday:Birthday|None=None
+
+class DeveloperProfileEdit(BaseModel):
+    model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
+    description: str = Field(min_length=1, max_length=400)
+    history: str = Field(min_length=1, max_length=1600)
+    revision: int = Field(ge=1)
+
 
 class PersonalTransfer(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -75,6 +82,27 @@ def router_for(dsn,current_user):
     def owner(conn,user):
         if not conn.execute('SELECT 1 FROM users WHERE id=%s AND is_owner AND blocked_at IS NULL FOR SHARE',(user['id'],)).fetchone():
             raise HTTPException(403,'owner_role_required')
+    @router.get('/developer')
+    def developer_profile(response: Response, user=Depends(current_user)):
+        response.headers['Cache-Control'] = 'private, no-store'
+        return db(lambda conn: conn.execute(
+            'SELECT description, history, revision FROM developer_profile WHERE singleton'
+        ).fetchone())
+
+    @router.put('/developer')
+    def save_developer_profile(payload: DeveloperProfileEdit, user=Depends(current_user)):
+        def save(conn):
+            owner(conn, user)
+            row = conn.execute(
+                """UPDATE developer_profile SET description=%s, history=%s, revision=revision+1
+                   WHERE singleton AND revision=%s RETURNING description, history, revision""",
+                (payload.description, payload.history, payload.revision)
+            ).fetchone()
+            if not row:
+                raise HTTPException(409, 'developer_profile_changed')
+            return row
+        return db(save)
+
     @router.put('/users/{uid}/personal')
     def edit_personal(uid:UUID,payload:PersonalEdit,user=Depends(current_user)):
         def write(c):

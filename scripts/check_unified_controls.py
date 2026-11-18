@@ -25,7 +25,7 @@ def check_unified_controls(browser,base,output,failures,dsn):
     def go(route):page.evaluate('r=>cabinet.go(r)',route)
     try:
         page.goto(base);expect(page.locator('body')).to_have_attribute('data-cabinet-loaded','true')
-        go('users');select=page.get_by_label('Роль пользователя',exact=True).first
+        go('users');select=page.locator('.directory-search').get_by_label('Категория пользователя',exact=True)
         select.tap()
         dialog=page.get_by_role('dialog')
         expect(dialog).to_be_visible()

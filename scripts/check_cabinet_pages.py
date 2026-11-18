@@ -1816,6 +1816,22 @@ def main():
                 check_hall_of_fame(browser, base, output, failures, PostgresIntegration.dsn)
                 from check_user_profiles import check_user_profiles
                 check_user_profiles(browser, base, output, failures, PostgresIntegration.dsn)
+                go(admin,'profile')
+                about=admin.locator('.developer-card')
+                expect(about.get_by_role('heading',name='История программы')).to_be_visible()
+                about.screenshot(path=str(output/'developer-card.png'),
+                                style='.cabinet-topbar,.mobile-bottom-nav{visibility:hidden!important}')
+                about.get_by_role('button',name='Редактировать').click()
+                draft=about.get_by_label('Краткое описание',exact=True)
+                draft.fill('Описание разработчика после сохранения')
+                admin.evaluate('refresh()')
+                expect(draft).to_have_value('Описание разработчика после сохранения')
+                about.get_by_role('button',name='Сохранить').click()
+                expect(about).to_contain_text('Изменения сохранены')
+                go(advertiser,'profile')
+                public_about=advertiser.locator('.developer-card')
+                expect(public_about).to_contain_text('Описание разработчика после сохранения')
+                expect(public_about.get_by_role('button',name='Редактировать')).to_have_count(0)
                 from check_admin_users import check_admin_users
                 check_admin_users(browser,base,output,failures,PostgresIntegration.dsn)
                 from check_user_access import check_user_access

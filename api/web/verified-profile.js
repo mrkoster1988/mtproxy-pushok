@@ -102,14 +102,14 @@ window.pushokVerification=(()=>{
    const summary=el('summary'),heading=el('span','Личные сведения');summary.append(heading);if(data.phone_verified){const state=el('span',undefined,'profile-verified-state');state.append(badge(),el('span','Верифицирован'));state.title=title;summary.append(state);}const account=box.querySelector('.profile-details')||window.pushokProfiles.accountDetails(me);box.replaceChildren(summary);const body=el('div',undefined,'personal-body');box.append(body);body.append(account);
    const phone=el('div',undefined,'profile-phone');phone.append(el('span','Номер телефона','muted'),el('strong',data.phone_number||'Не подтверждён'));body.append(phone);
    if(!data.phone_verified)body.append(button('Подтвердить номер',()=>window.cabinet.go('dashboard')));
-   const privacy=el('p','Номер и дата рождения видны вам и администратору. Изменение и перенос доступны только владельцу.','muted block-note');body.append(privacy);
+   const privacy=el('p','Номер и дата рождения видны вам и администратору. Изменение и перенос доступны только разработчику.','muted block-note');body.append(privacy);
    const form=el('form'),fields=el('div',undefined,'birthday-fields'),day=el('input'),month=el('select'),year=el('input');
    day.type='number';day.min='1';day.max='31';day.inputMode='numeric';day.placeholder='День';day.value=data.birthday?.day||'';
    [['','Месяц'],...['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'].map((m,i)=>[String(i+1),m])].forEach(([value,text])=>{const o=el('option',text);o.value=value;month.append(o);});month.value=data.birthday?.month||'';
    year.type='number';year.min=String(new Date().getFullYear()-120);year.max=String(new Date().getFullYear());year.inputMode='numeric';year.placeholder='—';year.title='Год указывать необязательно';year.value=data.birthday?.year||'';
    for(const input of [day,month,year])input.disabled=Boolean(data.birthday_locked);
    fields.append(label('День',day),label('Месяц',month),label('Год',year));const birthTitle=el('h3','День рождения');form.append(birthTitle,fields);fields.hidden=Boolean(data.birthday_locked);birthTitle.hidden=Boolean(data.birthday_locked);if(data.birthday_locked){const saved=el('div',undefined,'personal-fact');saved.append(el('span','День рождения','muted'),el('strong',data.birthday?[String(data.birthday.day).padStart(2,'0'),String(data.birthday.month).padStart(2,'0'),data.birthday.year].filter(Boolean).join('.'):'Не указан'));form.prepend(saved);}
-   const explanation=value=>value.birthday_locked?'Сохранено. Изменить сведения может только владелец.':value.birthday_source==='telegram'?'Добавлено из профиля Telegram. Можно исправить.':
+   const explanation=value=>value.birthday_locked?'Сохранено. Изменить сведения может только разработчик.':value.birthday_source==='telegram'?'Добавлено из профиля Telegram. Можно исправить.':
     value.birthday_source==='manual'?'Дата указана вами.':value.birthday_sync_state==='manual'?'Дата рождения удалена вами.':
     value.birthday_sync_state==='unavailable'?'Telegram не передал дату рождения. Проверьте её доступность в Telegram или укажите день и месяц здесь.':
     value.birthday_sync_state==='failed'?'Не удалось получить дату из Telegram. Повторите проверку через минуту или укажите её здесь.':
