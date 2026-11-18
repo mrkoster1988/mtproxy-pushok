@@ -39,8 +39,8 @@ window.pushokApproval=(()=>{
   dialog.setAttribute('aria-labelledby',heading.id);
   form.append(heading,el('p',c.channel_title||c.channel_url||'#'+c.id.slice(0,8)));
   const comment=note(form,'Причина отказа для рекламодателя');
-  const cancel=button('Отмена',()=>dialog.close());
-  const submit=el('button','Отклонить');submit.type='submit';
+  const cancel=button('Отмена',()=>dialog.close());cancel.classList.add('labeled-action');
+  const submit=el('button','Отклонить');submit.type='submit';submit.classList.add('action-negative','labeled-action');submit.prepend(window.pushokViews.icon('close'));
   const actions=el('div',undefined,'moderation-reason-actions');actions.append(cancel,submit);
   form.append(actions);dialog.append(form);document.body.append(dialog);
   return new Promise(resolve=>{
@@ -153,20 +153,34 @@ window.pushokApproval=(()=>{
   $('queue-filter').hidden=Boolean(c);$('queue-count').hidden=Boolean(c);
   window.pushokAssistant?.reset();root.replaceChildren();$('queue-count').textContent=list.length+' заявок';
   if(!blockPanel)blockPanel=channelBlockList();
-  root.append(blockPanel);
+
   if(!c){
    if(selected)root.append(el('p','Заявка не найдена или недоступна. Обновите список.','empty'));
    if(!list.length)root.append(el('p','Заявок в этой очереди нет.','empty'));
-   for(const item of list){const row=moderationSummary(item,{openLabel:'Разобрать заявку'});row.classList.add('approval-summary');root.append(row);}
-   archivedQueue();return;
+   const groups=[
+    ['Требуют решения',item=>item.moderation_status==='pending'||item.moderation_status==='changes_requested'],
+    ['Отклонены',item=>item.moderation_status==='rejected'],
+    ['Одобрены и остальные',()=>true]
+   ];
+   let remaining=list;
+   for(const [title,matches] of groups){
+    const items=remaining.filter(matches);if(!items.length)continue;
+    remaining=remaining.filter(item=>!matches(item));
+    const group=el('section',undefined,'moderation-group'),heading=el('h2',title);
+    heading.append(el('span',String(items.length),'queue-total'));group.append(heading);
+    for(const item of items){const row=moderationSummary(item,{openLabel:'Разобрать заявку'});row.classList.add('approval-summary');group.append(row);}
+    root.append(group);
+   }
+   archivedQueue();root.append(blockPanel);return;
   }
-  const box=el('article',undefined,'approval-card');box.dataset.campaignId=c.id;root.append(box);
+  const box=el('article',undefined,'approval-card');box.dataset.campaignId=c.id;root.append(box,blockPanel);
   const navigation=el('div',undefined,'approval-navigation'),back=el('a','Все заявки','approval-back');back.href='#/moderation';back.prepend(window.pushokViews.icon('back'));navigation.append(back);
   const choose=el('select');choose.setAttribute('aria-label','Выбрать рекламную заявку');
   const choices=campaigns.filter(item=>!item.archived_at||item.id===c.id);
   option(choose,'','Все заявки');for(const item of choices)option(choose,item.id,(item.archived_at?'Удалена · ':'')+(item.channel_title||'Канал')+' · '+item.id.slice(0,8));choose.value=c.id;choose.hidden=choices.length===1;
   choose.addEventListener('change',()=>{selected=choose.value;window.cabinet.go(selected?'moderation/'+selected:'moderation');});navigation.append(choose);box.append(navigation);
-  box.append(moderationSummary(c,{route:'moderation',openLabel:'Все заявки'}),advertiser(c));
+  const author=el('section',undefined,'approval-author');author.append(el('h3','Автор заявки'),advertiser(c));
+  box.append(moderationSummary(c,{route:'moderation',openLabel:'Все заявки'}),author);
 
   if(c.archived_at){
    const banner=el('section',undefined,'card approval-archive-notice');banner.setAttribute('role','status');

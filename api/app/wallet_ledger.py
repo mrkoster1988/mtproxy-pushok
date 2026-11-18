@@ -54,7 +54,14 @@ def charge(conn,cid,uid,currency,*,use_bonus=True,expected=None,automatic=False,
     if old:
         if old['status']=='refunded':raise HTTPException(409,'wallet_payment_refunded')
         return old
-    if currency=='RUB' and (surface=='telegram' or c['purchase_surface']=='telegram'):
+    bonus_only = currency == 'BONUS'
+    # A fully promotional placement uses the RUB price snapshot and cannot debit cash or Stars.
+    if bonus_only:
+        if automatic or not policy['bonus_spending_enabled']:
+            raise HTTPException(409,'wallet_bonus_disabled')
+        currency = 'RUB'
+        use_bonus = True
+    elif currency=='RUB' and (surface=='telegram' or c['purchase_surface']=='telegram'):
         raise HTTPException(409,'wallet_stars_only_in_telegram')
     if not payable(conn,c):raise HTTPException(409,'wallet_campaign_not_payable')
     amount=c['price_kopecks_snapshot'] if currency=='RUB' else c['wallet_xtr']
@@ -71,7 +78,7 @@ def charge(conn,cid,uid,currency,*,use_bonus=True,expected=None,automatic=False,
     if any(v<0 for v in balances.values()):raise HTTPException(409,'wallet_provider_refund_debt')
     bonus=min(balances['BONUS'],amount) if use_bonus and currency=='RUB' else 0
     cash=amount-bonus
-    if balances[currency]<cash:raise HTTPException(409,'wallet_insufficient_funds')
+    if (bonus_only and cash) or balances[currency]<cash:raise HTTPException(409,'wallet_insufficient_funds')
     pay=conn.execute('''INSERT INTO wallet_payments(campaign_id,user_id,currency,cash_amount,bonus_amount,automatic)
         VALUES(%s,%s,%s,%s,%s,%s) RETURNING *''',(cid,uid,currency,cash,bonus,automatic)).fetchone()
     if cash:post(conn,uid,currency,-cash,'payment','payment:'+str(cid)+':'+currency,'Оплата размещения',actor=None if automatic else uid,campaign=cid)

@@ -92,7 +92,14 @@ def check_campaign_cards(browser, base, output, failures, dsn):
         for route in ('campaigns', 'reports', 'payments', 'campaign/' + str(paid), 'payments/' + str(paid), 'create/' + str(paid)):
             card = check(client, route, paid, 'campaign/' + str(paid))
             if route == 'campaigns':
-                card.get_by_role('link', name='Оплатить', exact=True).click()
+                remove=card.get_by_role('button',name='Удалить',exact=True)
+                pay=card.get_by_role('link',name='Оплатить',exact=True)
+                left,right=remove.bounding_box(),pay.bounding_box()
+                assert left['x']+left['width']<=right['x']+1 and abs(left['y']-right['y'])<2
+                client.once('dialog', lambda popup: popup.dismiss())
+                remove.click()
+                expect(card).to_be_visible()
+                pay.click()
                 expect(client.locator('[data-page=payments]')).to_be_visible()
             if route == 'reports':
                 card.get_by_role('button', name='История кампании').click()
@@ -112,6 +119,27 @@ def check_campaign_cards(browser, base, output, failures, dsn):
         card.get_by_role('button', name='Восстановить', exact=True).click()
         expect(client.locator('[data-archive-id="' + str(archived) + '"]')).to_have_count(0)
         check(client, 'campaigns', archived, 'campaign/' + str(archived))
+        from app import wallet_ledger
+        from psycopg.rows import dict_row
+        with psycopg.connect(dsn,row_factory=dict_row) as conn:
+            previous=conn.execute('SELECT enabled,bonus_spending_enabled FROM wallet_settings WHERE singleton').fetchone()
+            conn.execute('UPDATE wallet_settings SET enabled=true,bonus_spending_enabled=true WHERE singleton')
+            wallet_ledger.post(conn,users['advertiser'],'BONUS',30000,'manual_credit','ui-bonus:'+str(paid),'Тест бонусов')
+        try:
+            go(client,'wallet')
+            expect(client.locator('.wallet-group h2').first).to_have_text('Мой кошелёк')
+            client.locator('.wallet-bonus-shortcut').click()
+            expect(client.locator('.payment-group h2').first).to_have_text('К оплате')
+            client.locator('[data-page=payments] .campaign-tile[data-campaign-id="'+str(paid)+'"] .campaign-pay-action').click()
+            redeem=client.get_by_role('button',name='Оплатить бонусами',exact=False)
+            expect(redeem).to_be_enabled()
+            assert redeem.bounding_box()['y']<client.locator('[data-page=payments] .campaign-tile').bounding_box()['y']
+            client.screenshot(path=str(output/'bonus-checkout-mobile.png'))
+            redeem.click()
+            expect(client.locator('[data-page=payments] .wallet-checkout')).to_contain_text('Оплачено с баланса')
+        finally:
+            with psycopg.connect(dsn) as conn:
+                conn.execute('UPDATE wallet_settings SET enabled=%s,bonus_spending_enabled=%s WHERE singleton',(previous['enabled'],previous['bonus_spending_enabled']))
     finally:
         for context in contexts:
             context.close()

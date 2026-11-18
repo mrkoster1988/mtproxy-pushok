@@ -27,14 +27,18 @@ window.pushokModeratorQueue=(()=>{
     reasonLabel.append(reason);card.append(reasonLabel);
     const actions=el('div',undefined,'actions');
     for(const [decision,label] of [['approved','Одобрить'],['changes_requested','Запросить исправления'],['rejected','Отклонить']]){
-     actions.append(button(label,async()=>{
+     const action=button(label,async()=>{
       const comment=reason.value.trim()||null;
       if(decision!=='approved'&&!comment){reason.focus();throw Error('Укажите причину для рекламодателя.');}
       await api('/moderation/queue/'+item.id,{method:'POST',body:{decision,comment}});
       if(session===token&&me?.role==='moderator'&&location.hash.split('/')[1]==='moderation'){
        drafts.delete(item.id);notice('Решение сохранено.',true);await render();
       }
-     }));
+     });
+     action.classList.add('labeled-action');
+     if(decision==='approved')action.classList.add('action-positive');
+     if(decision==='rejected')action.classList.add('action-negative');
+     actions.append(action);
     }
     card.append(actions);list.append(card);
    }

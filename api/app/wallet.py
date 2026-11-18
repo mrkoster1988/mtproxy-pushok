@@ -43,7 +43,7 @@ class Preferences(Input):
 
 
 class Pay(Input):
-    currency: Literal['RUB','XTR']
+    currency: Literal['RUB','XTR','BONUS']
     use_bonus: bool=True
     expected_amount: int=Field(gt=0,le=100000000,strict=True)
 

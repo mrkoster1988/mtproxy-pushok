@@ -137,7 +137,11 @@
  content.create.append($('campaign-form').closest('section'));
  window.pushokViews.channelSearch($('order-channel-url'),$('order-channel-title'));
  window.pushokViews.channelSearch($('channel-form').elements.telegram_url,$('channel-form').elements.title);
- content.payments.prepend(link('Баланс · пополнить или посмотреть операции →','wallet'));
+ const paymentNav=el('nav',undefined,'payment-navigation');
+ paymentNav.setAttribute('aria-label','Навигация оплат');
+ const walletLink=link('Баланс','wallet');walletLink.prepend(window.pushokViews.icon('wallet'));
+ const paymentsLink=link('Все оплаты','payments');paymentsLink.prepend(window.pushokViews.icon('back'));
+ paymentNav.append(paymentsLink,walletLink);content.payments.prepend(paymentNav);
  const createNotice=el('p',undefined,'muted');content.create.prepend(createNotice);
  const calendar=$('availability-days').closest('.calendar');const calendarOrigin=$('order-calendar-home');
  const calendarPanel=section('Выбор даты'),calendarTariff=el('select');calendarTariff.setAttribute('aria-label','Тариф календаря');calendarPanel.querySelector('h2').remove();calendarPanel.append(calendarTariff);content.calendar.append(calendarPanel);
@@ -171,7 +175,7 @@
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);bottomNav.append(a);
  });
  shell.append(bottomNav);
- const homeLeaders=el('section',undefined,'panel home-leaders');homeLeaders.setAttribute('aria-label','Лидеры месяца');content.dashboard.append(homeLeaders);
+ const homeLeaders=el('section',undefined,'panel home-leaders');homeLeaders.setAttribute('aria-label','Лидеры месяца');dashboardIntro.before(homeLeaders);
 
  const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);content.dashboard.append(dashboardReferral,dashboardHelp);
  const onboarding=window.pushokViews.disclosure('Как начать',[el('p','Выберите канал и тариф, отправьте заявку. После одобрения оплатите размещение — запуск и завершение выполняются по расписанию.')]);onboarding.id='onboarding';content.help.prepend(onboarding);
@@ -342,7 +346,7 @@
   ['Как указать канал?','Используйте публичную ссылку https://t.me/channel. Исправления доступны в черновике или по запросу модератора.'],
   ['Цена и Stars','Цена фиксируется в заявке. RUB и XTR настраиваются отдельно, автоматического курса нет.'],
   ['Дата размещения','Выберите желаемое начало. После оплаты система назначит полный свободный период. Если выбранное время занято, размещение начнётся в ближайшее подходящее время после него.'],
-  ['Как оплатить?',miniAppMode?'Откройте карточку оплаты заявки и выберите Stars. Успешность проверяется сервером.':'Откройте заявку. Реквизиты доступны после настройки разработчиком. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
+  ['Как оплатить?',miniAppMode?'Откройте кампанию и нажмите «Оплатить». Если бонусов хватает, выберите «Оплатить бонусами». Также можно оплатить звёздами Telegram.':'Откройте заявку. Реквизиты доступны после настройки разработчиком. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
   [miniAppMode?'Telegram Stars':'Stars и СБП',miniAppMode?'Счёт Stars можно открыть в карточке оплаты, если приём включён разработчиком.':'Stars оформляются в Telegram-боте. СБП доступна только во внешнем кабинете после настройки разработчиком. Возврат из банка не подтверждает оплату: результат сверяется сервером.'],
   ['Что значит «Активно»?','Агент подтвердил применение тега и работу прокси. После окончания агент снимает или сменяет тег и завершает кампанию. Это не счётчик показов Telegram.'],
   ['Не удаётся выполнить действие','Обновите данные, проверьте комментарий и текущий статус. При завершении сессии войдите снова. Не повторяйте оплату вслепую.']
@@ -390,7 +394,18 @@
   window.pushokViews.campaigns(reportRows,own,'reports');
   const approved=own.filter(c=>c.moderation_status==='approved');
   window.pushokViews.paymentOverview(paymentOverview,approved);
-  if(state.route!=='payments'||!routeParts()[1])window.pushokViews.campaigns(paymentRows,approved,'payments');
+  if(state.route!=='payments'||!routeParts()[1]){
+   if(!approved.length)window.pushokViews.campaigns(paymentRows,[],'payments');
+   else{
+    paymentRows.replaceChildren();
+    for(const [title,due] of [['К оплате',true],['Остальные заявки',false]]){
+     const rows=approved.filter(c=>(c.payment_status==='awaiting_payment'&&c.price_kopecks_snapshot>0)===due);
+     if(!rows.length)continue;
+     const group=el('section',undefined,'payment-group'),list=el('div');
+     group.append(el('h2',title),list);paymentRows.append(group);window.pushokViews.campaigns(list,rows,'payments');
+    }
+   }
+  }
   addNode.hidden=me.role!=='admin';nodeCreate.hidden=me.role!=='admin';
   $('sponsor-tab-setup').hidden=me.role!=='admin';sponsorRegistration.hidden=me.role!=='admin';selectSponsorView(sponsorView);
   const placements=operatorCampaigns.filter(c=>!c.archived_at);
@@ -421,7 +436,7 @@
      if(!current())return;
      // invoiceClosed("paid") не является доказательством. Только API после bot receipt.
      await refresh();if(current())await renderStars(c,panel);
-    });pay.classList.add('primary');pay.prepend(window.pushokViews.icon('star'));panel.append(pay);
+    });pay.classList.add('primary','action-positive','labeled-action');pay.prepend(window.pushokViews.icon('star'));panel.append(pay);
    }
    panel.append(button('Обновить статус оплаты',async()=>{await refresh();if(current())await renderStars(c,panel);}));
    panel.append(window.pushokViews.mascot('Оплата и подтверждение запуска — отдельные этапы.'));
@@ -515,11 +530,15 @@
    if(c){detail.append(card(c,false,{showPayment:true}));void renderPromotionStatus(c,detail);metrics('campaign',[]);}
    else{empty(detail,'Кампания отсутствует в рабочем списке или недоступна вашему аккаунту. Завершённые кампании находятся в архиве.');detail.append(link('Открыть архив','archive/'+id));metrics('campaign',[]);}
   }
-  paymentOverview.hidden=name==='payments'&&Boolean(id);
+  paymentsLink.hidden=!id;paymentOverview.hidden=name==='payments'&&Boolean(id);
   if(name==='payments'&&id){
    paymentRows.replaceChildren();const c=state.campaigns.find(c=>c.id===id&&c.moderation_status==='approved');
-   paymentRows.append(link('← Все оплаты','payments'));
-   if(c){const panel=el('section',undefined,'panel sbp-checkout');paymentRows.append(card(c,false),panel,botLink(),el('p',miniAppMode?'Статус оплаты Stars обновляется по данным сервера.':'Stars: продолжите в Telegram-боте, если приём включён. Ручной чек — запасной способ по инструкции разработчика.','muted'));void renderSbp(c,panel);}
+
+   if(c){const panel=el('section',undefined,'panel sbp-checkout');const heading=el('header',undefined,'checkout-heading');
+    heading.append(el('small','Оплата размещения'),el('h2',c.channel_title||c.channel_url||'Рекламная кампания'),el('span',(c.tariff_name_snapshot||'')+' · #'+c.id.slice(0,8)));
+    paymentRows.append(heading,panel,card(c,false));
+    paymentRows.append(botLink());
+    void renderSbp(c,panel);}
    else paymentRows.append(el('p','Заявка недоступна или ещё не одобрена.'));
   }
   const updatedCard=pages[name]?.querySelector('.campaign-detail');
