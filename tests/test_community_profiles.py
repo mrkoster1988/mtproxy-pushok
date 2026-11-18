@@ -108,7 +108,7 @@ class CommunityIntegration(unittest.TestCase):
         self.assertFalse(self.request('GET','/community/moderation/'+cid)['check']['approved_by_agent'])
         self.assertTrue(any(t['topic']=='technology' and t['approved']>=1 for t in self.request('GET','/users/ai-agent/profile')['topics']))
 
-    def test_ai_media_cannot_be_approved_and_retries_do_not_starve_new_campaigns(self):
+    def test_ai_can_approve_mixed_media_and_retries_do_not_starve_new_campaigns(self):
         self.verify(self.member)
         old=self.request('POST','/campaigns',201,json=self.campaign())['id']
         new=self.request('POST','/campaigns',201,json=self.campaign())['id']
@@ -120,9 +120,9 @@ class CommunityIntegration(unittest.TestCase):
         with patch.object(ai.settings,'active',return_value=('key','model')),patch.object(ai.settings,'current',return_value={'revision':'fair'}),\
              patch.object(ai.topics,'public_sample',return_value={'posts':posts,'fully_textual':False}),\
              patch.object(ai,'classify',return_value=ai.Decision(decision='approve',reason='Обычный канал')) as classify:
-            self.assertEqual(ai.service_once(self.dsn,limit=1)['approved'],0)
+            self.assertEqual(ai.service_once(self.dsn,limit=1)['approved'],1)
             classify.assert_called_once()
-            self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s',(new,))[0]['decision'],'review')
+            self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s',(new,))[0]['decision'],'approved')
             self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s',(old,))[0]['decision'],'retry')
 
     def test_avatar_frames_share_rankings_and_expire(self):

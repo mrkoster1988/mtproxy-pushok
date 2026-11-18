@@ -61,11 +61,11 @@ def eligible(conn, job, node):
     if job['campaign_id'] is None:
         return bool(conn.execute('''SELECT 1 FROM default_sponsor_settings s
             JOIN sponsor_channels ch ON ch.id=s.channel_id WHERE s.singleton=true
-            AND ch.id=%s AND ch.telegram_url=%s AND ch.archived_at IS NULL FOR SHARE OF s,ch''',
+            AND ch.id=%s AND ch.telegram_url=%s AND ch.archived_at IS NULL AND NOT moderation_channel_blocked(ch) FOR SHARE OF s,ch''',
             (job['channel_id'],job['channel_url'])).fetchone())
     return bool(conn.execute('''SELECT 1 FROM campaigns c JOIN sponsor_channels ch ON ch.id=c.channel_id
         WHERE c.id=%s AND c.channel_id=%s AND ch.telegram_url=%s
-          AND c.archived_at IS NULL AND ch.archived_at IS NULL
+          AND c.archived_at IS NULL AND ch.archived_at IS NULL AND NOT moderation_channel_blocked(ch)
           AND c.moderation_status='approved' AND c.payment_status='verified'
           AND NOT c.auto_schedule_paused AND c.placement_status IN ('not_scheduled','scheduled')
           AND (c.placement_status='not_scheduled' OR c.auto_schedule_managed)
@@ -158,7 +158,7 @@ def cached_target(conn, node, channel_id=None):
     return conn.execute("""SELECT b.* FROM channel_promotion_bindings b
         JOIN sponsor_channels ch ON ch.id=b.channel_id
         WHERE b.proxy_node_id=%s AND (b.node_host,b.node_port)=(%s,%s) AND (%s::uuid IS NULL OR b.channel_id=%s)
-          AND b.channel_url=ch.telegram_url AND ch.archived_at IS NULL
+          AND b.channel_url=ch.telegram_url AND ch.archived_at IS NULL AND NOT moderation_channel_blocked(ch)
           AND NOT EXISTS(SELECT 1 FROM campaigns WHERE proxy_node_id=b.proxy_node_id AND
             (placement_status='active' OR (placement_status='scheduled' AND NOT auto_schedule_managed)))
           AND (EXISTS(SELECT 1 FROM campaigns c WHERE c.proxy_node_id=b.proxy_node_id
@@ -222,7 +222,7 @@ def handle(conn, request):
             candidates = conn.execute('''SELECT c.id,c.channel_id,ch.telegram_url,c.requested_start_at,c.duration_seconds_snapshot FROM campaigns c
                 JOIN sponsor_channels ch ON ch.id=c.channel_id
                 WHERE c.moderation_status='approved' AND c.payment_status='verified'
-                  AND c.archived_at IS NULL AND ch.archived_at IS NULL AND NOT c.auto_schedule_paused
+                  AND c.archived_at IS NULL AND ch.archived_at IS NULL AND NOT moderation_channel_blocked(ch) AND NOT c.auto_schedule_paused
                   AND c.placement_status IN ('not_scheduled','scheduled')
                   AND (c.placement_status='not_scheduled' OR c.auto_schedule_managed)
                   AND COALESCE(c.requested_start_at,now())<=now()+interval '1 hour'
@@ -244,7 +244,7 @@ def handle(conn, request):
                     return {'state': 'wait'}
                 candidate = conn.execute('''SELECT NULL AS id,ch.id AS channel_id,ch.telegram_url
                     FROM default_sponsor_settings s JOIN sponsor_channels ch ON ch.id=s.channel_id
-                    WHERE s.singleton=true AND ch.archived_at IS NULL AND NOT EXISTS(
+                    WHERE s.singleton=true AND ch.archived_at IS NULL AND NOT moderation_channel_blocked(ch) AND NOT EXISTS(
                       SELECT 1 FROM channel_promotion_bindings b WHERE b.channel_id=ch.id
                         AND b.proxy_node_id=%s AND b.channel_url=ch.telegram_url
                         AND (b.node_host,b.node_port)=(%s,%s))''', (node['id'],node['host'],node['port'])).fetchone()

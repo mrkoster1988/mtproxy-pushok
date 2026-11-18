@@ -136,7 +136,7 @@ class CabinetTests(unittest.TestCase):
             response = self.client.post("/api/v1/campaigns/" + str(campaign_id) + "/submit")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["price_kopecks_snapshot"], 30000)
-            sql = connection.execute.call_args_list[2].args[0]
+            sql = next(call.args[0] for call in connection.execute.call_args_list if 'UPDATE campaigns' in call.args[0])
             self.assertIn("'changes_requested'", sql)
             self.assertNotIn("SET price_kopecks_snapshot", sql)
 

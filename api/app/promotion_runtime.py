@@ -90,7 +90,7 @@ def node_plan(conn, node):
       WHERE c.proxy_node_id=%s
       AND (c.placement_status='active' OR NOT COALESCE(c.auto_schedule_tag_pending,false)) AND (c.placement_status='scheduled' OR (c.placement_status='active' AND EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied')))
       AND c.moderation_status='approved' AND c.payment_status='verified'
-      AND c.archived_at IS NULL AND ch.archived_at IS NULL
+      AND c.archived_at IS NULL AND ch.archived_at IS NULL AND NOT moderation_channel_blocked(ch)
       AND b.channel_url=ch.telegram_url AND b.node_host=%s
       AND b.node_port=(SELECT port FROM proxy_nodes WHERE id=c.proxy_node_id)
       AND c.scheduled_start_at<=now() AND c.scheduled_end_at>now()
@@ -107,7 +107,7 @@ def waiting_reason(conn, node):
     row = conn.execute("""SELECT c.id,c.moderation_status,c.payment_status,
         c.auto_schedule_tag_pending AS binding_selection_pending,
         c.scheduled_start_at,c.scheduled_start_at>now() AS future,
-        c.scheduled_end_at<=now() AS ended,ch.archived_at AS channel_archived,
+        c.scheduled_end_at<=now() AS ended,ch.archived_at AS channel_archived,moderation_channel_blocked(ch) AS channel_blocked,
         b.channel_id AS bound_channel,
         (b.channel_url=ch.telegram_url AND b.node_host=n.host AND b.node_port=n.port) AS binding_current
         FROM campaigns c JOIN sponsor_channels ch ON ch.id=c.channel_id
@@ -119,6 +119,8 @@ def waiting_reason(conn, node):
         result = {'campaign_id': str(row['id'])}
         if row['ended']:
             return dict(result, reason='period_ended')
+        if row['channel_blocked']:
+            return dict(result, reason='channel_moderation_blocked')
         if row['channel_archived']:
             return dict(result, reason='channel_archived')
         if row['moderation_status'] != 'approved':
