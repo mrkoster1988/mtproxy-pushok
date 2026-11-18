@@ -71,7 +71,7 @@ class AutomaticRejectionIntegration(unittest.TestCase):
     def pending(self):
         self.verify(self.member)
         cid = self.request('POST', '/campaigns', 201, json=self.campaign())['id']
-        self.db("UPDATE campaigns SET moderation_status='pending',topic='adult' WHERE id=%s", (cid,))
+        self.db("UPDATE campaigns SET moderation_status='pending',topic='travel' WHERE id=%s", (cid,))
         return cid
 
     @contextmanager
@@ -112,7 +112,7 @@ class AutomaticRejectionIntegration(unittest.TestCase):
         self.assertEqual(events[0]['evidence'][0]['quote'], TITLE)
         profile = self.request('GET', '/users/ai-agent/profile')
         self.assertEqual(profile['counts']['rejected'], before + 1)
-        self.assertTrue(any(t['topic']=='adult' and t['rejected']>=1 for t in profile['topics']))
+        self.assertTrue(any(t['topic']=='travel' and t['rejected']>=1 for t in profile['topics']))
         check = self.request('GET', '/community/moderation/' + cid)['check']
         self.assertTrue(check['rejected_by_agent'])
         self.assertFalse(check['approved_by_agent'])
@@ -137,6 +137,39 @@ class AutomaticRejectionIntegration(unittest.TestCase):
         self.db("INSERT INTO audit_events(actor_user_id,campaign_id,event_type) VALUES(%s,%s,'campaign_moderated')", (self.admin,cid))
         self.assertFalse(self.request('GET', '/community/moderation/' + cid)['check']['rejected_by_agent'])
 
+    def test_pending_card_shows_only_completed_check_for_current_submission(self):
+        cid = self.pending()
+        self.addCleanup(self.db, 'UPDATE campaigns SET archived_at=now() WHERE id=%s', (cid,))
+        def card(route):
+            return next(item for item in self.request('GET', route) if item['id'] == cid)
+        def check_absent(item):
+            for key in ('moderation_check', 'moderation_reason', 'moderation_attempted_at'):
+                self.assertIsNone(item[key])
+        self.db("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision)
+                   SELECT id,updated_at,'test' FROM campaigns WHERE id=%s""", (cid,))
+        check_absent(card('/campaigns'))
+        self.act(self.admin)
+        self.assertIsNone(self.request('GET', '/community/moderation/' + cid)['check'])
+        for decision in ('retry', 'review'):
+            reason = 'Не удалось загрузить публикации.' if decision == 'retry' else 'В публикациях есть медиа.'
+            self.db('UPDATE ai_moderation_checks SET decision=%s,reason=%s WHERE campaign_id=%s', (decision, reason, cid))
+            self.act(self.member)
+            own = card('/campaigns')
+            self.assertEqual((own['moderation_check'], own['moderation_reason']), (decision, reason))
+            self.assertTrue(own['moderation_attempted_at'])
+            self.request('GET', '/community/moderation/' + cid, 403)
+            self.act(self.friend)
+            self.assertFalse(any(item['id'] == cid for item in self.request('GET', '/campaigns')))
+            self.act(self.admin)
+            operator = card('/operator/campaigns?moderation_status=pending')
+            self.assertEqual((operator['moderation_reason'], operator['moderation_attempted_at']),
+                             (reason, own['moderation_attempted_at']))
+            self.assertEqual(self.request('GET', '/community/moderation/' + cid)['check']['reason'], reason)
+        self.db('UPDATE campaigns SET updated_at=clock_timestamp() WHERE id=%s', (cid,))
+        self.assertIsNone(self.request('GET', '/community/moderation/' + cid)['check'])
+        self.act(self.member)
+        check_absent(card('/campaigns'))
+
     def test_invalid_evidence_retries_without_rejection_or_notice(self):
         cid = self.pending()
         with self.ai_result(rejection(evidence=[{'source': 'title', 'quote': 'Вымышленное нарушение'}])):
@@ -144,6 +177,62 @@ class AutomaticRejectionIntegration(unittest.TestCase):
         self.assertEqual(self.db('SELECT moderation_status FROM campaigns WHERE id=%s', (cid,))[0]['moderation_status'], 'pending')
         self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s', (cid,))[0]['decision'], 'retry')
         self.assertEqual(self.db('SELECT id FROM bot_advertiser_notice_outbox WHERE campaign_id=%s', (cid,)), [])
+
+    def test_declared_adult_trial_in_manual_queue_rejected_once_without_external_calls(self):
+        from uuid import uuid4
+        from app import auto_schedule
+        self.verify(self.member)
+        order = self.campaign()
+        self.db('UPDATE tariffs SET price_kopecks=0 WHERE id=%s', (order['tariff_id'],))
+        order.update(request_id=str(uuid4()), expected_price_kopecks=0,
+                     expected_duration_seconds=86400, topic='adult')
+        cid = self.request('POST', '/orders', 201, json=order)['id']
+        other = self.pending()
+        previous_policy = 'rejection-tests:' + ai.POLICY_REVISION
+        self.db("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision,decision)
+                   SELECT id,updated_at,%s,'review' FROM campaigns WHERE id IN (%s,%s)""",
+                (previous_policy,cid,other))
+        with self.ai_result() as classify:
+            self.assertEqual(ai.service_once(self.dsn)['rejected'], 1)
+            self.assertEqual(ai.service_once(self.dsn)['rejected'], 0)
+            ai.public_channels.lookup.assert_not_called()
+            ai.topics.public_sample.assert_not_called()
+            classify.assert_not_called()
+        auto_schedule.service_once(self.dsn)
+        campaign = self.db('SELECT moderation_status,payment_status,placement_status FROM campaigns WHERE id=%s', (cid,))[0]
+        self.assertEqual(campaign, dict(moderation_status='rejected', payment_status='not_required',
+                                        placement_status='not_scheduled'))
+        event, = self.db('SELECT id,topic,category,evidence FROM ai_moderation_events WHERE campaign_id=%s',(cid,))
+        self.assertEqual((event['topic'], event['category']), ('adult','adult'))
+        self.assertEqual(event['evidence'], [{'source':'campaign_topic','quote':'18+ · Для взрослых'}])
+        notice, = self.db('SELECT * FROM bot_advertiser_notice_outbox WHERE campaign_id=%s',(cid,))
+        self.assertEqual(notice['decision'], 'rejected')
+        self.assertEqual(notice['ai_moderation_event_id'], event['id'])
+        self.assertEqual(notice['recipient_user_id'], self.member)
+        self.assertIn('В заявке указана категория', notice['comment_snapshot'])
+        self.assertTrue(notice['comment_snapshot'].endswith(ai.SIGNATURE))
+        self.assertFalse(self.db('SELECT id FROM ai_moderation_events WHERE campaign_id=%s',(other,)))
+
+    def test_archived_pending_campaign_cannot_receive_a_late_web_decision(self):
+        cid = self.pending()
+        self.request('DELETE', '/campaigns/' + cid)
+        self.act(self.admin)
+        self.request('POST', f'/operator/campaigns/{cid}/moderation', 409, json={'decision':'approved'})
+        self.assertEqual(self.db('SELECT moderation_status FROM campaigns WHERE id=%s', (cid,))[0]['moderation_status'], 'pending')
+
+    def test_temporary_post_failure_retries_but_allows_grounded_metadata_rejection(self):
+        unavailable = {'posts':[], 'fully_textual':False, 'temporary_failure':True}
+        cid = self.pending()
+        with self.ai_result(ai.Decision(decision='review', reason='Нужны публикации.')), patch.object(
+                ai.topics, 'public_sample', return_value=unavailable):
+            ai.service_once(self.dsn, limit=1)
+            self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s', (cid,))[0]['decision'], 'retry')
+            ai.service_once(self.dsn, limit=1)
+            self.assertEqual(len(self.db('SELECT id FROM ai_moderation_events WHERE campaign_id=%s', (cid,))), 1)
+        self.db("UPDATE ai_moderation_checks SET attempted_at=now()-interval '6 minutes' WHERE campaign_id=%s", (cid,))
+        with self.ai_result(), patch.object(ai.topics, 'public_sample', return_value=unavailable):
+            self.assertEqual(ai.service_once(self.dsn, limit=1)['rejected'], 1)
+        self.assertEqual(self.db('SELECT decision FROM bot_advertiser_notice_outbox WHERE campaign_id=%s', (cid,)), [{'decision':'rejected'}])
 
     def test_uncertainty_and_media_do_not_become_rejection(self):
         for answer in (ai.Decision(decision='review', reason='Требуется контекст.'),
@@ -154,6 +243,36 @@ class AutomaticRejectionIntegration(unittest.TestCase):
             self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s', (cid,))[0]['decision'], 'review')
             self.assertEqual(self.db('SELECT moderation_status FROM campaigns WHERE id=%s', (cid,))[0]['moderation_status'], 'pending')
             self.assertEqual(self.db('SELECT id FROM bot_advertiser_notice_outbox WHERE campaign_id=%s', (cid,)), [])
+
+    def test_confirmed_adult_promotion_rejects_without_operator_for_another_topic(self):
+        for initial in ('approve', 'review'):
+            with self.subTest(initial=initial):
+                cid = self.pending()
+                self.db("UPDATE campaigns SET topic='travel' WHERE id=%s", (cid,))
+                with self.ai_result() as classify:
+                    classify.side_effect = [ai.Decision(decision=initial, reason='Общий разбор.'), rejection()]
+                    self.assertEqual(ai.service_once(self.dsn, limit=1)['rejected'], 1)
+                    self.assertEqual(classify.call_count, 2)
+                    self.assertEqual(classify.call_args.kwargs, {'check_adult':True})
+                    ai.service_once(self.dsn, limit=1)
+                    self.assertEqual(classify.call_count, 2)
+                events = self.db('SELECT decision,category,evidence FROM ai_moderation_events WHERE campaign_id=%s', (cid,))
+                self.assertEqual([(e['decision'],e['category']) for e in events], [('rejected','adult')])
+                self.assertEqual(events[0]['evidence'][0]['quote'], TITLE)
+                notice = self.db('SELECT decision,comment_snapshot FROM bot_advertiser_notice_outbox WHERE campaign_id=%s', (cid,))
+                self.assertEqual([n['decision'] for n in notice], ['rejected'])
+                self.assertTrue(notice[0]['comment_snapshot'].endswith(ai.SIGNATURE))
+                self.assertEqual(self.db('SELECT moderation_status,placement_status FROM campaigns WHERE id=%s',(cid,))[0],
+                                 {'moderation_status':'rejected','placement_status':'not_scheduled'})
+
+    def test_ungrounded_focused_reply_cannot_reject_or_approve(self):
+        cid = self.pending()
+        with self.ai_result() as classify:
+            classify.side_effect = [ai.Decision(decision='approve', reason='Новости.'),
+                                    rejection(evidence=[{'source':'title','quote':'Такого текста нет в канале'}])]
+            self.assertEqual(ai.service_once(self.dsn, limit=1)['rejected'], 0)
+        self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s',(cid,)), [{'decision':'retry'}])
+        self.assertEqual(self.db('SELECT decision FROM bot_advertiser_notice_outbox WHERE campaign_id=%s',(cid,)), [])
 
     def test_stale_rejection_does_not_override_manual_approval(self):
         cid = self.pending()

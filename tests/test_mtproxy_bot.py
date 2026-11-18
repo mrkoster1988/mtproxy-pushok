@@ -150,6 +150,46 @@ class BotFlowTests(unittest.IsolatedAsyncioTestCase):
         self.dialog=MTProxyDialog(self.client,NS(id=123))
         self.request=dict(action='bind',hosts=[HOST],port=8443,expected_tag=TAG,channel_url='https://t.me/sample_channel')
 
+    async def test_myproxies_opens_card_directly_inspect_then_bind_and_read_back(self):
+        empty = NS(id=11, raw_text=f'Proxy {HOST}:8443 with the tag {TAG}.\nPromoted channel: n/a.\nHow can I help?', entities=[])
+        set_promotion = NS(text='Set promotion', button=type('KeyboardButtonCallback', (), {})())
+        empty.buttons = [[set_promotion]]
+        final = prose_card()
+        self.dialog.send = AsyncMock(side_effect=[empty, empty, NS(raw_text='Success'), final])
+        self.dialog.click = AsyncMock(return_value=NS(raw_text='Send a public channel link'))
+        inspected = await self.dialog.prepare(dict(self.request, action='inspect'))
+        self.assertEqual(inspected['tag'], TAG)
+        self.assertIsNone(inspected['channel_username'])
+        self.dialog.click.assert_not_awaited()
+        result = await self.dialog.prepare(self.request)
+        self.assertEqual(result['channel_username'], 'sample_channel')
+        self.dialog.click.assert_awaited_once_with(empty, set_promotion)
+        self.assertEqual([call.args[0] for call in self.dialog.send.await_args_list],
+                         ['/myproxies', '/myproxies', 'https://t.me/sample_channel', '/myproxies'])
+
+    async def test_direct_card_with_invalid_or_ambiguous_identity_stops_before_click(self):
+        for header in (f'Proxy {HOST}:9443 with the tag {TAG}.',
+                       f'Proxy {HOST}:8443 with the tag {"0"*32}.',
+                       f'Proxy {HOST}:8443 with the tag {TAG}.\nProxy {HOST}:9443 with the tag {TAG}.'):
+            self.dialog.send = AsyncMock(return_value=NS(raw_text=header+'\nPromoted channel: n/a.', entities=[]))
+            self.dialog.click = AsyncMock()
+            with self.subTest(header=header), self.assertRaises(BotProtocolError):
+                await self.dialog.prepare(self.request)
+            self.dialog.click.assert_not_awaited()
+
+    async def test_other_direct_card_requires_verified_selection_from_list(self):
+        first = prose_card()
+        first.raw_text = first.raw_text.replace(':8443', ':9443')
+        back = NS(text='« Back to list', button=type('KeyboardButtonCallback', (), {})())
+        select = NS(text=HOST+':8443', button=type('KeyboardButtonCallback', (), {})())
+        first.buttons = [[back]]
+        listing = NS(raw_text='Proxies', buttons=[[select]], entities=[])
+        current = prose_card()
+        self.dialog.send = AsyncMock(return_value=first)
+        self.dialog.click = AsyncMock(side_effect=[listing, current])
+        self.assertIs(await self.dialog.select([HOST], 8443), current)
+        self.assertEqual([c.args for c in self.dialog.click.await_args_list], [(first, back), (listing, select)])
+
     async def test_prose_card_with_edit_promotion_verifies_fresh_channel(self):
         old = prose_card('old_channel')
         edit = NS(text='Edit promotion', button=type('KeyboardButtonCallback',(),{})())

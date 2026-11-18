@@ -5,7 +5,7 @@ import os
 import unittest
 from unittest.mock import patch
 from uuid import UUID, uuid4
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 
 import psycopg
 import test_postgres as fixture
@@ -14,6 +14,24 @@ from app import channel_topics as topics, channel_topic_suggestions as suggest, 
 
 
 class TopicSuggestions(unittest.TestCase):
+    def test_truncated_or_short_posts_cannot_hide_evidence_in_a_complete_sample(self):
+        def post(text):
+            return '<div data-post="example/1"><div class="tgme_widget_message_text">' + text + '</div></div>'
+        for text, complete in [('а' * 1200, True), ('а' * 1200 + ' 18+', False), ('18+', False)]:
+            with self.subTest(length=len(text)), patch.object(suggest, 'read_url', return_value=post(text).encode()):
+                sample = suggest.public_sample('example')
+                self.assertEqual(sample['fully_textual'], complete)
+                self.assertEqual(sample['posts'], [text[:1200]])
+
+    def test_preview_status_distinguishes_unavailable_page_from_transient_failure(self):
+        for status, temporary in [(403, False), (404, False), (429, True), (503, True)]:
+            with self.subTest(status=status), patch.object(suggest, 'read_url', side_effect=HTTPError(
+                    'https://t.me/s/example', status, 'test', {}, None)):
+                sample = suggest.public_sample('example')
+                self.assertEqual(bool(sample.get('temporary_failure')), temporary)
+                self.assertFalse(sample['fully_textual'])
+                self.assertEqual(suggest.public_posts('example'), [])
+
     def test_moderation_sample_preserves_media_and_missing_text(self):
         text='Обучение и формулы: достаточно подробный текст публикации.'
         def post(i,body):return f'<div class="tgme_widget_message" data-post="example/{i}">{body}</div>'
@@ -30,7 +48,7 @@ class TopicSuggestions(unittest.TestCase):
         with patch.object(suggest,'read_url',return_value=clean.encode()):
             self.assertTrue(suggest.public_sample('example')['fully_textual'])
         with patch.object(suggest,'read_url',side_effect=URLError('offline')):
-            self.assertEqual(suggest.public_sample('example'),{'posts':[],'fully_textual':False})
+            self.assertEqual(suggest.public_sample('example'),{'posts':[],'fully_textual':False,'temporary_failure':True})
 
     def setUp(self):
         suggest._cache.clear(); suggest._ai_calls.clear()

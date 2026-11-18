@@ -1,6 +1,7 @@
 """Хостовая часть очереди. Вызывается только внутри блокировок promotion_agent."""
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 import stat
@@ -93,6 +94,10 @@ def tick(agent, request):
     result = helper(agent.ROOT, dict(job, action='bind' if job['phase'] == 'bind' else 'inspect'))
     base = dict(request, job_id=job['job_id'])
     if not result['ok']:
+        site = result.get('failure_site')
+        if (result.get('code') == 'telegram_unavailable' and isinstance(site, str)
+                and re.fullmatch(r'[a-z_]{1,40}/[A-Za-z][A-Za-z0-9_]{0,79}', site)):
+            print('Привязка Telegram: ' + site, flush=True)
         agent.exchange(dict(base, action='owner_error', code=result.get('code'), retry_seconds=result.get('retry_seconds',300)))
         return
     action = 'owner_authorize' if job['phase'] == 'inspect' else 'owner_verified'

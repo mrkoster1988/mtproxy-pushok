@@ -68,3 +68,34 @@
 .cabinet-mode .approval-body button.icon-action { width:44px; min-width:44px; height:44px; min-height:44px; }
 @media (min-width:761px) { .cabinet-mode #queue:has(>.approval-card) { max-width:760px; margin-inline:auto; } }
 @media (max-width:359px) { .cabinet-mode .approval-body .pricing-fields { grid-template-columns:minmax(0,1fr); } }
+
+.campaign-review-note { display:grid; gap:5px; padding-block:10px; border-bottom:1px solid var(--line-soft); overflow-wrap:anywhere; }
+.campaign-review-note > :is(h3,p) { margin:0; font-size:13px; line-height:1.45; }
+.campaign-review-note > time { font-size:12px; color:var(--muted); }
+
+.campaign-tile > .quick-moderation-period { display:flex; align-items:center; gap:6px; }
+.quick-moderation-actions { display:inline-flex; flex:none; margin-inline-start:auto; }
+.quick-moderation-actions > button.icon-action {
+ position:relative; isolation:isolate; display:grid; place-items:center;
+ width:44px; min-width:44px; height:44px; min-height:44px;
+ margin:0; padding:0; border:0; background:transparent; color:white;
+}
+.quick-moderation-actions > button::before {
+ content:""; position:absolute; z-index:-1; width:28px; height:28px; border-radius:8px;
+}
+.quick-moderation-actions > .quick-rejected::before { background:#a53440; }
+.quick-moderation-actions > .quick-approved::before { background:#087448; }
+.quick-moderation-actions .ui-icon { width:16px; height:16px; }
+.quick-moderation-actions > button:disabled { opacity:.55; }
+.moderation-reason-dialog {
+ box-sizing:border-box; width:min(380px,calc(100% - 24px)); max-height:85dvh;
+ padding:16px; border:1px solid var(--line); border-radius:16px;
+ color:var(--text); background:var(--surface,#102b3b);
+}
+.moderation-reason-dialog::backdrop { background:#03121bbd; }
+.moderation-reason-dialog form { display:grid; gap:10px; margin:0; }
+.moderation-reason-dialog :is(h2,p,label) { margin:0; overflow-wrap:anywhere; }
+.moderation-reason-dialog h2 { font-size:18px; }
+.moderation-reason-actions { display:flex; justify-content:flex-end; gap:8px; }
+.moderation-reason-actions > [type=submit] { background:#a53440; border-color:#a53440; color:white; }
+.campaign-tile > .campaign-assistant { margin:8px 0; }

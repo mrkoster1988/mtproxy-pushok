@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+from .automatic_moderation import service_once as moderate_once
 from .payment_gate import sbp_reconciliation_enabled
 from .auto_schedule import service_once as schedule_once
 import signal
@@ -94,6 +95,26 @@ def schedule_loop(dsn, stopped, limit=20):
         stopped.wait(5)
 
 
+def moderation_tick(dsn):
+    try:
+        return moderate_once(dsn)
+    except (HTTPException, psycopg.Error):
+        return {'status': 'retry'}
+
+
+def moderation_loop(dsn, stopped):
+    while not stopped.is_set():
+        try:
+            result = moderation_tick(dsn)
+        except Exception as exc:
+            # Ошибка этой задачи не должна навсегда остановить модерацию до перезапуска контейнера.
+            result = {'status': 'retry', 'error_type': type(exc).__name__}
+        failed = result['status'] == 'retry'
+        if failed or any(result.get(key) for key in ('approved', 'rejected', 'review', 'retry')):
+            print(json.dumps({'ai_moderation': result}), flush=True)
+        stopped.wait(60 if failed else 5)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--once', action='store_true', help='один пакет вместо службы')
@@ -110,17 +131,16 @@ def main():
     if not args.once:
         threading.Thread(target=schedule_loop, args=(os.environ['DATABASE_URL'], stopped, args.limit),
                          name='automatic-slots', daemon=True).start()
+        threading.Thread(target=moderation_loop, args=(os.environ['DATABASE_URL'], stopped),
+                         name='automatic-moderation', daemon=True).start()
     while True:
         try:
             result = service_once(os.environ['DATABASE_URL'], apply=args.apply, limit=args.limit)
         except psycopg.Error:
             result = {'status': 'database_unavailable'}
         if args.apply:
-            try:
-                from .automatic_moderation import service_once as moderate_once
-                result['ai_moderation'] = moderate_once(os.environ['DATABASE_URL'])
-            except (HTTPException, psycopg.Error):
-                result['ai_moderation'] = {'status':'retry'}
+            if args.once:
+                result['ai_moderation'] = moderation_tick(os.environ['DATABASE_URL'])
             try:
                 from .hall_of_fame import service_once as hall_once
                 result['hall'] = hall_once(os.environ['DATABASE_URL'])

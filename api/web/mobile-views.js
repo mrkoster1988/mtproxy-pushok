@@ -122,12 +122,15 @@ window.pushokViews=(()=>{
   const copy=el('span',undefined,'brand-copy');copy.append(el('strong','puShok'),el('small','MTProxy'));
   target.replaceChildren(img,copy);target.setAttribute('aria-label','puShok MTProxy — главная');
  }
+ function pendingLabel(c){
+  return {review:'У модератора',retry:'Ожидает повтора'}[c.moderation_check]||'На проверке';
+ }
  function statusSteps(c,compact=false){
   const list=el('dl',undefined,'campaign-steps'+(compact?' campaign-steps-compact':''));
   [['Модерация',c.moderation_status],['Оплата',c.payment_status],['Размещение',c.placement_status]].forEach(([label,value])=>{
    const row=el('div'),done=['approved','verified','active','completed'].includes(value);row.dataset.stage=label;
    const term=el('dt',label);term.prepend(icon(done?'check':'status'));
-   const description=el('dd');description.append(badge(value,label==='Оплата'&&c.price_kopecks_snapshot===0?'Без оплаты':compact?({active:'Активна',scheduled:'В очереди',completed:'Завершена',not_scheduled:'Не начата',pending:'На проверке',awaiting_payment:'К оплате',proof_submitted:'Проверка',changes_requested:'Исправить'})[value]:null));row.append(term,description);list.append(row);
+   const description=el('dd');description.append(badge(value,label==='Модерация'&&value==='pending'?pendingLabel(c):label==='Оплата'&&c.price_kopecks_snapshot===0?'Без оплаты':compact?({active:'Активна',scheduled:'В очереди',completed:'Завершена',not_scheduled:'Не начата',awaiting_payment:'К оплате',proof_submitted:'Проверка',changes_requested:'Исправить'})[value]:null));row.append(term,description);list.append(row);
   });return list;
  }
  function duration(c){const seconds=Number(c.duration_seconds_snapshot)||0;if(!seconds)return '—';if(seconds%86400===0)return seconds/86400+' дн.';if(seconds%3600===0)return seconds/3600+' ч';return Math.ceil(seconds/60)+' мин';}
@@ -136,7 +139,7 @@ window.pushokViews=(()=>{
   if(c.placement_status==='active')return ['active','Активна',4];
   if(c.placement_status==='cancelled')return ['cancelled','Отменена',0];
   if(c.moderation_status==='draft')return ['draft','Черновик',0];
-  if(['pending','rejected','changes_requested'].includes(c.moderation_status))return [c.moderation_status,({pending:'На проверке',rejected:'Отклонена',changes_requested:'Исправить'})[c.moderation_status],1];
+  if(['pending','rejected','changes_requested'].includes(c.moderation_status))return [c.moderation_status,({pending:pendingLabel(c),rejected:'Отклонена',changes_requested:'Исправить'})[c.moderation_status],1];
   if(c.payment_status!=='verified'&&c.price_kopecks_snapshot!==0)return [c.payment_status,c.payment_status==='proof_submitted'?'Проверка оплаты':'К оплате',2];
   return [c.placement_status,c.placement_status==='scheduled'?'В очереди':'Ожидает запуска',3];
  }
@@ -166,6 +169,20 @@ window.pushokViews=(()=>{
   item.append(el('p',c.placement_status==='active'&&c.scheduled_end_at?'До '+date(c.scheduled_end_at):c.scheduled_start_at?'Начало: '+date(c.scheduled_start_at):c.requested_start_at?'Желаемое начало: '+date(c.requested_start_at):'Дата — по согласованию','tile-period'));
   if(mode==='sponsors')item.classList.add('sponsor-placement');
   item.append(statusSteps(c,true));
+  if(c.moderation_status==='pending'&&!c.archived_at){
+   const section=el('section',undefined,'campaign-review-note');
+   section.append(el('h3','Проверка заявки'));
+   const fallback={review:'Для решения нужна проверка модератора.',retry:'Система повторит проверку.'};
+   section.append(el('p',c.moderation_reason||fallback[c.moderation_check]||'Результата проверки пока нет.'));
+   if(c.moderation_attempted_at){
+    const at=el('time','Последняя попытка · '+date(c.moderation_attempted_at));
+    at.dateTime=c.moderation_attempted_at;section.append(at);
+   }
+   item.append(section);
+  }
+  if(mode==='campaign'&&!c.archived_at&&['admin','operator'].includes(me?.role)&&window.pushokAssistant){
+   item.append(window.pushokAssistant.panel(c));
+  }
   const meta=el('dl',undefined,'tile-meta campaign-tile-facts');for(const [label,value] of [['Тариф',c.tariff_name_snapshot||'—'],['Срок',duration(c)],['Стоимость',price(c)]]){const cell=el('div');cell.append(el('dt',label),el('dd',value));meta.append(cell);}item.append(meta);
   if(!actions)return item;
   const payment=()=>iconAction(link('','payments/'+c.id,c.payment_status==='awaiting_payment'&&c.price_kopecks_snapshot>0),'wallet',c.payment_status==='verified'?'Посмотреть оплату':c.price_kopecks_snapshot===0?'Посмотреть размещение':'Оплатить');

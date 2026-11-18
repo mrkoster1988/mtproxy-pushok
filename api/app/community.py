@@ -130,9 +130,12 @@ def router_for(dsn,current_user):
         if user['role'] not in ('admin','operator'):raise HTTPException(403,'operator_role_required')
         from .channel_ai_connection import active
         def read(c):
-            campaign=c.execute('SELECT moderation_status,moderator_comment FROM campaigns WHERE id=%s',(cid,)).fetchone()
+            campaign=c.execute('SELECT moderation_status,updated_at FROM campaigns WHERE id=%s',(cid,)).fetchone()
             if not campaign:raise HTTPException(404,'campaign_not_found')
-            row=c.execute('SELECT decision,reason,description,category,evidence,attempted_at FROM ai_moderation_checks WHERE campaign_id=%s',(cid,)).fetchone()
+            row=c.execute("""SELECT decision,reason,description,category,evidence,attempted_at
+                FROM ai_moderation_checks WHERE campaign_id=%s
+                AND (%s <> 'pending' OR (snapshot=%s AND reason<>''))""",
+                (cid,campaign['moderation_status'],campaign['updated_at'])).fetchone()
             if row:
                 # Атрибуция по журналу, а не по совпадению текста комментария.
                 event=c.execute("SELECT created_at,decision,reason,description,category,evidence FROM ai_moderation_events WHERE campaign_id=%s AND decision IN ('approved','rejected') ORDER BY created_at DESC,id DESC LIMIT 1",(cid,)).fetchone()

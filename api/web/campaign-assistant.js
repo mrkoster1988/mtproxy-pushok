@@ -9,7 +9,7 @@ window.pushokAssistant=(()=>{
   if(expanded){host.open=true;host.classList.add('assistant-open');heading.addEventListener('click',e=>e.preventDefault());}
   const body=el('div',undefined,'assistant-body'),status=el('p','Разбор заявки, рекомендации и черновик комментария.','muted');
   const actions=el('div',undefined,'assistant-actions'),output=el('section',undefined,'assistant-output');
-  const saved=el('section',undefined,'assistant-saved');if(expanded)body.append(saved);
+  const saved=el('section',undefined,'assistant-saved');body.append(saved);
   status.setAttribute('role','status');status.setAttribute('aria-live','polite');body.append(status,actions,output);host.append(body);
   let busy=false,loaded=false,epoch=0;const session=token,uid=me.id;
   const valid=()=>host.isConnected&&host.getClientRects().length>0&&session===token&&uid===me?.id&&['admin','operator'].includes(me?.role);
@@ -66,23 +66,21 @@ window.pushokAssistant=(()=>{
   async function load(){
    if(loaded||!valid())return;loaded=true;status.textContent='Проверяем доступные возможности…';
    try{
-    const [data,moderation]=await Promise.all([request('/operator/ai-capabilities'),expanded?request('/community/moderation/'+c.id):Promise.resolve(null)]);if(!valid())return;actions.replaceChildren();
-    if(expanded){
-     const check=moderation?.check;saved.replaceChildren();
-     if(check){
-      if(check.description)saved.append(el('p','Описание канала: '+check.description));
-      saved.append(el('p',(check.rejected_by_agent?'Причина отказа: ':'')+check.reason));
-      if(check.evidence?.length){const proof=el('details'),title=el('summary','На чём основано решение');proof.append(title);check.evidence.forEach(item=>proof.append(el('blockquote',item.quote)));saved.append(proof);}
-      saved.append(el('time','Проверено: '+date(check.attempted_at)));
-     }
-     else saved.append(el('p',c.moderation_status==='pending'?'Заявка ожидает проверки. Сохранённого разбора пока нет.':'Сохранённого разбора ИИ для этой заявки нет.'));
-     if((check?.approved_by_agent||check?.rejected_by_agent)&&decisionNode){const link=el('a','Агент ИИ');link.href='#/user/ai-agent';link.addEventListener('click',()=>window.pushokProfiles.setBackRoute('moderation/'+c.id));decisionNode.replaceChildren(document.createTextNode(check.rejected_by_agent?'Отклонено: ':'Одобрено: '),link);decisionNode.classList.add('ai-decision');}
+    const [data,moderation]=await Promise.all([request('/operator/ai-capabilities'),request('/community/moderation/'+c.id)]);if(!valid())return;actions.replaceChildren();
+    const check=moderation?.check;saved.replaceChildren();
+    if(check){
+     if(check.description)saved.append(el('p','Описание канала: '+check.description));
+     saved.append(el('p',(check.rejected_by_agent?'Причина отказа: ':'')+check.reason));
+     if(check.evidence?.length){const proof=el('details'),title=el('summary','На чём основано решение');proof.append(title);check.evidence.forEach(item=>proof.append(el('blockquote',item.quote)));saved.append(proof);}
+     saved.append(el('time','Проверено: '+date(check.attempted_at)));
     }
+    else saved.append(el('p',c.moderation_status==='pending'?'Заявка ожидает проверки. Сохранённого разбора пока нет.':'Сохранённого разбора ИИ для этой заявки нет.'));
+    if((check?.approved_by_agent||check?.rejected_by_agent)&&decisionNode){const link=el('a','Агент ИИ');link.href='#/user/ai-agent';link.addEventListener('click',()=>window.pushokProfiles.setBackRoute('moderation/'+c.id));decisionNode.replaceChildren(document.createTextNode(check.rejected_by_agent?'Отклонено: ':'Одобрено: '),link);decisionNode.classList.add('ai-decision');}
     for(const [id,kind,title] of [['campaign_review','review','Разобрать заявку'],['launch_diagnostics','launch','Проверить запуск']]){
      if(data.capabilities.includes(id)){const b=button(title,()=>analyze(kind));b.dataset.analysisKind=kind;actions.append(b);}
     }
     status.textContent=actions.childElementCount?'':'Новый анализ сейчас недоступен.';
-    window.pushokControls.help(host,[el('p','Показан сохранённый разбор. Новый анализ запускается кнопкой. Рекомендации помощника не меняют заявку: решение отправляется штатной формой.')],'О работе ИИ-помощника');
+    window.pushokControls.help(host,[el('p','Здесь отображается последняя сохранённая проверка. Кнопка «Разобрать заявку» запускает новый анализ. Решение по заявке можно отправить в разделе «Модерация».')],'О работе ИИ-помощника');
    }catch{if(valid()){loaded=false;status.textContent='Не удалось загрузить возможности.';actions.replaceChildren(button('Повторить',load));}}
   }
   host.addEventListener('toggle',()=>{if(host.open)void load();});if(expanded)setTimeout(()=>void load(),0);return host;

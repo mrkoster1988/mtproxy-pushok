@@ -36,6 +36,26 @@ class HostBindingTests(unittest.TestCase):
         with patch.object(binding,'enabled',return_value=False):binding.tick(self.agent,self.request)
         self.agent.exchange.assert_not_called();self.agent.apply.assert_not_called()
 
+    def test_unclassified_error_logs_operation_and_class_without_exception_text(self):
+        from telegram_binding_worker import failure_site
+        from mtproxy_bot import username
+        try:
+            username(None)
+        except AttributeError as exc:
+            site = failure_site(exc)
+        self.assertEqual(site, 'username/AttributeError')
+        for detail in (site, 'bad/TypeError\nPRIVATE_DETAIL'):
+            self.agent.exchange.side_effect = [self.job, {'accepted': True}]
+            with patch.object(binding, 'enabled', return_value=True), \
+                    patch.object(binding, 'helper', return_value={'ok': False, 'code': 'telegram_unavailable', 'failure_site': detail}), \
+                    patch('builtins.print') as log:
+                binding.tick(self.agent, self.request)
+            if detail == site:
+                log.assert_called_once_with('Привязка Telegram: ' + site, flush=True)
+            else:
+                log.assert_not_called()
+            self.assertNotIn('failure_site', self.agent.exchange.call_args.args[0])
+
     def test_clear_and_durable_empty_baseline_precede_telegram(self):
         self.path.write_text(json.dumps(dict(baseline='b'*32,expires_at=99999999999)))
         def apply(tag):

@@ -17,15 +17,20 @@ HOUR = timedelta(hours=1)
 class SchedulerWorkerTests(unittest.TestCase):
     def test_scheduler_starts_while_payment_reconciliation_is_blocked(self):
         import os
-        stopped, scheduled = threading.Event(), threading.Event()
+        stopped, scheduled, moderated = threading.Event(), threading.Event(), threading.Event()
         def schedule(*args, **kwargs):
             scheduled.set();return {'scheduled': 1}
+        def moderate(*args):
+            moderated.set()
+            return {'status': 'ok'}
         def reconciliation(*args, **kwargs):
             self.assertTrue(scheduled.wait(2), 'Bank polling must not delay scheduling')
+            self.assertTrue(moderated.wait(2), 'Bank polling must not delay campaign reviews')
             stopped.set();return {'status':'disabled'}
         with patch('sys.argv',['worker','--apply']),patch.dict(os.environ,{'DATABASE_URL':'test-only'}), \
              patch.object(sbp_worker,'threading',SimpleNamespace(Event=lambda:stopped,Thread=threading.Thread)), \
              patch.object(sbp_worker.signal,'signal'),patch.object(sbp_worker,'schedule_once',side_effect=schedule), \
+             patch.object(sbp_worker,'moderate_once',side_effect=moderate), \
              patch.object(sbp_worker,'service_once',side_effect=reconciliation), \
              patch('app.wallet_worker.service_once',return_value={}),patch('builtins.print'):
             sbp_worker.main()
