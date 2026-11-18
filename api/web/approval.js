@@ -1,7 +1,7 @@
 'use strict';
 // Одна карточка оператора. Статусы и разрешения по-прежнему проверяет API.
 window.pushokApproval=(()=>{
- let campaigns=[],selected='',currentUser='';
+ let campaigns=[],selected='',currentUser='',blockPanel=null;
  const root=$('queue');
  const stages=['Канал','Оплата','Дата и узел','Показ спонсора','Завершение'];
  function stage(c){
@@ -62,6 +62,7 @@ window.pushokApproval=(()=>{
    dialog.showModal();comment.focus();
   });
  }
+ Object.assign(errors,{channel_moderation_blocked:'Канал в чёрном списке. Для повторной подачи обратитесь к оператору.'});
  const decisionsInFlight=new Set();
  const needsDecision=c=>c&&!c.archived_at&&((c.moderation_status==='pending'&&c.moderation_check==='review')||(c.moderation_status==='rejected'&&c.ai_rejected));
  function saveModeration(c,body){
@@ -114,6 +115,34 @@ window.pushokApproval=(()=>{
   period.classList.add('quick-moderation-period');period.append(tools);
   return row;
  }
+ function channelBlockList(){
+  const panel=el('details',undefined,'approval-section'),body=el('div',undefined,'approval-body');
+  const summary=el('summary','Чёрный список каналов');
+  panel.append(summary,body);
+  const session=token;
+  let page=0;
+  const current=()=>panel.isConnected&&session===token&&['operator','admin'].includes(me?.role);
+  async function load(){
+   const result=await api('/operator/channel-blocks?page='+page);
+   if(!current())return;
+   body.replaceChildren();
+   if(!result.items.length)body.append(el('p','Каналов в этом списке нет.','muted'));
+   for(const item of result.items){
+    const row=el('article',undefined,'card');
+    row.append(el('strong',item.telegram_url),el('p',item.reason));
+    row.append(button('Убрать из списка',async()=>{
+     if(!current())return;
+     await api('/operator/channel-blocks/'+item.id,{method:'DELETE'});
+     if(current()){page=0;await load();}
+    }));
+    body.append(row);
+   }
+   if(page)body.append(button('Назад',async()=>{page--;await load();}));
+   if(result.more)body.append(button('Далее',async()=>{page++;await load();}));
+  }
+  panel.addEventListener('toggle',()=>{if(panel.open)run(load);});
+  return panel;
+ }
  function render(){
   if(!me||!['admin','operator'].includes(me.role))return;
   const parts=location.hash.replace(/^#\/?/,'').split('/');
@@ -123,6 +152,8 @@ window.pushokApproval=(()=>{
   const c=campaigns.find(item=>item.id===selected);
   $('queue-filter').hidden=Boolean(c);$('queue-count').hidden=Boolean(c);
   window.pushokAssistant?.reset();root.replaceChildren();$('queue-count').textContent=list.length+' заявок';
+  if(!blockPanel)blockPanel=channelBlockList();
+  root.append(blockPanel);
   if(!c){
    if(selected)root.append(el('p','Заявка не найдена или недоступна. Обновите список.','empty'));
    if(!list.length)root.append(el('p','Заявок в этой очереди нет.','empty'));
@@ -255,7 +286,7 @@ window.pushokApproval=(()=>{
   if(!c.archived_at)archivedQueue();
  }
  async function download(path,name){const session=token;const response=await fetch('/api/v1'+path,{headers:{Authorization:'Bearer '+token}});if(!response.ok)throw Error('Не удалось скачать файл. Обновите состояние.');const blob=await response.blob();if(session!==token||!me)return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
- return {addDecisionButtons,resetSelection(){selected='';},sync(items){if(currentUser!==me?.id){selected='';currentUser=me?.id;}campaigns=items;render();},render,clear(){window.pushokAssistant?.reset();campaigns=[];selected='';currentUser='';root.replaceChildren();$('queue-filter').hidden=false;$('queue-count').hidden=false;}};
+ return {addDecisionButtons,resetSelection(){selected='';},sync(items){if(currentUser!==me?.id){blockPanel=null;selected='';currentUser=me?.id;}campaigns=items;render();},render,clear(){blockPanel=null;window.pushokAssistant?.reset();campaigns=[];selected='';currentUser='';root.replaceChildren();$('queue-filter').hidden=false;$('queue-count').hidden=false;}};
 })();
 
 if(me&&['admin','operator'].includes(me.role))window.pushokApproval.sync(operatorCampaigns);

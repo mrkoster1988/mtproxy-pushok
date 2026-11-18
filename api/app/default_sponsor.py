@@ -19,7 +19,7 @@ def fallback_plan(conn, node, waiting):
         AND b.node_port=(SELECT port FROM proxy_nodes WHERE id=%s) AS current
         FROM default_sponsor_settings s JOIN sponsor_channels ch ON ch.id=s.channel_id
         LEFT JOIN channel_promotion_bindings b ON b.channel_id=s.channel_id AND b.proxy_node_id=%s
-        WHERE s.singleton=TRUE""",(node['host'],node['id'],node['id'])).fetchone()
+        WHERE s.singleton=TRUE AND NOT moderation_channel_blocked(ch)""",(node['host'],node['id'],node['id'])).fetchone()
     if not row:
         return waiting
     if row['archived_at'] or not row['ad_tag'] or not row['current']:

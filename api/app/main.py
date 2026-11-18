@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.104",
+    version="1.105",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -632,11 +632,11 @@ def create_channel(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             row = connection.execute(
                 """
-                INSERT INTO sponsor_channels (owner_user_id, telegram_url, title)
-                VALUES (%s, %s, %s)
+                INSERT INTO sponsor_channels (owner_user_id, telegram_url, title, moderation_chat_id)
+                VALUES (%s, %s, %s, %s)
                 RETURNING id, telegram_url, title
                 """,
-                (user["id"], checked['telegram_url'], normalized_title),
+                (user["id"], checked['telegram_url'], normalized_title, checked['telegram_channel_id']),
             ).fetchone()
     except UniqueViolation as exc:
         raise HTTPException(status_code=409, detail="channel_already_added") from exc
@@ -750,7 +750,7 @@ def submit_campaign(
 ) -> CampaignResponse:
     from . import public_channels
     snapshot = public_channels.owned_snapshot(DATABASE_URL, user['id'], campaign_id=campaign_id)
-    public_channels.verify_snapshot(snapshot)
+    checked = public_channels.verify_snapshot(snapshot)
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             channel = connection.execute(
@@ -764,12 +764,15 @@ def submit_campaign(
             if channel is None:
                 raise HTTPException(status_code=404, detail="campaign_not_found")
             public_channels.unchanged(channel, snapshot)
+            connection.execute('UPDATE sponsor_channels SET moderation_chat_id=%s WHERE id=%s',
+                               (checked['telegram_channel_id'], channel['id']))
             row = connection.execute(
                 """
                 UPDATE campaigns
                 SET moderation_status = 'pending', updated_at = now()
                 WHERE id = %s AND advertiser_user_id = %s AND moderation_status IN ('draft', 'changes_requested')
-                  AND payment_status = 'not_required' AND placement_status = 'not_scheduled'
+                  AND (payment_status = 'not_required' OR (moderation_status='changes_requested' AND payment_status='verified'))
+                  AND placement_status = 'not_scheduled'
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
                           duration_seconds_snapshot, price_kopecks_snapshot,
                           currency_snapshot, moderation_status, payment_status,
@@ -3249,3 +3252,6 @@ app.include_router(proxy_gateway_router(lambda: DATABASE_URL, get_current_user, 
 
 from .refunds import router_for as refunds_router
 app.include_router(refunds_router(lambda: DATABASE_URL, require_admin))
+
+from .channel_blocks import router_for as channel_blocks_router
+app.include_router(channel_blocks_router(lambda: DATABASE_URL, require_operator))

@@ -38,9 +38,9 @@ def create_order(dsn, payload, user):
         snapshot = None
         if payload.channel_id:
             snapshot = public_channels.owned_snapshot(dsn, user['id'], channel_id=payload.channel_id)
-            public_channels.verify_snapshot(snapshot)
+            checked = public_channels.verify_snapshot(snapshot)
         else:
-            public_channels.lookup(payload.channel.telegram_url, fresh=True)
+            checked = public_channels.lookup(payload.channel.telegram_url, fresh=True)
         with psycopg.connect(dsn, connect_timeout=3, row_factory=dict_row) as conn:
             # Сериализуем только повторы одного ключа. Блокировка освобождается с транзакцией.
             conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
@@ -90,6 +90,8 @@ def create_order(dsn, payload, user):
                                        (user["id"], url)).fetchone()
             if channel.get('archived_at'):
                 raise HTTPException(409, 'management_restore_channel')
+            conn.execute('UPDATE sponsor_channels SET moderation_chat_id=%s WHERE id=%s',
+                         (checked['telegram_channel_id'], channel['id']))
             campaign = conn.execute("""
                 INSERT INTO campaigns(advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,
                     duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot,requested_start_at,

@@ -12,6 +12,7 @@ from fastapi import APIRouter, Header, HTTPException, Response
 from pydantic import BaseModel, Field
 from psycopg.rows import dict_row
 
+from .license_errors import explain as explain_database_error
 from .bot_routes import _verify_bot_secret
 
 router = APIRouter()
@@ -202,5 +203,6 @@ def operator_decision(
                 (actor_id, payload.campaign_id, payload.decision),
             )
     except psycopg.Error as exc:
+        explain_database_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
     return OperatorDecisionResult(**row)

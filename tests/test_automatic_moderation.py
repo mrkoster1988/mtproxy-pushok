@@ -80,7 +80,7 @@ class AutomaticRejectionIntegration(unittest.TestCase):
             stack.enter_context(patch.object(ai.settings, 'active', return_value=('offline-key', 'model')))
             stack.enter_context(patch.object(ai.settings, 'current', return_value={'revision': 'rejection-tests'}))
             stack.enter_context(patch.object(ai.public_channels, 'lookup', return_value={
-                'title': title, 'description': '', 'username': 'test_channel'}))
+                'title': title, 'description': '', 'username': 'test_channel', 'telegram_channel_id': -int(self.member.hex[:12],16)}))
             stack.enter_context(patch.object(ai.topics, 'public_sample', return_value={
                 'posts': posts or [], 'fully_textual': fully_textual}))
             classify = stack.enter_context(patch.object(ai, 'classify', return_value=answer or rejection()))
@@ -98,6 +98,11 @@ class AutomaticRejectionIntegration(unittest.TestCase):
         self.assertTrue(card['ai_rejected'])
         self.assertEqual(card['ai_description'],DESCRIPTION)
         self.assertTrue(card['ai_checked_at'])
+        if decision=='approved':
+            self.request('POST',path,409,json=body)
+            blocks=self.request('GET','/operator/channel-blocks')['items']
+            entry=next(b for b in blocks if b['telegram_channel_id']==str(-int(self.member.hex[:12],16)))
+            self.request('DELETE','/operator/channel-blocks/'+entry['id'])
         result=self.request('POST',path,json=body)
         self.assertEqual(result['moderation_status'],decision)
         self.request('POST',path,409,json=body)
@@ -162,6 +167,61 @@ class AutomaticRejectionIntegration(unittest.TestCase):
         self.assertIsNotNone(self.db('SELECT delivered_at FROM bot_advertiser_notice_outbox WHERE id=%s', (notices[0]['id'],))[0]['delivered_at'])
         self.db("INSERT INTO audit_events(actor_user_id,campaign_id,event_type) VALUES(%s,%s,'campaign_moderated')", (self.admin,cid))
         self.assertFalse(self.request('GET', '/community/moderation/' + cid)['check']['rejected_by_agent'])
+
+    def test_media_or_short_captions_alone_do_not_escalate(self):
+        for prediction, expected in [('approve','approved'), ('request_context','changes_requested')]:
+            cid = self.pending()
+            with self.ai_result(ai.Decision(decision=prediction,reason='Оценены доступные тексты.'),
+                                title='Фотографии нашего города', posts=['Открытие выставки']):
+                self.assertEqual(ai.service_once(self.dsn, limit=1)[expected], 1)
+            self.assertEqual(self.db('SELECT moderation_status FROM campaigns WHERE id=%s',(cid,))[0]['moderation_status'],expected)
+
+    def test_block_applies_to_channel_across_advertisers_and_operator_can_lift_it(self):
+        cid = self.pending()
+        identity = -int(self.member.hex[:12],16)
+        with self.ai_result():
+            self.assertEqual(ai.service_once(self.dsn,limit=1)['rejected'],1)
+        self.assertIsNone(self.db('SELECT blocked_at FROM users WHERE id=%s',(self.member,))[0]['blocked_at'])
+        self.request('GET','/campaigns')
+        self.request('GET','/operator/channel-blocks',403)
+        self.act(self.friend)
+        self.verify(self.friend)
+        from uuid import uuid4
+        alias = 'channel_' + uuid4().hex[:8]
+        published = {'telegram_url':'https://t.me/'+alias, 'telegram_channel_id':identity, 'title':alias, 'username':alias}
+        order = dict(channel={'title':alias,'telegram_url':published['telegram_url']},
+                     tariff_id=self.db('SELECT tariff_id FROM campaigns WHERE id=%s',(cid,))[0]['tariff_id'],
+                     expected_price_kopecks=30000,expected_duration_seconds=86400,request_id=str(uuid4()))
+        order['tariff_id']=str(order['tariff_id'])
+        with patch.object(ai.public_channels,'lookup',return_value=published):
+            self.request('POST','/orders',409,json=order)
+            self.act(self.admin)
+            entry=next(b for b in self.request('GET','/operator/channel-blocks')['items'] if b['telegram_channel_id']==str(identity))
+            path='/operator/channel-blocks/'+entry['id']
+            self.act(self.friend)
+            self.request('DELETE',path,403)
+            self.db("UPDATE users SET role='operator' WHERE id=%s",(self.admin,))
+            self.act(self.admin)
+            self.actor['role']='operator'
+            self.request('DELETE',path)
+            self.request('DELETE',path)
+            self.act(self.friend)
+            self.request('POST','/orders',201,json=order)
+        self.assertEqual(self.db('SELECT lifted_by FROM channel_moderation_blocks WHERE id=%s',(entry['id'],))[0]['lifted_by'],self.admin)
+        self.db("UPDATE campaigns SET archived_at=now() WHERE advertiser_user_id=%s",(self.friend,))
+
+    def test_requested_categories_enter_channel_list_only_with_public_evidence(self):
+        for category in ('armed_conflict','homicide','drugs','terrorism','scam'):
+            cid = self.pending()
+            identity = -int(cid.replace('-','')[:12],16)
+            title='Описание тестового канала ' + category
+            prediction=rejection(category=category, evidence=[{'source':'title','quote':title}])
+            with self.ai_result(prediction,title=title):
+                ai.public_channels.lookup.return_value['telegram_channel_id']=identity
+                self.assertEqual(ai.service_once(self.dsn,limit=1)['rejected'],1)
+            rows=self.db('SELECT id FROM channel_moderation_blocks WHERE telegram_channel_id=%s AND lifted_at IS NULL',(identity,))
+            self.assertEqual(bool(rows),category!='scam')
+        self.assertIsNone(self.db('SELECT blocked_at FROM users WHERE id=%s',(self.member,))[0]['blocked_at'])
 
     def test_pending_card_shows_only_completed_check_for_current_submission(self):
         cid = self.pending()

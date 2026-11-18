@@ -55,7 +55,8 @@ def service_once(dsn, limit=20):
             AND moderation_status='approved' AND payment_status='verified'
             AND placement_status='not_scheduled' AND NOT auto_schedule_paused
             AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.campaign_id=campaigns.id AND j.phase<>'done')
-            AND EXISTS(SELECT 1 FROM sponsor_channels ch WHERE ch.id=campaigns.channel_id AND ch.archived_at IS NULL)
+            AND EXISTS(SELECT 1 FROM sponsor_channels ch WHERE ch.id=campaigns.channel_id AND ch.archived_at IS NULL
+                AND NOT moderation_channel_blocked(ch))
             ORDER BY COALESCE(requested_start_at,created_at),created_at,id LIMIT %s FOR UPDATE SKIP LOCKED""", (limit,)).fetchall()
         # Внешняя привязка блокирует изменение спонсора, но не расчёт очереди.
         # После подтверждения Telegram текущий полный период уже известен:
