@@ -216,7 +216,7 @@ class AutomaticRejectionIntegration(unittest.TestCase):
         self.db("UPDATE campaigns SET archived_at=now() WHERE advertiser_user_id=%s",(self.friend,))
 
     def test_requested_categories_enter_channel_list_only_with_public_evidence(self):
-        for category in ('armed_conflict','homicide','drugs','terrorism','scam'):
+        for category in ('armed_conflict','homicide','drugs','terrorism','child_sexual_exploitation','human_trafficking','targeted_doxxing','scam'):
             cid = self.pending()
             identity = -int(cid.replace('-','')[:12],16)
             title='Описание тестового канала ' + category
@@ -226,7 +226,65 @@ class AutomaticRejectionIntegration(unittest.TestCase):
                 self.assertEqual(ai.service_once(self.dsn,limit=1)['rejected'],1)
             rows=self.db('SELECT id FROM channel_moderation_blocks WHERE telegram_channel_id=%s AND lifted_at IS NULL',(identity,))
             self.assertEqual(bool(rows),category!='scam')
+            if category in ai.SENSITIVE_REJECTIONS:
+                event=self.db('SELECT evidence,reason,description FROM ai_moderation_events WHERE campaign_id=%s',(cid,))[0]
+                self.assertEqual(event['evidence'],[{'source':'title','quote':'Фрагмент скрыт'}])
+                note=self.db('SELECT comment_snapshot FROM bot_advertiser_notice_outbox WHERE campaign_id=%s',(cid,))[0]['comment_snapshot']
+                self.assertNotIn(title,note)
+                self.assertIn(ai.SENSITIVE_REJECTIONS[category].lower(),note.lower())
+                self.assertTrue(note.endswith(ai.SIGNATURE))
         self.assertIsNone(self.db('SELECT blocked_at FROM users WHERE id=%s',(self.member,))[0]['blocked_at'])
+
+    def test_moderator_only_decides_current_foreign_disputes(self):
+        cid=self.pending()
+        self.addCleanup(self.db,'UPDATE campaigns SET archived_at=now() WHERE id=%s',(cid,))
+        path='/moderation/queue'
+        action=path+'/'+cid
+        body={'decision':'approved'}
+        self.request('GET',path,403)
+        self.act(self.admin)
+        tid=int(self.friend.hex[:12],16)
+        self.request('PUT','/admin/team',json={'telegram_user_id':tid,'role':'moderator'})
+        self.act(self.friend)
+        self.actor['role']='moderator'
+        for restricted in ('/operator/channel-blocks','/admin/users','/operator/campaigns','/operator/proxy-nodes'):
+            self.request('GET',restricted,403)
+        self.request('DELETE','/operator/channel-blocks/'+cid,403)
+        self.request('POST','/operator/campaigns/'+cid+'/moderation',403,json=body)
+        self.request('POST',action,409,json=body)
+        self.db("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision,decision,reason)
+                   SELECT id,updated_at,'test','review','Требуется оценка смысла публикации' FROM campaigns WHERE id=%s""",(cid,))
+        card=next(row for row in self.request('GET',path)['items'] if row['id']==cid)
+        self.assertEqual(set(card),{'id','title','telegram_url','reason','description'})
+        self.act(self.member)
+        self.actor['role']='moderator'
+        self.db("UPDATE users SET role='moderator' WHERE id=%s",(self.member,))
+        self.assertNotIn(cid,[row['id'] for row in self.request('GET',path)['items']])
+        self.request('POST',action,409,json=body)
+        self.act(self.friend)
+        self.actor['role']='moderator'
+        self.request('POST',action,422,json={'decision':'rejected'})
+        self.assertEqual(self.request('POST',action,json=body),{'moderation_status':'approved'})
+        self.request('POST',action,409,json=body)
+        self.assertNotIn(cid,[row['id'] for row in self.request('GET',path)['items']])
+
+    def test_friend_mark_is_independent_and_idempotent(self):
+        target=int(self.friend.hex[:12],16)
+        mark={'telegram_user_id':target,'is_friend':True}
+        self.act(self.admin)
+        for _ in range(2):
+            self.assertEqual(self.request('PUT','/admin/team/friend',json=mark),{'is_friend':True})
+        lookup='/admin/users?category=friends&query='+str(target)
+        self.assertEqual(self.request('GET',lookup)['items'][0]['role'],'advertiser')
+        self.act(self.friend)
+        self.request('GET','/moderation/queue',403)
+        self.request('PUT','/admin/team/friend',403,json=mark)
+        self.act(self.admin)
+        self.request('PUT','/admin/team',json={'telegram_user_id':target,'role':'moderator'})
+        self.assertTrue(self.request('GET',lookup)['items'][0]['is_friend'])
+        self.request('PUT','/admin/team/friend',json=mark|{'is_friend':False})
+        self.assertEqual(self.request('GET',lookup)['items'],[])
+        self.assertEqual(self.db('SELECT role FROM users WHERE id=%s',(self.friend,))[0]['role'],'moderator')
 
     def test_pending_card_shows_only_completed_check_for_current_submission(self):
         cid = self.pending()

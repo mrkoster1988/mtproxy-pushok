@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.107",
+    version="1.108",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -96,6 +96,7 @@ class SessionResponse(BaseModel):
 
 
 class UserResponse(BaseModel):
+    is_friend: bool = False
     has_launched_ads: bool = False
     is_owner: bool = False
     phone_verified: bool = False
@@ -410,7 +411,7 @@ def get_current_user(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             user = connection.execute(
                 """
-                SELECT u.id, u.telegram_user_id, u.role, u.is_owner, u.has_launched_ads, u.first_name, u.last_name,
+                SELECT u.id, u.telegram_user_id, u.role, u.is_owner, u.is_friend, u.has_launched_ads, u.first_name, u.last_name,
                        u.username, u.blocked_at, s.id AS session_id, s.login_surface,
                        EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=u.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
                 FROM users AS u
@@ -433,6 +434,12 @@ def get_current_user(
 def require_operator(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
     if user["role"] not in {"operator", "admin"}:
         raise HTTPException(status_code=403, detail="operator_role_required")
+    return user
+
+
+def require_moderator(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
+    if user["role"] not in {"moderator", "operator", "admin"}:
+        raise HTTPException(403, "moderator_role_required")
     return user
 
 
@@ -804,6 +811,24 @@ def submit_campaign(
     return _campaign_response(row)
 
 
+@app.get("/api/v1/moderation/queue", tags=["moderation"])
+def moderator_queue(response: Response, page: int = Query(0, ge=0, le=100000), viewer=Depends(require_moderator)):
+    response.headers["Cache-Control"] = "private, no-store"
+    with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as conn:
+        rows = conn.execute("""SELECT id,title,telegram_url,reason,description FROM moderator_review_queue
+            WHERE advertiser_user_id<>%s AND owner_user_id<>%s ORDER BY attempted_at,id LIMIT 21 OFFSET %s""",
+            (viewer['id'], viewer['id'], page * 20)).fetchall()
+    return {"items": rows[:20], "more": len(rows) > 20}
+
+
+@app.post("/api/v1/moderation/queue/{campaign_id}", tags=["moderation"])
+def decide_disputed_campaign(campaign_id: UUID, payload: ModerationRequest, viewer=Depends(require_moderator)):
+    if payload.reconsider_ai:
+        raise HTTPException(409, "campaign_not_pending")
+    result = _moderate_campaign(campaign_id, payload, viewer, disputed_only=True)
+    return {"moderation_status": result.moderation_status}
+
+
 @app.post(
     "/api/v1/operator/campaigns/{campaign_id}/moderation",
     response_model=CampaignResponse,
@@ -814,10 +839,25 @@ def moderate_campaign(
     payload: ModerationRequest,
     operator: dict[str, Any] = Depends(require_operator),
 ) -> CampaignResponse:
+    return _moderate_campaign(campaign_id, payload, operator)
+
+
+def _moderate_campaign(campaign_id, payload, operator, *, disputed_only=False):
     if payload.decision != "approved" and not (payload.comment and payload.comment.strip()):
         raise HTTPException(status_code=422, detail="moderation_comment_required")
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            if disputed_only:
+                actor = connection.execute("SELECT role,blocked_at FROM users WHERE id=%s FOR SHARE",
+                                           (operator['id'],)).fetchone()
+                if not actor or actor['blocked_at'] or actor['role'] not in ('moderator','operator','admin'):
+                    raise HTTPException(403, "moderator_role_required")
+                connection.execute("SELECT id FROM campaigns WHERE id=%s FOR UPDATE", (campaign_id,))
+                eligible = connection.execute("""SELECT id FROM moderator_review_queue WHERE id=%s
+                    AND advertiser_user_id<>%s AND owner_user_id<>%s""",
+                    (campaign_id, operator['id'], operator['id'])).fetchone()
+                if not eligible:
+                    raise HTTPException(409, "campaign_not_pending")
             if payload.reconsider_ai:
                 # Повторная проверка после блокировки видит решение конкурирующего модератора.
                 connection.execute("SELECT id FROM campaigns WHERE id=%s FOR UPDATE", (campaign_id,))

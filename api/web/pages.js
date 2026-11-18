@@ -8,6 +8,7 @@
  const state={campaigns:[],search:'',filter:'',scope:'all',route:'',bot:null,ready:false,loaded:false,renderKey:'',selectedKey:''};
  function dataKey(){return JSON.stringify([state.campaigns,channels,tariffs,nodes,operatorCampaigns,me]);}
  function refreshLivePanels(){
+  if(state.route==='moderation'&&me?.role==='moderator')void window.pushokModeratorQueue.render();
   if(state.route==='dashboard'){void window.pushokGrowth.overview(dashboardReferral);}
   pages[state.route]?.querySelectorAll('[data-promotion-campaign]').forEach(panel=>void updatePromotionPanel(panel));
  }
@@ -345,7 +346,7 @@
   ['Как указать канал?','Используйте публичную ссылку https://t.me/channel. Исправления доступны в черновике или по запросу модератора.'],
   ['Цена и Stars','Цена фиксируется в заявке. RUB и XTR настраиваются отдельно, автоматического курса нет.'],
   ['Дата размещения','Выберите желаемое начало. После оплаты система назначит полный свободный период. Если выбранное время занято, размещение начнётся в ближайшее подходящее время после него.'],
-  ['Как оплатить?',miniAppMode?'Откройте карточку оплаты заявки и выберите Stars. Успешность проверяется сервером.':'Откройте заявку. Реквизиты доступны после настройки разработчиком. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
+  ['Как оплатить?',miniAppMode?'Откройте кампанию и нажмите «Оплатить». Если бонусов хватает, выберите «Оплатить бонусами». Также можно оплатить звёздами Telegram.':'Откройте заявку. Реквизиты доступны после настройки разработчиком. Чек JPEG, PNG или PDF — до 5 МБ. Поступление проверяется отдельно.'],
   [miniAppMode?'Telegram Stars':'Stars и СБП',miniAppMode?'Счёт Stars можно открыть в карточке оплаты, если приём включён разработчиком.':'Stars оформляются в Telegram-боте. СБП доступна только во внешнем кабинете после настройки разработчиком. Возврат из банка не подтверждает оплату: результат сверяется сервером.'],
   ['Что значит «Активно»?','Агент подтвердил применение тега и работу прокси. После окончания агент снимает или сменяет тег и завершает кампанию. Это не счётчик показов Telegram.'],
   ['Не удаётся выполнить действие','Обновите данные, проверьте комментарий и текущий статус. При завершении сессии войдите снова. Не повторяйте оплату вслепую.']
@@ -479,7 +480,7 @@
   panel.append(el('p','Загрузка состояния СБП…'));
   try{await paint(await api(base));}catch(e){if(panel.isConnected){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку СБП',()=>renderSbp(c,panel)));}}
  }
- function permitted(name){return !(['moderation','sponsors','user','users'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(['management','license'].includes(name)&&me?.role!=='admin');}
+ function permitted(name){if(name==='moderation')return ['moderator','operator','admin'].includes(me?.role);return !(['sponsors','user','users'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(['management','license'].includes(name)&&me?.role!=='admin');}
  function renderSelected({background=false}={}){
   const [name,id]=routeParts();
   if(name==='channels'){
@@ -503,7 +504,12 @@
   if(name==='growth')void window.pushokGrowth?.load(content.growth);
   if(name==='archive')void window.pushokManagement.renderArchive(archiveRows,id);
   if(name==='sponsors')void renderAutomation();
-  if(name==='moderation')window.pushokApproval?.render();
+  if(name==='moderation'){
+   if(me.role==='moderator'){
+    helpText.textContent='Здесь появляются заявки, по которым ИИ нашёл основание для ручной проверки.';
+    void window.pushokModeratorQueue.render();
+   }else window.pushokApproval?.render();
+  }
   if(name!=='campaign'){detail.replaceChildren();metrics('campaign',[]);}
   if(name!=='create')$('order-result').replaceChildren();
   if(name==='create'){
@@ -531,7 +537,7 @@
    if(c){const panel=el('section',undefined,'panel sbp-checkout');const heading=el('header',undefined,'checkout-heading');
     heading.append(el('small','Оплата размещения'),el('h2',c.channel_title||c.channel_url||'Рекламная кампания'),el('span',(c.tariff_name_snapshot||'')+' · #'+c.id.slice(0,8)));
     paymentRows.append(heading,panel,card(c,false));
-    if(!miniAppMode)paymentRows.append(botLink());
+    paymentRows.append(botLink());
     void renderSbp(c,panel);}
    else paymentRows.append(el('p','Заявка недоступна или ещё не одобрена.'));
   }
@@ -564,7 +570,7 @@
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
-  const canModerate=['admin','operator'].includes(me.role);bottomNav.style.setProperty('--nav-count',canModerate?6:5);
+  const canModerate=['admin','operator','moderator'].includes(me.role);bottomNav.style.setProperty('--nav-count',canModerate?6:5);
   bottomNav.querySelectorAll('a').forEach(a=>{a.hidden=a.dataset.route==='moderation'&&!canModerate;const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':name==='user'?'moderation':['dashboard','moderation','campaigns','wallet','hall'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   backButton.hidden=['dashboard','campaigns','wallet','profile'].includes(name)||(name==='moderation'&&!section);profileShortcut.hidden=name!=='dashboard';
   const pageTitle=name==='management'?window.pushokInterface.managementSection(section).title:routes[name][0];

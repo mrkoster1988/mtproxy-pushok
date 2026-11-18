@@ -9,7 +9,7 @@
   <title>puShok · MTProxy — кабинет спонсора</title>
   <link rel="stylesheet" href="/assets/styles.css?v=172">
   <link rel="stylesheet" href="/assets/cabinet-reference.css?v=1.104">
-  <link rel="stylesheet" href="/assets/interface.css?v=1.107">
+  <link rel="stylesheet" href="/assets/interface.css?v=1.108">
   <link rel="stylesheet" href="/assets/moderation.css?v=195">
   <link rel="stylesheet" href="/assets/controls.css?v=1.102">
   <link rel="stylesheet" href="/assets/payment-settings.css?v=197">
@@ -20,29 +20,30 @@
   <script src="/assets/proxy-provisioning.js?v=199" defer></script>
   <script src="/assets/proxy-gateway.js?v=195.1" defer></script>
   <script src="/assets/bonus-links.js?v=1.104" defer></script>
-  <script src="/assets/wallet.js?v=1.107" defer></script>
+  <script src="/assets/wallet.js?v=1.108" defer></script>
   <script src="/assets/growth.js?v=1.104" defer></script>
   <script src="/assets/channel-topics.js?v=185" defer></script>
   <script src="/assets/order.js?v=172" defer></script>
-  <script src="/assets/management.js?v=1.107" defer></script>
+  <script src="/assets/management.js?v=1.108" defer></script>
   <script src="/assets/campaign-pricing.js?v=172" defer></script>
   <script src="/assets/campaign-assistant.js?v=1.102" defer></script>
   <script src="/assets/refunds.js?v=1.102" defer></script>
-  <script src="/assets/approval.js?v=1.107" defer></script>
+  <script src="/assets/moderator-queue.js?v=1.108" defer></script>
+  <script src="/assets/approval.js?v=1.108" defer></script>
   <script src="/assets/verified-profile.js?v=1.102" defer></script>
   <script src="/assets/hall-of-fame.js?v=1.102" defer></script>
   <script src="/assets/developer-profile.js?v=1.102" defer></script>
   <script src="/assets/user-profiles.js?v=1.102" defer></script>
   <script src="/assets/community.js?v=1.102" defer></script>
-  <script src="/assets/mobile-views.js?v=1.107" defer></script>
+  <script src="/assets/mobile-views.js?v=1.108" defer></script>
   <script src="/assets/default-sponsor.js?v=172" defer></script>
-  <script src="/assets/users.js?v=1.102" defer></script>
-  <script src="/assets/team.js?v=1.102" defer></script>
+  <script src="/assets/users.js?v=1.107" defer></script>
+  <script src="/assets/team.js?v=1.107" defer></script>
   <script src="/assets/application-licenses.js?v=172" defer></script>
-  <script src="/assets/release-notes.js?v=1.107" defer></script>
-  <script src="/assets/interface.js?v=1.107" defer></script>
+  <script src="/assets/release-notes.js?v=1.108" defer></script>
+  <script src="/assets/interface.js?v=1.108" defer></script>
   <script src="/assets/controls.js?v=197" defer></script>
-  <script src="/assets/pages.js?v=1.107" defer></script>
+  <script src="/assets/pages.js?v=1.108" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -314,7 +315,7 @@
           <section class="panel" id="home-banner-settings"><h3>Главная · Баннер</h3><form id="home-banner-form"><label>Заголовок<input id="home-banner-title" maxlength="100" required></label><label>Подпись<input id="home-banner-subtitle" maxlength="180"></label><div id="home-banner-preview" class="panel"></div><button type="submit">Сохранить текст</button><button type="button" id="home-banner-reset">Стандартный текст</button></form></section>
 <section class="core-health" aria-labelledby="team-heading"><h3 id="team-heading">Администраторы и операторы</h3>
 <p>Найдите пользователя по @никнейму, имени или ID и выберите его. Перед назначением он должен один раз войти в кабинет. Администратор имеет полный доступ к настройкам, оператор — к модерации и размещениям.</p>
-<form id="team-form"><fieldset id="team-fields" disabled><div id="team-user-picker"></div><label>Роль<select id="team-role"><option value="admin">Администратор</option><option value="operator">Оператор</option><option value="advertiser">Базовый доступ · снять права</option></select></label><button type="submit">Сохранить роль</button></fieldset></form>
+<form id="team-form"><fieldset id="team-fields" disabled><div id="team-user-picker"></div><label>Роль<select id="team-role"><option value="admin">Администратор</option><option value="operator">Оператор</option><option value="moderator">Модератор</option><option value="advertiser">Базовый доступ · снять права</option></select></label><button type="submit">Сохранить роль</button></fieldset></form>
 <p id="team-status" role="status"></p><div id="team-list"></div></section>
 <section class="core-health" aria-labelledby="loading-title-heading">
 <h3 id="loading-title-heading">Экран загрузки Mini App</h3>
@@ -371,7 +372,7 @@
       </div>
     </section>
 
-    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.107</span></footer>
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.108</span></footer>
   </main>
 </body>
 </html>

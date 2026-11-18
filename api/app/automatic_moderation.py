@@ -1,7 +1,7 @@
 """Фоновая модерация: решение по публичным текстам и уведомление рекламодателю."""
 import json
 from uuid import uuid4
-from typing import Literal
+from typing import Literal, get_args
 from urllib.request import Request
 import psycopg
 from psycopg.rows import dict_row
@@ -14,12 +14,19 @@ from .channel_topics import adult_signals, label
 from .community import require_verified
 
 
-POLICY_REVISION = 'channel-policy-v4'
+POLICY_REVISION = 'channel-policy-v5'
 ADULT_POLICY_SUFFIX = ':declared-adult-v1'
 SIGNATURE = 'С уважением, Агент ИИ'
-BLOCK_CATEGORIES = frozenset({'adult', 'armed_conflict', 'homicide', 'drugs', 'terrorism'})
-CATEGORIES = ('none', 'adult', 'scam', 'phishing', 'prohibited_goods',
-              'violence', 'hate', 'gambling', 'misleading_finance', 'armed_conflict', 'homicide', 'drugs', 'terrorism')
+SENSITIVE_REJECTIONS = {
+    'child_sexual_exploitation': 'Сексуальная эксплуатация несовершеннолетних',
+    'human_trafficking': 'Торговля людьми',
+    'targeted_doxxing': 'Публикация чужих персональных данных для травли',
+}
+BLOCK_CATEGORIES = frozenset({'adult', 'armed_conflict', 'homicide', 'drugs', 'terrorism', *SENSITIVE_REJECTIONS})
+Category = Literal['none', 'adult', 'scam', 'phishing', 'prohibited_goods', 'violence',
+                   'hate', 'gambling', 'misleading_finance', 'armed_conflict', 'homicide',
+                   'drugs', 'terrorism', 'child_sexual_exploitation', 'human_trafficking', 'targeted_doxxing']
+CATEGORIES = get_args(Category)
 
 
 def retry_seconds(attempts):
@@ -31,8 +38,7 @@ class Decision(BaseModel):
     decision:Literal['approve','reject','review','request_context']
     reason:str=Field(min_length=1,max_length=500)
     description:str=Field(default='',max_length=500)
-    category:Literal['none','adult','scam','phishing','prohibited_goods','violence',
-                     'hate','gambling','misleading_finance','armed_conflict','homicide','drugs','terrorism']='none'
+    category:Category='none'
     evidence:list[Evidence]=Field(default_factory=list,max_length=3)
 
 
@@ -81,7 +87,11 @@ def classify(channel,config,*,check_adult=False):
          'продвижение азартных игр (gambling) либо вводящие в заблуждение финансовые обещания (misleading_finance). '
          'Также отклоняй каналы, чья тематика — текущие военные конфликты (armed_conflict), '
          'демонстрация убийств или расправ (homicide), сбыт, пропаганда или инструкции по употреблению наркотиков (drugs), '
-         'пропаганда, вербовка или оправдание терроризма (terrorism). Разовая новость, помощь пострадавшим '
+         'пропаганда, вербовка или оправдание терроризма (terrorism). '
+         'Отдельно отклоняй продвижение сексуальной эксплуатации несовершеннолетних (child_sexual_exploitation, '
+         'приоритет перед adult), торговли людьми (human_trafficking), публикацию чужих персональных данных '
+         'с целью травли (targeted_doxxing). Публичные деловые контакты и обычные вакансии допустимы. '
+         'Разовая новость, помощь пострадавшим '
          'или профилактика сами по себе не доказывают такую направленность канала. '
          'Одной маркировки 18+ или упоминания темы недостаточно для отказа: учитывай контекст, отрицания, '
          'новости, медицину, образование и предупреждения о мошенниках. Не делай выводов о личности автора. '
@@ -138,7 +148,13 @@ def moderation_result(row, config):
                     answer = focused
             reason,description,category=answer.reason,answer.description,answer.category
             evidence=[item.model_dump() for item in answer.evidence]
-            if answer.decision=='reject':decision='rejected'
+            if answer.decision=='reject':
+                decision='rejected'
+                if category in SENSITIVE_REJECTIONS:
+                    topic = SENSITIVE_REJECTIONS[category]
+                    reason = 'Основание для отказа — ' + topic.lower() + '.'
+                    description = 'В открытых материалах канала подтверждено нарушение по категории «' + topic + '».'
+                    evidence = [{'source':item.source,'quote':'Фрагмент скрыт'} for item in answer.evidence]
             elif marked:
                 reason='Есть маркировка или упоминания 18+. Контекст требует проверки.'
             elif answer.decision=='approve':

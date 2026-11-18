@@ -157,3 +157,4 @@
 .cabinet-mode .moderation-group>h2{display:flex;align-items:center;gap:9px;font-size:1rem;margin:2px 0}
 .queue-total{display:inline-grid;place-items:center;min-width:1.5rem;padding:2px 5px;background:var(--surface-2,#1c3947);color:var(--muted);border-radius:8px;font-size:.77rem}
 .cabinet-mode .payment-group .mobile-card-list{display:grid;gap:10px}
+.checkout-heading,.checkout-heading h2,.checkout-heading span,.wallet-checkout,.payment-group,.moderation-group{min-width:0;overflow-wrap:anywhere}

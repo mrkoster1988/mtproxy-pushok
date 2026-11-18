@@ -17,7 +17,7 @@ window.pushokWallet=(()=>{
   wallet_gift_unavailable:'Код недоступен: проверьте получателя, срок действия и лимит активаций.',wallet_gift_expired:'Укажите срок действия в будущем.',
   wallet_request_conflict:'Этот запрос уже использован с другими данными. Обновите журнал и проверьте операцию.',
   wallet_insufficient_funds:'Недостаточно средств. Пополните баланс или уменьшите сумму.',
-  wallet_limit_exceeded:'Превышен предел остатка на балансе.',wallet_stars_only_in_telegram:'В Telegram размещение оплачивается напрямую Stars. Для рублёвой заявки в веб-кабинете выберите «Оплатить с баланса» и «Сначала использовать бонусные рубли».',
+  wallet_limit_exceeded:'Превышен предел остатка на балансе.',wallet_stars_only_in_telegram:'В Telegram выберите Stars или оплатите весь тариф подарочными бонусами. Для оплаты с рублёвого баланса откройте веб-кабинет.',
   wallet_campaign_not_payable:'Заявка ещё не готова к оплате или уже имеет открытый счёт. Проверьте её статус.',
   wallet_price_changed:'Цена изменилась. Обновите карточку перед оплатой.',wallet_provider_refund_debt:'Есть задолженность после возврата платежа или отмены награды. Проверьте журнал и обратитесь в поддержку.',
   wallet_payment_refunded:'Эта оплата уже возвращена. Для нового размещения создайте заявку.',
@@ -326,7 +326,12 @@ window.pushokWallet=(()=>{
   const session=token,uid=me?.id;container.hidden=false;container.replaceChildren(el('p','Проверяем возможность оплаты с баланса…'));
   try{
    const data=await api('/wallet/campaigns/'+c.id);if(!container.isConnected||session!==token||uid!==me?.id)return;container.replaceChildren();
-   if(data.payment){container.append(el('h3',data.payment.status==='refunded'?'Оплата возвращена на баланс':'Оплачено с баланса'),el('p',amount(data.payment.cash_amount,data.payment.currency)+(data.payment.bonus_amount?' + '+amount(data.payment.bonus_amount,'BONUS'):'')));return;}
+   if(data.payment){
+    const paid=data.payment,parts=[];
+    if(paid.cash_amount)parts.push(amount(paid.cash_amount,paid.currency));
+    if(paid.bonus_amount)parts.push(amount(paid.bonus_amount,'BONUS'));
+    container.append(el('h3',paid.status==='refunded'?'Оплата возвращена на баланс':'Оплачено с баланса'),el('p',parts.join(' + ')));return;
+   }
    if(['verified','refunded'].includes(c.payment_status)){container.hidden=true;return;}
    if(!data.enabled){container.append(el('p','Внутренний баланс выключен администратором. Используйте прямую оплату заявки.','muted'));return;}
    if(!data.payable){container.append(el('p','Оплата с баланса станет доступна после одобрения заявки, если по ней нет открытого внешнего счёта.','muted'));return;}

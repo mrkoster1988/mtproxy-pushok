@@ -17,6 +17,8 @@ DIRECTORY_CATEGORIES = {
     'operator': "NOT is_owner AND role='operator'",
     'admin': "NOT is_owner AND role='admin'",
     'developer': 'is_owner',
+    'moderator': "NOT is_owner AND role='moderator'",
+    'friends': 'is_friend',
 }
 
 
@@ -28,7 +30,7 @@ def router_for(dsn, require_operator):
               role: str = '', visited: bool = False, sort: str = '', category: str = '',
               page: int = Query(default=0, ge=0, le=100000), admin=Depends(require_operator)):
         response.headers['Cache-Control'] = 'private, no-store'
-        if role not in ('', 'admin', 'operator', 'advertiser'):
+        if role not in ('', 'admin', 'operator', 'moderator', 'advertiser'):
             raise HTTPException(422, 'invalid_user_role')
         if sort and sort not in USER_SORTS:
             raise HTTPException(422, 'invalid_user_sort')
@@ -51,7 +53,7 @@ def router_for(dsn, require_operator):
             with psycopg.connect(dsn(), row_factory=dict_row, connect_timeout=3) as conn:
                 conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
                 total = conn.execute('SELECT count(*) AS n FROM users WHERE '+where, params).fetchone()['n']
-                rows = conn.execute('''SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,has_launched_ads,
+                rows = conn.execute('''SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,is_friend,has_launched_ads,
                     created_at,last_login_at,blocked_at,
                     EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=users.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
                     FROM users WHERE '''+where+' ORDER BY '+order+', id LIMIT 20 OFFSET %s',
