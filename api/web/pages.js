@@ -8,6 +8,7 @@
  const state={campaigns:[],search:'',filter:'',scope:'all',route:'',bot:null,ready:false,loaded:false,renderKey:'',selectedKey:''};
  function dataKey(){return JSON.stringify([state.campaigns,channels,tariffs,nodes,operatorCampaigns,me]);}
  function refreshLivePanels(){
+  if(state.route==='moderation'&&me?.role==='moderator')void window.pushokModeratorQueue.render();
   if(state.route==='dashboard'){void window.pushokGrowth.overview(dashboardReferral);}
   pages[state.route]?.querySelectorAll('[data-promotion-campaign]').forEach(panel=>void updatePromotionPanel(panel));
  }
@@ -464,7 +465,7 @@
   panel.append(el('p','Загрузка состояния СБП…'));
   try{await paint(await api(base));}catch(e){if(panel.isConnected){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку СБП',()=>renderSbp(c,panel)));}}
  }
- function permitted(name){return !(['moderation','sponsors','user','users'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(['management','license'].includes(name)&&me?.role!=='admin');}
+ function permitted(name){if(name==='moderation')return ['moderator','operator','admin'].includes(me?.role);return !(['sponsors','user','users'].includes(name)&&!['admin','operator'].includes(me?.role))&&!(['management','license'].includes(name)&&me?.role!=='admin');}
  function renderSelected({background=false}={}){
   const [name,id]=routeParts();
   if(name==='channels'){
@@ -488,7 +489,12 @@
   if(name==='growth')void window.pushokGrowth?.load(content.growth);
   if(name==='archive')void window.pushokManagement.renderArchive(archiveRows,id);
   if(name==='sponsors')void renderAutomation();
-  if(name==='moderation')window.pushokApproval?.render();
+  if(name==='moderation'){
+   if(me.role==='moderator'){
+    helpText.textContent='Здесь появляются заявки, по которым ИИ нашёл основание для ручной проверки.';
+    void window.pushokModeratorQueue.render();
+   }else window.pushokApproval?.render();
+  }
   if(name!=='campaign'){detail.replaceChildren();metrics('campaign',[]);}
   if(name!=='create')$('order-result').replaceChildren();
   if(name==='create'){
@@ -545,7 +551,7 @@
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
-  const canModerate=['admin','operator'].includes(me.role);bottomNav.style.setProperty('--nav-count',canModerate?6:5);
+  const canModerate=['admin','operator','moderator'].includes(me.role);bottomNav.style.setProperty('--nav-count',canModerate?6:5);
   bottomNav.querySelectorAll('a').forEach(a=>{a.hidden=a.dataset.route==='moderation'&&!canModerate;const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':name==='user'?'moderation':['dashboard','moderation','campaigns','wallet','hall'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   backButton.hidden=['dashboard','campaigns','wallet','profile'].includes(name)||(name==='moderation'&&!section);profileShortcut.hidden=name!=='dashboard';
   const pageTitle=name==='management'?window.pushokInterface.managementSection(section).title:routes[name][0];

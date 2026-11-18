@@ -2,13 +2,13 @@
 window.pushokTeam=(()=>{
  const form=$('team-form'),fields=$('team-fields'),status=$('team-status'),list=$('team-list');
  let picker=null;
- const roles={developer:'Разработчик',admin:'Администратор',operator:'Оператор',advertiser:'Рекламодатель',user:'Пользователь'};
+ const roles={developer:'Разработчик',admin:'Администратор',operator:'Оператор',moderator:'Модератор',friends:'Друзья',advertiser:'Рекламодатель',user:'Пользователь'};
  function category(user){
   if(user.is_owner)return 'developer';
   if(user.role==='advertiser'&&!user.has_launched_ads)return 'user';
   return user.role;
  }
- function displayRole(user){return roles[category(user)]||roles.user;}
+ function displayRole(user){return (roles[category(user)]||roles.user)+(user.is_friend?' · Друзья':'');}
  Object.assign(errors,{user_blocked:'Доступ к кабинету заблокирован. Обратитесь к администратору.',team_admin_protected:'Оператор не может менять права или блокировать администратора.',team_admin_grant_forbidden:'Назначить администратора может только администратор.',team_cannot_block_self:'Нельзя заблокировать собственный аккаунт.'});
  function roleControl(user){
   const editable=!user.is_owner&&['admin','operator'].includes(me?.role)&&user.id!==me.id&&(me.role==='admin'||user.role!=='admin');
@@ -19,8 +19,8 @@ window.pushokTeam=(()=>{
   badge.type='button';badge.setAttribute('aria-expanded','false');editor.id='role-'+crypto.randomUUID();badge.setAttribute('aria-controls',editor.id);
   const session=token,viewer=me.id,current=()=>session===token&&viewer===me?.id&&badge.isConnected;
   const fields=el('fieldset'),title=el('legend','Права пользователя'),select=el('select'),selectLabel=el('label','Роль пользователя'),hint=el('p',undefined,'muted'),feedback=el('p',undefined,'muted'),actions=el('div',undefined,'role-actions');
-  select.setAttribute('aria-label','Роль пользователя');for(const role of ['advertiser','operator',...(me.role==='admin'?['admin']:[])])option(select,role,role==='advertiser'?'Базовый доступ':roles[role]);select.value=user.role;selectLabel.append(select);
-  const descriptions={advertiser:'Собственные каналы, заявки и оплаты.',operator:'Модерация, назначение операторов и блокировка пользователей. Без управления администраторами и чужими балансами.',admin:'Полный доступ к настройкам, ролям и балансам пользователей.'};
+  select.setAttribute('aria-label','Роль пользователя');for(const role of ['advertiser','moderator','operator',...(me.role==='admin'?['admin']:[])])option(select,role,role==='advertiser'?'Базовый доступ':roles[role]);select.value=user.role;selectLabel.append(select);
+  const descriptions={moderator:'Разбирает спорные заявки и сообщает рекламодателю решение.',advertiser:'Собственные каналы, заявки и оплаты.',operator:'Модерация, назначение операторов и блокировка пользователей. Без управления администраторами и чужими балансами.',admin:'Полный доступ к настройкам, ролям и балансам пользователей.'};
   const save=window.pushokViews.iconAction(el('button'),'check','Сохранить права');save.type='submit';save.classList.add('primary');
   const cancel=button('Отмена',()=>close()),block=button('',async()=>{
    if(!current())return;const blocked=!user.blocked_at;
@@ -29,9 +29,20 @@ window.pushokTeam=(()=>{
    try{await api('/admin/team/access',{method:'PUT',body:{telegram_user_id:user.telegram_user_id,blocked}});if(!current())return;user.blocked_at=blocked?new Date().toISOString():null;paint();close();notice(blocked?'Пользователь заблокирован.':'Доступ восстановлен. Пользователю нужно войти заново.',true);}
    catch(e){if(current())feedback.textContent=e.message;}finally{fields.disabled=false;}
   });
+  const friend=button('',async()=>{
+   if(!current())return;
+   fields.disabled=true;
+   try{
+    const result=await api('/admin/team/friend',{method:'PUT',body:{telegram_user_id:user.telegram_user_id,is_friend:!user.is_friend}});
+    if(!current())return;
+    user.is_friend=result.is_friend;paint();update();close();
+    notice(result.is_friend?'Отметка «Друзья» добавлена.':'Отметка «Друзья» снята.',true);
+    editor.dispatchEvent(new CustomEvent('friend-mark-changed',{bubbles:true}));
+   }catch(error){if(current())feedback.textContent=error.message;}finally{fields.disabled=false;}
+  });
   window.pushokViews.iconAction(cancel,'back','Отмена');
   block.className='role-block';feedback.setAttribute('role','status');
-  function update(){hint.textContent=descriptions[select.value];save.disabled=select.value===user.role;window.pushokViews.iconAction(block,'power',user.blocked_at?'Разблокировать':'Заблокировать');}
+  function update(){friend.textContent=user.is_friend?'Снять отметку «Друзья»':'Добавить в «Друзья»';hint.textContent=descriptions[select.value];save.disabled=select.value===user.role;window.pushokViews.iconAction(block,'power',user.blocked_at?'Разблокировать':'Заблокировать');}
   function close(){editor.hidden=true;badge.setAttribute('aria-expanded','false');badge.focus({preventScroll:true});}
   badge.addEventListener('click',()=>{if(!current())return;if(!editor.hidden){close();return;}select.value=user.role;feedback.textContent='';update();editor.hidden=false;badge.setAttribute('aria-expanded','true');select.focus({preventScroll:true});editor.scrollIntoView({block:'nearest'});});
   select.addEventListener('change',update);editor.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();}});
@@ -42,7 +53,7 @@ window.pushokTeam=(()=>{
    try{await api('/admin/team',{method:'PUT',body:{telegram_user_id:user.telegram_user_id,role}});if(!current())return;user.role=role;document.querySelectorAll('[data-person-id="'+user.id+'"]').forEach(n=>n.dataset.userRole=role);paint();close();notice('Права сохранены. Пользователю нужно войти заново.',true);}
    catch(e){if(current())feedback.textContent=e.message;}finally{fields.disabled=false;}
   });
-  actions.append(save,cancel,block);fields.append(title,selectLabel,hint,actions,feedback);editor.append(fields);update();return {badge,editor};
+  actions.append(save,cancel,friend,block);fields.append(title,selectLabel,hint,actions,feedback);editor.append(fields);update();return {badge,editor};
  }
  async function load(){
   if(me?.role!=='admin')return;
@@ -64,7 +75,7 @@ window.pushokTeam=(()=>{
   fields.disabled=true;status.textContent='Сохраняем…';
   try{
    await api('/admin/team',{method:'PUT',body:{telegram_user_id:id,role}});
-   status.textContent='Роль сохранена. Пользователю нужно заново открыть кабинет. Для уведомлений он должен запустить бота.';
+   status.textContent='Роль сохранена. Пользователю нужно заново открыть кабинет.';
    await load();
   }catch(e){status.textContent=e.message||'Не удалось изменить роль. Проверьте ID и свои права.';fields.disabled=false;}
  });
