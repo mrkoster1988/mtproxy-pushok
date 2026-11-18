@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.101",
+    version="1.102",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -235,9 +235,10 @@ class CampaignResponse(BaseModel):
     ai_rejected: bool = False
     ai_description: str | None = None
     ai_checked_at: datetime | None = None
-    moderation_check: Literal['review', 'retry'] | None = None
+    moderation_check: Literal['processing', 'review', 'retry'] | None = None
     moderation_reason: str | None = None
     moderation_attempted_at: datetime | None = None
+    moderation_retry_at: datetime | None = None
     payment_status: str
     placement_status: str
     requested_start_at: datetime | None
@@ -711,14 +712,15 @@ def list_campaigns(
                        c.scheduled_end_at, c.auto_start_not_before, c.auto_schedule_tag_pending, c.auto_schedule_paused, c.moderator_comment,
                        latest_proof.review_comment AS payment_review_comment,
                        review.ai_description, review.ai_checked_at, review.ai_rejected,
-                       ac.decision AS moderation_check, NULLIF(ac.reason, '') AS moderation_reason,
-                       ac.attempted_at AS moderation_attempted_at
+                       CASE WHEN ac.lease_until>now() THEN 'processing' ELSE ac.decision END AS moderation_check,
+                       NULLIF(ac.reason, '') AS moderation_reason, ac.attempted_at AS moderation_attempted_at,
+                       CASE WHEN ac.lease_until>now() THEN NULL ELSE ac.retry_at END AS moderation_retry_at
                 FROM campaigns AS c
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
                 JOIN campaign_agent_reviews review ON review.campaign_id=c.id
                 LEFT JOIN ai_moderation_checks ac ON ac.campaign_id = c.id AND ac.snapshot = c.updated_at
                     AND c.moderation_status = 'pending' AND c.archived_at IS NULL
-                    AND (ac.decision = 'review' OR (ac.decision = 'retry' AND ac.reason <> ''))
+                    AND (ac.lease_until>now() OR ac.decision = 'review' OR (ac.decision = 'retry' AND ac.reason <> ''))
                 LEFT JOIN LATERAL (
                     SELECT p.review_comment
                     FROM payment_proofs AS p
@@ -830,7 +832,7 @@ def moderate_campaign(
                 """
                 UPDATE campaigns
                 SET moderation_status = %s,
-                    payment_status = CASE WHEN %s = 'approved'
+                    payment_status = CASE WHEN %s = 'approved' AND payment_status <> 'verified'
                                           THEN 'awaiting_payment' ELSE payment_status END,
                     moderator_comment = %s,
                     updated_at = now()
@@ -1846,14 +1848,15 @@ def list_operator_campaigns(
                        c.scheduled_end_at, c.auto_start_not_before, c.auto_schedule_tag_pending, c.auto_schedule_paused, c.moderator_comment,
                        latest_proof.review_comment AS payment_review_comment,
                        review.ai_description, review.ai_checked_at, review.ai_rejected,
-                       ac.decision AS moderation_check, NULLIF(ac.reason, '') AS moderation_reason,
-                       ac.attempted_at AS moderation_attempted_at
+                       CASE WHEN ac.lease_until>now() THEN 'processing' ELSE ac.decision END AS moderation_check,
+                       NULLIF(ac.reason, '') AS moderation_reason, ac.attempted_at AS moderation_attempted_at,
+                       CASE WHEN ac.lease_until>now() THEN NULL ELSE ac.retry_at END AS moderation_retry_at
                 FROM campaigns AS c
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
                 JOIN campaign_agent_reviews review ON review.campaign_id=c.id
                 LEFT JOIN ai_moderation_checks ac ON ac.campaign_id = c.id AND ac.snapshot = c.updated_at
                     AND c.moderation_status = 'pending' AND c.archived_at IS NULL
-                    AND (ac.decision = 'review' OR (ac.decision = 'retry' AND ac.reason <> ''))
+                    AND (ac.lease_until>now() OR ac.decision = 'review' OR (ac.decision = 'retry' AND ac.reason <> ''))
                 JOIN users AS u ON u.id = c.advertiser_user_id
                 LEFT JOIN LATERAL (
                     SELECT p.review_comment
@@ -2763,7 +2766,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=1.101" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=1.102" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 

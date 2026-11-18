@@ -123,7 +123,7 @@ window.pushokViews=(()=>{
   target.replaceChildren(img,copy);target.setAttribute('aria-label','puShok MTProxy — главная');
  }
  function pendingLabel(c){
-  return {review:'У модератора',retry:'Ожидает повтора'}[c.moderation_check]||'На проверке';
+  return {processing:'ИИ проверяет',review:'У модератора',retry:'Ожидает повтора'}[c.moderation_check]||'На проверке';
  }
  function statusSteps(c,compact=false){
   const list=el('dl',undefined,'campaign-steps'+(compact?' campaign-steps-compact':''));
@@ -195,11 +195,15 @@ window.pushokViews=(()=>{
   if(c.moderation_status==='pending'&&!c.archived_at&&c.moderation_check){
    const section=el('section',undefined,'campaign-review-note');
    section.append(el('h3','Проверка заявки'));
-   const fallback={review:'Для решения нужна проверка модератора.',retry:'Система повторит проверку.'};
+   const fallback={processing:'ИИ проверяет публичные сведения и публикации канала.',review:'Для решения нужна проверка модератора.',retry:'Система повторит проверку.'};
    section.append(el('p',c.moderation_reason||fallback[c.moderation_check]));
    if(c.moderation_attempted_at){
     const at=el('time','Последняя попытка · '+date(c.moderation_attempted_at));
     at.dateTime=c.moderation_attempted_at;section.append(at);
+   }
+   if(c.moderation_check==='retry'&&c.moderation_retry_at){
+    const retry=el('time','Следующая попытка · '+date(c.moderation_retry_at));
+    retry.dateTime=c.moderation_retry_at;section.append(retry);
    }
    item.append(section);
   }

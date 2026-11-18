@@ -1,5 +1,6 @@
 """Фоновая модерация: решение по публичным текстам и уведомление рекламодателю."""
 import json
+from uuid import uuid4
 from typing import Literal
 from urllib.request import Request
 import psycopg
@@ -18,6 +19,10 @@ ADULT_POLICY_SUFFIX = ':declared-adult-v1'
 SIGNATURE = 'С уважением, Агент ИИ'
 CATEGORIES = ('none', 'adult', 'scam', 'phishing', 'prohibited_goods',
               'violence', 'hate', 'gambling', 'misleading_finance')
+
+
+def retry_seconds(attempts):
+    return min(300, 30 * 2 ** min(max(attempts - 1, 0), 4))
 
 
 class Decision(BaseModel):
@@ -95,7 +100,7 @@ def classify(channel,config,*,check_adult=False):
             'с категорией none. Одна возрастная пометка или цитирование в новости не доказывает продвижение.'
         )
     topics.reserve_ai_call()
-    raw=topics.read_url(Request('https://api.openai.com/v1/chat/completions',data=json.dumps(body).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+config[0]},method='POST'),8,16384)
+    raw=topics.read_url(Request('https://api.openai.com/v1/chat/completions',data=json.dumps(body).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+config[0]},method='POST'),30,16384)
     choice=json.loads(raw)['choices'][0]
     if choice.get('finish_reason')!='stop' or choice['message'].get('refusal'):raise ValueError('incomplete_ai_response')
     return Decision.model_validate_json(choice['message']['content'])
@@ -137,9 +142,9 @@ def moderation_result(row, config):
                 elif len(posts)>=3 and sum(len(t.strip()) for t in posts)>=300:decision='approved'
                 else:reason='Недостаточно доступных текстов для автоматического одобрения.'
         if sample.get('temporary_failure') and decision == 'review':
-            decision,reason='retry','Не удалось загрузить публикации Telegram. Повтор через 5 минут.'
+            decision,reason='retry','Не удалось загрузить публикации Telegram. Проверка повторится автоматически.'
     except (HTTPException,OSError,ValueError,TypeError,KeyError,IndexError):
-        decision,reason='retry','Проверка временно недоступна. Заявка не одобрена; повтор через 5 минут.'
+        decision,reason='retry','Проверка временно недоступна. Проверка повторится автоматически.'
         description,category,evidence='','none',[]
     return decision, reason, description, category, evidence
 
@@ -158,19 +163,32 @@ def service_once(dsn,limit=3):
                 FROM campaigns c JOIN sponsor_channels sc ON sc.id=c.channel_id
                 LEFT JOIN ai_moderation_checks a ON a.campaign_id=c.id
                 WHERE c.moderation_status='pending' AND c.archived_at IS NULL AND sc.archived_at IS NULL
+                AND (a.lease_until IS NULL OR a.lease_until<=now() OR a.snapshot<>c.updated_at
+                    OR a.revision<>(%s || CASE WHEN c.topic='adult' THEN %s ELSE '' END))
                 AND (a.campaign_id IS NULL OR a.snapshot<>c.updated_at OR a.revision<>(%s || CASE WHEN c.topic='adult' THEN %s ELSE '' END)
-                    OR (a.decision='retry' AND a.attempted_at<now()-interval '5 minutes'))
-                ORDER BY a.attempted_at NULLS FIRST,c.created_at,c.id LIMIT 1 FOR UPDATE OF c SKIP LOCKED""",(base_revision,ADULT_POLICY_SUFFIX)).fetchone()
+                    OR (a.decision='retry' AND COALESCE(a.retry_at,a.attempted_at+interval '5 minutes')<=now()))
+                ORDER BY a.attempted_at NULLS FIRST,c.created_at,c.id LIMIT 1 FOR UPDATE OF c SKIP LOCKED""",
+                (base_revision,ADULT_POLICY_SUFFIX,base_revision,ADULT_POLICY_SUFFIX)).fetchone()
             if not row:break
             revision = base_revision + (ADULT_POLICY_SUFFIX if row['topic'] == 'adult' else '')
-            c.execute("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision) VALUES(%s,%s,%s)
+            token = uuid4()
+            c.execute("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision,attempts,claim_token,lease_until,retry_at)
+                VALUES(%s,%s,%s,1,%s,now()+interval '120 seconds',now()+interval '120 seconds')
                 ON CONFLICT(campaign_id) DO UPDATE SET snapshot=EXCLUDED.snapshot,revision=EXCLUDED.revision,
-                attempted_at=now(),decision='retry',reason='',description='',category='none',evidence='[]'::jsonb""",(row['id'],row['updated_at'],revision))
+                attempts=CASE WHEN ai_moderation_checks.snapshot=EXCLUDED.snapshot AND ai_moderation_checks.revision=EXCLUDED.revision
+                    THEN ai_moderation_checks.attempts+1 ELSE 1 END,
+                claim_token=EXCLUDED.claim_token,lease_until=EXCLUDED.lease_until,retry_at=EXCLUDED.retry_at,
+                attempted_at=now(),decision='retry',reason='',description='',category='none',evidence='[]'::jsonb""",
+                (row['id'],row['updated_at'],revision,token))
         decision,reason,description,category,evidence = moderation_result(row, config)
         with psycopg.connect(dsn,connect_timeout=3,row_factory=dict_row) as c:
-            if settings.active('campaign_review')!=config or settings.current()['revision']!=settings_revision:continue
             actor=c.execute('SELECT blocked_at FROM users WHERE id=%s FOR SHARE',(row['advertiser_user_id'],)).fetchone()
             current=c.execute('SELECT moderation_status,updated_at,archived_at,topic,channel_id FROM campaigns WHERE id=%s FOR UPDATE',(row['id'],)).fetchone()
+            claim=c.execute('''UPDATE ai_moderation_checks SET claim_token=NULL,lease_until=NULL
+                WHERE campaign_id=%s AND claim_token=%s AND lease_until>now() RETURNING attempts''',(row['id'],token)).fetchone()
+            # Поздний ответ после повторного захвата не может заменить более новое решение.
+            if not claim:continue
+            if settings.active('campaign_review')!=config or settings.current()['revision']!=settings_revision:continue
             channel=c.execute('SELECT telegram_url,telegram_channel_id,archived_at FROM sponsor_channels WHERE id=%s FOR SHARE',(row['channel_id'],)).fetchone()
             if not current or current['moderation_status']!='pending' or current['updated_at']!=row['updated_at'] or current['archived_at']:continue
             if current['topic']!=row['topic'] or current['channel_id']!=row['channel_id']:continue
@@ -188,15 +206,17 @@ def service_once(dsn,limit=3):
                 comment=('Автоматически одобрено ИИ: '+reason if decision=='approved'
                          else rejection_comment(reason,description,row['telegram_url']))
                 c.execute('''UPDATE campaigns SET moderation_status=%s,
-                    payment_status=CASE WHEN %s='approved' THEN 'awaiting_payment' ELSE payment_status END,
+                    payment_status=CASE WHEN %s='approved' AND payment_status<>'verified'
+                        THEN 'awaiting_payment' ELSE payment_status END,
                     moderator_comment=%s,updated_at=now() WHERE id=%s''',(decision,decision,comment,row['id']))
                 # Триггер создал ровно одно уведомление этого перехода в той же транзакции.
                 # Связь с событием сохраняет автора даже после последующих ручных решений.
                 c.execute('''UPDATE bot_advertiser_notice_outbox SET ai_moderation_event_id=%s
                     WHERE campaign_id=%s AND decision=%s AND created_at=transaction_timestamp()
                     AND ai_moderation_event_id IS NULL''',(event['id'],row['id'],decision))
-            c.execute('''UPDATE ai_moderation_checks SET decision=%s,reason=%s,description=%s,category=%s,evidence=%s
+            c.execute('''UPDATE ai_moderation_checks SET decision=%s,reason=%s,description=%s,category=%s,evidence=%s,
+                retry_at=CASE WHEN %s='retry' THEN now()+(%s * interval '1 second') ELSE NULL END
                 WHERE campaign_id=%s AND snapshot=%s AND revision=%s''',
-                (decision,reason,description,category,Jsonb(evidence),row['id'],row['updated_at'],revision))
+                (decision,reason,description,category,Jsonb(evidence),decision,retry_seconds(claim['attempts']),row['id'],row['updated_at'],revision))
             counts[decision] += 1
     return {'status':'ok', **counts}

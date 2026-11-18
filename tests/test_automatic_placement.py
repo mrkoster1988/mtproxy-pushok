@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import threading
 from types import SimpleNamespace
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import uuid4
 import psycopg
 from psycopg.rows import dict_row
@@ -28,8 +28,8 @@ class SchedulerWorkerTests(unittest.TestCase):
             self.assertTrue(moderated.wait(2), 'Bank polling must not delay campaign reviews')
             stopped.set();return {'status':'disabled'}
         with patch('sys.argv',['worker','--apply']),patch.dict(os.environ,{'DATABASE_URL':'test-only'}), \
-             patch.object(sbp_worker,'threading',SimpleNamespace(Event=lambda:stopped,Thread=threading.Thread)), \
-             patch.object(sbp_worker.signal,'signal'),patch.object(sbp_worker,'schedule_once',side_effect=schedule), \
+             patch.object(sbp_worker,'threading',SimpleNamespace(Event=Mock(side_effect=[stopped,threading.Event(),threading.Event(),threading.Event()]),Thread=threading.Thread)), \
+             patch.object(sbp_worker.signal,'signal'),patch('app.campaign_work.listen'),patch.object(sbp_worker,'schedule_once',side_effect=schedule), \
              patch.object(sbp_worker,'moderate_once',side_effect=moderate), \
              patch.object(sbp_worker,'service_once',side_effect=reconciliation), \
              patch('app.wallet_worker.service_once',return_value={}),patch('builtins.print'):
