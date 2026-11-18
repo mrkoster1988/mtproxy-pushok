@@ -2,7 +2,7 @@
 import json
 import re
 from datetime import datetime, timedelta, timezone
-from .auto_schedule import earliest_gap
+from .auto_schedule import earliest_gap, node_intervals
 
 ERRORS = {
     'automation_disabled',
@@ -50,7 +50,7 @@ def eligible(conn, job, node):
     if job['campaign_id'] is None:
         return bool(conn.execute('''SELECT 1 FROM default_sponsor_settings s
             JOIN sponsor_channels ch ON ch.id=s.channel_id WHERE s.singleton=true
-            AND ch.id=%s AND ch.telegram_url=%s AND ch.archived_at IS NULL''',
+            AND ch.id=%s AND ch.telegram_url=%s AND ch.archived_at IS NULL FOR SHARE OF s,ch''',
             (job['channel_id'],job['channel_url'])).fetchone())
     return bool(conn.execute('''SELECT 1 FROM campaigns c JOIN sponsor_channels ch ON ch.id=c.channel_id
         WHERE c.id=%s AND c.channel_id=%s AND ch.telegram_url=%s
@@ -59,7 +59,7 @@ def eligible(conn, job, node):
           AND NOT c.auto_schedule_paused AND c.placement_status IN ('not_scheduled','scheduled')
           AND (c.placement_status='not_scheduled' OR c.auto_schedule_managed)
           AND NOT EXISTS(SELECT 1 FROM placement_observations o WHERE o.campaign_id=c.id)
-          AND NOT EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied')''',
+          AND NOT EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied') FOR UPDATE OF c,ch''',
         (job['campaign_id'], job['channel_id'], job['channel_url'])).fetchone())
 
 
@@ -79,8 +79,8 @@ def busy(conn, node_id):
 
 def public_status(conn):
     rows = conn.execute('''SELECT j.proxy_node_id,n.name,j.campaign_id,ch.title AS channel_title,j.channel_url,j.phase,j.retry_at,
-        j.verified_at,j.error_code,j.updated_at FROM telegram_binding_jobs j
-        JOIN proxy_nodes n ON n.id=j.proxy_node_id
+        j.verified_at,j.error_code,j.updated_at,c.scheduled_start_at AS planned_start_at FROM telegram_binding_jobs j
+        JOIN proxy_nodes n ON n.id=j.proxy_node_id LEFT JOIN campaigns c ON c.id=j.campaign_id
         JOIN sponsor_channels ch ON ch.id=j.channel_id WHERE n.archived_at IS NULL ORDER BY n.name''').fetchall()
     return [dict(row, **channel_feedback(row['error_code'])) if row['error_code'] in CHANNEL_ERRORS else row for row in rows]
 
@@ -91,12 +91,7 @@ def preparation_improves_slot(conn, campaign, node_id):
     start = max(now, campaign['requested_start_at'] or now)
     duration = timedelta(seconds=campaign['duration_seconds_snapshot'])
     def available(node, after):
-        occupied = conn.execute('''SELECT scheduled_start_at AS left_at,scheduled_end_at AS right_at
-            FROM campaigns WHERE proxy_node_id=%s AND id<>%s AND placement_status IN ('scheduled','active')
-            UNION ALL SELECT starts_at,ends_at FROM slot_holds
-            WHERE proxy_node_id=%s AND campaign_id<>%s AND expires_at>now()''',
-            (node,campaign['id'],node,campaign['id'])).fetchall()
-        return earliest_gap(after,duration,[(r['left_at'],r['right_at']) for r in occupied])
+        return earliest_gap(after, duration, node_intervals(conn, node, campaign['id']))
     after_preparation = available(node_id,max(start,now+timedelta(hours=1,minutes=2)))
     prepared = conn.execute('''SELECT n.id FROM channel_promotion_bindings b JOIN proxy_nodes n ON n.id=b.proxy_node_id
         WHERE b.channel_id=%s AND b.channel_url=%s AND (b.node_host,b.node_port)=(n.host,n.port)
@@ -147,6 +142,24 @@ def release_waiting_forecasts(conn, node):
     return head
 
 
+def cached_target(conn, node, channel_id=None):
+    """Перепроверяем ближайший автоматический слот либо спонсора свободного узла."""
+    return conn.execute("""SELECT b.* FROM channel_promotion_bindings b
+        JOIN sponsor_channels ch ON ch.id=b.channel_id
+        WHERE b.proxy_node_id=%s AND (b.node_host,b.node_port)=(%s,%s) AND (%s::uuid IS NULL OR b.channel_id=%s)
+          AND b.channel_url=ch.telegram_url AND ch.archived_at IS NULL
+          AND NOT EXISTS(SELECT 1 FROM campaigns WHERE proxy_node_id=b.proxy_node_id AND
+            (placement_status='active' OR (placement_status='scheduled' AND NOT auto_schedule_managed)))
+          AND (EXISTS(SELECT 1 FROM campaigns c WHERE c.proxy_node_id=b.proxy_node_id
+            AND c.channel_id=b.channel_id AND c.placement_status='scheduled' AND c.auto_schedule_managed
+            AND c.archived_at IS NULL AND c.moderation_status='approved' AND c.payment_status='verified'
+            AND NOT c.auto_schedule_paused AND c.scheduled_end_at>now()
+            AND c.scheduled_start_at<=now()+interval '65 minutes')
+          OR EXISTS(SELECT 1 FROM default_sponsor_settings WHERE singleton AND channel_id=b.channel_id))
+        ORDER BY COALESCE(b.last_probe_at,b.confirmed_at),b.channel_id LIMIT 1 FOR UPDATE OF b""",
+        (node['id'], node['host'], node['port'], channel_id, channel_id)).fetchone()
+
+
 def handle(conn, request):
     # Та же блокировка, что у планировщика; короткие транзакции, без Telegram внутри.
     if not conn.execute('SELECT pg_try_advisory_xact_lock(736102482) AS ok').fetchone()['ok']:
@@ -154,16 +167,38 @@ def handle(conn, request):
     node = resolve(conn, request)
     if not node:
         return {'state': 'wait'}
-    job = conn.execute('SELECT *,retry_at<=now() AS due FROM telegram_binding_jobs WHERE proxy_node_id=%s FOR UPDATE',
+    job = conn.execute("""SELECT *,retry_at<=now() AS due,verified_at+interval '1 hour'<=now() AS matured
+                       FROM telegram_binding_jobs WHERE proxy_node_id=%s FOR UPDATE""",
                        (node['id'],)).fetchone()
     action = request['action']
+    if (action in ('owner_claim','owner_empty_cached') and request.get('probe_cached') is True
+            and (not job or job['phase'] == 'done') and node['status'] == 'active'
+            and not node['archived_at'] and node['target_engine'] in (None, 'official_mtproxy')):
+        cached = cached_target(conn, node, request.get('channel_id'))
+        if action == 'owner_empty_cached':
+            # Запоздавший ответ не отменяет более новое ручное или автоматическое подтверждение.
+            if cached and cached['last_probe_at'] and cached['last_probe_at'].isoformat() == request.get('probe_at') and (
+                    cached['confirmed_at'] < cached['last_probe_at'] and cached['ad_tag'] == request.get('tag')
+                    and str(cached['channel_id']) == request.get('channel_id')):
+                conn.execute('DELETE FROM channel_promotion_bindings WHERE proxy_node_id=%s AND channel_id=%s',
+                             (node['id'], cached['channel_id']))
+                return {'accepted': True}
+            return {'accepted': False}
+        if cached and max(cached['last_probe_at'] or cached['confirmed_at'], cached['confirmed_at']) < datetime.now(timezone.utc)-timedelta(minutes=15):
+            stamp = conn.execute("""UPDATE channel_promotion_bindings SET last_probe_at=now()
+                WHERE proxy_node_id=%s AND channel_id=%s RETURNING last_probe_at""",
+                (node['id'], cached['channel_id'])).fetchone()['last_probe_at']
+            return {'state':'probe','probe_at':stamp.isoformat(),'expected_tag':cached['ad_tag'],
+                    'channel_id':str(cached['channel_id']),'channel_url':cached['channel_url'],
+                    'hosts':list(dict.fromkeys(filter(None, (node['host'],request['host'],request.get('resolved_host'))))),
+                    'port':node['port']}
     if action == 'owner_claim':
         if job and job['phase'] != 'done':
             if not eligible(conn, job, node):
                 # Отмена/изменение не даёт старому ответу создать новую связь.
                 conn.execute("UPDATE telegram_binding_jobs SET phase='done',error_code='target_changed',updated_at=now() WHERE id=%s", (job['id'],))
                 return {'state': 'wait'}
-            if not job['due']:
+            if not job['due'] or busy(conn, node['id']):
                 return {'state': 'wait'}
         else:
             if node['status'] != 'active' or node['archived_at'] or node['target_engine'] not in (None, 'official_mtproxy'):
@@ -244,19 +279,45 @@ def handle(conn, request):
     if not all(type(request.get(k)) is int and request[k] > 0 for k in ('owner_telegram_id','telegram_channel_id','bot_message_id')):
         return {'accepted': False}
     wanted = job['channel_url'].rstrip('/').rsplit('/',1)[-1].lower()
-    if request.get('channel_username') != wanted:
-        return {'accepted': False}
     if job['owner_telegram_id'] and job['owner_telegram_id'] != request['owner_telegram_id']:
         return {'accepted': False}
     if job['telegram_channel_id'] != request['telegram_channel_id']:
         return {'accepted': False}
+    if request.get('channel_username') != wanted:
+        if (job['phase'] == 'propagating' and job['due']
+                and request.get('promotion_empty') is True and request.get('channel_username') is None):
+            # Карточка того же узла явно показывает n/a. Старый час больше не действует.
+            conn.execute("""UPDATE telegram_binding_jobs SET phase='bind',verified_at=NULL,
+                bot_message_id=NULL,retry_at=now(),error_code=NULL,updated_at=now() WHERE id=%s""", (job['id'],))
+            conn.execute("""UPDATE campaigns SET placement_status='not_scheduled',proxy_node_id=NULL,
+                scheduled_start_at=NULL,scheduled_end_at=NULL,auto_schedule_tag_pending=true
+                WHERE id=%s AND auto_schedule_managed""", (job['campaign_id'],))
+            return {'accepted': True}
+        return {'accepted': False}
     if job['phase'] == 'bind':
-        conn.execute('''UPDATE telegram_binding_jobs SET phase='propagating',owner_telegram_id=%s,
+        window = conn.execute('''UPDATE telegram_binding_jobs SET phase='propagating',owner_telegram_id=%s,
             telegram_channel_id=%s,bot_message_id=%s,verified_at=now(),retry_at=now()+interval '1 hour',
-            error_code=NULL,updated_at=now() WHERE id=%s''',
-            (request['owner_telegram_id'],request['telegram_channel_id'],request['bot_message_id'],job['id']))
+            error_code=NULL,updated_at=now() WHERE id=%s RETURNING retry_at''',
+            (request['owner_telegram_id'],request['telegram_channel_id'],request['bot_message_id'],job['id'])).fetchone()
+        if job['campaign_id']:
+            campaign = conn.execute('SELECT * FROM campaigns WHERE id=%s FOR UPDATE', (job['campaign_id'],)).fetchone()
+            floor = window['retry_at']
+            duration = timedelta(seconds=campaign['duration_seconds_snapshot'])
+            earliest = max(floor, campaign['requested_start_at'] or floor)
+            intervals = node_intervals(conn, node['id'], campaign['id'])
+            hold = conn.execute('''SELECT starts_at,ends_at FROM slot_holds WHERE campaign_id=%s
+                AND proxy_node_id=%s AND expires_at>now()''', (campaign['id'], node['id'])).fetchone()
+            start = earliest_gap(earliest, duration, intervals)
+            if (hold and hold['starts_at'] >= earliest and hold['ends_at']-hold['starts_at'] == duration
+                    and earliest_gap(hold['starts_at'], duration, intervals) == hold['starts_at']):
+                start = hold['starts_at']
+            conn.execute('DELETE FROM slot_holds WHERE campaign_id=%s', (campaign['id'],))
+            conn.execute('''UPDATE campaigns SET auto_start_not_before=%s,proxy_node_id=%s,
+                scheduled_start_at=%s,scheduled_end_at=%s,placement_status='scheduled',
+                auto_schedule_managed=true,auto_schedule_tag_pending=true,updated_at=now() WHERE id=%s''',
+                (floor, node['id'], start, start+duration, campaign['id']))
         return {'accepted': True}
-    if not job['due'] or job['telegram_channel_id'] != request['telegram_channel_id']:
+    if not job['due'] or not job['matured']:
         return {'accepted': False}
     conn.execute('''INSERT INTO channel_promotion_bindings(proxy_node_id,channel_id,channel_url,node_host,node_port,ad_tag,confirmed_by)
         VALUES(%s,%s,%s,%s,%s,%s,NULL) ON CONFLICT(proxy_node_id,channel_id) DO UPDATE
@@ -264,7 +325,8 @@ def handle(conn, request):
             ad_tag=EXCLUDED.ad_tag,confirmed_by=NULL,confirmed_at=now()''',
         (node['id'],job['channel_id'],job['channel_url'],node['host'],node['port'],tag))
     conn.execute("UPDATE telegram_binding_jobs SET phase='done',error_code=NULL,updated_at=now() WHERE id=%s", (job['id'],))
-    conn.execute('UPDATE campaigns SET auto_schedule_tag_pending=true WHERE id=%s', (job['campaign_id'],))
+    conn.execute('''UPDATE campaigns SET auto_schedule_tag_pending=true,
+        auto_start_not_before=%s WHERE id=%s''', (job['verified_at'] + timedelta(hours=1), job['campaign_id']))
     conn.execute('''INSERT INTO telegram_binding_events(job_id,proxy_node_id,campaign_id,channel_id,
         owner_telegram_id,telegram_channel_id,bot_message_id) VALUES(%s,%s,%s,%s,%s,%s,%s)''',
         (job['id'],node['id'],job['campaign_id'],job['channel_id'],request['owner_telegram_id'],

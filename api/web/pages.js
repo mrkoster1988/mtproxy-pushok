@@ -304,6 +304,7 @@
     const title=item.title||(item.error_code?(errorTitles[item.error_code]||'Формат ответа Telegram требует проверки'):(phaseTitles[item.phase]||'Проверяем состояние'));
     row.append(el('h3',item.channel_title||item.name),el('small',item.name,'muted'),el('p',title));
     if(item.channel_url)row.append(el('p',item.channel_url,'muted'));
+    if(item.phase==='propagating'&&item.planned_start_at)row.append(el('p','Плановый запуск: '+date(item.planned_start_at)));
     if(item.next_action)row.append(el('p',item.next_action,'muted'));
     if(item.phase!=='done')row.append(el('p',(item.phase==='propagating'&&!item.error_code?'Проверка после обновления Telegram: ':'Повтор не раньше: ')+date(item.retry_at),'muted'));
     autoStatus.append(row);

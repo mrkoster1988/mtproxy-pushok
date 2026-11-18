@@ -15,6 +15,15 @@ def earliest_gap(start, duration, occupied):
     return start
 
 
+def node_intervals(conn, node_id, campaign_id):
+    rows = conn.execute("""SELECT scheduled_start_at AS left_at,scheduled_end_at AS right_at
+        FROM campaigns WHERE proxy_node_id=%s AND id<>%s AND placement_status IN ('scheduled','active')
+        UNION ALL SELECT starts_at,ends_at FROM slot_holds
+        WHERE proxy_node_id=%s AND campaign_id<>%s AND expires_at>now()""",
+        (node_id, campaign_id, node_id, campaign_id)).fetchall()
+    return [(row['left_at'], row['right_at']) for row in rows]
+
+
 def service_once(dsn, limit=20):
     if not 1 <= limit <= 100:
         raise ValueError('limit_out_of_range')
@@ -74,9 +83,11 @@ def service_once(dsn, limit=20):
         reassigning = {c['id']:c for c in waiting}
         now = datetime.now(timezone.utc)
         for c in sorted(campaigns+waiting,key=lambda row:(row['requested_start_at'] or row['created_at'],row['created_at'],str(row['id']))):
-            start = max(c['requested_start_at'] or now, now)
+            floor = c['auto_start_not_before'] or now + timedelta(hours=1)
+            start = max(c['requested_start_at'] or now, now, floor)
             duration = timedelta(seconds=c['duration_seconds_snapshot'])
-            prepared = conn.execute("""SELECT b.proxy_node_id FROM channel_promotion_bindings b
+            prepared = conn.execute("""SELECT b.proxy_node_id,
+                CASE WHEN b.confirmed_by IS NOT NULL THEN b.confirmed_at+interval '1 hour' END AS ready_at FROM channel_promotion_bindings b
                 JOIN proxy_nodes n ON n.id=b.proxy_node_id
                 JOIN sponsor_channels ch ON ch.id=b.channel_id
                 WHERE b.channel_id=%s AND n.status='active' AND n.archived_at IS NULL
@@ -85,7 +96,7 @@ def service_once(dsn, limit=20):
                 AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.proxy_node_id=n.id AND j.phase<>'done')
                 AND (n.target_engine IS NULL OR n.target_engine='official_mtproxy')
                 FOR SHARE OF b""",(c['channel_id'],)).fetchall()
-            prepared_ids = {str(p['proxy_node_id']) for p in prepared}
+            prepared_ids = {str(p['proxy_node_id']): p['ready_at'] for p in prepared}
             if c['id'] in reassigning and not prepared_ids:
                 continue
             # Связь тега определяет пригодные узлы для запуска, но её отсутствие
@@ -96,16 +107,13 @@ def service_once(dsn, limit=20):
             for node in nodes:
                 if prepared_ids and str(node["id"]) not in prepared_ids:
                     continue
-                rows = conn.execute("""SELECT scheduled_start_at AS left_at,scheduled_end_at AS right_at
-                    FROM campaigns WHERE proxy_node_id=%s AND id<>%s AND placement_status IN ('scheduled','active')
-                    UNION ALL SELECT starts_at,ends_at FROM slot_holds
-                    WHERE proxy_node_id=%s AND campaign_id<>%s AND expires_at>now()""",
-                    (node['id'],c['id'],node['id'],c['id'])).fetchall()
-                available = earliest_gap(start,duration,[(r['left_at'],r['right_at']) for r in rows])
+                node_start = max(start, prepared_ids.get(str(node['id'])) or start)
+                intervals = node_intervals(conn, node['id'], c['id'])
+                available = earliest_gap(node_start, duration, intervals)
                 # Уважить ещё действующую бронь, созданную до обновления кабинета.
-                held = bool(hold and hold['proxy_node_id']==node['id'] and hold['starts_at']>=start
+                held = bool(hold and hold['proxy_node_id']==node['id'] and hold['starts_at']>=node_start
                             and hold['ends_at']-hold['starts_at']==duration
-                            and earliest_gap(hold['starts_at'],duration,[(r['left_at'],r['right_at']) for r in rows])==hold['starts_at'])
+                            and earliest_gap(hold['starts_at'],duration,intervals)==hold['starts_at'])
                 if held:
                     available = hold['starts_at']
                 candidates.append((0 if held else 1,available,str(node['id'])))
@@ -115,8 +123,8 @@ def service_once(dsn, limit=20):
             conn.execute('DELETE FROM slot_holds WHERE campaign_id=%s',(c['id'],))
             conn.execute("""UPDATE campaigns SET proxy_node_id=%s,scheduled_start_at=%s,
                 scheduled_end_at=%s,placement_status='scheduled',auto_schedule_managed=true,
-                auto_schedule_tag_pending=%s,updated_at=now() WHERE id=%s""",
-                (node_id,at,at+duration,node_id not in prepared_ids,c['id']))
+                auto_schedule_tag_pending=%s,auto_start_not_before=%s,updated_at=now() WHERE id=%s""",
+                (node_id,at,at+duration,node_id not in prepared_ids,floor,c['id']))
             details = {'node_id':node_id,'start_at':at.isoformat(),'end_at':(at+duration).isoformat(),
                        'requested_start_at':c['requested_start_at'].isoformat() if c['requested_start_at'] else None,
                        'shifted':at>start,'promotion_prepared':node_id in prepared_ids}

@@ -120,20 +120,20 @@ class AutomaticPlacementTests(unittest.TestCase):
         self.assertEqual(self.row()['scheduled_start_at'],self.start+timedelta(days=100))
         self.assertEqual(self.row()['scheduled_end_at'],self.start+timedelta(days=100)+HOUR)
 
-    def test_future_within_two_minutes_is_not_delayed(self):
+    def test_request_within_two_minutes_waits_for_hourly_launch_window(self):
         requested=datetime.now(timezone.utc)+timedelta(seconds=40)
         with psycopg.connect(self.dsn) as c:
             c.execute('UPDATE campaigns SET requested_start_at=%s WHERE id=%s',(requested,self.f['campaign']))
         self.paid();auto_schedule.service_once(self.dsn)
-        self.assertEqual(self.row()['scheduled_start_at'],requested)
+        self.assertGreaterEqual(self.row()['scheduled_start_at'], requested-timedelta(seconds=40)+HOUR)
 
-    def test_old_requested_time_starts_now_with_full_duration(self):
+    def test_old_requested_time_gets_full_period_after_an_hour(self):
         before=datetime.now(timezone.utc)
         with psycopg.connect(self.dsn) as c:
             c.execute("UPDATE campaigns SET requested_start_at=now()-interval '1 day' WHERE id=%s",(self.f['campaign'],))
         self.paid();auto_schedule.service_once(self.dsn)
-        row=self.row();self.assertGreaterEqual(row['scheduled_start_at'],before)
-        self.assertLessEqual(row['scheduled_start_at'],datetime.now(timezone.utc))
+        row=self.row();self.assertGreaterEqual(row['scheduled_start_at'],before+HOUR)
+        self.assertLessEqual(row['scheduled_start_at'],datetime.now(timezone.utc)+HOUR)
         self.assertEqual(row['scheduled_end_at']-row['scheduled_start_at'],HOUR)
 
     def test_existing_own_hold_is_honoured_and_consumed(self):
@@ -192,16 +192,18 @@ class AutomaticPlacementTests(unittest.TestCase):
         request=dict(host='management-'+node.hex+'.example.org',port=8443)
         with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
             plan=handle(conn,request);self.assertEqual(plan['state'],'idle')
-            self.assertEqual(plan['reason'],'binding_selection_pending')
+            self.assertEqual(plan['reason'],'waiting_start')
         before=datetime.now(timezone.utc);auto_schedule.service_once(self.dsn);row=self.row()
         self.assertGreaterEqual(row['scheduled_start_at'],before)
         self.assertEqual(row['scheduled_end_at']-row['scheduled_start_at'],HOUR)
         with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            self.assertEqual(handle(conn, request)['reason'], 'waiting_start')
+            conn.execute("UPDATE campaigns SET scheduled_start_at=now()-interval '1 second',scheduled_end_at=now()+interval '1 hour',auto_start_not_before=now()-interval '1 second' WHERE id=%s", (row['id'],))
             plan=handle(conn,request);self.assertEqual(plan['state'],'apply')
             self.assertEqual(plan['campaign_id'],str(row['id']))
             self.assertTrue(handle(conn,dict(request,action='ack',revision=plan['revision']))['accepted'])
         self.assertEqual(self.row()['placement_status'],'active')
-        auto_schedule.service_once(self.dsn);self.assertEqual(self.row()['scheduled_start_at'],row['scheduled_start_at'])
+        auto_schedule.service_once(self.dsn);self.assertEqual(self.row()['placement_status'],'active')
 
     def test_manual_move_is_preserved_even_when_other_binding_is_ready(self):
         self.paid();auto_schedule.service_once(self.dsn)

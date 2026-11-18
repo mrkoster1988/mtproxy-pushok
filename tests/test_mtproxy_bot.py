@@ -1,5 +1,6 @@
 """Обезличенные форматы карточек и синтетические сценарии @MTProxyBot."""
 import asyncio
+import hashlib
 from pathlib import Path
 import sys
 from types import SimpleNamespace as NS
@@ -159,6 +160,7 @@ class BotFlowTests(unittest.IsolatedAsyncioTestCase):
         self.dialog.click = AsyncMock(return_value=NS(raw_text='Send a public channel link'))
         inspected = await self.dialog.prepare(dict(self.request, action='inspect'))
         self.assertEqual(inspected['tag'], TAG)
+        self.assertTrue(inspected['promotion_empty'])
         self.assertIsNone(inspected['channel_username'])
         self.dialog.click.assert_not_awaited()
         result = await self.dialog.prepare(self.request)
@@ -284,7 +286,25 @@ class BotFlowTests(unittest.IsolatedAsyncioTestCase):
         result=await self.dialog.register(request,state)
         self.assertEqual(result['tag'],TAG)
         self.assertEqual(self.dialog.send.await_args_list,[call('/newproxy'),call('8.8.8.8:8443'),call(request['secret'])])
-        self.assertEqual(state.save_file.call_args_list,[call(marker,identity),call(marker,dict(identity,tag=TAG))])
+        self.assertEqual(state.save_file.call_args_list,[call(marker,identity),call(marker,dict(identity,tag=TAG,secret_sha256=hashlib.sha256(request['secret'].encode()).hexdigest()))])
+
+    async def test_bare_registration_card_recovers_only_from_matching_conversation(self):
+        from unittest.mock import Mock
+        from uuid import uuid4
+        request = dict(host='8.8.8.8', port=9443, secret='b'*32, node_id=str(uuid4()))
+        state = Mock(read_file=Mock(return_value=dict(host=request['host'], port=request['port'])))
+        card = NS(raw_text=f"Proxy 8.8.8.8:9443 with the tag {TAG}.\nPromoted channel: n/a.", id=85, entities=[])
+        self.dialog.select = AsyncMock(return_value=card)
+        self.dialog.send = AsyncMock()
+        history = [NS(out=not i%2, sender_id=self.dialog.bot.id if i%2 else 42, raw_text=value)
+                   for i, value in enumerate(['/newproxy','Send IP and port','8.8.8.8:9443',
+                         'Specify its secret in hex format',request['secret'],f'Success! Your proxy tag: {TAG}'])]
+        self.client.get_messages = AsyncMock(return_value=list(reversed(history)))
+        self.assertEqual((await self.dialog.register(request,state))['tag'], TAG)
+        history[4].raw_text = 'c'*32
+        with self.assertRaisesRegex(BotProtocolError, 'registration_uncertain'):
+            await self.dialog.register(request,state)
+        self.dialog.send.assert_not_awaited()
 
     async def test_secret_is_not_sent_for_unrecognised_second_prompt(self):
         from unittest.mock import Mock, call

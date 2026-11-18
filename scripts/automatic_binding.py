@@ -79,7 +79,13 @@ def tick(agent, request):
             or connection['state'] not in ('connected', 'session_saved', 'unavailable')
             or connection.get('retry_seconds', 0) > 0):
         return
-    job = agent.exchange(dict(request, action='owner_claim'))
+    job = agent.exchange(dict(request, action='owner_claim', probe_cached=True))
+    if job.get('state') == 'probe':
+        observed = helper(agent.ROOT, dict(job, action='inspect'))
+        if observed.get('ok') and observed.get('promotion_empty') is True and observed.get('tag') == job['expected_tag']:
+            agent.exchange(dict(request, action='owner_empty_cached', probe_cached=True,
+                                probe_at=job['probe_at'], channel_id=job['channel_id'], tag=observed['tag']))
+        return
     if job.get('state') != 'job':
         return
     # Сначала останавливаем показ предыдущего тега. Запись baseline переживает

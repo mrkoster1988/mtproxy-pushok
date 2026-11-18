@@ -94,6 +94,8 @@ def node_plan(conn, node):
       AND b.channel_url=ch.telegram_url AND b.node_host=%s
       AND b.node_port=(SELECT port FROM proxy_nodes WHERE id=c.proxy_node_id)
       AND c.scheduled_start_at<=now() AND c.scheduled_end_at>now()
+      AND (c.placement_status='active' OR NOT c.auto_schedule_managed OR
+           c.auto_start_not_before IS NULL OR c.auto_start_not_before<=now())
       ORDER BY c.scheduled_start_at,c.id LIMIT 2""", (node['id'],node['host'])).fetchall()
     if len(rows) != 1:
         return fallback_plan(conn,node,dict(result, **waiting_reason(conn, node))) if not rows else dict(result, reason='conflicting_campaigns')
