@@ -1125,6 +1125,11 @@ def main():
                 with patch.dict(os.environ, {'PUSHOK_CONTROL_DIR':str(Path(PostgresIntegration.storage.name)/'control'),
                                            'TELEGRAM_BOT_TOKEN':'123456:fixture_token_for_browser'}):
                     admin.locator('#enable-stars').check()
+                    draft_notice = admin.locator('#payment-switch-feedback')
+                    if draft_notice.is_visible():
+                        expect(draft_notice).to_have_text('Есть изменения')
+                        admin.evaluate('loadControl({payments:true})')
+                        expect(admin.locator('#enable-stars')).to_be_checked()
                     admin.locator('#payment-switches button').click()
                     expect(admin.locator('#notice')).to_contain_text('Настройки оплаты сохранены')
                     expect(admin.locator('#enable-stars')).to_be_checked()

@@ -12,14 +12,15 @@
   <link rel="stylesheet" href="/assets/interface.css?v=185">
   <link rel="stylesheet" href="/assets/moderation.css?v=195">
   <link rel="stylesheet" href="/assets/controls.css?v=189">
-  <script src="/assets/app.js?v=195" defer></script>
+  <link rel="stylesheet" href="/assets/payment-settings.css?v=196">
+  <script src="/assets/app.js?v=196" defer></script>
   <script src="/assets/campaign-analytics.js?v=172" defer></script>
-  <script src="/assets/merchant-settings.js?v=172" defer></script>
+  <script src="/assets/merchant-settings.js?v=196" defer></script>
   <script src="/assets/channel-ai-settings.js?v=172" defer></script>
   <script src="/assets/proxy-provisioning.js?v=186" defer></script>
   <script src="/assets/proxy-gateway.js?v=186" defer></script>
   <script src="/assets/bonus-links.js?v=172" defer></script>
-  <script src="/assets/wallet.js?v=183" defer></script>
+  <script src="/assets/wallet.js?v=196" defer></script>
   <script src="/assets/growth.js?v=195" defer></script>
   <script src="/assets/channel-topics.js?v=185" defer></script>
   <script src="/assets/order.js?v=172" defer></script>
@@ -37,10 +38,10 @@
   <script src="/assets/users.js?v=183" defer></script>
   <script src="/assets/team.js?v=179" defer></script>
   <script src="/assets/application-licenses.js?v=172" defer></script>
-  <script src="/assets/release-notes.js?v=195" defer></script>
-  <script src="/assets/interface.js?v=184" defer></script>
-  <script src="/assets/controls.js?v=195" defer></script>
-  <script src="/assets/pages.js?v=194" defer></script>
+  <script src="/assets/release-notes.js?v=196" defer></script>
+  <script src="/assets/interface.js?v=196" defer></script>
+  <script src="/assets/controls.js?v=196" defer></script>
+  <script src="/assets/pages.js?v=196" defer></script>
 </head>
 <body>
   <header class="site-header">
@@ -216,33 +217,57 @@
         <div id="queue" class="cards"></div>
       </div>
       <div id="settings" hidden>
-        <section id="settings-payments" class="panel settings-panel">
-          <div class="eyebrow">ПЛАТЁЖНЫЕ КАНАЛЫ</div><h2>Способы оплаты</h2>
-          <p class="muted" data-note>Включите нужные способы и задайте цены в разделе «Управление → Тарифы».</p>
-          <div id="sbp-connection"></div>
-          <form id="payment-switches">
-<label><input id="enable-stars" type="checkbox">Принимать Telegram Stars</label>
-<label><input id="enable-sbp" type="checkbox">Принимать СБП</label>
-<p id="payment-config-note" role="status"></p>
-<button type="submit" class="primary">Сохранить способы оплаты</button>
-</form><div id="wallet-settings"></div><details><summary>Диагностика оплаты</summary><div class="settings-payment-grid">
-            <article class="settings-method">
-              <h3>⭐ Telegram Stars · XTR</h3>
-              <p id="settings-stars-status" role="status">Состояние запрашивается...</p>
-              <p id="settings-stars-counts" class="muted"></p>
-              <p class="muted" data-note>Цена Stars устанавливается в разделе «Управление → Тарифы». Приём платежей включается переключателем выше.</p>
-            </article>
-            <article class="settings-method">
-              <h3>СБП · рубли</h3>
-              <p id="settings-sbp-status" role="status">СБП не подключена: состояние запрашивается у сервера.</p>
-              <p class="muted" data-note>Цена в рублях устанавливается в разделе «Управление → Тарифы». Магазин подключается в форме выше. Включение СБП запускает фоновую сверку счетов; тестовый режим отмечен отдельно.</p>
-            </article>
-          </div>
-          <p id="settings-payments-note" class="muted" role="status">Не сохраняйте реквизиты и секреты в комментариях или полях тарифов.</p>
-          </details>
-          <h3>СБП: ожидающие и спорные попытки</h3>
-          <p class="muted" data-note>Повтор ставит счёт на серверную проверку. Деньги не зачисляются вручную, размещение не запускается. Не указывайте ключи и банковские данные в комментарии.</p>
-          <div id="sbp-review-list" aria-live="polite"></div>
+        <section id="settings-payments" class="settings-panel payment-settings" aria-label="Настройки платежей">
+          <section class="payment-group" aria-labelledby="payment-methods-title">
+            <header class="payment-header">
+              <h2 id="payment-methods-title">Способы оплаты</h2>
+              <a href="#/management/tariffs">Цены тарифов ↗</a>
+            </header>
+            <form id="payment-switches">
+              <fieldset id="payment-switch-fields" aria-labelledby="payment-methods-title" disabled>
+                <label class="payment-method">
+                  <span class="payment-symbol payment-stars" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><use href="/assets/pushok-icons.svg?v=188#pi-star"></use></svg></span>
+                  <span class="payment-copy"><strong>Telegram Stars</strong><small>В Telegram · XTR</small></span>
+                  <span class="payment-choice"><input id="enable-stars" type="checkbox" aria-label="Принимать Telegram Stars"><small id="settings-stars-status">Загрузка…</small></span>
+                </label>
+                <label class="payment-method">
+                  <span class="payment-symbol payment-sbp" aria-hidden="true"><svg class="ui-icon" viewBox="0 0 24 24"><use href="/assets/pushok-icons.svg?v=188#pi-qr"></use></svg></span>
+                  <span class="payment-copy"><strong>СБП</strong><small>В веб-кабинете · ₽</small><small id="payment-config-note"></small></span>
+                  <span class="payment-choice"><input id="enable-sbp" type="checkbox" aria-label="Принимать СБП" aria-describedby="payment-config-note"><small id="settings-sbp-status">Загрузка…</small></span>
+                </label>
+                <div class="payment-form-footer">
+                  <span id="payment-switch-feedback" role="status"></span>
+                  <button type="submit" class="primary payment-save">Сохранить способы оплаты</button>
+                </div>
+              </fieldset>
+            </form>
+            <div id="sbp-connection" hidden></div>
+          </section>
+          <section class="payment-group" aria-labelledby="wallet-settings-title">
+            <header class="payment-header"><h2 id="wallet-settings-title">Внутренний баланс</h2></header>
+            <div id="wallet-settings"></div>
+          </section>
+          <section class="payment-group" aria-labelledby="payment-review-title">
+            <header class="payment-header"><h2 id="payment-review-title">Сверка платежей</h2></header>
+            <div class="payment-metrics">
+              <div><h3>Telegram Stars</h3><dl id="settings-stars-counts">
+                <dt>Тарифов с ценой в XTR</dt><dd id="payment-stars-tariffs">—</dd>
+                <dt>Успешные оплаты</dt><dd id="payment-stars-success">—</dd>
+                <dt>На ручной сверке</dt><dd id="payment-stars-review">—</dd>
+              </dl></div>
+              <div><h3>СБП</h3><dl>
+                <dt>Успешные оплаты</dt><dd id="payment-sbp-success">—</dd>
+                <dt>Ожидают проверки</dt><dd id="payment-sbp-pending">—</dd>
+                <dt>На ручной сверке</dt><dd id="payment-sbp-review">—</dd>
+                <dt>Фоновая сверка</dt><dd id="payment-sbp-background">—</dd>
+              </dl></div>
+            </div>
+            <p id="settings-payments-note" role="status"></p>
+            <details class="payment-fold settings-section">
+              <summary>Ожидающие и спорные платежи СБП</summary>
+              <div id="sbp-review-list" aria-live="polite"></div>
+            </details>
+          </section>
         </section>
         <div id="settings-tariffs" class="settings-panel" hidden>
           <section class="core-health tariff-builder" aria-label="Конструктор тарифов MTProxy Pushok">
@@ -329,7 +354,7 @@
       </div>
     </section>
 
-    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.95</span></footer>
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.96</span></footer>
   </main>
 </body>
 </html>

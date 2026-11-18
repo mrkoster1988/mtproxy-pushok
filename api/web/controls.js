@@ -24,7 +24,7 @@ window.pushokControls=(()=>{
  }
  function forms(){
   for(const form of document.querySelectorAll('form,fieldset')){
-   if(form.closest('.topic-dialog,.select-dialog')||form.matches('.directory-search'))continue;
+   if(form.closest('.topic-dialog,.select-dialog')||form.matches('.directory-search,.merchant-fields'))continue;
    const buttons=[...form.querySelectorAll(':scope > button,:scope > .inline-actions > button,:scope > .actions > button,:scope > .role-actions > button,:scope > .campaign-action-tools > button,:scope > .sponsor-form-actions > button')].filter(n=>!n.hidden);
    if(!buttons.length)continue;
    const inputs=[...form.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),select,textarea')].filter(n=>n.closest('form,fieldset')===form&&!n.hidden&&!n.closest('.field-action-row,.user-picker'));

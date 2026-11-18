@@ -1,4 +1,5 @@
 """Прямые пункты управления: реальные формы, роли, ссылки и сохранение черновика."""
+import re
 from uuid import uuid4
 
 import psycopg
@@ -61,6 +62,22 @@ def check_management_navigation(browser, base, output, failures, dsn):
             for width in (320, 390, 768, 1280):
                 admin.set_viewport_size({'width': width, 'height': 844})
                 assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth+1'), (key, width)
+                if key == 'payments':
+                    section = admin.locator('#settings-payments')
+                    expect(section.locator(':scope > section > header > h2')).to_have_text(
+                        ['Способы оплаты', 'Внутренний баланс', 'Сверка платежей'])
+                    expect(section.locator('details details')).to_have_count(0)
+                    expect(section.get_by_role('link', name='Цены тарифов')).to_have_attribute('href', '#/management/tariffs')
+                    expect(section.locator('#payment-stars-success')).to_have_text(re.compile(r'^\d+$'))
+                    for method in section.locator('.payment-method').all():
+                        text = method.locator('.payment-copy').bounding_box()
+                        toggle = method.locator('input').bounding_box()
+                        assert toggle['x'] >= text['x'] + text['width'], (width, text, toggle)
+                    if width in (390, 768):
+                        details = section.locator('details.payment-fold[open]')
+                        for fold in details.all():
+                            fold.locator('summary').click()
+                        section.screenshot(path=str(output / f'payment-methods-{width}.png'))
                 if key == 'tariffs':
                     field, action = admin.locator('#tariff-admin-select').bounding_box(), admin.locator('#tariff-admin-new').bounding_box()
                     assert action['x'] >= field['x'] + field['width'] + 7
