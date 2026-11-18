@@ -42,7 +42,7 @@ window.pushokWallet=(()=>{
    if(key==='topup')d.classList.add('wallet-topup-disclosure');
    d.addEventListener('toggle',()=>{if(d.isConnected)expanded[key]=d.open;if(d.open&&p.loadReview&&!p.reviewLoaded){p.reviewLoaded=true;void p.loadReview().catch(()=>{p.reviewLoaded=false;p.replaceChildren(el('p','Не удалось загрузить платежи.'),button('Повторить',()=>p.loadReview()));});}});p.before(d);h.remove();d.append(summary,p);
   }
-  for(const [title,keys] of [['Мой кошелёк',['history','topup','topups','autopay','telegram']],['Подарки',['gift']],['Администрирование',['admin','review','gifts']]]){
+  for(const [title,keys] of [['Мой кошелёк',['topup','topups','autopay','telegram','history']],['Подарки',['gift']],['Администрирование',['admin','review','gifts']]]){
    const sections=keys.map(key=>root.querySelector('[data-wallet-section="'+key+'"]')).filter(Boolean);
    if(!sections.length)continue;
    const group=el('section',undefined,'wallet-group');group.append(el('h2',title),...sections);root.append(group);
