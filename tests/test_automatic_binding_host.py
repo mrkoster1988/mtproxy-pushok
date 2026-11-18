@@ -107,3 +107,14 @@ class HostBindingTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):binding.tick(self.agent,self.request)
         self.assertEqual(self.agent.exchange.call_args.args[0]['action'],'owner_verified')
         self.assertFalse(self.path.exists())
+
+    def test_probe_reports_confirmed_other_channel_without_rebinding_from_stale_cache(self):
+        self.agent.exchange = Mock(return_value=dict(self.job, state='probe', probe_at='stamp', channel_id='channel'))
+        result = dict(ok=True, tag='a'*32, promotion_empty=False, promotion_mismatch=True,
+                      channel_username=None, telegram_channel_id=123, observed_channel_id=456)
+        with patch.object(binding, 'enabled', return_value=True), patch.object(binding, 'helper', return_value=result):
+            binding.tick(self.agent, self.request)
+        report = self.agent.exchange.call_args.args[0]
+        self.assertEqual(report['action'], 'owner_mismatch_cached')
+        self.assertEqual(report['observed_channel_id'], 456)
+        self.agent.apply.assert_not_called()

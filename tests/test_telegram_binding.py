@@ -48,6 +48,19 @@ class BindingQueueTests(unittest.TestCase):
             json=dict(dict(node_id=str(self.node['id']), channel_id=str(self.f['channel']),
                            ad_tag=self.tag, telegram_binding_confirmed=True), **changes))
 
+    def test_changed_keyboard_error_is_visible_without_advancing_binding(self):
+        job = self.claim()
+        for code in ('bot_button_expired','proxy_list_changed'):
+            with self.subTest(code=code):
+                self.assertTrue(self.exchange('owner_error', job_id=job, code=code)['accepted'])
+                with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+                    row = conn.execute('SELECT phase,error_code,retry_at>now() AS delayed FROM telegram_binding_jobs WHERE id=%s', (job,)).fetchone()
+                    self.assertEqual((row['phase'],row['error_code'],row['delayed']),('inspect',code,True))
+                    item = next(s for s in binding.public_status(conn) if s['campaign_id']==self.f['campaign'])
+                    self.assertIn('title',item)
+                    self.assertIn('next_action',item)
+                    self.assertIsNone(conn.execute('SELECT 1 FROM channel_promotion_bindings WHERE proxy_node_id=%s',(self.node['id'],)).fetchone())
+
     def test_manual_binding_replaces_failed_inspection_and_rejects_stale_worker(self):
         job = self.claim()
         self.exchange('owner_error', job_id=job, code='proxy_not_found')
@@ -189,6 +202,60 @@ class BindingQueueTests(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             conn.execute("UPDATE campaigns SET placement_status='scheduled',scheduled_start_at=now()+interval '7 days',scheduled_end_at=now()+interval '7 days 1 hour' WHERE id=%s",(self.f['campaign'],))
         self.assertEqual(self.exchange('owner_claim')['state'],'wait')
+
+    def test_changed_cached_channel_is_invalidated_only_with_fresh_verified_mismatch(self):
+        self.save_manual()
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE channel_promotion_bindings SET confirmed_at=now()-interval '1 day' WHERE ad_tag=%s", (self.tag,))
+        probe = self.exchange('owner_claim', probe_cached=True)
+        self.assertEqual(probe['state'], 'probe')
+        proof = dict(probe_cached=True, probe_at=probe['probe_at'], channel_id=probe['channel_id'],
+                     tag=self.tag, channel_username=None, promotion_mismatch=True,
+                     telegram_channel_id=777, observed_channel_id=888)
+        for invalid in ({'observed_channel_id':777}, {'observed_channel_id':None},
+                        {'promotion_mismatch':False}, {'tag':uuid4().hex}, {'probe_at':'stale'}):
+            self.assertFalse(self.exchange('owner_mismatch_cached', **dict(proof, **invalid))['accepted'])
+        self.assertTrue(self.exchange('owner_mismatch_cached', **proof)['accepted'])
+        self.assertFalse(self.exchange('owner_mismatch_cached', **proof)['accepted'])
+        self.assertEqual(self.exchange('owner_claim', probe_cached=True)['phase'], 'inspect')
+
+    def test_new_manual_confirmation_wins_over_late_mismatch_probe(self):
+        self.save_manual()
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE channel_promotion_bindings SET confirmed_at=now()-interval '1 day' WHERE ad_tag=%s", (self.tag,))
+        probe = self.exchange('owner_claim', probe_cached=True)
+        self.save_manual()
+        self.assertFalse(self.exchange('owner_mismatch_cached', probe_cached=True,
+            probe_at=probe['probe_at'], channel_id=probe['channel_id'], tag=self.tag,
+            channel_username=None, promotion_mismatch=True, telegram_channel_id=777,
+            observed_channel_id=888)['accepted'])
+
+    def test_changed_channel_after_propagation_rebinds_before_full_period_starts(self):
+        job = self.claim()
+        self.authorize(job)
+        self.assertTrue(self.exchange('owner_verified', job_id=job, **self.proof)['accepted'])
+        mismatch = dict(self.proof, channel_username=None, promotion_mismatch=True, observed_channel_id=888)
+        self.assertFalse(self.exchange('owner_verified', job_id=job, **mismatch)['accepted'])
+        self.mature(job)
+        self.assertFalse(self.exchange('owner_verified', job_id=job,
+            **dict(mismatch, observed_channel_id=777))['accepted'])
+        self.assertTrue(self.exchange('owner_verified', job_id=job, **mismatch)['accepted'])
+        self.assertEqual(self.exchange('owner_claim')['phase'], 'bind')
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            campaign = conn.execute('SELECT * FROM campaigns WHERE id=%s', (self.f['campaign'],)).fetchone()
+            self.assertEqual(campaign['placement_status'], 'not_scheduled')
+            self.assertIsNone(campaign['scheduled_start_at'])
+        self.assertTrue(self.exchange('owner_verified', job_id=job, **self.proof)['accepted'])
+        self.assertEqual(self.exchange('owner_claim')['state'], 'wait')
+        self.mature(job)
+        self.assertTrue(self.exchange('owner_verified', job_id=job, **self.proof)['accepted'])
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            campaign = conn.execute('SELECT * FROM campaigns WHERE id=%s', (self.f['campaign'],)).fetchone()
+            self.assertEqual((campaign['scheduled_end_at']-campaign['scheduled_start_at']).total_seconds(), 3600)
+            self.assertEqual(promotion_runtime.node_plan(conn, self.node)['state'], 'apply')
 
     def blocked_forecast_queue(self):
         """Текущему каналу нет тега, следующие 3+3 часа заняты готовым каналом."""

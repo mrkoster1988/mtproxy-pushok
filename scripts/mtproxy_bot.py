@@ -179,14 +179,59 @@ class MTProxyDialog:
         return await self.fresh(sent.id)
 
     async def click(self, message, button):
+        # Callback принадлежит текущей клавиатуре конкретного сообщения.
+        # После редактирования ботом старый MessageButton уже недействителен.
+        current = await self.client.get_messages(self.bot, ids=message.id)
+        if (not current or current.out or current.sender_id != self.bot.id
+                or snapshot(current) != snapshot(message)):
+            raise BotProtocolError('bot_button_expired')
+        candidates = [b for b in buttons(current) if
+                      (b.text, getattr(b, 'data', None)) == (button.text, getattr(button, 'data', None))]
+        if len(candidates) != 1:
+            raise BotProtocolError('bot_button_expired')
         last = await self.client.get_messages(self.bot, limit=1)
         after = last[0].id if last else message.id
-        before = snapshot(message)
+        before = snapshot(current)
         # Кнопка получена от бота; payload не конструируем и не сохраняем.
-        await button.click()
+        try:
+            await candidates[0].click()
+        except Exception as exc:
+            if type(exc).__name__ in ('DataInvalidError', 'MessageIdInvalidError'):
+                raise BotProtocolError('bot_button_expired') from None
+            raise
         return await self.fresh(after, message.id, before)
 
     async def select(self, hosts, port, *, allow_missing=False):
+        # Только навигация. При гонке с ручным открытием меню один раз
+        # начинаем заново; операции изменения продвижения не повторяем здесь.
+        for attempt in range(2):
+            try:
+                return await self._select(hosts, port, allow_missing=allow_missing)
+            except BotProtocolError as exc:
+                if attempt or str(exc) not in ('bot_button_expired', 'proxy_list_changed'):
+                    raise
+
+    async def candidate_button(self, page, label):
+        """Открываем свежий список вместо повторного нажатия старой клавиатуры."""
+        message = await self.send('/myproxies')
+        if CARD_HEADER.match(text(message).lstrip()):
+            back = [b for b in buttons(message) if b.text.strip().casefold() in
+                    ('« back to list', 'back to list', '« к списку', 'к списку')]
+            if len(back) != 1:
+                raise BotProtocolError('proxy_list_changed')
+            message = await self.click(message, back[0])
+        for _ in range(page):
+            next_buttons = [b for b in buttons(message) if b.text.strip().lower() in
+                            ('next', 'next ›', 'next »', '›', '»', 'далее', 'вперёд')]
+            if len(next_buttons) != 1:
+                raise BotProtocolError('proxy_list_changed')
+            message = await self.click(message, next_buttons[0])
+        matches = [b for b in buttons(message) if b.text == label]
+        if len(matches) != 1:
+            raise BotProtocolError('proxy_list_changed')
+        return message, matches[0]
+
+    async def _select(self, hosts, port, *, allow_missing=False):
         message = await self.send('/myproxies')
         matches, pages = [], set()
         wanted_hosts = {h.lower() for h in hosts}
@@ -202,7 +247,7 @@ class MTProxyDialog:
             if len(back) != 1:
                 raise BotProtocolError('proxy_identity_not_verified')
             message = await self.click(message, back[0])
-        for _ in range(10):
+        for page in range(10):
             signature = snapshot(message)
             if signature in pages:
                 raise BotProtocolError('proxy_list_loop')
@@ -210,9 +255,9 @@ class MTProxyDialog:
             for button in buttons(message):
                 identity = list_proxy(button.text)
                 if endpoints(button.text) & wanted:
-                    matches.append((message, button, None))
+                    matches.append((message, button, None, page))
                 elif identity and identity[0] in wanted_hosts:
-                    matches.append((message, button, identity[1]))
+                    matches.append((message, button, identity[1], page))
             next_buttons = [b for b in buttons(message) if b.text.strip().lower() in ('next', 'next ›', 'next »', '›', '»', 'далее', 'вперёд')]
             if not next_buttons:
                 break
@@ -225,10 +270,13 @@ class MTProxyDialog:
             raise BotProtocolError('proxy_not_found')
         # Несколько портов одного IP: проверяем карточки, не меняя продвижение.
         if (len(matches) > 8 or (len(matches)>1 and
-                (any(tag is None for _,_,tag in matches) or len({tag for _,_,tag in matches}) != len(matches)))):
+                (any(tag is None for _,_,tag,_ in matches) or len({tag for _,_,tag,_ in matches}) != len(matches)))):
             raise BotProtocolError('proxy_ambiguous')
         verified = []
-        for message, button, listed_tag in matches:
+        for message, button, listed_tag, page in matches:
+            label = button.text
+            if len(matches)>1 or len(pages)>1:
+                message, button = await self.candidate_button(page, label)
             card = await self.click(message, button)
             shown = endpoints(text(card)+'\n'+'\n'.join(urls(card)))
             if not shown & wanted:
@@ -237,12 +285,13 @@ class MTProxyDialog:
                 raise BotProtocolError('proxy_identity_not_verified')
             if listed_tag and card_tag(card,hosts,port) != listed_tag:
                 raise BotProtocolError('tag_changed')
-            verified.append((message,button,card))
+            verified.append((page,label,card))
         if len(verified) != 1:
             raise BotProtocolError('proxy_not_found' if not verified else 'proxy_ambiguous')
-        message,button,card = verified[0]
+        page,label,card = verified[0]
         if len(matches)>1:
             previous = card_tag(card,hosts,port)
+            message,button = await self.candidate_button(page,label)
             card = await self.click(message,button)
             if card_tag(card,hosts,port) != previous:
                 raise BotProtocolError('tag_changed')
@@ -323,7 +372,8 @@ class MTProxyDialog:
             raise BotProtocolError('target_changed')
         card = await self.select(request['hosts'], request['port'])
         tag = card_tag(card, request['hosts'], request['port'])
-        matches = await self.matches_promotion(card, target, channel.id)
+        observed = await self.promotion_identity(card, target, channel.id)
+        matches = observed == channel.id
         if request['action'] == 'bind':
             if tag != request['expected_tag']:
                 raise BotProtocolError('tag_changed')
@@ -340,22 +390,26 @@ class MTProxyDialog:
             card = await self.select(request['hosts'], request['port'])
             if card_tag(card, request['hosts'], request['port']) != tag:
                 raise BotProtocolError('binding_not_verified')
-            matches = await self.matches_promotion(card, target, channel.id)
+            observed = await self.promotion_identity(card, target, channel.id)
+            matches = observed == channel.id
             if not matches:
                 raise BotProtocolError('binding_not_verified')
         return {'tag': tag, 'channel_username': target if matches else None,
-                'telegram_channel_id': channel.id, 'bot_message_id': card.id, 'promotion_empty': empty_promotion(card)}
+                'telegram_channel_id': channel.id, 'bot_message_id': card.id,
+                'promotion_empty': empty_promotion(card), 'observed_channel_id': observed,
+                'promotion_mismatch': observed is not None and observed != channel.id}
 
-    async def matches_promotion(self, card, target, channel_id):
+    async def promotion_identity(self, card, target, channel_id):
+        """Отличаем другой проверенный канал от неизвестного ответа/ошибки сети."""
         shown = promoted_channel(card)
         if shown == target:
-            return True
+            return channel_id
         if not shown:
-            return False
+            return None
         # Бот может показать основное имя вместо дополнительного. Одного
         # совпадения названий недостаточно: сверяем числовой ID через Telegram.
         try:
             channel = await resolve_channel(self.client, shown)
         except BotProtocolError:
-            return False
-        return channel.id == channel_id
+            return None
+        return channel.id

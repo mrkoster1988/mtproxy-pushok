@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 from uuid import uuid4
+from datetime import datetime, timezone
 
 import psycopg
 from psycopg.rows import dict_row
@@ -363,6 +364,21 @@ class ProvisioningIntegration(unittest.TestCase):
         row=self.execute('SELECT * FROM proxy_provisioning_jobs')[0]
         self.assertEqual(row['attempts'],5);self.assertEqual(row['state'],'failed')
         self.assertEqual(self.advice.call_count,1)
+
+    def test_callback_errors_remain_visible_without_activating_or_replacing_instance(self):
+        job = self.call()
+        self.addCleanup(lambda:(control.root()/'proxy-provisioner.json').unlink(missing_ok=True))
+        for code in ('bot_button_expired','proxy_list_changed'):
+            with self.subTest(code=code):
+                self.assertTrue(self.call(action='failed',job_id=job['job_id'],code=code)['accepted'])
+                row = self.execute('SELECT state,error_code,retry_at>now() AS delayed FROM proxy_provisioning_jobs WHERE id=%s',job['job_id'])[0]
+                self.assertEqual((row['state'],row['error_code'],row['delayed']),('pending',code,True))
+                self.assertEqual(self.execute('SELECT status FROM proxy_nodes WHERE id=%s',job['node_id'])[0]['status'],'paused')
+                with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+                    cfg = provision.configuration(conn)
+                    control.write('proxy-provisioner.json',dict(code=code,
+                        checked_at=datetime.now(timezone.utc).isoformat(),policy_revision=str(cfg['revision'])))
+                    self.assertEqual(provision.public(conn)['agent']['code'],code)
 
     def test_policy_change_during_preparation_requires_explicit_resume(self):
         job=self.call()
