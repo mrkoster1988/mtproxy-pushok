@@ -69,10 +69,8 @@ window.pushokAssistant=(()=>{
     const [data,moderation]=await Promise.all([request('/operator/ai-capabilities'),request('/community/moderation/'+c.id)]);if(!valid())return;actions.replaceChildren();
     const check=moderation?.check;saved.replaceChildren();
     if(check){
-     if(check.description)saved.append(el('p','Описание канала: '+check.description));
      saved.append(el('p',(check.rejected_by_agent?'Причина отказа: ':'')+check.reason));
      if(check.evidence?.length){const proof=el('details'),title=el('summary','На чём основано решение');proof.append(title);check.evidence.forEach(item=>proof.append(el('blockquote',item.quote)));saved.append(proof);}
-     saved.append(el('time','Проверено: '+date(check.attempted_at)));
     }
     else saved.append(el('p',c.moderation_status==='pending'?'Заявка ожидает проверки. Сохранённого разбора пока нет.':'Сохранённого разбора ИИ для этой заявки нет.'));
     if((check?.approved_by_agent||check?.rejected_by_agent)&&decisionNode){const link=el('a','Агент ИИ');link.href='#/user/ai-agent';link.addEventListener('click',()=>window.pushokProfiles.setBackRoute('moderation/'+c.id));decisionNode.replaceChildren(document.createTextNode(check.rejected_by_agent?'Отклонено: ':'Одобрено: '),link);decisionNode.classList.add('ai-decision');}

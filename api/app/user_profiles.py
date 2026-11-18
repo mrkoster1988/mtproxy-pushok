@@ -87,8 +87,10 @@ def router_for(dsn, current_user):
                 ch.telegram_url AS channel_url,c.tariff_name_snapshot,c.duration_seconds_snapshot,
                 c.price_kopecks_snapshot,c.currency_snapshot,c.topic,c.moderation_status,c.payment_status,
                 c.placement_status,c.requested_start_at,c.scheduled_start_at,c.scheduled_end_at,c.archived_at,
+                review.ai_rejected,review.ai_description,review.ai_checked_at,
                 CASE WHEN c.pricing_version=1 THEN c.stars_price_snapshot ELSE t.stars_price_xtr END AS stars_price_snapshot
                 FROM campaigns c JOIN sponsor_channels ch ON ch.id=c.channel_id JOIN tariffs t ON t.id=c.tariff_id
+                JOIN campaign_agent_reviews review ON review.campaign_id=c.id
                 WHERE c.advertiser_user_id=%s AND {ARCHIVED}=%s ORDER BY c.created_at DESC,c.id DESC
                 LIMIT %s OFFSET %s''', (uid, archived, PAGE_SIZE, campaign_page * PAGE_SIZE)).fetchall()
             for campaign in campaigns:

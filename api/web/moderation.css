@@ -69,6 +69,7 @@
 @media (min-width:761px) { .cabinet-mode #queue:has(>.approval-card) { max-width:760px; margin-inline:auto; } }
 @media (max-width:359px) { .cabinet-mode .approval-body .pricing-fields { grid-template-columns:minmax(0,1fr); } }
 
+.campaign-ai-description { margin:0; white-space:pre-line; overflow-wrap:anywhere; }
 .campaign-review-note { display:grid; gap:5px; padding-block:10px; border-bottom:1px solid var(--line-soft); overflow-wrap:anywhere; }
 .campaign-review-note > :is(h3,p) { margin:0; font-size:13px; line-height:1.45; }
 .campaign-review-note > time { font-size:12px; color:var(--muted); }

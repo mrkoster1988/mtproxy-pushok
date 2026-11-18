@@ -86,7 +86,7 @@ window.pushokControls=(()=>{
  function enhance(){queued=false;
   fieldActions($('tariff-admin-select'),[$('tariff-admin-new')].filter(Boolean));
   for(const select of document.querySelectorAll('select')){if(connected.has(select)||select.hidden||select.multiple||select.size>1||select.id==='order-topic')continue;connected.add(select);select.classList.add('pushok-select');select.setAttribute('aria-haspopup','dialog');select.setAttribute('aria-expanded','false');
-   select.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();open(select);});select.addEventListener('mousedown',e=>e.preventDefault());select.addEventListener('click',e=>{e.preventDefault();if(active?.select!==select)open(select);});
+   select.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();});select.addEventListener('mousedown',e=>e.preventDefault());select.addEventListener('click',e=>{e.preventDefault();if(active?.select!==select)open(select);});
    select.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||(e.altKey&&!['ArrowDown','ArrowUp'].includes(e.key)))return;if(['Enter',' ','ArrowDown','ArrowUp','F4'].includes(e.key)){e.preventDefault();open(select);}else if(e.key.length===1){e.preventDefault();open(select,{query:e.key});}});
   }
   forms();
@@ -102,5 +102,5 @@ window.pushokControls=(()=>{
  }
  function schedule(){if(!queued){queued=true;requestAnimationFrame(enhance);}}
  new MutationObserver(schedule).observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['disabled','hidden']});window.addEventListener('hashchange',close);schedule();
- return {help,fieldActions,enhance,open,close};
+ return {help,fieldActions,enhance,open,close,uses:container=>Boolean(active&&container.contains(active.trigger))};
 })();

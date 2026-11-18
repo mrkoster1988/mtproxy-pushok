@@ -23,8 +23,8 @@ class HallCalendar(unittest.TestCase):
         start,end=hall.bounds('month',dt('2030-01-31T22:00:00'))
         self.assertEqual(start.isoformat(),'2030-02-01T00:00:00+03:00')
         self.assertEqual(end.isoformat(),'2030-03-01T00:00:00+03:00')
-        start,end=hall.bounds('week',dt('2030-01-06T22:00:00'))
-        self.assertEqual(start.weekday(),0);self.assertEqual((end-start).days,7)
+        with self.assertRaises(ValueError):
+            hall.bounds('week',dt('2030-01-06T22:00:00'))
         self.assertEqual(hall.bounds('year',dt('2030-12-31T22:00:00'))[0].year,2031)
 
     def test_settings_validation(self):
@@ -113,7 +113,9 @@ class HallIntegration(unittest.TestCase):
         self.actor={'id':self.admin,'role':'admin'}
         self.assertIn('totals',self.request('GET','/hall/admin'))
         self.request('PUT','/hall/admin/settings',422,json={'top_size':201,'rewards':{}})
-        self.request('PUT','/hall/admin/settings',200,json={'top_size':25,'rewards':{'week':{'invited':[1000]}}})
+        self.request('PUT','/hall/admin/settings',422,json={'top_size':25,'rewards':{'week':{'invited':[1000]}}})
+        self.request('GET','/hall?kind=week',422)
+        self.request('PUT','/hall/admin/settings',200,json={'top_size':25,'rewards':{'month':{'invited':[1000]}}})
         self.assertEqual(self.request('GET','/hall/admin')['settings']['top_size'],25)
 
     def test_failed_credit_rolls_back_period_and_retry(self):

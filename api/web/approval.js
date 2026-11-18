@@ -63,13 +63,16 @@ window.pushokApproval=(()=>{
   });
  }
  const decisionsInFlight=new Set();
- const needsDecision=c=>c&&!c.archived_at&&c.moderation_status==='pending'&&c.moderation_check==='review';
+ const needsDecision=c=>c&&!c.archived_at&&((c.moderation_status==='pending'&&c.moderation_check==='review')||(c.moderation_status==='rejected'&&c.ai_rejected));
  function saveModeration(c,body){
   return api('/operator/campaigns/'+c.id+'/moderation',{method:'POST',body});
  }
  function moderationSummary(c,options){
   const row=window.pushokViews.campaignSummary(c,'moderation',{actions:false,...options});
-  if(!needsDecision(c))return row;
+  return row;
+ }
+ function addDecisionButtons(row,c){
+  if(!['admin','operator'].includes(me?.role)||!needsDecision(c))return;
   const period=row.querySelector('.tile-period'),tools=el('span',undefined,'quick-moderation-actions');
   tools.setAttribute('role','group');tools.setAttribute('aria-label','Решение по заявке');
   const session=token,user=me.id;
@@ -78,12 +81,12 @@ window.pushokApproval=(()=>{
    if(!authorized()||decisionsInFlight.has(c.id))return;
    decisionsInFlight.add(c.id);
    try{
-    const body={decision};
+    const body={decision};if(c.ai_rejected)body.reconsider_ai=true;
     if(decision==='rejected'){
      body.comment=await rejectionReason(c);
      if(!body.comment)return;
     }
-    if(!authorized()||!needsDecision(campaigns.find(item=>item.id===c.id)))return;
+    if(!authorized()||!needsDecision(campaigns.find(item=>item.id===c.id)||c))return;
     let result;
     try{
      result=await saveModeration(c,body);
@@ -97,7 +100,7 @@ window.pushokApproval=(()=>{
     const current=campaigns.find(item=>item.id===c.id);
     if(current){
      current.moderation_status=result.moderation_status;current.payment_status=result.payment_status;
-     current.moderator_comment=result.moderator_comment;
+     current.moderator_comment=result.moderator_comment;current.ai_rejected=false;
     }
     render();
     try{await refresh();}catch{if(authorized())notice('Решение сохранено. Обновите список заявок.');return;}
@@ -252,7 +255,7 @@ window.pushokApproval=(()=>{
   if(!c.archived_at)archivedQueue();
  }
  async function download(path,name){const session=token;const response=await fetch('/api/v1'+path,{headers:{Authorization:'Bearer '+token}});if(!response.ok)throw Error('Не удалось скачать файл. Обновите состояние.');const blob=await response.blob();if(session!==token||!me)return;const url=URL.createObjectURL(blob),a=el('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);}
- return {resetSelection(){selected='';},sync(items){if(currentUser!==me?.id){selected='';currentUser=me?.id;}campaigns=items;render();},render,clear(){window.pushokAssistant?.reset();campaigns=[];selected='';currentUser='';root.replaceChildren();$('queue-filter').hidden=false;$('queue-count').hidden=false;}};
+ return {addDecisionButtons,resetSelection(){selected='';},sync(items){if(currentUser!==me?.id){selected='';currentUser=me?.id;}campaigns=items;render();},render,clear(){window.pushokAssistant?.reset();campaigns=[];selected='';currentUser='';root.replaceChildren();$('queue-filter').hidden=false;$('queue-count').hidden=false;}};
 })();
 
 if(me&&['admin','operator'].includes(me.role))window.pushokApproval.sync(operatorCampaigns);

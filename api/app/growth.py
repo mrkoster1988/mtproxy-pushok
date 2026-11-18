@@ -66,11 +66,16 @@ class OfferEdit(OfferInput):
 
 
 class ReferralSettings(Input):
+    registration_bonus_kopecks: int | None = Field(default=None, ge=0, le=1000000, strict=True)
     referrals_enabled: bool
     reward_percent: int = Field(ge=1, le=100, strict=True)
     reward_days: int = Field(ge=1, le=365, strict=True)
     reward_mode: Literal['coupon', 'bonus'] = 'coupon'
     reward_bonus_kopecks: int = Field(default=10000, ge=1, le=1000000, strict=True)
+
+
+class ReferralAssignment(Input):
+    inviter_user_id: UUID
 
 
 class ClaimInput(Input):
@@ -152,6 +157,14 @@ def short_referral_code(conn, uid):
     raise HTTPException(503, 'growth_link_unavailable')
 
 
+def check_referral_cycle(conn, uid, inviter_id):
+    cycle = conn.execute('''WITH RECURSIVE parents(id) AS (
+        SELECT %s::uuid UNION SELECT r.inviter_user_id FROM growth_referrals r JOIN parents p ON r.referred_user_id=p.id)
+        SELECT 1 FROM parents WHERE id=%s''', (inviter_id, uid)).fetchone()
+    if cycle:
+        raise HTTPException(409, 'growth_invitation_unavailable')
+
+
 def claim_referral(conn, uid, code):
     conn.execute('SELECT pg_advisory_xact_lock(736102484)')
     conn.execute('SELECT id FROM users WHERE id=%s FOR UPDATE', (uid,))
@@ -169,11 +182,7 @@ def claim_referral(conn, uid, code):
         raise HTTPException(409, 'growth_invitation_already_bound')
     if conn.execute('SELECT 1 FROM campaigns WHERE advertiser_user_id=%s LIMIT 1', (uid,)).fetchone():
         raise HTTPException(409, 'growth_invitation_before_order')
-    cycle = conn.execute('''WITH RECURSIVE parents(id) AS (
-        SELECT %s::uuid UNION SELECT r.inviter_user_id FROM growth_referrals r JOIN parents p ON r.referred_user_id=p.id)
-        SELECT 1 FROM parents WHERE id=%s''', (inviter['user_id'], uid)).fetchone()
-    if cycle:
-        raise HTTPException(409, 'growth_invitation_unavailable')
+    check_referral_cycle(conn, uid, inviter['user_id'])
     conn.execute('''INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days,reward_mode,reward_bonus_kopecks)
         VALUES(%s,%s,%s,%s,%s,%s)''', (uid, inviter['user_id'], settings['reward_percent'], settings['reward_days'],
                                    settings['reward_mode'], settings['reward_bonus_kopecks']))
@@ -251,7 +260,8 @@ def router_for(get_dsn, get_user, require_admin):
                 FROM growth_wallet_rewards WHERE inviter_user_id=%s''', (user['id'],)).fetchone()
             # Пригласившему не выдаём телефоны, Telegram ID или заявки друга.
             invitations = conn.execute('''SELECT r.created_at,r.reward_mode,r.reward_percent,r.reward_days,r.reward_bonus_kopecks,
-                CASE WHEN w.reversal_id IS NOT NULL OR (o.id IS NOT NULL AND NOT o.active) THEN 'reversed'
+                CASE WHEN w.inviter_user_id<>r.inviter_user_id OR o.recipient_user_id<>r.inviter_user_id THEN 'previous_inviter'
+                     WHEN w.reversal_id IS NOT NULL OR (o.id IS NOT NULL AND NOT o.active) THEN 'reversed'
                      WHEN w.entry_id IS NOT NULL OR o.id IS NOT NULL THEN 'rewarded' ELSE 'waiting' END AS status
                 FROM growth_referrals r LEFT JOIN growth_wallet_rewards w ON w.referred_user_id=r.referred_user_id
                 LEFT JOIN growth_offers o ON o.reward_for_user_id=r.referred_user_id
@@ -291,15 +301,61 @@ def router_for(get_dsn, get_user, require_admin):
                     WHERE (o.deleted_at IS NOT NULL)=%s ORDER BY o.created_at DESC LIMIT 200''',(deleted,)).fetchall()}
         return db(action)
 
+    @router.put('/admin/growth/referrals/{uid}')
+    def assign_referral(uid: UUID, payload: ReferralAssignment, admin=Depends(require_admin)):
+        def action(conn):
+            admin_lock(conn, admin)
+            conn.execute('SELECT pg_advisory_xact_lock(736102484)')
+            inviter = payload.inviter_user_id
+            accounts = conn.execute("SELECT id FROM users WHERE id IN (%s,%s) AND telegram_user_id>0",
+                                    (uid, inviter)).fetchall()
+            if uid == inviter:
+                raise HTTPException(409, 'growth_invitation_unavailable')
+            if len(accounts) != 2:
+                raise HTTPException(404, 'user_profile_not_found')
+            check_referral_cycle(conn, uid, inviter)
+            previous = conn.execute("SELECT inviter_user_id FROM growth_referrals WHERE referred_user_id=%s FOR UPDATE",
+                                    (uid,)).fetchone()
+            if previous and previous['inviter_user_id'] == inviter:
+                return {'saved': True}
+            conn.execute("""INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_mode,
+                    reward_percent,reward_days,reward_bonus_kopecks)
+                SELECT %s,%s,reward_mode,reward_percent,reward_days,reward_bonus_kopecks FROM growth_settings
+                ON CONFLICT (referred_user_id) DO UPDATE SET inviter_user_id=EXCLUDED.inviter_user_id""", (uid, inviter))
+            conn.execute("""INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'referral_bound',
+                jsonb_build_object('referred',%s::uuid,'previous_inviter',%s::uuid,'inviter',%s::uuid))""",
+                (admin['id'], uid, previous['inviter_user_id'] if previous else None, inviter))
+            return {'saved': True}
+        return db(action)
+
+    @router.delete('/admin/growth/referrals/{uid}/from/{inviter_id}')
+    def remove_referral(uid: UUID, inviter_id: UUID, admin=Depends(require_admin)):
+        def action(conn):
+            admin_lock(conn, admin)
+            conn.execute('SELECT pg_advisory_xact_lock(736102484)')
+            removed = conn.execute("""DELETE FROM growth_referrals WHERE referred_user_id=%s AND inviter_user_id=%s
+                RETURNING referred_user_id""", (uid, inviter_id)).fetchone()
+            if removed:
+                conn.execute("""INSERT INTO audit_events(actor_user_id,event_type,details_json)
+                    VALUES(%s,'referral_bound',jsonb_build_object('referred',%s::uuid,'previous_inviter',%s::uuid,'inviter',NULL))""",
+                    (admin['id'], uid, inviter_id))
+            return {'removed': bool(removed)}
+        return db(action)
+
     @router.put('/admin/growth/settings')
     def settings(payload: ReferralSettings, response: Response, admin=Depends(require_admin)):
         no_cache(response)
         def action(conn):
             admin_lock(conn, admin)
             conn.execute('''UPDATE growth_settings SET referrals_enabled=%s,reward_percent=%s,reward_days=%s,
-                reward_mode=%s,reward_bonus_kopecks=%s''',
+                reward_mode=%s,reward_bonus_kopecks=%s,
+                registration_bonus_kopecks=coalesce(%s,registration_bonus_kopecks)''',
                          (payload.referrals_enabled, payload.reward_percent, payload.reward_days,
-                          payload.reward_mode, payload.reward_bonus_kopecks))
+                          payload.reward_mode, payload.reward_bonus_kopecks, payload.registration_bonus_kopecks))
+            if payload.registration_bonus_kopecks:
+                conn.execute('''SELECT pushok_registration_bonus(u.id,%s) FROM users u
+                    WHERE u.telegram_user_id>0 AND NOT EXISTS (SELECT 1 FROM wallet_entries w
+                        WHERE w.operation_key='registration:'||u.id) ORDER BY u.id''', (payload.registration_bonus_kopecks,))
             conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'growth_settings_changed',%s::jsonb)", (admin['id'], payload.model_dump_json()))
             return {'saved':True}
         return db(action)

@@ -74,6 +74,42 @@ class ReferralBalanceIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
             return ledger.accounts(conn,self.owner)['BONUS']
 
+    def test_registration_bonus_existing_new_and_repeated_save(self):
+        self.addCleanup(lambda: self.settings(registration_bonus_kopecks=0))
+        self.settings(registration_bonus_kopecks=4500)
+        self.settings(registration_bonus_kopecks=6000)
+        with psycopg.connect(self.dsn) as conn:
+            new = conn.execute("INSERT INTO users(telegram_user_id) VALUES(%s) RETURNING id", (self.telegram+3,)).fetchone()[0]
+            for uid, amount in ((self.owner,4500),(self.friend,4500),(new,6000)):
+                entries = conn.execute("SELECT delta,currency FROM wallet_entries WHERE operation_key=%s", ('registration:'+str(uid),)).fetchall()
+                self.assertEqual(entries, [(amount,'BONUS')])
+            self.assertEqual(conn.execute("SELECT balance FROM wallet_accounts WHERE user_id=%s AND currency='BONUS'", (new,)).fetchone()[0],6000)
+
+    def test_admin_moves_invitee_once_and_prevents_cycles(self):
+        self.bind()
+        path = '/admin/growth/referrals/'+str(self.friend)
+        payload = {'inviter_user_id':str(self.admin)}
+        self.request('PUT',path,403,json=payload)
+        self.actor = {'id':self.admin,'role':'admin'}
+        for _ in range(2):
+            self.request('PUT',path,json=payload)
+        self.request('PUT','/admin/growth/referrals/'+str(self.admin),409,json={'inviter_user_id':str(self.friend)})
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute("SELECT inviter_user_id FROM growth_referrals WHERE referred_user_id=%s",(self.friend,)).fetchone()[0],self.admin)
+
+    def test_removing_rewarded_invitation_preserves_journal(self):
+        self.bind()
+        cid = self.order()
+        self.external(cid)
+        self.complete(cid)
+        self.actor = {'id':self.admin,'role':'admin'}
+        path = '/admin/growth/referrals/'+str(self.friend)
+        self.assertTrue(self.request('DELETE',path+'/from/'+str(self.owner))['removed'])
+        self.request('PUT',path,json={'inviter_user_id':str(self.admin)})
+        with psycopg.connect(self.dsn) as conn:
+            reward=conn.execute("SELECT inviter_user_id,amount FROM growth_wallet_rewards WHERE referred_user_id=%s",(self.friend,)).fetchone()
+            self.assertEqual(reward,(self.owner,12345))
+
     def test_snapshot_preserved_settings_changed_and_off(self):
         self.bind();cid=self.order();self.external(cid)
         self.settings(referrals_enabled=False,reward_mode='coupon',reward_bonus_kopecks=100)
