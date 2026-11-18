@@ -82,7 +82,8 @@ def check_management_navigation(browser, base, output, failures, dsn):
                         details = section.locator('details.payment-fold[open]')
                         for fold in details.all():
                             fold.locator('summary').click()
-                        section.screenshot(path=str(output / f'payment-methods-{width}.png'))
+                        section.screenshot(path=str(output / f'payment-methods-{width}.png'),
+                                           style='.cabinet-topbar,.mobile-bottom-nav{visibility:hidden!important}')
                 if key == 'tariffs':
                     field, action = admin.locator('#tariff-admin-select').bounding_box(), admin.locator('#tariff-admin-new').bounding_box()
                     assert action['x'] >= field['x'] + field['width'] + 7
