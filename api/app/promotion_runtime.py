@@ -174,6 +174,8 @@ def handle(conn, request):
     plan=desired(conn,request['host'],int(request['port']),request.get('resolved_host'))
     if request.get('action')=='failure':
         if plan.get('node_id') and request.get('code') in FAILURE_CODES:
+            if request['code'] == 'default_binding_missing' and plan.get('reason') != request['code']:
+                return {'recorded': True}  # Отложенный отчёт уже потерял актуальность.
             record_failure(conn,plan['node_id'],request['code'])
             return {'recorded':True}
         return {'recorded':False}

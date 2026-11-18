@@ -18,7 +18,10 @@ def render_lifecycle_notice(item):
     event=item.get('event_type')
     if event not in TEXTS:
         raise ValueError('invalid_lifecycle_event')
-    setup=item.get('reason') in ('binding_missing','binding_changed','default_binding_missing')
+    if event == 'failed' and item.get('reason') == 'default_binding_missing':
+        return ('🐱 MTProxy Pushok\n\nДля свободного периода на узле ещё не готов тег резервного канала. '
+                'В разделе «Узлы и спонсорство» проверьте подключение Telegram и состояние автоматической привязки.')
+    setup=item.get('reason') in ('binding_missing','binding_changed')
     text=TEXTS[event]
     if event=='failed' and setup:
         text='⚙️ Нужна настройка автозапуска: спонсорский тег канала не подготовлен для этого узла. После сохранения привязки агент продолжит работу автоматически.'
