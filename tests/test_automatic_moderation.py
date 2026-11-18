@@ -195,6 +195,11 @@ class AutomaticRejectionIntegration(unittest.TestCase):
         order['tariff_id']=str(order['tariff_id'])
         with patch.object(ai.public_channels,'lookup',return_value=published):
             self.request('POST','/orders',409,json=order)
+            # Переход старого имени к новому каналу не переносит блокировку по имени.
+            other=dict(published,telegram_channel_id=identity-1)
+            original='https://t.me/'+self.db('SELECT telegram_url FROM sponsor_channels WHERE id=(SELECT channel_id FROM campaigns WHERE id=%s)',(cid,))[0]['telegram_url'].rsplit('/',1)[-1]
+            with patch.object(ai.public_channels,'lookup',return_value=dict(other,telegram_url=original)):
+                self.request('POST','/orders',201,json={**order,'request_id':str(uuid4()),'channel':{'title':alias,'telegram_url':original}})
             self.act(self.admin)
             entry=next(b for b in self.request('GET','/operator/channel-blocks')['items'] if b['telegram_channel_id']==str(identity))
             path='/operator/channel-blocks/'+entry['id']

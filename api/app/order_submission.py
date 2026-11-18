@@ -86,8 +86,10 @@ def create_order(dsn, payload, user):
                 conn.execute("""INSERT INTO sponsor_channels(owner_user_id,telegram_url,title)
                                 VALUES(%s,%s,%s) ON CONFLICT(owner_user_id,telegram_url) DO NOTHING""",
                              (user["id"], url, title))
-                channel = conn.execute("SELECT id,archived_at FROM sponsor_channels WHERE owner_user_id=%s AND telegram_url=%s FOR UPDATE",
+                channel = conn.execute("SELECT id,archived_at,telegram_channel_id FROM sponsor_channels WHERE owner_user_id=%s AND telegram_url=%s FOR UPDATE",
                                        (user["id"], url)).fetchone()
+            if channel['telegram_channel_id'] is not None and channel['telegram_channel_id'] != checked['telegram_channel_id']:
+                raise HTTPException(422, 'channel_identity_changed')
             if channel.get('archived_at'):
                 raise HTTPException(409, 'management_restore_channel')
             conn.execute('UPDATE sponsor_channels SET moderation_chat_id=%s WHERE id=%s',

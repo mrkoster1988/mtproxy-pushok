@@ -98,6 +98,16 @@ def check_moderation_layout(browser, base, output, failures, dsn):
 
     try:
         admin = launch('admin')
+        go(admin, 'pending')
+        with psycopg.connect(dsn) as conn:
+            event = conn.execute("INSERT INTO ai_moderation_events(campaign_id,decision,reason,revision,category) VALUES(%s,'rejected','Тестовое основание','ui','adult') RETURNING id", (cases['pending'],)).fetchone()[0]
+            conn.execute("INSERT INTO channel_moderation_blocks(telegram_channel_id,telegram_url,event_id) VALUES(%s,'https://t.me/layout_blocked',%s)", (-int(event.hex[:12],16),event))
+        panel = admin.locator('details').filter(has=admin.get_by_text('Чёрный список каналов',exact=True))
+        panel.locator('summary').click()
+        expect(panel).to_contain_text('layout_blocked')
+        panel.get_by_role('button',name='Убрать из списка').click()
+        expect(panel).to_contain_text('Каналов в этом списке нет.')
+        panel.locator('summary').click()
         for state, title in (('processing', 'ИИ проверяет'), ('retry', 'Ожидает повтора'), ('review', 'У модератора')):
             with psycopg.connect(dsn) as conn:
                 conn.execute('DELETE FROM ai_moderation_checks WHERE campaign_id=%s', (cases['pending'],))
