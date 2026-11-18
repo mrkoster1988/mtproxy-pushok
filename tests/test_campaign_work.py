@@ -162,6 +162,10 @@ class CampaignWorkIntegration(unittest.TestCase):
                 card = next(item for item in self.request('GET', '/campaigns') if item['id'] == first)
                 self.assertEqual(card['moderation_check'], 'processing')
                 self.assertIsNone(card['moderation_retry_at'])
+                self.act(self.admin)
+                check = self.request('GET', '/community/moderation/' + first)['check']
+                self.assertEqual(check['decision'], 'processing')
+                self.assertIn('ИИ проверяет', check['reason'])
                 self.assertEqual(ai.service_once(self.dsn, limit=1)['review'], 1)
                 self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s', (second,))[0]['decision'], 'review')
                 self.assertEqual(ai.service_once(self.dsn, limit=1)['review'], 0)
