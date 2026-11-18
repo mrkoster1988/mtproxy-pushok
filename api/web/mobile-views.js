@@ -157,6 +157,7 @@ window.pushokViews=(()=>{
   if(c.moderation_status==='rejected'||c.payment_status==='refunded')return 'Запуск не планируется';
   if(start)return (c.auto_schedule_tag_pending?'Предварительный запуск · ':'Запуск по расписанию · ')+launchTime(start);
   if(c.auto_schedule_paused)return 'Запуск приостановлен · ожидает нового расписания';
+  if(c.requested_start_at&&(c.moderation_status!=='approved'||(c.price_kopecks_snapshot>0&&c.payment_status!=='verified')))return 'Желаемое начало: '+launchTime(c.requested_start_at);
   if(c.moderation_status==='draft')return 'Запуск после подачи и одобрения заявки';
   if(c.moderation_status==='changes_requested')return 'Запуск после исправлений и повторной модерации';
   if(c.moderation_status==='pending')return 'Срок запуска уточнится после модерации';
@@ -187,7 +188,7 @@ window.pushokViews=(()=>{
   if(c.topic_label)copy.append(el('small',c.topic_label,'campaign-topic'));
   const open=onOpen?button('',()=>onOpen(item)):link('',destination);iconAction(open,openIcon,openLabel||'Открыть кампанию '+title(c));const current=campaignState(c),stateBadge=badge(current[0],current[1]);stateBadge.classList.add('campaign-current');head.append(channelAvatar(c.channel_id,title(c),c.channel_url),copy,stateBadge,open);item.append(head);
   const period=el('p',undefined,'tile-period'),periodText=el('span',launchPeriod(c));
-  if(c.requested_start_at&&!c.scheduled_start_at&&!c.archived_at&&!['cancelled','completed'].includes(c.placement_status)&&c.moderation_status!=='rejected')periodText.append(el('small','Желаемое начало: '+launchTime(c.requested_start_at),'tile-requested'));
+  if(c.requested_start_at&&!c.scheduled_start_at&&!c.archived_at&&c.placement_status==='not_scheduled'&&c.moderation_status==='approved'&&c.payment_status==='verified'&&!c.auto_start_not_before)periodText.append(el('small','Желаемое начало: '+launchTime(c.requested_start_at),'tile-requested'));
   period.append(periodText);item.append(period);
   if(mode==='sponsors')item.classList.add('sponsor-placement');
   item.append(statusSteps(c,true));
