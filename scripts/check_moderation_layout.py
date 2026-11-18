@@ -107,7 +107,8 @@ def check_moderation_layout(browser, base, output, failures, dsn):
                         CASE WHEN %s='retry' THEN now()+interval '30 seconds' ELSE NULL END
                     FROM campaigns WHERE id=%s""", ('review' if state=='review' else 'retry',
                         '' if state=='processing' else 'Требуется повторная проверка.', state,state,cases['pending']))
-            admin.evaluate("cabinet.go('moderation')")
+            # Навигация использует уже загруженную очередь. Перечитываем её после изменения тестовой БД.
+            admin.evaluate('() => refresh()')
             check = go(admin, 'pending').locator('.campaign-tile')
             expect(check).to_contain_text(title)
             expect(check.locator('.campaign-review-note')).to_be_visible()
