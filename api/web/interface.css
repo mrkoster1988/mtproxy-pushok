@@ -126,3 +126,34 @@
 .campaign-pay-action svg{width:20px;height:20px}
 @media(prefers-reduced-motion:no-preference){.campaign-pay-action{animation:campaign-pay-edge 2.4s ease-in-out infinite}}
 @keyframes campaign-pay-edge{0%,100%{box-shadow:0 0 0 1px #60eca033}50%{box-shadow:0 0 8px 2px #60eca099}}
+
+/* Campaign actions and checkout share the same mobile touch targets. */
+.cabinet-mode .campaign-buy-actions{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.4fr);gap:10px;margin-top:14px}
+.cabinet-mode .campaign-buy-actions>a,.cabinet-mode .campaign-buy-actions>button,.cabinet-mode .labeled-action{display:inline-flex;align-items:center;justify-content:center;gap:7px;width:100%;min-width:0;min-height:44px;height:auto;padding:9px 10px;border-radius:11px;box-sizing:border-box;font-size:.875rem;font-weight:700;line-height:1.25;text-align:center;text-decoration:none}
+.cabinet-mode .campaign-buy-actions svg,.cabinet-mode .labeled-action svg{width:18px;height:18px;flex:none;color:inherit}
+.cabinet-mode .campaign-buy-actions>.campaign-pay-action,.cabinet-mode .action-positive{background:#26b96b;color:#05291a;border:1px solid #63e6a1}
+.cabinet-mode .campaign-buy-actions>.campaign-delete-action,.cabinet-mode .action-negative{background:#983544;color:#fff;border:1px solid #ee8391;box-shadow:0 0 8px #ff64743b}
+.cabinet-mode .campaign-buy-actions>.campaign-delete-action svg{color:inherit}
+@media(prefers-reduced-motion:no-preference){.campaign-delete-action{animation:campaign-delete-edge 2.4s ease-in-out infinite}}
+@keyframes campaign-delete-edge{50%{box-shadow:0 0 9px 1px #f255695c}}
+.cabinet-mode .action-positive:disabled{opacity:.5;box-shadow:none;cursor:default}
+.cabinet-mode .checkout-heading{padding:12px 0 3px}.checkout-heading h2{margin:4px 0}.checkout-heading small,.checkout-heading span{color:var(--muted)}
+.cabinet-mode .payment-navigation{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.cabinet-mode .payment-navigation a{display:inline-flex;align-items:center;gap:6px;min-height:40px;text-decoration:none}.payment-navigation svg{width:18px;height:18px}
+.cabinet-mode .payment-navigation [hidden]{display:none}
+.cabinet-mode .wallet-checkout{display:grid;gap:9px;margin:12px 0;padding:16px;border:1px solid #337872;border-radius:14px;background:linear-gradient(125deg,#12353b,#102736)}
+.cabinet-mode .wallet-checkout[hidden]{display:none}.wallet-checkout p,.wallet-checkout h3{margin:0}.bonus-checkout-heading{display:flex;align-items:center;gap:8px}.bonus-checkout-heading svg{color:#69d8b3}
+.cabinet-mode .wallet-balances .card[data-currency=BONUS]{background:linear-gradient(135deg,#12383c,#102c35);border-color:#336d65}
+.cabinet-mode .wallet-bonus-shortcut{display:block;margin-top:7px;color:#74e6ad;font-size:.82rem;font-weight:650}
+.cabinet-mode .wallet-group,.cabinet-mode .payment-group{display:grid;gap:7px;margin:14px 0 20px}
+.cabinet-mode .wallet-group>h2,.cabinet-mode .payment-group>h2,.cabinet-mode .approval-author>h3{font-size:1rem;margin:0 0 3px}
+.cabinet-mode .wallet-group>.wallet-disclosure{margin:0;border-radius:10px}
+.cabinet-mode .wallet-group summary{min-height:44px}
+.cabinet-mode .approval-author{display:grid;gap:6px;margin:12px 0}
+.cabinet-mode .moderation-reason-actions{display:grid;grid-template-columns:1fr 1.3fr;gap:10px;margin-top:12px}
+.cabinet-mode .moderation-reason-dialog{max-height:85dvh;overflow:auto}
+
+.cabinet-mode .moderation-group{display:grid;gap:10px;margin-bottom:18px}
+.cabinet-mode .moderation-group>h2{display:flex;align-items:center;gap:9px;font-size:1rem;margin:2px 0}
+.queue-total{display:inline-grid;place-items:center;min-width:1.5rem;padding:2px 5px;background:var(--surface-2,#1c3947);color:var(--muted);border-radius:8px;font-size:.77rem}
+.cabinet-mode .payment-group .mobile-card-list{display:grid;gap:10px}

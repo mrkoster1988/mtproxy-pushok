@@ -221,7 +221,11 @@ window.pushokViews=(()=>{
    const own=mode!=='sponsors' || c.advertiser_user_id===me?.id;
    const action=own?link('Оплатить','payments/'+c.id):window.pushokLinks.share('pay_'+c.id.replaceAll('-',''),'Оплата размещения в puShok');
    if(!own)action.replaceChildren(document.createTextNode('Поделиться ссылкой на оплату'));
-   action.prepend(icon(own?'wallet':'share'));action.classList.add('campaign-pay-action');item.append(action);
+   action.prepend(icon(own?'wallet':'share'));action.classList.add('campaign-pay-action');
+   const bar=el('div',undefined,'campaign-buy-actions');
+   const remove=window.pushokManagement.archiveCampaign(bar,c,mode==='payments'?'payments':'campaigns');
+   remove.classList.add('campaign-delete-action');remove.append(el('span','Удалить'));
+   bar.append(action);item.append(bar);
    return item;
   }
   if(mode==='reports'){

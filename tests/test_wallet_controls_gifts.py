@@ -184,6 +184,22 @@ class WalletControlsGiftsIntegration(unittest.TestCase):
         self.assertEqual(self.balances()['BONUS'],12345)
         self.assertTrue(self.redeem(gift['code'])['already_redeemed'])
 
+    def test_telegram_full_bonus_redemption_never_uses_cash(self):
+        cid=self.campaign(surface='telegram')
+        route='/wallet/campaigns/'+str(cid)+'/pay'
+        self.actor={'id':self.owner,'role':'advertiser','login_surface':'telegram'}
+        self.credit('RUB',40000)
+        self.credit('BONUS',29999)
+        payload=dict(currency='BONUS',expected_amount=30000)
+        self.request('POST',route,expected=409,json=payload)
+        self.assertEqual(self.balances()['RUB'],40000)
+        self.credit('BONUS',1)
+        self.request('POST',route,expected=409,json=dict(payload,expected_amount=29999))
+        for _ in range(2):
+            result=self.request('POST',route,json=payload)
+            self.assertEqual((result['bonus_amount'],result['cash_amount']),(30000,0))
+        self.assertEqual((self.balances()['BONUS'],self.balances()['RUB']),(0,40000))
+
     def test_stars_internal_payment_preserves_personal_balance_unknown(self):
         self.credit('XTR',300);cid=self.campaign(surface='telegram',xtr=151)
         self.actor={'id':self.owner,'role':'advertiser','login_surface':'telegram'}
