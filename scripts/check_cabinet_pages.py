@@ -937,7 +937,8 @@ def main():
                     stars_cid=mini.evaluate("location.hash.split('/')[2]")
                     with psycopg.connect(PostgresIntegration.dsn) as connection:
                         connection.execute("UPDATE campaigns SET moderation_status='approved',payment_status='awaiting_payment' WHERE id=%s",(stars_cid,))
-                    refresh(mini);go(mini,'create/'+stars_cid)
+                    mini.evaluate('() => refreshStatuses()')
+                    expect(mini.locator('#order-result h2')).to_have_text('Ваша заявка')
                     expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата Stars выключена')
                     from app import stars_checkout
                     from app.bot_stars import parse_attempt

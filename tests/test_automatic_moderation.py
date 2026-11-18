@@ -255,7 +255,7 @@ class AutomaticRejectionIntegration(unittest.TestCase):
             self.assertEqual(self.db('SELECT decision FROM ai_moderation_checks WHERE campaign_id=%s', (cid,))[0]['decision'], 'retry')
             ai.service_once(self.dsn, limit=1)
             self.assertEqual(len(self.db('SELECT id FROM ai_moderation_events WHERE campaign_id=%s', (cid,))), 1)
-        self.db("UPDATE ai_moderation_checks SET attempted_at=now()-interval '6 minutes' WHERE campaign_id=%s", (cid,))
+        self.db("UPDATE ai_moderation_checks SET attempted_at=now()-interval '6 minutes',retry_at=now()-interval '1 second' WHERE campaign_id=%s", (cid,))
         with self.ai_result(), patch.object(ai.topics, 'public_sample', return_value=unavailable):
             self.assertEqual(ai.service_once(self.dsn, limit=1)['rejected'], 1)
         self.assertEqual(self.db('SELECT decision FROM bot_advertiser_notice_outbox WHERE campaign_id=%s', (cid,)), [{'decision':'rejected'}])

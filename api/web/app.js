@@ -1062,8 +1062,11 @@ function editingControl(){
  return [...document.querySelectorAll('.assistant-output:not(:empty),details[open]:not(.assistant-open)')].some(node=>node.getClientRects().length);
 }
 async function refreshStatuses(){
- const route=location.hash.split('/')[1]||'dashboard';
- if(!me||!token||document.hidden||statusRefreshBusy||!['dashboard','campaigns','campaign','payments','moderation'].includes(route))return;
+ const [,route,campaignId]=location.hash.split('/');
+ const view=route||'dashboard';
+ const orderResult=view==='create'&&Boolean(campaignId);
+ if(!me||!token||document.hidden||statusRefreshBusy)return;
+ if(!orderResult&&!['dashboard','campaigns','campaign','payments','moderation'].includes(view))return;
  if(editingControl())return;
  statusRefreshBusy=true;
  try{await refresh({background:true});}catch{}finally{statusRefreshBusy=false;}

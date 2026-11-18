@@ -98,6 +98,25 @@ def check_moderation_layout(browser, base, output, failures, dsn):
 
     try:
         admin = launch('admin')
+        for state, title in (('processing', 'ИИ проверяет'), ('retry', 'Ожидает повтора'), ('review', 'У модератора')):
+            with psycopg.connect(dsn) as conn:
+                conn.execute('DELETE FROM ai_moderation_checks WHERE campaign_id=%s', (cases['pending'],))
+                conn.execute("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision,decision,reason,lease_until,retry_at)
+                    SELECT id,updated_at,'ui-test',%s,%s,
+                        CASE WHEN %s='processing' THEN now()+interval '2 minutes' ELSE NULL END,
+                        CASE WHEN %s='retry' THEN now()+interval '30 seconds' ELSE NULL END
+                    FROM campaigns WHERE id=%s""", ('review' if state=='review' else 'retry',
+                        '' if state=='processing' else 'Требуется повторная проверка.', state,state,cases['pending']))
+            # Навигация использует уже загруженную очередь. Перечитываем её после изменения тестовой БД.
+            admin.evaluate('() => refresh()')
+            check = go(admin, 'pending').locator('.campaign-tile')
+            expect(check).to_contain_text(title)
+            expect(check.locator('.campaign-review-note')).to_be_visible()
+            if state=='retry':
+                expect(check.locator('.campaign-review-note')).to_contain_text('Следующая попытка')
+            assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+        with psycopg.connect(dsn) as conn:
+            conn.execute('DELETE FROM ai_moderation_checks WHERE campaign_id=%s', (cases['pending'],))
         card = go(admin, 'scheduled')
         for width in (320, 390, 768, 1280):
             admin.set_viewport_size({'width': width, 'height': 844})

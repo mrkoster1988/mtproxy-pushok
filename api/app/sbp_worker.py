@@ -83,16 +83,18 @@ def service_once(dsn, *, apply=False, limit=20):
             conn.execute('SELECT pg_advisory_unlock(%s)', (_LOCK,))
 
 
-def schedule_loop(dsn, stopped, limit=20):
+def schedule_loop(dsn, stopped, limit=20, wakeup=None):
     """Расписание не ждёт сети банка или списаний кошелька. Повтор безопасен."""
     while not stopped.is_set():
+        if wakeup is not None:
+            wakeup.clear()
         try:
             result = schedule_once(dsn, limit=limit)
         except psycopg.Error:
             result = {'status': 'retry'}
         if result.get('scheduled') or result.get('status'):
             print(json.dumps({'slots': result}), flush=True)
-        stopped.wait(5)
+        (wakeup if wakeup is not None else stopped).wait(5)
 
 
 def moderation_tick(dsn):
@@ -102,8 +104,10 @@ def moderation_tick(dsn):
         return {'status': 'retry'}
 
 
-def moderation_loop(dsn, stopped):
+def moderation_loop(dsn, stopped, wakeup=None):
     while not stopped.is_set():
+        if wakeup is not None:
+            wakeup.clear()
         try:
             result = moderation_tick(dsn)
         except Exception as exc:
@@ -112,7 +116,7 @@ def moderation_loop(dsn, stopped):
         failed = result['status'] == 'retry'
         if failed or any(result.get(key) for key in ('approved', 'rejected', 'review', 'retry')):
             print(json.dumps({'ai_moderation': result}), flush=True)
-        stopped.wait(60 if failed else 5)
+        (wakeup if wakeup is not None else stopped).wait(5)
 
 
 def main():
@@ -129,10 +133,17 @@ def main():
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stopped.set())
     if not args.once:
-        threading.Thread(target=schedule_loop, args=(os.environ['DATABASE_URL'], stopped, args.limit),
+        from .campaign_work import listen
+        schedule_wakeup = threading.Event()
+        moderation_wakeups = [threading.Event() for _ in range(2)]
+        threading.Thread(target=listen,
+                         args=(os.environ['DATABASE_URL'], stopped, schedule_wakeup, moderation_wakeups),
+                         name='campaign-events', daemon=True).start()
+        threading.Thread(target=schedule_loop, args=(os.environ['DATABASE_URL'], stopped, args.limit, schedule_wakeup),
                          name='automatic-slots', daemon=True).start()
-        threading.Thread(target=moderation_loop, args=(os.environ['DATABASE_URL'], stopped),
-                         name='automatic-moderation', daemon=True).start()
+        for index, wakeup in enumerate(moderation_wakeups):
+            threading.Thread(target=moderation_loop, args=(os.environ['DATABASE_URL'], stopped, wakeup),
+                             name=f'automatic-moderation-{index}', daemon=True).start()
     while True:
         try:
             result = service_once(os.environ['DATABASE_URL'], apply=args.apply, limit=args.limit)

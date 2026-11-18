@@ -160,9 +160,12 @@ def router_for(dsn,current_user):
         def read(c):
             campaign=c.execute('SELECT moderation_status,updated_at FROM campaigns WHERE id=%s',(cid,)).fetchone()
             if not campaign:raise HTTPException(404,'campaign_not_found')
-            row=c.execute("""SELECT decision,reason,description,category,evidence,attempted_at
+            row=c.execute("""SELECT CASE WHEN lease_until>now() THEN 'processing' ELSE decision END AS decision,
+                CASE WHEN lease_until>now() THEN 'ИИ проверяет публичные сведения и публикации канала.'
+                    ELSE reason END AS reason,description,category,evidence,attempted_at,
+                CASE WHEN lease_until>now() THEN NULL ELSE retry_at END AS retry_at
                 FROM ai_moderation_checks WHERE campaign_id=%s
-                AND (%s <> 'pending' OR (snapshot=%s AND reason<>''))""",
+                AND (%s <> 'pending' OR (snapshot=%s AND (reason<>'' OR lease_until>now())))""",
                 (cid,campaign['moderation_status'],campaign['updated_at'])).fetchone()
             if row:
                 # Атрибуция по журналу, а не по совпадению текста комментария.
