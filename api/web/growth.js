@@ -114,9 +114,22 @@ window.pushokGrowth=(()=>{
    const mine=await api('/growth/me');if(version!==overviewEpoch||session!==token||uid!==me?.id)return;
    const signature=JSON.stringify([mine.referrals_enabled,mine.link,mine.invited,mine.reward_mode,mine.reward_bonus_kopecks,mine.reward_percent,mine.reward_days]);
    if(card.dataset.snapshot===signature){card.querySelector('h2').lastChild.textContent='Приглашайте друзей';card.removeAttribute('title');card.setAttribute('aria-busy','false');return;}
+   const expanded=card.dataset.inviteLink===mine.link && card.querySelector('.invite-toggle')?.getAttribute('aria-expanded')==='true';
    const head=el('div',undefined,'section-heading'),title=el('h2','Приглашайте друзей');title.prepend(window.pushokViews.icon('users'));head.append(title);card.replaceChildren(head);
    card.append(el('p',mine.referrals_enabled?'За первое оплаченное рублями и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены.','muted'));
-   referralLink(card,mine);const info=el('div',undefined,'referral-meta'),more=el('a','Бонусы и условия');more.href='#/growth';info.append(el('span','Приглашено: '+mine.invited),more);card.append(info);card.dataset.snapshot=signature;card.removeAttribute('title');card.setAttribute('aria-busy','false');
+   if(mine.referrals_enabled && mine.link){
+    card.dataset.inviteLink=mine.link;
+    const invite=el('div',undefined,'invite-details');
+    invite.id='home-invite-details';
+    invite.hidden=!expanded;
+    if(mine.invite_qr){
+     const qr=el('img');qr.src=mine.invite_qr;qr.alt='QR-код с вашей реферальной ссылкой';invite.append(qr);
+    }
+    referralLink(invite,mine);
+    const toggle=button('Пригласить друга',()=>{invite.hidden=!invite.hidden;toggle.setAttribute('aria-expanded',String(!invite.hidden));});
+    toggle.classList.add('invite-toggle');toggle.setAttribute('aria-controls',invite.id);toggle.setAttribute('aria-expanded',String(!invite.hidden));card.append(toggle,invite);
+   }else{delete card.dataset.inviteLink;}
+   const info=el('div',undefined,'referral-meta'),more=el('a','Бонусы и условия');more.href='#/growth';info.append(el('span','Приглашено: '+mine.invited),more);card.append(info);card.dataset.snapshot=signature;card.removeAttribute('title');card.setAttribute('aria-busy','false');
   }catch(e){if(version===overviewEpoch&&session===token&&uid===me?.id){card.querySelector('h2').lastChild.textContent='Приглашения · нет связи';card.title='Не удалось обновить приглашение. Повторим при следующем обновлении.';card.setAttribute('aria-busy','false');}}
  }
  async function load(node){

@@ -89,7 +89,7 @@ def check_campaign_cards(browser, base, output, failures, dsn):
 
     try:
         client, operator, outsider = launch('advertiser'), launch('operator'), launch('outsider')
-        for route in ('dashboard', 'campaigns', 'reports', 'payments', 'campaign/' + str(paid), 'payments/' + str(paid), 'create/' + str(paid)):
+        for route in ('campaigns', 'reports', 'payments', 'campaign/' + str(paid), 'payments/' + str(paid), 'create/' + str(paid)):
             card = check(client, route, paid, 'campaign/' + str(paid))
             if route == 'campaigns':
                 card.get_by_role('link', name='Оплатить', exact=True).click()

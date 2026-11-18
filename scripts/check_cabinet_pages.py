@@ -301,7 +301,7 @@ def main():
                 expect(draft_tag).to_have_value('b' * 32)
 
                 advertiser = new_page("advertiser")
-                expect(advertiser.locator('[data-page=dashboard] .empty-state')).to_contain_text('Здесь появятся кампании')
+                expect(advertiser.locator('.dashboard-campaigns')).to_have_count(0)
                 expect(advertiser.locator('[data-page=dashboard] .campaign-tile')).to_have_count(0)
                 proxy=advertiser.get_by_role('link',name='Подключить прокси',exact=True)
                 expect(proxy).to_be_visible()
@@ -320,8 +320,12 @@ def main():
                 expect(proxy).not_to_have_attribute('aria-disabled', 'true')
                 print('PASS: dashboard proxy link from real API survives connection refresh', flush=True)
                 assert proxy.evaluate("e=>getComputedStyle(e).backgroundColor==='rgb(217, 71, 80)'")
-                expect(advertiser.locator(".dashboard-hero-actions").get_by_role("link",name="Продвигать канал",exact=True)).to_be_visible()
-                assert proxy.evaluate("e=>e.nextElementSibling.textContent==='Продвигать канал'")
+                expect(advertiser.locator(".dashboard-hero-actions").get_by_role("link",name="Продвигать канал",exact=True)).to_have_count(0)
+                go(advertiser,'campaigns')
+                promote=advertiser.get_by_role('link',name='Продвигать канал',exact=True)
+                expect(promote).to_be_visible()
+                expect(promote).to_have_attribute('href','#/create')
+                go(advertiser,'dashboard')
                 assert advertiser.locator(".dashboard-help").evaluate("e=>e.previousElementSibling.id==='dashboard-referral'")
                 expect(advertiser.locator('[data-page=dashboard] .payment-counts')).to_have_count(0)
                 go(advertiser, "settings", expected_page="dashboard")
@@ -1593,7 +1597,7 @@ def main():
                     window.fetch=(url,options)=>['/api/v1/wallet','/api/v1/growth/me'].includes(String(url))?new Promise(resolve=>{
                         window.__pendingRefresh.push(()=>window.__originalFetch(url,options).then(resolve));
                     }):window.__originalFetch(url,options);
-                    const tile=document.querySelector('[data-page=dashboard] .campaign-tile');
+                    const tile=document.querySelector('.dashboard-hero');
                     const y=tile.getBoundingClientRect().top,scroll=scrollY;
                     const referral=document.querySelector('#dashboard-referral .referral-overview'),invite=referral.querySelector('.referral-link');
                     window.__stable={tile,referral,invite,y,scroll,samples:[],stop:false};
@@ -1607,7 +1611,7 @@ def main():
                     const s=window.__stable;s.stop=true;window.fetch=window.__originalFetch;
                     return s.referral===document.querySelector('#dashboard-referral .referral-overview') &&
                       s.invite===document.querySelector('#dashboard-referral .referral-link') &&
-                      s.tile===document.querySelector('[data-page=dashboard] .campaign-tile') &&
+                      s.tile===document.querySelector('.dashboard-hero') &&
                       s.samples.length>2 && s.samples.every(([y,scroll])=>Math.abs(y-s.y)<1&&Math.abs(scroll-s.scroll)<1);
                 }"""), 'Background refresh moved the dashboard or recreated its cards'
                 for width in (320,390,1280):
@@ -1647,6 +1651,12 @@ def main():
                 expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
                 expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
                 assert advertiser.locator('#dashboard-referral').evaluate("e=>e.nextElementSibling.classList.contains('dashboard-help')&&e.nextElementSibling===e.parentElement.lastElementChild")
+                invite=advertiser.get_by_role('button',name='Пригласить друга',exact=True)
+                expect(invite).to_have_attribute('aria-expanded','false')
+                invite.click()
+                qr=advertiser.get_by_alt_text('QR-код с вашей реферальной ссылкой')
+                expect(qr).to_be_visible()
+                assert qr.evaluate('img=>img.complete && img.naturalWidth>0')
                 share=advertiser.locator('#dashboard-referral').get_by_role('link',name='Поделиться реферальной ссылкой',exact=True)
                 expect(share).to_be_visible()
                 from urllib.parse import urlparse,parse_qs
