@@ -169,11 +169,11 @@ window.pushokViews=(()=>{
   item.append(el('p',c.placement_status==='active'&&c.scheduled_end_at?'До '+date(c.scheduled_end_at):c.scheduled_start_at?'Начало: '+date(c.scheduled_start_at):c.requested_start_at?'Желаемое начало: '+date(c.requested_start_at):'Дата — по согласованию','tile-period'));
   if(mode==='sponsors')item.classList.add('sponsor-placement');
   item.append(statusSteps(c,true));
-  if(c.moderation_status==='pending'&&!c.archived_at){
+  if(c.moderation_status==='pending'&&!c.archived_at&&c.moderation_check){
    const section=el('section',undefined,'campaign-review-note');
    section.append(el('h3','Проверка заявки'));
    const fallback={review:'Для решения нужна проверка модератора.',retry:'Система повторит проверку.'};
-   section.append(el('p',c.moderation_reason||fallback[c.moderation_check]||'Результата проверки пока нет.'));
+   section.append(el('p',c.moderation_reason||fallback[c.moderation_check]));
    if(c.moderation_attempted_at){
     const at=el('time','Последняя попытка · '+date(c.moderation_attempted_at));
     at.dateTime=c.moderation_attempted_at;section.append(at);

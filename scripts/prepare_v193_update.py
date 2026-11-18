@@ -22,6 +22,7 @@ KNOWN_HOTFIXES = {
     },
     'api/web/mobile-views.js': {
         'a9b40b5e830cbd8c387a731ad89dc819512ed15e',
+        'a7f580ba662bc88c811733ab0e79caf4a353f958',
     },
     'api/web/moderation.css': {
         '592309966e33c6aaadfb4400b6b791f33a98bac7',
