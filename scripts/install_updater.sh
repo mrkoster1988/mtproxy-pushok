@@ -45,7 +45,7 @@ from pathlib import Path
 fd, path = tempfile.mkstemp(dir='.control')
 with os.fdopen(fd, 'w') as stream:
     os.fchown(stream.fileno(), 10001, 10001)
-    json.dump({'version':1}, stream)
+    json.dump({'version':2}, stream)
 os.replace(path, '.control/installed.json')
 MARKER
 systemctl enable --now mtproxy-pushok-updater.path mtproxy-pushok-updater.timer

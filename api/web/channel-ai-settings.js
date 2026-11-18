@@ -1,6 +1,6 @@
 'use strict';
 window.pushokAI=(()=>{
- let generation=0,controller=null,session='',dirty=false,busy=false;
+ let generation=0,controller=null,session='',dirty=false,busy=false,expanded;
  const messages={
   channel_ai_invalid:'Проверьте модель и ключ: без пробелов и переносов строк.',
   channel_ai_key_required:'Введите ключ OpenAI API.',
@@ -15,7 +15,7 @@ window.pushokAI=(()=>{
   channel_ai_response_invalid:'Модель не прошла проверку определения тематики. Выберите другую или повторите.',
   channel_ai_unavailable:'OpenAI не ответил. Проверьте соединение сервера и повторите.'
  };
- function reset(){generation++;controller?.abort();controller=null;session='';dirty=false;busy=false;$('channel-ai-settings')?.replaceChildren();}
+ function reset(){expanded=undefined;generation++;controller?.abort();controller=null;session='';dirty=false;busy=false;$('channel-ai-settings')?.replaceChildren();}
  async function request(path,options={}){
   controller?.abort();const own=new AbortController();controller=own;
   const timer=setTimeout(()=>own.abort(),10000);
@@ -27,10 +27,12 @@ window.pushokAI=(()=>{
   if(!force&&session===token&&(dirty||busy))return;
   const currentSession=token,uid=me.id,version=++generation;session=token;
   const valid=()=>version===generation&&currentSession===token&&uid===me?.id&&me?.role==='admin';
+  const previous=host.querySelector('details.ai-settings-card');
+  if(previous)expanded=previous.open;
   host.replaceChildren(el('p','Загружаем настройки ИИ…','muted'));
   try{
    const saved=await request('');if(!valid())return;dirty=false;busy=false;
-   const box=el('details',undefined,'ai-settings-card'),heading=el('summary');box.open=!saved.key_saved;
+   const box=el('details',undefined,'ai-settings-card'),heading=el('summary');box.open=expanded??!saved.key_saved;
    const title=el('span','ИИ · Возможности','ai-settings-title');title.prepend(window.pushokViews.icon('filter'));
    const badge=el('span',saved.enabled?'Включён':'Выключен','ai-state');badge.classList.toggle('active',saved.enabled);
    heading.append(title,badge);box.append(heading);

@@ -1341,8 +1341,27 @@ def main():
                 expect(admin.locator('#software-update')).to_be_enabled()
                 release_fixture.return_value={**release_fixture.return_value,'state':'current','available_version':api.app.version}
                 admin.locator('#software-check').click()
-                expect(admin.locator('#software-update')).to_be_disabled()
+                expect(admin.locator('#software-update')).to_have_attribute('aria-label','Повторить установку v'+api.app.version)
+                expect(admin.locator('#software-update')).to_be_enabled()
                 expect(admin.locator('#software-update-notice')).to_be_hidden()
+                control_fixture.update(auto_supported=True,auto_enabled=False,update={'state':'succeeded'})
+                admin.locator('#software-check').click()
+                expect(admin.locator('#software-update')).to_be_disabled()
+                auto=admin.locator('#software-auto')
+                expect(auto).to_be_enabled()
+                toggles=[]
+                def change_auto(route):
+                    value=route.request.post_data_json['enabled']
+                    toggles.append(value)
+                    control_fixture['auto_enabled']=value
+                    route.fulfill(json={'enabled':value})
+                admin.route('**/api/v1/admin/control/auto-update',change_auto)
+                auto.check()
+                expect(admin.locator('#software-auto-status')).to_contain_text('каждый час')
+                auto.uncheck()
+                expect(admin.locator('#software-auto-status')).to_contain_text('выключено')
+                assert toggles==[True,False]
+                admin.unroute('**/api/v1/admin/control/auto-update')
                 admin.unroute('**/api/v1/admin/control')
                 admin.unroute('**/api/v1/admin/control/update')
 

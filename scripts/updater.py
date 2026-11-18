@@ -3,6 +3,7 @@
 import json
 import re
 from contextlib import contextmanager
+import time
 import tempfile
 import os
 import subprocess
@@ -80,6 +81,46 @@ def read_control(name):
 
 
 
+def published_release():
+    # Модуль проверки использует только стандартную библиотеку, в том числе на хосте.
+    from app import releases
+    installed = releases.readme_version((ROOT / 'README.md').read_text(encoding='utf-8'))
+    return releases.check(installed)
+
+
+def queue_automatic_update():
+    # systemd вызывает службу и при закрытом Mini App. Сеть всегда вне блокировки API.
+    with queue_lock():
+        if read_control('auto-update.json').get('enabled') is not True:
+            return
+        if (CONTROL / 'request.json').exists() or read_control('status.json').get('state') == 'running':
+            return
+        check = read_control('auto-check.json')
+        now = time.time()
+        previous = check.get('checked_epoch')
+        if isinstance(previous, (int, float)) and 0 <= now - previous < 3600:
+            return
+        check.update(checked_epoch=now, checked_at=datetime.now(timezone.utc).isoformat(), state='checking')
+        write_control('auto-check.json', check)
+
+    try:
+        release = published_release()
+    except (OSError, ValueError):
+        release = {'state': 'unavailable'}
+    with queue_lock():
+        check['state'] = release['state']
+        sha = release.get('commit')
+        if (release['state'] == 'available' and isinstance(sha, str) and re.fullmatch('[0-9a-f]{40}', sha)
+                and sha != check.get('queued_commit')
+                and read_control('auto-update.json').get('enabled') is True
+                and not (CONTROL / 'request.json').exists()):
+            write_control('request.json', {
+                'action': 'update', 'actor': 'automatic', 'commit': sha, 'at': check['checked_at'],
+            })
+            check.update(queued_commit=sha, state='queued')
+        write_control('auto-check.json', check)
+
+
 def main():
     CONTROL.mkdir(mode=0o700, exist_ok=True)
     with lock_file('host-lock') as lock:
@@ -103,8 +144,11 @@ def main():
                 if previous.get('state') == 'running':
                     status('failed', code='worker_interrupted', stage=previous.get('stage'))
             return
+        request = CONTROL / 'request.json'
+        automatic_target = None
+        if '--bootstrap' not in sys.argv and not request.exists():
+            queue_automatic_update()
         with queue_lock():
-            request = CONTROL / 'request.json'
             if '--bootstrap' not in sys.argv:
                 if not request.exists():
                     previous = read_control('status.json')
@@ -120,6 +164,13 @@ def main():
                     status('failed', code='invalid_request')
                     return
                 request.unlink()
+                if data.get('actor') == 'automatic':
+                    if read_control('auto-update.json').get('enabled') is not True:
+                        return
+                    automatic_target = data.get('commit')
+                    if not isinstance(automatic_target, str) or not re.fullmatch('[0-9a-f]{40}', automatic_target):
+                        status('failed', code='invalid_request')
+                        return
             status('running')
         old = None
         stage = "preflight"
@@ -130,6 +181,9 @@ def main():
             if '--bootstrap' not in sys.argv:
                 run('git', 'fetch', '--no-tags', REMOTE, 'refs/heads/release/stable')
                 target = run('git', 'rev-parse', 'FETCH_HEAD', capture=True).strip()
+                if automatic_target and target != automatic_target:
+                    status('idle', code='published_release_changed')
+                    return
                 run('git', 'merge-base', '--is-ancestor', old, target)
             else:
                 target = old
@@ -170,4 +224,6 @@ def main():
             raise
 
 if __name__ == '__main__':
+    sys.path.insert(0, str(ROOT / 'api'))
+    os.environ['PUSHOK_CONTROL_DIR'] = str(CONTROL)
     main()

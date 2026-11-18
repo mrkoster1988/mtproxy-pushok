@@ -9,15 +9,15 @@
   <title>puShok · MTProxy — кабинет спонсора</title>
   <link rel="stylesheet" href="/assets/styles.css?v=172">
   <link rel="stylesheet" href="/assets/cabinet-reference.css?v=174">
-  <link rel="stylesheet" href="/assets/interface.css?v=185">
+  <link rel="stylesheet" href="/assets/interface.css?v=195.1">
   <link rel="stylesheet" href="/assets/moderation.css?v=195">
-  <link rel="stylesheet" href="/assets/controls.css?v=189">
-  <script src="/assets/app.js?v=195" defer></script>
+  <link rel="stylesheet" href="/assets/controls.css?v=195.1">
+  <script src="/assets/app.js?v=196" defer></script>
   <script src="/assets/campaign-analytics.js?v=172" defer></script>
   <script src="/assets/merchant-settings.js?v=172" defer></script>
-  <script src="/assets/channel-ai-settings.js?v=172" defer></script>
-  <script src="/assets/proxy-provisioning.js?v=186" defer></script>
-  <script src="/assets/proxy-gateway.js?v=186" defer></script>
+  <script src="/assets/channel-ai-settings.js?v=195.1" defer></script>
+  <script src="/assets/proxy-provisioning.js?v=195.1" defer></script>
+  <script src="/assets/proxy-gateway.js?v=195.1" defer></script>
   <script src="/assets/bonus-links.js?v=172" defer></script>
   <script src="/assets/wallet.js?v=183" defer></script>
   <script src="/assets/growth.js?v=195" defer></script>
@@ -31,14 +31,14 @@
   <script src="/assets/verified-profile.js?v=183" defer></script>
   <script src="/assets/hall-of-fame.js?v=195" defer></script>
   <script src="/assets/user-profiles.js?v=185" defer></script>
-  <script src="/assets/community.js?v=195" defer></script>
+  <script src="/assets/community.js?v=195.1" defer></script>
   <script src="/assets/mobile-views.js?v=195" defer></script>
   <script src="/assets/default-sponsor.js?v=172" defer></script>
   <script src="/assets/users.js?v=183" defer></script>
   <script src="/assets/team.js?v=179" defer></script>
   <script src="/assets/application-licenses.js?v=172" defer></script>
-  <script src="/assets/release-notes.js?v=195" defer></script>
-  <script src="/assets/interface.js?v=184" defer></script>
+  <script src="/assets/release-notes.js?v=196" defer></script>
+  <script src="/assets/interface.js?v=195.1" defer></script>
   <script src="/assets/controls.js?v=195" defer></script>
   <script src="/assets/pages.js?v=194" defer></script>
 </head>
@@ -264,14 +264,24 @@
             <p id="tariff-admin-status" class="muted" role="status">Способы оплаты включаются отдельно в разделе «Управление → Платежи».</p>
           </section>
         </div>
-        <div id="settings-system" class="settings-panel" hidden><section id="channel-ai-settings" aria-label="Настройки ИИ"></section><section id="proxy-gateway-settings" aria-label="Единый вход и интересы"></section><section id="proxy-provisioning-settings" aria-label="Автосоздание прокси"></section><section class="panel" id="home-banner-settings"><h3>Главная · Баннер</h3><form id="home-banner-form"><label>Заголовок<input id="home-banner-title" maxlength="100" required></label><label>Подпись<input id="home-banner-subtitle" maxlength="180"></label><div id="home-banner-preview" class="panel"></div><button type="submit">Сохранить текст</button><button type="button" id="home-banner-reset">Стандартный текст</button></form></section>
-<section class="core-health" aria-labelledby="default-sponsor-heading"><h3 id="default-sponsor-heading">Канал по умолчанию</h3>
+        <div id="settings-system" class="settings-panel" hidden>
+          <div class="automation-settings-list" data-settings-group="automation" hidden>
+            <section id="channel-ai-settings" aria-label="Настройки ИИ"></section>
+            <section id="proxy-provisioning-settings" aria-label="Автосоздание прокси"></section>
+            <section id="proxy-gateway-settings" aria-label="Единый вход и интересы"></section>
+            <details class="settings-section ai-settings-card">
+              <summary><span class="ai-settings-title"><svg class="ui-icon" aria-hidden="true"><use href="/assets/pushok-icons.svg?v=188#pi-channel"></use></svg>Канал по умолчанию</span></summary>
+              <div class="ai-settings-content">
 <p>Продвигать этот канал, когда нет текущей рекламной кампании. Добавьте канал в разделе «Мои каналы», затем выберите его здесь. Оплаченные кампании имеют приоритет.</p>
 <form id="default-sponsor-form"><fieldset id="default-sponsor-fields" disabled><label>Канал<select id="default-sponsor-channel"></select></label>
 <details><summary>Подготовить тег для узла</summary><p>Если привязка этого канала уже настроена в разделе узлов, повторно вводить тег не нужно. Для нескольких узлов сохраните их привязки по очереди.</p>
 <label>Узел канала по умолчанию<select id="default-sponsor-node"></select></label><label>Тег канала из MTProxyBot<input id="default-sponsor-tag" type="password" minlength="32" maxlength="32" pattern="[0-9a-fA-F]{32}" autocomplete="off"></label>
 <label><input id="default-sponsor-confirmed" type="checkbox">Тег получен для выбранного канала и узла</label></details>
-<button type="submit">Сохранить канал по умолчанию</button></fieldset></form><p id="default-sponsor-status" role="status"></p></section>
+<button type="submit">Сохранить канал по умолчанию</button></fieldset></form><p id="default-sponsor-status" role="status"></p>
+              </div>
+            </details>
+          </div>
+          <section class="panel" id="home-banner-settings"><h3>Главная · Баннер</h3><form id="home-banner-form"><label>Заголовок<input id="home-banner-title" maxlength="100" required></label><label>Подпись<input id="home-banner-subtitle" maxlength="180"></label><div id="home-banner-preview" class="panel"></div><button type="submit">Сохранить текст</button><button type="button" id="home-banner-reset">Стандартный текст</button></form></section>
 <section class="core-health" aria-labelledby="team-heading"><h3 id="team-heading">Администраторы и операторы</h3>
 <p>Найдите пользователя по @никнейму, имени или ID и выберите его. Перед назначением он должен один раз войти в кабинет. Администратор имеет полный доступ к настройкам, оператор — к модерации и размещениям.</p>
 <form id="team-form"><fieldset id="team-fields" disabled><div id="team-user-picker"></div><label>Роль<select id="team-role"><option value="admin">Администратор</option><option value="operator">Оператор</option><option value="advertiser">Рекламодатель · снять права</option></select></label><button type="submit">Сохранить роль</button></fieldset></form>
@@ -294,7 +304,9 @@
 <div class="update-actions"><button type="button" id="software-check">Проверить</button><button type="button" id="software-update" class="primary" disabled>Установить обновление</button></div>
 <a id="software-changelog" target="_blank" rel="noopener noreferrer" hidden>Что изменилось ↗</a>
 <p id="software-update-status" role="status" aria-live="polite"></p>
-<p class="muted update-note">Проверяем при входе и каждые 5 минут, пока кабинет открыт. Установка — по кнопке, с резервной копией; при перезапуске кабинет временно недоступен.</p>
+<label id="software-auto-row" class="verification-opt-in" hidden><span>Автоматически устанавливать обновления</span><input id="software-auto" type="checkbox" disabled></label>
+<p id="software-auto-status" class="muted update-note" role="status"></p>
+<p class="muted update-note">Перед установкой сервер создаёт резервную копию. Кабинет кратковременно перезапускается.</p>
 </section>
 <section class="core-health"><h3>Фирменные эмодзи PushokIcons</h3>
 <p>Загрузите опубликованный набор и выберите иконки для кнопок бота. Изменения применяются без перезапуска.</p>
@@ -329,7 +341,7 @@
       </div>
     </section>
 
-    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.95</span></footer>
+    <footer><span class="footer-brand">✳ puShok <small>MTProxy</small></span><span>Сделано с заботой о вашем канале · v1.96</span></footer>
   </main>
 </body>
 </html>

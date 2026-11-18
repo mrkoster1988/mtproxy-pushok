@@ -102,6 +102,38 @@ class UpdaterTests(unittest.TestCase):
         self.assertFalse(any('create' in c or 'merge' in c or 'compose' in c for c in self.commands))
         self.assertEqual(updater.read_control('status.json')['stage'], 'preflight')
 
+    def test_automatic_check_is_opt_in_and_uses_existing_update_pipeline(self):
+        sha = 'a' * 40
+        with patch.object(updater, 'published_release', return_value={'state':'available','commit':sha}) as discover:
+            updater.main()
+            discover.assert_not_called()
+            updater.write_control('auto-update.json', {'enabled': True})
+            def run(*args, capture=False):
+                value = self.fake_run(*args, capture=capture)
+                return sha if args == ('git', 'rev-parse', 'FETCH_HEAD') else value
+            with patch.object(updater, 'run', side_effect=run):
+                updater.main()
+                self.assertEqual(updater.read_control('status.json')['commit'], sha)
+                updater.main()
+                self.assertEqual(discover.call_count, 1)
+                with patch.object(updater.time, 'time', return_value=updater.time.time() + 3601):
+                    updater.main()
+            self.assertEqual(discover.call_count, 2)
+            self.assertEqual(sum('create' in c for c in self.commands), 1)
+            self.assertFalse((self.root / '.control/request.json').exists())
+
+    def test_unavailable_or_changed_release_never_starts_installation(self):
+        updater.write_control('auto-update.json', {'enabled': True})
+        with patch.object(updater, 'published_release', return_value={'state':'unavailable'}):
+            with patch.object(updater, 'run') as run:
+                updater.main()
+                run.assert_not_called()
+        self.assertEqual(updater.read_control('auto-check.json')['state'], 'unavailable')
+        self.request(json.dumps({'action':'update','actor':'automatic','commit':'a' * 40}))
+        with patch.object(updater, 'run', side_effect=self.fake_run):
+            updater.main()
+        self.assertFalse(any('compose' in c or 'create' in c for c in self.commands))
+
     def test_git_commands_disable_interactive_password_prompt(self):
         with patch.object(updater.subprocess, 'run') as execute:
             updater.run('git', 'fetch', '--no-tags', updater.REMOTE, 'refs/heads/release/stable')
