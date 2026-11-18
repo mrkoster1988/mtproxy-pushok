@@ -1,5 +1,6 @@
 """Ограниченный диалог владельца с @MTProxyBot; никаких выдуманных callback_data."""
 import asyncio
+import hashlib
 import re
 import time
 from urllib.parse import parse_qs, urlparse
@@ -118,6 +119,11 @@ def promoted_channel(message):
     return values.pop() if len(values) == 1 else None
 
 
+def empty_promotion(message):
+    return (promoted_channel(message) is None and
+            re.search(r'(?im)^[ \t]*(?:promoted channel|рекомендованный канал)[ \t]*:[ \t]*n/a\.?[ \t]*$', text(message)) is not None)
+
+
 def buttons(message):
     for row in getattr(message, 'buttons', None) or []:
         for button in row:
@@ -136,6 +142,14 @@ def buttons(message):
 
 def snapshot(message):
     return (text(message), tuple((b.text, getattr(b, 'data', None)) for b in buttons(message)))
+
+
+def registration_tag(message):
+    value = text(message)
+    if not re.search(r'(?i)\bsuccess(?:ful(?:ly)?)?\b|\b(?:is now|has been) registered\b', value):
+        return None
+    tags = re.findall(r'(?i)\btag\b[^\n:]{0,90}[:=]\s*`?([a-f0-9]{32})\b', value)
+    return tags[0].lower() if len(tags) == 1 else None
 
 
 class MTProxyDialog:
@@ -234,6 +248,21 @@ class MTProxyDialog:
                 raise BotProtocolError('tag_changed')
         return card
 
+    async def registration_receipt(self, host, port, secret, tag):
+        # Старый агент сохранял только намерение. Сверяем последовательность
+        # исходящих сообщений и положительную квитанцию именно этого бота.
+        history = list(reversed(await self.client.get_messages(self.bot, limit=100)))
+        for command, address_prompt, address, secret_prompt, supplied, receipt in zip(
+                history, history[1:], history[2:], history[3:], history[4:], history[5:]):
+            if not all(m.out for m in (command, address, supplied)):
+                continue
+            if not all(not m.out and m.sender_id == self.bot.id for m in (address_prompt, secret_prompt, receipt)):
+                continue
+            if (text(command).strip() == '/newproxy' and text(address).strip() == f'{host}:{port}'
+                    and text(supplied).strip().lower() == secret and registration_tag(receipt) == tag):
+                return True
+        return False
+
     async def register(self, request, state):
         """Никаких повторов /newproxy после неопределённого исхода отправки."""
         import ipaddress
@@ -249,6 +278,8 @@ class MTProxyDialog:
         identity = {'host':host,'port':port}
         if previous and any(previous.get(k)!=v for k,v in identity.items()):
             raise BotProtocolError('proxy_identity_not_verified')
+        digest = hashlib.sha256(secret.encode('ascii')).hexdigest()
+        receipt_tag = previous.get('tag') if previous and previous.get('secret_sha256') == digest else None
         try:
             card = await self.select([host],port,allow_missing=True)
         except BotProtocolError as exc:
@@ -264,16 +295,22 @@ class MTProxyDialog:
                 raise BotProtocolError('registration_prompt_invalid')
             # Сохраняем намерение ДО финальной отправки. При обрыве — только чтение.
             state.save_file(marker,identity)
-            await self.send(secret)
+            receipt_tag = registration_tag(await self.send(secret))
+            if receipt_tag:
+                state.save_file(marker,dict(identity,tag=receipt_tag,secret_sha256=digest))
+            previous = identity
             card = await self.select([host],port,allow_missing=True)
         secrets = set(re.findall(r'(?i)secret\s*[:=]\s*[`\s]*([a-f0-9]{32})(?![a-f0-9])',text(card)))
         for url in urls(card)+re.findall(r'(?:https?://t\.me/proxy\?[^\s<>]+|tg://proxy\?[^\s<>]+)',text(card)):
             values = parse_qs(urlparse(url).query).get('secret',[])
             secrets.update(v[2:] if v.startswith('dd') and len(v)==34 else v for v in values)
-        if {s.lower() for s in secrets} != {secret}:
-            raise BotProtocolError('registration_secret_mismatch')
         tag = card_tag(card,[host],port)
-        state.save_file(marker,dict(identity,tag=tag))
+        if secrets:
+            if {s.lower() for s in secrets} != {secret}:
+                raise BotProtocolError('registration_secret_mismatch')
+        elif receipt_tag != tag and not (previous and await self.registration_receipt(host,port,secret,tag)):
+            raise BotProtocolError('registration_uncertain')
+        state.save_file(marker,dict(identity,tag=tag,secret_sha256=digest))
         return {'tag':tag,'bot_message_id':card.id}
 
     async def prepare(self, request):
@@ -307,7 +344,7 @@ class MTProxyDialog:
             if not matches:
                 raise BotProtocolError('binding_not_verified')
         return {'tag': tag, 'channel_username': target if matches else None,
-                'telegram_channel_id': channel.id, 'bot_message_id': card.id}
+                'telegram_channel_id': channel.id, 'bot_message_id': card.id, 'promotion_empty': empty_promotion(card)}
 
     async def matches_promotion(self, card, target, channel_id):
         shown = promoted_channel(card)

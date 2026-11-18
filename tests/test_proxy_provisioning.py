@@ -274,6 +274,8 @@ class ProvisioningIntegration(unittest.TestCase):
         self.assertTrue(bind('owner_verified',**proof)['accepted'])
         self.assertFalse(bind('owner_verified',**proof)['accepted'])  # Пауза Telegram обязательна.
         self.execute("UPDATE telegram_binding_jobs SET retry_at=now()-interval '1 second' WHERE id=%s",binding['job_id'])
+        self.assertFalse(bind('owner_verified',**proof)['accepted'])
+        self.execute("UPDATE telegram_binding_jobs SET verified_at=now()-interval '1 hour' WHERE id=%s",binding['job_id'])
         self.assertTrue(bind('owner_verified',**proof)['accepted'])
         auto_schedule.service_once(self.dsn)
         current=self.execute('SELECT * FROM campaigns WHERE id=%s',self.target)[0]

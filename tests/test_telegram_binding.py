@@ -1,6 +1,6 @@
 """Внешняя привязка: очередь, запрет раннего запуска, повтор и полный период."""
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import unittest
 from uuid import uuid4
 import psycopg
@@ -63,7 +63,7 @@ class BindingQueueTests(unittest.TestCase):
             self.assertNotIn(self.tag, str(audit))
         auto_schedule.service_once(self.dsn)
         with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
-            self.assertEqual(promotion_runtime.node_plan(conn, self.node)['state'], 'apply')
+            self.assertEqual(promotion_runtime.node_plan(conn, self.node)['reason'], 'waiting_start')
 
     def test_manual_binding_cannot_interrupt_running_or_uncertain_external_change(self):
         job = self.claim()
@@ -117,7 +117,10 @@ class BindingQueueTests(unittest.TestCase):
         self.assertFalse(self.exchange('owner_authorize', job_id=str(job), **self.proof)['accepted'])
         auto_schedule.service_once(self.dsn)
         with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
-            self.assertEqual(promotion_runtime.node_plan(conn, self.node)['state'], 'apply')
+            self.assertEqual(promotion_runtime.node_plan(conn, self.node)['state'], 'idle')
+            campaign = conn.execute('SELECT proxy_node_id,scheduled_start_at FROM campaigns WHERE id=%s', (self.f['campaign'],)).fetchone()
+            self.assertEqual(campaign['proxy_node_id'], self.node['id'])
+            self.assertGreater(campaign['scheduled_start_at'], datetime.now(timezone.utc))
 
     def test_verified_binding_reassigns_full_period_and_duplicate_is_harmless(self):
         auto_schedule.service_once(self.dsn)
@@ -143,6 +146,41 @@ class BindingQueueTests(unittest.TestCase):
             self.assertFalse(row['auto_schedule_tag_pending'])
             self.assertEqual(promotion_runtime.node_plan(conn,self.node)['state'],'apply')
             self.assertNotIn(self.tag,str(binding.public_status(conn)))
+
+    def test_empty_card_after_one_hour_rebinds_and_restarts_the_full_window(self):
+        job = self.claim()
+        self.authorize(job)
+        self.assertTrue(self.exchange('owner_verified', job_id=job, **self.proof)['accepted'])
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            row = conn.execute("""SELECT j.verified_at,c.scheduled_start_at,c.scheduled_end_at
+                FROM telegram_binding_jobs j JOIN campaigns c ON c.id=j.campaign_id WHERE j.id=%s""", (job,)).fetchone()
+            self.assertEqual(row['scheduled_start_at'] - row['verified_at'], timedelta(hours=1))
+            self.assertEqual(row['scheduled_end_at'] - row['scheduled_start_at'], timedelta(hours=1))
+            self.assertEqual(promotion_runtime.node_plan(conn, self.node)['state'], 'idle')
+        self.mature(job)
+        unknown = dict(self.proof,channel_username=None)
+        self.assertFalse(self.exchange('owner_verified', job_id=job, **unknown)['accepted'])
+        self.assertTrue(self.exchange('owner_verified', job_id=job, promotion_empty=True, **unknown)['accepted'])
+        self.assertEqual(self.exchange('owner_claim')['phase'], 'bind')
+        self.assertTrue(self.exchange('owner_verified', job_id=job, **self.proof)['accepted'])
+        self.assertEqual(self.exchange('owner_claim')['state'], 'wait')
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            public = next(j for j in binding.public_status(conn) if str(j['campaign_id']) == str(self.f['campaign']))
+            self.assertGreater(public['planned_start_at'], row['scheduled_start_at'])
+            self.assertEqual(public['planned_start_at'] - public['verified_at'], timedelta(hours=1))
+
+    def test_empty_cached_card_reopens_preparation_for_the_scheduled_campaign(self):
+        self.save_manual()
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE channel_promotion_bindings SET confirmed_at=now()-interval '1 day' WHERE ad_tag=%s", (self.tag,))
+        probe = self.exchange('owner_claim', probe_cached=True)
+        self.assertEqual(probe['state'], 'probe')
+        self.assertEqual(self.exchange('owner_claim', probe_cached=True)['state'], 'wait')
+        report = dict(probe_cached=True, probe_at=probe['probe_at'], channel_id=probe['channel_id'])
+        self.assertFalse(self.exchange('owner_empty_cached', tag=uuid4().hex, **report)['accepted'])
+        self.assertTrue(self.exchange('owner_empty_cached', tag=self.tag, **report)['accepted'])
+        self.assertEqual(self.exchange('owner_claim', probe_cached=True)['phase'], 'inspect')
 
     def test_active_and_manual_scheduled_node_are_not_rebound(self):
         with psycopg.connect(self.dsn) as conn:
@@ -246,7 +284,7 @@ class BindingQueueTests(unittest.TestCase):
         self.mature(job)
         self.assertTrue(self.exchange('owner_verified',job_id=job,**self.proof)['accepted'])
         with psycopg.connect(self.dsn) as conn:
-            self.assertEqual(conn.execute("SELECT count(*) FROM campaigns WHERE proxy_node_id=%s AND placement_status='scheduled'",(self.node['id'],)).fetchone()[0],0)
+            self.assertEqual(conn.execute("SELECT count(*) FROM campaigns WHERE proxy_node_id=%s AND placement_status='scheduled'",(self.node['id'],)).fetchone()[0],1)
 
     def test_prepared_current_campaign_keeps_its_schedule(self):
         self.blocked_forecast_queue()

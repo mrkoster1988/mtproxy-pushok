@@ -90,6 +90,17 @@ class HostBindingTests(unittest.TestCase):
             binding.tick(self.agent,self.request)
         helper.assert_not_called();self.agent.apply.assert_not_called()
 
+    def test_probe_only_reports_explicit_empty_on_the_expected_tag(self):
+        probe = dict(self.job, state='probe', probe_at='stamp', channel_id='channel')
+        for tag, empty in [('a'*32, True), ('b'*32, True), ('a'*32, False)]:
+            self.agent.exchange = Mock(return_value=probe)
+            with patch.object(binding, 'enabled', return_value=True), patch.object(binding, 'helper',
+                    return_value=dict(ok=True, tag=tag, promotion_empty=empty)) as inspect:
+                binding.tick(self.agent, self.request)
+            self.assertEqual(inspect.call_args.args[1]['action'], 'inspect')
+            self.assertEqual(self.agent.exchange.call_count, 2 if empty and tag == 'a'*32 else 1)
+            self.agent.apply.assert_not_called()
+
     def test_lost_result_does_not_erase_server_job(self):
         self.agent.exchange=Mock(side_effect=[self.job,RuntimeError('database disconnected')])
         with patch.object(binding,'enabled',return_value=True),patch.object(binding,'helper',return_value=dict(ok=True,tag='a'*32)):
