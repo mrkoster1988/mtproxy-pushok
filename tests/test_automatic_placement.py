@@ -98,6 +98,26 @@ class AutomaticPlacementTests(unittest.TestCase):
         auto_schedule.service_once(self.dsn)
         row=self.row();self.assertEqual(first,(row['proxy_node_id'],row['scheduled_start_at'],row['scheduled_end_at']))
 
+    def test_blocked_forecast_releases_slot_and_other_channels_can_schedule(self):
+        self.paid()
+        auto_schedule.service_once(self.dsn)
+        self.assertEqual(self.row()['placement_status'],'scheduled')
+        other = self.other()
+        with psycopg.connect(self.dsn) as conn:
+            alternative = conn.execute("""INSERT INTO sponsor_channels(owner_user_id,telegram_url,title)
+                VALUES(%s,%s,'Другой канал') RETURNING id""",(self.f['owner'],'https://t.me/other_'+other.hex)).fetchone()[0]
+            conn.execute('UPDATE campaigns SET channel_id=%s WHERE id=%s',(alternative,other))
+            event = conn.execute("""INSERT INTO ai_moderation_events(campaign_id,decision,reason,revision,category)
+                VALUES(%s,'rejected','Проверено','test','adult') RETURNING id""",(self.f['campaign'],)).fetchone()[0]
+            chat_id = -int(event.hex[:12],16)
+            conn.execute('UPDATE sponsor_channels SET telegram_channel_id=%s WHERE id=%s',(chat_id,self.f['channel']))
+            conn.execute("""INSERT INTO channel_moderation_blocks(telegram_channel_id,telegram_url,event_id)
+                SELECT %s,telegram_url,%s FROM sponsor_channels WHERE id=%s""",(chat_id,event,self.f['channel']))
+        auto_schedule.service_once(self.dsn)
+        self.assertEqual(self.row()['placement_status'],'not_scheduled')
+        self.assertEqual(self.row()['payment_status'],'verified')
+        self.assertEqual(self.row(other)['placement_status'],'scheduled')
+
     def test_busy_and_too_short_gaps_and_other_hold_shift_full_duration(self):
         node=self.f['node'];self.other(node,self.start);self.other(node,self.start+timedelta(minutes=90),timedelta(minutes=30))
         held=self.other(paid=False)

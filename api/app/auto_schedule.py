@@ -75,7 +75,8 @@ def service_once(dsn, limit=20):
         # Ранее выданный прогноз мог попасть на узел без тега. Как только
         # появилась подходящая подтверждённая связь, переоцениваем весь период.
         # Ручные переносы, наблюдения и применённые агентом кампании не трогаем.
-        waiting = conn.execute("""SELECT c.* FROM campaigns c
+        waiting = conn.execute("""SELECT c.*,moderation_channel_blocked(channel) AS channel_blocked FROM campaigns c
+            JOIN sponsor_channels channel ON channel.id=c.channel_id
             WHERE c.archived_at IS NULL AND c.moderation_status='approved'
               AND c.payment_status='verified' AND c.placement_status='scheduled'
               AND NOT c.auto_schedule_paused
@@ -83,8 +84,8 @@ def service_once(dsn, limit=20):
               AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.campaign_id=c.id AND j.phase<>'done')
               AND NOT EXISTS(SELECT 1 FROM placement_observations o WHERE o.campaign_id=c.id)
               AND NOT EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied')
-              AND EXISTS(SELECT 1 FROM sponsor_channels ch WHERE ch.id=c.channel_id AND ch.archived_at IS NULL)
-              AND (c.auto_schedule_tag_pending OR NOT EXISTS(
+              AND channel.archived_at IS NULL
+              AND (moderation_channel_blocked(channel) OR c.auto_schedule_tag_pending OR NOT EXISTS(
                 SELECT 1 FROM channel_promotion_bindings b
                 JOIN proxy_nodes n ON n.id=b.proxy_node_id JOIN sponsor_channels ch ON ch.id=b.channel_id
                 WHERE b.proxy_node_id=c.proxy_node_id AND b.channel_id=c.channel_id
@@ -101,6 +102,8 @@ def service_once(dsn, limit=20):
             conn.execute("""UPDATE campaigns SET placement_status='not_scheduled',proxy_node_id=NULL,
                 scheduled_start_at=NULL,scheduled_end_at=NULL,auto_schedule_tag_pending=true
                 WHERE id=ANY(%s)""", (list(reassigning),))
+        # Снимаем прогноз для запрещённого канала, сохраняя заявку и подтверждённую оплату.
+        waiting = [campaign for campaign in waiting if not campaign['channel_blocked']]
         now = datetime.now(timezone.utc)
         for c in sorted(campaigns+waiting,key=lambda row:(row['requested_start_at'] or row['created_at'],row['created_at'],str(row['id']))):
             floor = c['auto_start_not_before'] or now + timedelta(hours=1)
