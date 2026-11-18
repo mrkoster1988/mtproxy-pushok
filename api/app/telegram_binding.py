@@ -315,6 +315,24 @@ def handle(conn, request):
             error_code=NULL,updated_at=now() WHERE id=%s RETURNING retry_at''',
             (request['owner_telegram_id'],request['telegram_channel_id'],request['bot_message_id'],job['id'])).fetchone()
         if job['campaign_id']:
+            # Пока Telegram готовил голову очереди, могли появиться прогнозы
+            # следующих каналов. Они сдвигаются вслед за ней, а не вытесняют её.
+            # Ручные, наблюдавшиеся и уже применённые периоды остаются занятыми.
+            tail = conn.execute('''SELECT c.* FROM campaigns c WHERE c.proxy_node_id=%s AND c.id<>%s
+                AND c.placement_status='scheduled' AND c.auto_schedule_managed AND c.auto_schedule_tag_pending
+                AND NOT c.auto_schedule_paused AND c.archived_at IS NULL
+                AND c.moderation_status='approved' AND c.payment_status='verified'
+                AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.campaign_id=c.id AND j.phase<>'done')
+                AND NOT EXISTS(SELECT 1 FROM placement_observations o WHERE o.campaign_id=c.id)
+                AND NOT EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied')
+                FOR UPDATE OF c''', (node['id'],job['campaign_id'])).fetchall()
+            for following in tail:
+                conn.execute('''UPDATE campaigns SET placement_status='not_scheduled',proxy_node_id=NULL,
+                    scheduled_start_at=NULL,scheduled_end_at=NULL,updated_at=now() WHERE id=%s''', (following['id'],))
+                conn.execute("INSERT INTO audit_events(campaign_id,event_type,details_json) VALUES(%s,'placement_auto_scheduled',%s::jsonb)",
+                    (following['id'],json.dumps(dict(reason='preceding_preparation_retimed',
+                        previous_node_id=str(node['id']),previous_start_at=following['scheduled_start_at'].isoformat(),
+                        previous_end_at=following['scheduled_end_at'].isoformat()))))
             campaign = conn.execute('SELECT * FROM campaigns WHERE id=%s FOR UPDATE', (job['campaign_id'],)).fetchone()
             floor = window['retry_at']
             duration = timedelta(seconds=campaign['duration_seconds_snapshot'])

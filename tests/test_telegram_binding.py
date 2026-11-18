@@ -48,6 +48,113 @@ class BindingQueueTests(unittest.TestCase):
             json=dict(dict(node_id=str(self.node['id']), channel_id=str(self.f['channel']),
                            ad_tag=self.tag, telegram_binding_confirmed=True), **changes))
 
+    def next_campaign(self):
+        following = self._management_fixture(ready=True)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE proxy_nodes SET status='paused' WHERE id=%s", (following['node'],))
+        return following
+
+    def test_following_campaign_gets_forecast_during_current_propagation(self):
+        job = self.claim()
+        self.authorize(job)
+        self.assertTrue(self.exchange('owner_verified', job_id=job, **self.proof)['accepted'])
+        following = self.next_campaign()
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            current = conn.execute('SELECT * FROM campaigns WHERE id=%s', (self.f['campaign'],)).fetchone()
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            queued = conn.execute('SELECT * FROM campaigns WHERE id=%s', (following['campaign'],)).fetchone()
+            self.assertEqual(queued['placement_status'], 'scheduled')
+            self.assertEqual(queued['proxy_node_id'], self.node['id'])
+            self.assertEqual(queued['scheduled_start_at'], current['scheduled_end_at'] + timedelta(hours=1))
+            self.assertEqual(queued['scheduled_end_at'] - queued['scheduled_start_at'], timedelta(hours=1))
+            self.assertTrue(queued['auto_schedule_tag_pending'])
+            self.assertEqual(conn.execute('SELECT * FROM campaigns WHERE id=%s', (self.f['campaign'],)).fetchone(), current)
+        self.assertEqual(self.exchange('owner_claim')['state'], 'wait')
+        # Повтор не двигает прогноз и не создаёт ещё одну привязку на занятом узле.
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            self.assertEqual(conn.execute('SELECT * FROM campaigns WHERE id=%s', (following['campaign'],)).fetchone(), queued)
+            self.assertEqual(conn.execute('SELECT count(*) AS n FROM telegram_binding_jobs WHERE proxy_node_id=%s', (self.node['id'],)).fetchone()['n'], 1)
+
+    def test_following_channel_reserves_preparation_after_active_campaign(self):
+        following = self.next_campaign()
+        end = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(hours=3)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("""UPDATE campaigns SET placement_status='active',proxy_node_id=%s,
+                scheduled_start_at=now(),scheduled_end_at=%s WHERE id=%s""", (self.node['id'], end, self.f['campaign']))
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            queued = conn.execute('SELECT * FROM campaigns WHERE id=%s', (following['campaign'],)).fetchone()
+            self.assertEqual(queued['scheduled_start_at'], end + timedelta(hours=1))
+            self.assertEqual(queued['scheduled_end_at'] - queued['scheduled_start_at'], timedelta(hours=1))
+        self.assertEqual(self.exchange('owner_claim')['state'], 'wait')
+
+    def test_pending_tail_follows_delayed_head_without_shortening_campaigns(self):
+        job = self.claim()
+        self.authorize(job)
+        self.exchange('owner_verified', job_id=job, **self.proof)
+        following = self.next_campaign()
+        last = self.next_campaign()
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            before = conn.execute('SELECT * FROM campaigns WHERE id=%s', (following['campaign'],)).fetchone()
+            # Telegram задержал первый запуск, но следующий прогноз ещё не начал показ.
+            conn.execute("""UPDATE campaigns SET scheduled_start_at=scheduled_start_at+interval '30 minutes',
+                scheduled_end_at=scheduled_end_at+interval '30 minutes' WHERE id=%s""", (self.f['campaign'],))
+        auto_schedule.service_once(self.dsn, limit=1)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            queued = conn.execute('SELECT * FROM campaigns WHERE id=%s', (following['campaign'],)).fetchone()
+            tail = conn.execute('SELECT * FROM campaigns WHERE id=%s', (last['campaign'],)).fetchone()
+            self.assertEqual(queued['scheduled_start_at'], before['scheduled_start_at'] + timedelta(minutes=30))
+            self.assertEqual(tail['scheduled_start_at'], queued['scheduled_end_at'] + timedelta(hours=1))
+            for row in (queued, tail):
+                self.assertEqual(row['scheduled_end_at'] - row['scheduled_start_at'], timedelta(hours=1))
+                self.assertTrue(row['auto_schedule_tag_pending'])
+
+    def test_rebinding_head_keeps_priority_over_its_unprepared_forecast_tail(self):
+        job = self.claim()
+        self.authorize(job)
+        self.exchange('owner_verified', job_id=job, **self.proof)
+        following = self.next_campaign()
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE telegram_binding_jobs SET phase='bind',verified_at=NULL,retry_at=now() WHERE id=%s", (job,))
+            conn.execute("""UPDATE campaigns SET placement_status='not_scheduled',proxy_node_id=NULL,
+                scheduled_start_at=NULL,scheduled_end_at=NULL WHERE id=%s""", (self.f['campaign'],))
+            conn.execute("""UPDATE campaigns SET scheduled_start_at=now()+interval '45 minutes',
+                scheduled_end_at=now()+interval '105 minutes' WHERE id=%s""", (following['campaign'],))
+        self.assertTrue(self.exchange('owner_verified', job_id=job, **self.proof)['accepted'])
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            current = conn.execute('SELECT c.*,j.verified_at FROM campaigns c JOIN telegram_binding_jobs j ON j.campaign_id=c.id WHERE c.id=%s', (self.f['campaign'],)).fetchone()
+            self.assertEqual(current['scheduled_start_at'], current['verified_at'] + timedelta(hours=1))
+        auto_schedule.service_once(self.dsn)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            queued = conn.execute('SELECT * FROM campaigns WHERE id=%s', (following['campaign'],)).fetchone()
+            self.assertEqual(queued['scheduled_start_at'], current['scheduled_end_at'] + timedelta(hours=1))
+
+    def test_unknown_binding_result_does_not_promise_a_following_slot(self):
+        job = self.claim()
+        following = self.next_campaign()
+        for phase in ('inspect', 'bind'):
+            if phase == 'bind':
+                self.authorize(job)
+            auto_schedule.service_once(self.dsn)
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s', (following['campaign'],)).fetchone()[0], 'not_scheduled')
+
+    def test_free_other_node_prepares_next_channel_before_current_finishes(self):
+        following = self._management_fixture(ready=True)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            conn.execute("""UPDATE campaigns SET placement_status='active',proxy_node_id=%s,
+                scheduled_start_at=now(),scheduled_end_at=now()+interval '3 hours' WHERE id=%s""", (self.node['id'], self.f['campaign']))
+            spare = conn.execute('SELECT host,port FROM proxy_nodes WHERE id=%s', (following['node'],)).fetchone()
+        job = self.exchange('owner_claim', base=dict(spare))
+        self.assertEqual(job['state'], 'job')
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT campaign_id FROM telegram_binding_jobs WHERE id=%s', (job['job_id'],)).fetchone()[0], following['campaign'])
+            self.assertEqual(conn.execute('SELECT placement_status FROM campaigns WHERE id=%s', (self.f['campaign'],)).fetchone()[0], 'active')
+
     def test_changed_keyboard_error_is_visible_without_advancing_binding(self):
         job = self.claim()
         for code in ('bot_button_expired','proxy_list_changed'):
