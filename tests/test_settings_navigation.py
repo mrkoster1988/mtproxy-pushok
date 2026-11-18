@@ -51,7 +51,11 @@ class SettingsNavigationTests(unittest.TestCase):
         html = (ROOT / "api/web/index.html").read_text(encoding="utf-8")
         self.assertNotIn('name="yookassa_api_key"', html)
         self.assertNotIn('id="sbp-enable"', html)
-        self.assertIn("СБП не подключена", html)
+        parser = Tags()
+        parser.feed(html)
+        self.assertIn(('fieldset', 'payment-switch-fields'), parser.ancestors['enable-sbp'])
+        self.assertRegex(html, r'<fieldset[^>]*id="payment-switch-fields"[^>]* disabled>')
+        self.assertRegex(html, r'id="settings-sbp-status">Загрузка…</small>')
         self.assertIn("Telegram Stars", html)
 
 
