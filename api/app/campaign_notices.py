@@ -18,7 +18,10 @@ def record_failure(conn,node_id,code):
     old=conn.execute('SELECT code,resolved_at FROM promotion_incidents WHERE proxy_node_id=%s FOR UPDATE',(node_id,)).fetchone()
     conn.execute('''INSERT INTO promotion_incidents(proxy_node_id,code) VALUES(%s,%s)
         ON CONFLICT(proxy_node_id) DO UPDATE SET code=EXCLUDED.code,checked_at=now(),resolved_at=NULL''',(node_id,code))
-    if old and old['resolved_at'] is None:
+    if old and old['resolved_at'] is None and old['code'] == code:
+        return
+    if code == 'default_binding_missing':
+        conn.execute("SELECT pushok_enqueue_lifecycle(NULL,'failed',%s)", (code,))
         return
     rows=conn.execute("""SELECT id FROM campaigns WHERE proxy_node_id=%s
         AND (placement_status='active' OR (placement_status='scheduled' AND scheduled_start_at<=now() AND scheduled_end_at>now()))

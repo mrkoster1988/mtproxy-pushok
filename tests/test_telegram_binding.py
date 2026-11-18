@@ -551,6 +551,24 @@ class BindingQueueTests(unittest.TestCase):
             self.assertEqual(conn.execute('SELECT count(*) FROM telegram_binding_events WHERE job_id=%s',(job,)).fetchone()[0],1)
             self.assertIsNone(conn.execute('SELECT confirmed_by FROM channel_promotion_bindings WHERE ad_tag=%s',(self.tag,)).fetchone()[0])
 
+    def test_fallback_retry_yields_to_approved_campaign_before_external_write(self):
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE campaigns SET auto_schedule_paused=true WHERE id=%s", (self.f['campaign'],))
+            conn.execute("INSERT INTO default_sponsor_settings(singleton,channel_id,updated_by) VALUES(true,%s,%s) ON CONFLICT(singleton) DO UPDATE SET channel_id=EXCLUDED.channel_id", (self.f['channel'],self.f['admin']))
+        try:
+            reserve = self.claim()
+            self.exchange('owner_error', job_id=reserve, code='telegram_unavailable')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute("UPDATE campaigns SET auto_schedule_paused=false WHERE id=%s", (self.f['campaign'],))
+            campaign = self.claim()
+            self.assertNotEqual(campaign, reserve)
+            self.assertFalse(self.exchange('owner_authorize', job_id=reserve, **self.proof)['accepted'])
+            with psycopg.connect(self.dsn) as conn:
+                self.assertEqual(conn.execute('SELECT campaign_id FROM telegram_binding_jobs WHERE id=%s', (campaign,)).fetchone()[0], self.f['campaign'])
+        finally:
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute('DELETE FROM default_sponsor_settings')
+
     def test_default_channel_is_prepared_again_when_queue_empty(self):
         with psycopg.connect(self.dsn) as conn:
             conn.execute("UPDATE campaigns SET placement_status='cancelled' WHERE id=%s",(self.f['campaign'],))

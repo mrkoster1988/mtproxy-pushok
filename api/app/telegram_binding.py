@@ -171,6 +171,21 @@ def cached_target(conn, node, channel_id=None):
         (node['id'], node['host'], node['port'], channel_id, channel_id)).fetchone()
 
 
+def campaign_candidates(conn):
+    return conn.execute('''SELECT c.id,c.channel_id,ch.telegram_url,c.requested_start_at,c.duration_seconds_snapshot FROM campaigns c
+        JOIN sponsor_channels ch ON ch.id=c.channel_id
+        WHERE c.moderation_status='approved' AND c.payment_status='verified'
+          AND c.archived_at IS NULL AND ch.archived_at IS NULL AND NOT moderation_channel_blocked(ch) AND NOT c.auto_schedule_paused
+          AND c.placement_status IN ('not_scheduled','scheduled')
+          AND (c.placement_status='not_scheduled' OR c.auto_schedule_managed)
+          AND COALESCE(c.requested_start_at,now())<=now()+interval '1 hour'
+          AND NOT EXISTS(SELECT 1 FROM placement_observations o WHERE o.campaign_id=c.id)
+          AND NOT EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied')
+          AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.campaign_id=c.id AND j.phase<>'done')
+        ORDER BY COALESCE(c.requested_start_at,c.created_at),c.created_at,c.id
+        LIMIT 20 FOR UPDATE OF c SKIP LOCKED''').fetchall()
+
+
 def handle(conn, request):
     # Та же блокировка, что у планировщика; короткие транзакции, без Telegram внутри.
     if not conn.execute('SELECT pg_try_advisory_xact_lock(736102482) AS ok').fetchone()['ok']:
@@ -206,6 +221,14 @@ def handle(conn, request):
                     'hosts':list(dict.fromkeys(filter(None, (node['host'],request['host'],request.get('resolved_host'))))),
                     'port':node['port']}
     if action == 'owner_claim':
+        # В inspect внешняя запись ещё не разрешена. Даже во время backoff
+        # резерва проверяем очередь. После авторизации сохраняем блокировку
+        # до подтверждения Telegram: прежний тег уже мог изменить назначение.
+        if job and job['phase'] == 'inspect' and job['campaign_id'] is None:
+            if busy(conn, node['id']) or any(preparation_improves_slot(conn, c, node['id'])
+                                             for c in campaign_candidates(conn)):
+                conn.execute("UPDATE telegram_binding_jobs SET phase='done',error_code='target_changed',updated_at=now() WHERE id=%s", (job['id'],))
+                job = None
         if job and job['phase'] != 'done':
             if not eligible(conn, job, node):
                 # Отмена/изменение не даёт старому ответу создать новую связь.
@@ -219,18 +242,7 @@ def handle(conn, request):
             resumed = release_waiting_forecasts(conn, node)
             if busy(conn, node['id']):
                 return {'state': 'wait'}
-            candidates = conn.execute('''SELECT c.id,c.channel_id,ch.telegram_url,c.requested_start_at,c.duration_seconds_snapshot FROM campaigns c
-                JOIN sponsor_channels ch ON ch.id=c.channel_id
-                WHERE c.moderation_status='approved' AND c.payment_status='verified'
-                  AND c.archived_at IS NULL AND ch.archived_at IS NULL AND NOT moderation_channel_blocked(ch) AND NOT c.auto_schedule_paused
-                  AND c.placement_status IN ('not_scheduled','scheduled')
-                  AND (c.placement_status='not_scheduled' OR c.auto_schedule_managed)
-                  AND COALESCE(c.requested_start_at,now())<=now()+interval '1 hour'
-                  AND NOT EXISTS(SELECT 1 FROM placement_observations o WHERE o.campaign_id=c.id)
-                  AND NOT EXISTS(SELECT 1 FROM promotion_runtime r WHERE r.campaign_id=c.id AND r.state='applied')
-                  AND NOT EXISTS(SELECT 1 FROM telegram_binding_jobs j WHERE j.campaign_id=c.id AND j.phase<>'done')
-                ORDER BY COALESCE(c.requested_start_at,c.created_at),c.created_at,c.id
-                LIMIT 20 FOR UPDATE OF c SKIP LOCKED''').fetchall()
+            candidates = campaign_candidates(conn)
             candidate = resumed or next((c for c in candidates if preparation_improves_slot(conn,c,node['id'])),None)
             if not candidate:
                 # Ручная связь уже готова для ожидающей кампании на этом узле.
