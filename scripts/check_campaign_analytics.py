@@ -42,6 +42,11 @@ def check_campaign_analytics(browser,base,output,failures,dsn):
             page.goto(base+'/#/campaign/'+str(cid));expect(page.locator('body')).to_have_attribute('data-cabinet-loaded','true')
             area=page.locator('[data-page=campaign] .campaign-analytics');expect(area).to_contain_text('Статистика ссылки')
             expect(area.locator('dd')).to_have_text(['—','—','—','—'])
+            footer=area.locator('.analytics-footer')
+            expect(footer.get_by_role('button',name='Отчёт по кампании')).to_be_visible()
+            expect(footer.get_by_role('button',name='Подключить подсчёт')).to_have_text('Подключить подсчёт')
+            area.screenshot(path=str(output/'campaign-link-actions-390.png'),
+                            style='.cabinet-topbar,.mobile-bottom-nav{visibility:hidden!important}')
             replies=[{'id':-10084701,'type':'channel','username':'analytics_fixture'},
                      {'status':'administrator','can_invite_users':True},{'invite_link':'https://t.me/+analyticsFixture123'}]
             with patch.object(channel_logos,'_call',side_effect=replies):

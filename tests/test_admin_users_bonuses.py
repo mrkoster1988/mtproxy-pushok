@@ -27,6 +27,22 @@ class AdminUsersBonuses(unittest.TestCase):
         main.app.dependency_overrides[main.get_current_user]=lambda:self.actor
         self.addCleanup(main.app.dependency_overrides.clear)
 
+    def test_directory_sort_applies_before_pagination(self):
+        marker='ordering_'+self.owner.hex[:12]
+        with psycopg.connect(self.dsn) as conn:
+            for i in range(23):
+                conn.execute('''INSERT INTO users(telegram_user_id,first_name,created_at)
+                    VALUES(%s,%s,now()+(%s * interval '1 minute'))''',
+                    (self.tg+100+i,f'{marker} {22-i:02}',i))
+        def names(sort,page):
+            result=self.request('GET','/admin/users',params={'query':marker,'sort':sort,'page':page})
+            return [row['first_name'] for row in result['items']]
+        ascending=[f'{marker} {i:02}' for i in range(23)]
+        self.assertEqual(names('name',0)+names('name',1),ascending)
+        self.assertEqual(names('newest',0)+names('newest',1),ascending)
+        self.assertEqual(names('oldest',0)+names('oldest',1),ascending[::-1])
+        self.request('GET','/admin/users',422,params={'sort':'unknown'})
+
     def test_directory_username_roles_visits_and_balance_privacy(self):
         row=self.request('GET','/admin/users',params={'query':'@'+self.handle.upper()})
         self.assertEqual([x['id'] for x in row['items']],[str(self.owner)])

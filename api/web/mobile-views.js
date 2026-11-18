@@ -147,8 +147,29 @@ window.pushokViews=(()=>{
   const rail=el('ol',undefined,'campaign-progress'),state=campaignState(c);rail.setAttribute('aria-label','Этапы кампании');
   ['Черновик','Модерация','Оплата','Расписание','Активна','Завершена'].forEach((name,i)=>{const step=el('li',undefined,i<state[2]?'is-done':i===state[2]?'is-current':''),dot=el('span',undefined,'progress-dot');dot.append(i<state[2]?icon('check'):document.createTextNode(String(i+1)));step.append(dot,el('span',name));if(i===state[2])step.setAttribute('aria-current','step');rail.append(step);});return rail;
  }
+ const launchClock=new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+ function launchTime(value){return launchClock.format(new Date(value))+' МСК';}
+ function launchPeriod(c){
+  const start=c.scheduled_start_at,end=c.scheduled_end_at;
+  if(c.placement_status==='completed')return end?'Размещение завершено · окончание по плану '+launchTime(end):'Размещение завершено';
+  if(c.placement_status==='active')return end?'Размещение идёт до '+launchTime(end):'Размещение идёт';
+  if(c.placement_status==='cancelled'||c.archived_at)return 'Запуск отменён';
+  if(c.moderation_status==='rejected'||c.payment_status==='refunded')return 'Запуск не планируется';
+  if(start)return (c.auto_schedule_tag_pending?'Предварительный запуск · ':'Запуск по расписанию · ')+launchTime(start);
+  if(c.auto_schedule_paused)return 'Запуск приостановлен · ожидает нового расписания';
+  if(c.requested_start_at&&(c.moderation_status!=='approved'||(c.price_kopecks_snapshot>0&&c.payment_status!=='verified')))return 'Желаемое начало: '+launchTime(c.requested_start_at);
+  if(c.moderation_status==='draft')return 'Запуск после подачи и одобрения заявки';
+  if(c.moderation_status==='changes_requested')return 'Запуск после исправлений и повторной модерации';
+  if(c.moderation_status==='pending')return 'Срок запуска уточнится после модерации';
+  if(c.price_kopecks_snapshot>0&&c.payment_status!=='verified')return 'Срок запуска уточнится после подтверждения оплаты';
+  if(c.auto_start_not_before){
+   const earliest=Math.max(Date.parse(c.auto_start_not_before),c.requested_start_at?Date.parse(c.requested_start_at):0);
+   return earliest>Date.now()?'Подбираем свободный период · запуск не раньше '+launchTime(earliest):'Подбираем ближайший свободный период для запуска';
+  }
+  return 'Запуск в свободный период, не раньше чем через 1 час после подтверждения канала в Telegram';
+ }
  function facts(c){const list=el('dl',undefined,'campaign-facts');
-  [['Размещение','Прокси-спонсорство'],['Тариф',c.tariff_name_snapshot],['Срок',duration(c)],['Стоимость',price(c)],...(c.requested_start_at?[['Желаемое начало',date(c.requested_start_at)]]:[]),['Начало',date(c.scheduled_start_at)],['Окончание',date(c.scheduled_end_at)]].forEach(([k,v])=>{list.append(el('dt',k),el('dd',v||'—'));});return list;
+  [['Размещение','Прокси-спонсорство'],['Тариф',c.tariff_name_snapshot],['Срок',duration(c)],['Стоимость',price(c)],...(c.requested_start_at?[['Желаемое начало',launchTime(c.requested_start_at)]]:[]),['Начало',c.scheduled_start_at?launchTime(c.scheduled_start_at):'Не назначено'],['Окончание',c.scheduled_end_at?launchTime(c.scheduled_end_at):'Не назначено']].forEach(([k,v])=>{list.append(el('dt',k),el('dd',v||'—'));});return list;
  }
  function price(c){return c.price_kopecks_snapshot===0?'Без оплаты':miniAppMode?(c.stars_price_snapshot>0?c.stars_price_snapshot+' XTR':'Цена Stars не задана'):money(c.price_kopecks_snapshot);}
  // Единая карточка во всех разделах; контекст меняет только действия и переходы.
@@ -166,7 +187,9 @@ window.pushokViews=(()=>{
   copy.append(a,details);
   if(c.topic_label)copy.append(el('small',c.topic_label,'campaign-topic'));
   const open=onOpen?button('',()=>onOpen(item)):link('',destination);iconAction(open,openIcon,openLabel||'Открыть кампанию '+title(c));const current=campaignState(c),stateBadge=badge(current[0],current[1]);stateBadge.classList.add('campaign-current');head.append(channelAvatar(c.channel_id,title(c),c.channel_url),copy,stateBadge,open);item.append(head);
-  item.append(el('p',c.placement_status==='active'&&c.scheduled_end_at?'До '+date(c.scheduled_end_at):c.scheduled_start_at?'Начало: '+date(c.scheduled_start_at):c.requested_start_at?'Желаемое начало: '+date(c.requested_start_at):'Дата — по согласованию','tile-period'));
+  const period=el('p',undefined,'tile-period'),periodText=el('span',launchPeriod(c));
+  if(c.requested_start_at&&!c.scheduled_start_at&&!c.archived_at&&c.placement_status==='not_scheduled'&&c.moderation_status==='approved'&&c.payment_status==='verified'&&!c.auto_start_not_before)periodText.append(el('small','Желаемое начало: '+launchTime(c.requested_start_at),'tile-requested'));
+  period.append(periodText);item.append(period);
   if(mode==='sponsors')item.classList.add('sponsor-placement');
   item.append(statusSteps(c,true));
   if(c.moderation_status==='pending'&&!c.archived_at&&c.moderation_check){

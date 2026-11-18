@@ -48,7 +48,7 @@ def payable(conn,c):
 
 
 def charge(conn,cid,uid,currency,*,use_bonus=True,expected=None,automatic=False,surface='web'):
-    controls.require_enabled(conn)
+    policy=controls.require_enabled(conn)
     c=campaign(conn,cid,uid,lock=True)
     old=conn.execute('SELECT * FROM wallet_payments WHERE campaign_id=%s',(cid,)).fetchone()
     if old:
@@ -64,7 +64,9 @@ def charge(conn,cid,uid,currency,*,use_bonus=True,expected=None,automatic=False,
         prefs=conn.execute('SELECT * FROM wallet_preferences WHERE user_id=%s FOR SHARE',(uid,)).fetchone()
         if not prefs or not prefs['auto_pay'] or prefs['currency']!=currency or amount>prefs['per_campaign_limit']:
             raise HTTPException(409,'wallet_auto_not_authorized')
-        use_bonus=prefs['use_bonus']
+        use_bonus=prefs['use_bonus'] and policy['bonus_spending_enabled']
+    elif currency=='RUB' and use_bonus and not policy['bonus_spending_enabled']:
+        raise HTTPException(409,'wallet_bonus_disabled')
     balances=accounts(conn,uid,lock=True)
     if any(v<0 for v in balances.values()):raise HTTPException(409,'wallet_provider_refund_debt')
     bonus=min(balances['BONUS'],amount) if use_bonus and currency=='RUB' else 0

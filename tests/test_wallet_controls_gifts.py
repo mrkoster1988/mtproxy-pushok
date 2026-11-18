@@ -52,6 +52,32 @@ class WalletControlsGiftsIntegration(unittest.TestCase):
         self.actor={'id':self.owner,'role':'advertiser','login_surface':'web'}
         return result
 
+    def test_bonus_spending_policy_for_manual_and_automatic_payments(self):
+        self.credit('BONUS',30000)
+        self.credit('RUB',30000)
+        paid=self.campaign()
+        self.assertEqual(self.charge(paid)['bonus_amount'],30000)
+        self.credit('BONUS',30000)
+        self.actor={'id':self.admin,'role':'admin'}
+        endpoint='/admin/wallet/settings'
+        self.request('PUT',endpoint,json={'enabled':True,'bonus_spending_enabled':False})
+        self.addCleanup(lambda: self.request('PUT',endpoint,json={'enabled':True,'bonus_spending_enabled':True}))
+        self.addCleanup(setattr,self,'actor',{'id':self.admin,'role':'admin'})
+        self.assertFalse(self.request('PUT',endpoint,json={'enabled':True})['bonus_spending_enabled'])
+        self.assertEqual(self.charge(paid)['bonus_amount'],30000)
+        self.actor={'id':self.owner,'role':'advertiser','login_surface':'web'}
+        cid=self.campaign()
+        self.assertFalse(self.request('GET',f'/wallet/campaigns/{cid}')['bonus_spending_enabled'])
+        with self.assertRaises(HTTPException) as error:
+            self.charge(cid,use_bonus=True)
+        self.assertEqual(error.exception.detail,'wallet_bonus_disabled')
+        self.request('PUT','/wallet/preferences',json=dict(auto_pay=True,currency='RUB',per_campaign_limit=30000,use_bonus=True))
+        self.assertEqual(self.charge(cid,automatic=True)['bonus_amount'],0)
+        self.assertEqual(self.balances()['BONUS'],30000)
+        with topups.connect(self.dsn) as conn:
+            ledger.refund_campaign(conn,paid,self.admin,'Отмена размещения')
+        self.assertEqual(self.balances()['BONUS'],60000)
+
     def gift(self,**kw):
         data=gifts.GiftCreate(request_id=uuid4(),name='Подарок другу',amount=12345,max_uses=kw.pop('max_uses',1),
                               expires_at=datetime.now(timezone.utc)+timedelta(days=1),**kw)

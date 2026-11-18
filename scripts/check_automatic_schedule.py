@@ -49,7 +49,9 @@ def check_automatic_schedule(browser, base, output, failures, dsn):
         assert client.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         client.screenshot(path=str(output/'52-automatic-schedule-client-320.png'))
         staff=launch('admin',390);go(staff,'moderation/'+str(campaign))
-        expect(staff.locator('.approval-card .tile-period')).to_contain_text('Начало:')
+        from zoneinfo import ZoneInfo
+        planned=(start+timedelta(hours=1)).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y, %H:%M')
+        expect(staff.locator('.approval-card .tile-period')).to_contain_text(planned+' МСК')
         expect(staff.locator('.approval-period')).to_contain_text('Окончание:')
         expect(staff.locator('.approval-current')).to_contain_text('Ожидается автоматический запуск')
         staff.screenshot(path=str(output/'53-automatic-schedule-admin-390.png'))

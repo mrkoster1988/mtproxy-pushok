@@ -36,10 +36,17 @@ def check_admin_users(browser,base,output,failures,dsn):
         admin.get_by_role('button',name='Все кампании',exact=True).click();expect(admin.locator('#campaigns')).to_contain_text('Кампания из каталога')
         card=admin.locator('.campaign-tile').filter(has_text='Кампания из каталога');card.get_by_role('link',name='Открыть кампанию Кампания из каталога').click();expect(admin.locator('#queue')).to_contain_text('Кампания из каталога')
         go(admin,'profile');admin.get_by_role('link',name='Пользователи',exact=True).click()
+        sort=admin.get_by_label('Сортировка пользователей',exact=True)
+        sort.select_option('name')
         admin.get_by_label('Поиск пользователей',exact=True).fill('@directory_advertiser');admin.locator('.directory-search button[type=submit]').click()
         row=admin.locator('.user-directory .directory-user');expect(row).to_have_count(1);expect(row).to_contain_text('Последний вход:')
         row.get_by_role('link',name='Открыть профиль пользователя').click();expect(admin.locator('.profile-wallet')).to_contain_text('123,45')
         admin.get_by_role('button',name='Назад',exact=True).click();expect(admin.locator('[data-page=users]')).to_be_visible()
+        expect(sort).to_have_value('name')
+        search=admin.get_by_label('Поиск пользователей',exact=True)
+        expect(search).to_have_value('@directory_advertiser')
+        search.fill('')
+        admin.locator('.directory-search button[type=submit]').click()
         for width in (320,390):
             admin.set_viewport_size({'width':width,'height':844});assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         for width in (320,390):
@@ -51,6 +58,7 @@ def check_admin_users(browser,base,output,failures,dsn):
                 assert card.bounding_box()['height']<160
             assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         for role,color in (('admin','rgb(255, 140, 152)'),('operator','rgb(114, 229, 165)')):
+            admin.locator('.directory-search').get_by_label('Роль пользователя',exact=True).select_option(role)
             badge=admin.locator('.directory-user>.person-role[data-role='+role+']').first
             expect(badge).to_be_visible()
             assert badge.evaluate('e=>getComputedStyle(e).color')==color

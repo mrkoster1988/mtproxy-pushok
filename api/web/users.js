@@ -16,17 +16,25 @@ window.pushokUsers=(()=>{
   input.addEventListener('input',()=>{serial++;selected=null;results.replaceChildren();status.textContent='';onSelect(null);});input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();void find().catch(()=>{});}});
   return {root,input,set,resolve,disable(flag){root.hidden=flag;input.disabled=flag;search.disabled=flag;}};
  }
+ let directoryView=null;
  function directory(target){
   if(!['admin','operator'].includes(me?.role)){target.replaceChildren();return;}
-  const session=token,uid=me.id;let page=0,serial=0;
+  const session=token,uid=me.id;
+  if(directoryView?.session!==session||directoryView.uid!==uid)directoryView={session,uid,sort:'recent',query:'',role:'',visited:false,page:0};
+  const view=directoryView;
+  let page=view.page,serial=0;
   const form=el('form',undefined,'directory-search'),search=el('input'),role=el('select'),visited=el('input'),vl=el('label','Только входившие в приложение'),list=el('div',undefined,'user-directory'),summary=el('p',undefined,'muted'),nav=el('nav',undefined,'profile-pagination');
-  search.type='search';search.placeholder='@username, имя или ID';search.setAttribute('aria-label','Поиск пользователей');search.maxLength=100;role.setAttribute('aria-label','Роль пользователя');option(role,'','Все роли');Object.entries(roles).forEach(([k,v])=>option(role,k,v));visited.type='checkbox';vl.prepend(visited);const submit=el('button','Найти');submit.type='submit';form.append(search,role,submit,vl);target.replaceChildren(form,window.pushokProfiles.agentCard('users'),summary,list,nav);
-  async function load(){const seq=++serial;summary.textContent='Загрузка пользователей…';try{const data=await api('/admin/users?'+new URLSearchParams({query:search.value.trim(),role:role.value,visited:visited.checked,page}));if(seq!==serial||session!==token||uid!==me?.id||!target.isConnected||location.hash!=='#/users')return;list.replaceChildren();nav.replaceChildren();summary.textContent='Пользователей: '+data.total;
+  const sorting=el('select'),sortLabel=el('label','Сортировка');
+  sortLabel.className='directory-sort';sorting.setAttribute('aria-label','Сортировка пользователей');
+  for(const [key,title] of [['recent','По последнему входу'],['newest','Сначала новые'],['oldest','Сначала ранние'],['name','По имени (А–Я)']])option(sorting,key,title);
+  sorting.value=view.sort;sortLabel.append(sorting);
+  search.type='search';search.placeholder='@username, имя или ID';search.setAttribute('aria-label','Поиск пользователей');search.maxLength=100;role.setAttribute('aria-label','Роль пользователя');option(role,'','Все роли');Object.entries(roles).forEach(([k,v])=>option(role,k,v));visited.type='checkbox';vl.prepend(visited);const submit=el('button','Найти');submit.type='submit';search.value=view.query;role.value=view.role;visited.checked=view.visited;form.append(search,role,submit,sortLabel,vl);target.replaceChildren(form,window.pushokProfiles.agentCard('users'),summary,list,nav);
+  async function load(){const seq=++serial;Object.assign(view,{query:search.value.trim(),role:role.value,visited:visited.checked,sort:sorting.value,page});summary.textContent='Загрузка пользователей…';try{const data=await api('/admin/users?'+new URLSearchParams({query:search.value.trim(),role:role.value,visited:visited.checked,sort:sorting.value,page}));if(seq!==serial||session!==token||uid!==me?.id||!form.isConnected||location.hash!=='#/users')return;list.replaceChildren();nav.replaceChildren();summary.textContent='Пользователей: '+data.total;
    for(const user of data.items){const row=el('article',undefined,'card directory-user');const access=window.pushokTeam.roleControl(user);row.append(window.pushokProfiles.compact(user,'users'),access.badge,access.editor,el('p',user.last_login_at?'Последний вход: '+date(user.last_login_at):'Вход в приложение ещё не зафиксирован.','muted'));list.append(row);}
    if(!data.items.length)list.append(el('p','Пользователи не найдены. Измените поиск или фильтр.','empty'));
    if(page)nav.append(button('Предыдущие',()=>{page--;return load();}));if(data.more)nav.append(button('Следующие',()=>{page++;return load();}));
-  }catch(e){if(seq===serial&&session===token&&target.isConnected){summary.textContent=e.message;list.replaceChildren(button('Повторить',load));}}}
-  form.addEventListener('submit',e=>{e.preventDefault();page=0;void load();});role.addEventListener('change',()=>{page=0;void load();});visited.addEventListener('change',()=>{page=0;void load();});void load();
+  }catch(e){if(seq===serial&&session===token&&form.isConnected){summary.textContent=e.message;list.replaceChildren(button('Повторить',load));}}}
+  form.addEventListener('submit',e=>{e.preventDefault();page=0;void load();});sorting.addEventListener('change',()=>{page=0;void load();});role.addEventListener('change',()=>{page=0;void load();});visited.addEventListener('change',()=>{page=0;void load();});void load();
  }
  return {picker,directory,caption};
 })();

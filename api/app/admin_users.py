@@ -2,6 +2,13 @@
 import psycopg
 from psycopg.rows import dict_row
 from .telegram_environment import environment_name
+
+USER_SORTS = {
+    'recent': 'last_login_at DESC NULLS LAST, created_at DESC',
+    'newest': 'created_at DESC',
+    'oldest': 'created_at ASC',
+    'name': "lower(coalesce(nullif(trim(concat_ws(' ',first_name,last_name)),''),nullif(username,''),telegram_user_id::text)) ASC"
+}
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 
@@ -10,12 +17,19 @@ def router_for(dsn, require_operator):
 
     @router.get('')
     def users(response: Response, query: str = Query(default='', max_length=100),
-              role: str = '', visited: bool = False,
+              role: str = '', visited: bool = False, sort: str = '',
               page: int = Query(default=0, ge=0, le=100000), admin=Depends(require_operator)):
         response.headers['Cache-Control'] = 'private, no-store'
         if role not in ('', 'admin', 'operator', 'advertiser'):
             raise HTTPException(422, 'invalid_user_role')
+        if sort and sort not in USER_SORTS:
+            raise HTTPException(422, 'invalid_user_sort')
         value = query.strip().lstrip('@')
+        order = USER_SORTS[sort or 'recent']
+        ranking = ()
+        if value and not sort:
+            order = '(telegram_user_id::text=%s OR lower(username)=lower(%s)) DESC NULLS LAST, ' + order
+            ranking = (value, value)
         where = """telegram_user_id>0 AND (%s='' OR telegram_user_id::text=%s OR id::text=%s
             OR position(lower(%s) in lower(coalesce(username,'')))>0
             OR position(lower(%s) in lower(concat_ws(' ',first_name,last_name)))>0)
@@ -28,10 +42,8 @@ def router_for(dsn, require_operator):
                 rows = conn.execute('''SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,
                     created_at,last_login_at,blocked_at,
                     EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=users.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
-                    FROM users WHERE '''+where+'''
-                    ORDER BY (telegram_user_id::text=%s OR lower(username)=lower(%s)) DESC NULLS LAST,
-                    last_login_at DESC NULLS LAST,created_at DESC,id LIMIT 20 OFFSET %s''',
-                    (environment_name(), *params, value, value, page*20)).fetchall()
+                    FROM users WHERE '''+where+' ORDER BY '+order+', id LIMIT 20 OFFSET %s',
+                    (environment_name(), *params, *ranking, page*20)).fetchall()
                 return dict(items=rows,total=total,page=page,page_size=20,more=(page+1)*20<total)
         except psycopg.Error as exc:
             raise HTTPException(503, 'database_unavailable') from exc
