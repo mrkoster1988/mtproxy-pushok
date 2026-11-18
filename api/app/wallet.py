@@ -27,6 +27,7 @@ class Topup(Input):
 
 class WalletSettings(Input):
     enabled: bool=Field(strict=True)
+    bonus_spending_enabled: bool | None=Field(default=None,strict=True)
 
 
 class Preferences(Input):
@@ -104,7 +105,8 @@ def router_for(dsn,current_user,require_admin):
     def summary(conn,uid):
         balances=ledger.accounts(conn,uid)
         prefs=conn.execute('SELECT auto_pay,currency,per_campaign_limit,use_bonus FROM wallet_preferences WHERE user_id=%s',(uid,)).fetchone()
-        return {'enabled':controls.settings(conn)['enabled'],'balances':balances,'has_debt':any(v<0 for v in balances.values()),'preferences':prefs or
+        policy=controls.settings(conn)
+        return {'enabled':policy['enabled'],'bonus_spending_enabled':policy['bonus_spending_enabled'],'balances':balances,'has_debt':any(v<0 for v in balances.values()),'preferences':prefs or
             dict(auto_pay=False,currency='RUB',per_campaign_limit=0,use_bonus=True)}
 
     def journal(conn,uid,page,limit=30):
@@ -139,9 +141,11 @@ def router_for(dsn,current_user,require_admin):
         with db() as conn:
             conn.execute('SELECT singleton FROM wallet_settings WHERE singleton FOR UPDATE')
             admin_lock(conn,admin)
-            conn.execute('UPDATE wallet_settings SET enabled=%s,updated_at=now(),updated_by=%s WHERE singleton',(data.enabled,admin['id']))
+            policy=conn.execute('''UPDATE wallet_settings SET enabled=%s,
+                bonus_spending_enabled=COALESCE(%s,bonus_spending_enabled),updated_at=now(),updated_by=%s
+                WHERE singleton RETURNING bonus_spending_enabled''',(data.enabled,data.bonus_spending_enabled,admin['id'])).fetchone()
             if not data.enabled:conn.execute('UPDATE wallet_preferences SET auto_pay=false WHERE auto_pay')
-            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'wallet_enabled_changed',jsonb_build_object('enabled',%s::boolean))",(admin['id'],data.enabled))
+            conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'wallet_enabled_changed',jsonb_build_object('enabled',%s::boolean,'bonus_spending_enabled',%s::boolean))",(admin['id'],data.enabled,policy['bonus_spending_enabled']))
             return controls.settings(conn)
 
     @router.post('/api/v1/wallet/gifts/redeem')

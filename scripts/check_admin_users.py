@@ -36,6 +36,8 @@ def check_admin_users(browser,base,output,failures,dsn):
         admin.get_by_role('button',name='Все кампании',exact=True).click();expect(admin.locator('#campaigns')).to_contain_text('Кампания из каталога')
         card=admin.locator('.campaign-tile').filter(has_text='Кампания из каталога');card.get_by_role('link',name='Открыть кампанию Кампания из каталога').click();expect(admin.locator('#queue')).to_contain_text('Кампания из каталога')
         go(admin,'profile');admin.get_by_role('link',name='Пользователи',exact=True).click()
+        sort=admin.get_by_label('Сортировка пользователей',exact=True)
+        sort.select_option('name')
         admin.get_by_label('Поиск пользователей',exact=True).fill('@directory_advertiser');admin.locator('.directory-search button[type=submit]').click()
         row=admin.locator('.user-directory .directory-user');expect(row).to_have_count(1);expect(row).to_contain_text('Последний вход:')
         row.get_by_role('link',name='Открыть профиль пользователя').click();expect(admin.locator('.profile-wallet')).to_contain_text('123,45')

@@ -360,7 +360,13 @@ function card(c,op,{compact=false}={}){
  box.append(window.pushokViews.campaignSummary(c,op?'moderation':'campaign',{actions:false}));
  const timing=window.pushokViews.disclosure('Этапы и сроки размещения',[window.pushokViews.progress(c),window.pushokViews.facts(c)],'inline-help campaign-timing');
  box.append(timing);
- if(!op&&window.pushokCampaignAnalytics)box.append(window.pushokCampaignAnalytics.panel(c));
+ let reportButton;
+ if(!op){
+  reportButton=button('Отчёт',()=>showCampaignReport(c,box));
+  reportButton.setAttribute('aria-label','Отчёт по кампании');reportButton.className='campaign-stat-action';
+  reportButton.prepend(window.pushokViews.icon('chart'));
+  box.append(window.pushokCampaignAnalytics.panel(c,compact?null:reportButton));
+ }
  if(c.growth_offer_name)box.append(el('p','Скидка: '+c.growth_offer_name+' · '+c.discount_percent_snapshot+'%.'+(miniAppMode?'':' Цена до скидки: '+money(c.base_price_kopecks_snapshot)+'.'),'muted'));
  if(c.moderator_comment)box.append(el('p','Модерация: '+c.moderator_comment));
  if(c.payment_review_comment)box.append(el('p','Проверка оплаты: '+c.payment_review_comment));
@@ -369,8 +375,7 @@ function card(c,op,{compact=false}={}){
  const change=async(path,body)=>{await api('/operator/campaigns/'+c.id+'/'+path,{method:'POST',body});notice('Изменения сохранены.',true);await refresh();};
  if(!op){
   if(c.moderation_status==='approved'&&c.price_kopecks_snapshot>0&&!location.hash.startsWith('#/payments/')){const pay=el('a',c.payment_status==='verified'?'Оплата':'Оплатить',c.payment_status==='verified'?'ui-button':'ui-button primary');pay.setAttribute('aria-label',c.payment_status==='verified'?'Посмотреть оплату':'Перейти к оплате');if(c.payment_status==='verified')window.pushokViews.iconAction(pay,'wallet','Посмотреть оплату');else pay.prepend(window.pushokViews.icon('wallet'));pay.href='#/payments/'+c.id;actions.append(pay);}
-  const reports=compact?el('details',undefined,'order-reports'):actions;if(compact){reports.append(el('summary','История и отчёт'));box.append(reports);}
-  const reportButton=button('Отчёт',()=>showCampaignReport(c,box));reportButton.setAttribute('aria-label','Отчёт по кампании');reportButton.prepend(window.pushokViews.icon('chart'));reports.append(reportButton);
+  if(compact){const reports=el('details',undefined,'order-reports');reports.append(el('summary','История и отчёт'),reportButton);box.append(reports);}
   if(['scheduled','active','completed'].includes(c.placement_status)){
    const observationButton=button('Автоматика',async()=>{
     let panel=box.querySelector('.automation-panel');if(panel){panel.remove();return;}

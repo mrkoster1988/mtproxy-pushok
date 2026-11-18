@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.97",
+    version="1.98",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -240,6 +240,9 @@ class CampaignResponse(BaseModel):
     payment_status: str
     placement_status: str
     requested_start_at: datetime | None
+    auto_start_not_before: datetime | None = None
+    auto_schedule_tag_pending: bool = False
+    auto_schedule_paused: bool = False
     scheduled_start_at: datetime | None
     scheduled_end_at: datetime | None
     moderator_comment: str | None
@@ -255,7 +258,6 @@ class CampaignResponse(BaseModel):
 
 
 class OperatorCampaignResponse(CampaignResponse):
-    auto_schedule_paused: bool = False
     proxy_node_id: UUID | None = None
     advertiser_user_id: UUID | None = None
     advertiser_first_name: str | None = None
@@ -705,7 +707,7 @@ def list_campaigns(
                        c.growth_offer_name, c.discount_percent_snapshot, c.topic,
                        c.currency_snapshot, c.moderation_status, c.payment_status,
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
-                       c.scheduled_end_at, c.moderator_comment,
+                       c.scheduled_end_at, c.auto_start_not_before, c.auto_schedule_tag_pending, c.auto_schedule_paused, c.moderator_comment,
                        latest_proof.review_comment AS payment_review_comment,
                        review.ai_description, review.ai_checked_at, review.ai_rejected,
                        ac.decision AS moderation_check, NULLIF(ac.reason, '') AS moderation_reason,
@@ -1832,7 +1834,7 @@ def list_operator_campaigns(
                        u.last_name AS advertiser_last_name,
                        u.username AS advertiser_username,
                        u.telegram_user_id AS advertiser_telegram_user_id,
-                       c.archived_at, c.auto_schedule_paused,
+                       c.archived_at,
                        EXISTS(SELECT 1 FROM payment_attempts pa WHERE pa.campaign_id=c.id
                               AND pa.status IN ('created','pending')) AS has_pending_payment,
                        c.id, c.channel_id, c.tariff_id, c.tariff_name_snapshot,
@@ -1840,7 +1842,7 @@ def list_operator_campaigns(
                        c.growth_offer_name, c.discount_percent_snapshot, c.topic,
                        c.currency_snapshot, c.moderation_status, c.payment_status,
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
-                       c.scheduled_end_at, c.moderator_comment,
+                       c.scheduled_end_at, c.auto_start_not_before, c.auto_schedule_tag_pending, c.auto_schedule_paused, c.moderator_comment,
                        latest_proof.review_comment AS payment_review_comment,
                        review.ai_description, review.ai_checked_at, review.ai_rejected,
                        ac.decision AS moderation_check, NULLIF(ac.reason, '') AS moderation_reason,

@@ -178,7 +178,7 @@ def check_moderation_layout(browser, base, output, failures, dsn):
             for width in (320, 390):
                 mini.set_viewport_size({'width': width, 'height': 844})
                 row = tile('reject_review').locator('.tile-period')
-                expect(row).to_contain_text('Дата — по согласованию')
+                expect(row).to_contain_text('Срок запуска уточнится после модерации')
                 expect(reject).to_be_visible()
                 assert row.evaluate("""p=>{
                     const bounds=p.getBoundingClientRect();
