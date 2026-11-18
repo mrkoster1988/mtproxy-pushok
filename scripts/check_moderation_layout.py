@@ -16,12 +16,12 @@ def check_moderation_layout(browser, base, output, failures, dsn):
     cases = {state: uuid4() for state in ('pending', 'payment', 'schedule', 'scheduled', 'active', 'completed', 'archived', 'approve_review', 'reject_review')}
     with psycopg.connect(dsn) as conn:
         conn.execute("INSERT INTO users(id,telegram_user_id,role,first_name) VALUES(%s,%s,'advertiser','Рекламодатель')", (owner, int(owner.hex[:12], 16)))
-        for role in ('admin', 'operator'):
+        for role in ('admin', 'operator', 'moderator'):
             uid, sid = uuid4(), uuid4()
             if role == 'admin':
                 uid = conn.execute('SELECT id FROM users WHERE is_owner').fetchone()[0]
             else:
-                conn.execute("INSERT INTO users(id,telegram_user_id,role) VALUES(%s,%s,'operator')", (uid, int(uid.hex[:12], 16)))
+                conn.execute("INSERT INTO users(id,telegram_user_id,role) VALUES(%s,%s,%s)", (uid, int(uid.hex[:12], 16), role))
             conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')", (sid, uid))
             tokens[role] = main._create_session_token(uid, sid)
             telegram_ids[role] = conn.execute("SELECT telegram_user_id FROM users WHERE id=%s", (uid,)).fetchone()[0]
@@ -231,6 +231,24 @@ def check_moderation_layout(browser, base, output, failures, dsn):
                                     (cases['reject_review'],)).fetchone() == ('rejected', reason)
                 assert conn.execute('SELECT moderation_status FROM campaigns WHERE id=%s',
                                     (cases['approve_review'],)).fetchone() == ('approved',)
+        with psycopg.connect(dsn) as conn:
+            conn.execute("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision,decision,reason)
+                SELECT id,updated_at,'ui-test','review','Проверка спорной заявки модератором'
+                FROM campaigns WHERE id=%s ON CONFLICT (campaign_id) DO UPDATE
+                SET snapshot=EXCLUDED.snapshot,decision='review',reason=EXCLUDED.reason,claim_token=NULL""",
+                (cases['pending'],))
+        moderator = launch('moderator')
+        moderator.locator('.mobile-bottom-nav a[data-route="moderation"]').click()
+        dispute = moderator.locator('#queue article').filter(has_text='Проверка спорной заявки модератором')
+        expect(dispute).to_be_visible()
+        expect(moderator.locator('#queue-filter')).to_be_hidden()
+        expect(moderator.locator('#queue').get_by_text('Чёрный список каналов',exact=True)).to_have_count(0)
+        dispute.get_by_label('Комментарий рекламодателю').fill('Уточните описание канала.')
+        dispute.get_by_role('button',name='Запросить исправления',exact=True).click()
+        expect(dispute).to_have_count(0)
+        with psycopg.connect(dsn) as conn:
+            assert conn.execute('SELECT moderation_status,moderator_comment FROM campaigns WHERE id=%s',
+                                (cases['pending'],)).fetchone() == ('changes_requested','Уточните описание канала.')
     finally:
         for context in contexts:
             context.close()

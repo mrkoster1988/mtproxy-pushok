@@ -269,6 +269,7 @@ window.pushokViews=(()=>{
    if(me.role==='admin')admin.push(['license','moderation','Лицензия приложения'],...window.pushokInterface.managementSections.map(item=>['management/'+item.key,item.icon,item.title]),['growth','gift','Бонусы и акции'],['profile/updates','refresh','Версия и обновления']);
    groups.push(['Управление',admin]);
   }
+  if(me.role==='moderator')groups.push(['Управление',[['moderation','moderation','Модерация']]]);
   groups.push(['Поддержка',[['help','support','Помощь'],['bot','channel','Telegram-бот']]]);
   const sections=el('div',undefined,'profile-groups');
   groups.forEach(([title,items])=>{const group=el('section',undefined,'profile-group'),menu=el('nav',undefined,'profile-menu');if(title==='Управление')group.id='profile-management';menu.setAttribute('aria-label',title);group.append(el('h2',title));

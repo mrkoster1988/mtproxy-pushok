@@ -10,7 +10,13 @@ from pydantic import BaseModel, Field, ConfigDict
 class TeamChange(BaseModel):
     model_config = ConfigDict(extra='forbid')
     telegram_user_id: int = Field(gt=0, lt=2**52)
-    role: Literal['admin', 'operator', 'advertiser']
+    role: Literal['admin', 'operator', 'moderator', 'advertiser']
+
+
+class FriendChange(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    telegram_user_id: int = Field(gt=0, lt=2**52)
+    is_friend: bool = Field(strict=True)
 
 
 class AccessChange(BaseModel):
@@ -28,7 +34,7 @@ def router_for(get_dsn, require_admin, require_operator):
         actor = conn.execute('SELECT role,is_owner,blocked_at FROM users WHERE id=%s FOR UPDATE', (actor_id,)).fetchone()
         if not actor or actor['blocked_at'] or actor['role'] not in ('admin','operator'):
             raise HTTPException(403, 'operator_role_required')
-        target = conn.execute('SELECT id,role,is_owner,blocked_at FROM users WHERE telegram_user_id=%s FOR UPDATE', (telegram_id,)).fetchone()
+        target = conn.execute('SELECT id,role,is_owner,is_friend,blocked_at FROM users WHERE telegram_user_id=%s FOR UPDATE', (telegram_id,)).fetchone()
         if not target:raise HTTPException(404, 'team_user_must_login')
         if target['is_owner']:raise HTTPException(403, 'team_owner_protected')
         if actor['role']=='operator' and target['role']=='admin':
@@ -45,7 +51,7 @@ def router_for(get_dsn, require_admin, require_operator):
         response.headers['Cache-Control'] = 'private, no-store'
         try:
             with psycopg.connect(get_dsn(), row_factory=dict_row, connect_timeout=3) as conn:
-                return conn.execute("SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,has_launched_ads,blocked_at FROM users WHERE role IN ('admin','operator') ORDER BY role,telegram_user_id").fetchall()
+                return conn.execute("SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,has_launched_ads,is_friend,blocked_at FROM users WHERE role IN ('admin','operator','moderator') ORDER BY role,telegram_user_id").fetchall()
         except psycopg.Error as exc:
             explain_license_error(exc)
             raise HTTPException(503, 'database_unavailable') from exc
@@ -73,6 +79,18 @@ def router_for(get_dsn, require_admin, require_operator):
         except psycopg.Error as exc:
             explain_license_error(exc)
             raise HTTPException(503, 'database_unavailable') from exc
+
+    @router.put('/friend')
+    def set_friend(payload: FriendChange, viewer=Depends(require_operator)):
+        with psycopg.connect(get_dsn(), row_factory=dict_row, connect_timeout=3) as conn:
+            _, target = lock_users(conn, viewer['id'], payload.telegram_user_id)
+            if target['is_friend'] != payload.is_friend:
+                conn.execute('UPDATE users SET is_friend=%s,updated_at=now() WHERE id=%s',
+                             (payload.is_friend, target['id']))
+                conn.execute("""INSERT INTO audit_events(actor_user_id,event_type,details_json)
+                    VALUES(%s,'friend_mark_changed',jsonb_build_object('telegram_user_id',%s::bigint,'is_friend',%s::boolean))""",
+                    (viewer['id'], payload.telegram_user_id, payload.is_friend))
+        return {'is_friend': payload.is_friend}
 
     @router.put('/access')
     def access(payload: AccessChange, response: Response, viewer=Depends(require_operator)):
