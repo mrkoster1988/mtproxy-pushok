@@ -23,6 +23,9 @@ window.pushokGrowth=(()=>{
  function save(form,text){const b=el('button',text,'primary');b.type='submit';form.append(b);}
  function referralPanel(settings,reload){
   const referral=panel('Реферальная программа'),rf=el('form');
+  const signup=field(rf,'Бонус каждому за регистрацию, ₽','number',((settings.registration_bonus_kopecks||0)/100).toFixed(2),true);
+  signup.min='0';signup.max='10000';signup.step='0.01';
+  rf.append(el('small','Начисляется один раз, в том числе уже зарегистрированным. 0 отключает начисление.','muted'));
   const enabled=field(rf,'Принимать новые приглашения','checkbox');enabled.checked=settings.referrals_enabled;
   const rewardMode=field(rf,'Награда за приглашённого','select');option(rewardMode,'Купон на скидку','coupon');option(rewardMode,'На бонусный баланс','bonus');rewardMode.value=settings.reward_mode;
   const percent=field(rf,'Скидка за приглашённого, %','number',settings.reward_percent,true);percent.min=1;percent.max=100;
@@ -33,10 +36,10 @@ window.pushokGrowth=(()=>{
   const conditions=el('details',undefined,'personal-help');conditions.append(el('summary','Условия начисления'));rf.append(conditions);
   conditions.append(el('p','Награда выдаётся один раз после первого оплаченного и завершённого размещения приглашённого. Тип, сумма или условия купона фиксируются при принятии приглашения. Изменения действуют только для новых приглашений. Отключение программы закрывает новые приглашения; уже принятые сохраняют условия.','muted'));
   conditions.append(el('p','Бонусная награда — фиксированная сумма, не процент и не обмен Stars. Бесплатные, тестовые и полностью бонусные оплаты не дают награду. При возврате оплаты награда отменяется; потраченные бонусы образуют задолженность. Бонусы без срока, для рублёвых размещений на сайте; без вывода и перевода другому пользователю.','muted'));
-  save(rf,'Сохранить условия');bindReferral(rf,()=>api('/admin/growth/settings',{method:'PUT',body:{referrals_enabled:enabled.checked,reward_percent:Number(percent.value),reward_days:Number(days.value),reward_mode:rewardMode.value,reward_bonus_kopecks:Math.round(Number(bonus.value)*100)}}),reload);referral.append(rf);return referral;
+  save(rf,'Сохранить условия');bindReferral(rf,()=>api('/admin/growth/settings',{method:'PUT',body:{registration_bonus_kopecks:Math.round(Number(signup.value)*100),referrals_enabled:enabled.checked,reward_percent:Number(percent.value),reward_days:Number(days.value),reward_mode:rewardMode.value,reward_bonus_kopecks:Math.round(Number(bonus.value)*100)}}),reload);referral.append(rf);return referral;
  }
- async function bindReferral(form,write,reload){form.addEventListener('submit',async e=>{e.preventDefault();const b=form.querySelector('[type=submit]');if(b.disabled)return;b.disabled=true;try{await write();notice('Условия сохранены. Они действуют для новых приглашений.',true);if(reload)await reload();}catch(e){notice(e.message);}finally{b.disabled=false;}});}
- async function referralSettings(){if(me?.role!=='admin')return;const s=token;const data=await api('/admin/growth');if(s!==token)return;let host=$('referral-settings');if(!host){host=el('div');host.id='referral-settings';$('settings-system').append(host);}if(host.querySelector('form')?.contains(document.activeElement))return;host.replaceChildren(referralPanel(data.settings));}
+ async function bindReferral(form,write,reload){form.addEventListener('submit',async e=>{e.preventDefault();const b=form.querySelector('[type=submit]');if(b.disabled)return;b.disabled=true;try{await write();notice('Условия сохранены.',true);if(reload)await reload();}catch(e){notice(e.message);}finally{b.disabled=false;}});}
+ async function referralSettings(){if(me?.role!=='admin')return;const s=token;const data=await api('/admin/growth');if(s!==token)return;let host=$('referral-settings');if(!host){host=el('div');host.id='referral-settings';$('settings-system').append(host);}if(host.contains(document.activeElement)||window.pushokControls?.uses(host))return;host.replaceChildren(referralPanel(data.settings));}
  function adminPanels(root,data,available){
   root.append(referralPanel(data.settings,()=>load(target)));
   if(!offersDeleted){const create=panel('Создать предложение');offerForm(create,available);root.append(create);}
@@ -89,7 +92,7 @@ window.pushokGrowth=(()=>{
   const wallet=el('a','Баланс и история операций →');wallet.href='#/wallet';p.append(wallet);
   if(!mine.invitations.length)p.append(el('p','Принятых приглашений пока нет.'));
   else p.append(el('p','Последние 100 приглашений. Для каждого сохранены условия на момент принятия.','muted'));
-  mine.invitations.forEach(r=>{const row=el('article',undefined,'card');row.append(el('h3',({waiting:'Ожидается оплаченное и завершённое размещение',rewarded:'Награда выдана',reversed:'Награда отменена после возврата'})[r.status]),el('p',rewardDescription(r)),el('p','Приглашение принято: '+date(r.created_at),'muted'));p.append(row);});root.append(p);
+  mine.invitations.forEach(r=>{const row=el('article',undefined,'card');row.append(el('h3',({previous_inviter:'Награда была выдана до переназначения',waiting:'Ожидается оплаченное и завершённое размещение',rewarded:'Награда выдана',reversed:'Награда отменена после возврата'})[r.status]),el('p',rewardDescription(r)),el('p','Приглашение принято: '+date(r.created_at),'muted'));p.append(row);});root.append(p);
  }
  function referralLink(root,mine){
   if(!mine.referrals_enabled||!mine.link)return;

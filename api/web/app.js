@@ -721,7 +721,7 @@ async function refresh({background=false}={}){
  if(!token)return;
  if(!background)window.pushokViews?.clearLogos();
  const refreshSession=token,refreshUser=me?.id;
- const current=()=>token===refreshSession&&me?.id===refreshUser;
+ const current=()=>token===refreshSession&&me?.id===refreshUser&&(!background||!editingControl());
  const selectedChannel=$('channel-select').value,selectedTariff=$('tariff-select').value;
  const [own,currentChannels,currentTariffs]=await Promise.all([api('/campaigns'),api('/channels'),api('/me/tariffs')]);
  if(!current())return;
@@ -743,6 +743,7 @@ async function refresh({background=false}={}){
   if(window.pushokApproval)window.pushokApproval.sync(queue);
   else $('queue').replaceChildren(...working.map(c=>card(c,true)));
  }
+ if(!current())return;
  window.pushokOrder?.sync();
  if(window.cabinet)window.cabinet.sync(own,{background});
 }
@@ -979,13 +980,14 @@ Object.assign(errors,{schedule_before_requested_start:'Выберите врем
 
 // Автообновление статусов без вмешательства в редактируемую форму.
 let statusRefreshBusy=false;
+function editingControl(){
+ if(window.pushokAssistant?.isBusy()||document.querySelector('dialog[open],input:focus,textarea:focus,select:focus'))return true;
+ return [...document.querySelectorAll('.assistant-output:not(:empty),details[open]:not(.assistant-open)')].some(node=>node.getClientRects().length);
+}
 async function refreshStatuses(){
  const route=location.hash.split('/')[1]||'dashboard';
  if(!me||!token||document.hidden||statusRefreshBusy||!['dashboard','campaigns','campaign','payments','moderation'].includes(route))return;
- if(window.pushokAssistant?.isBusy())return;
- if(document.querySelector('input:focus,textarea:focus,select:focus'))return;
- const protectedPanels=document.querySelectorAll('.assistant-output:not(:empty),details[open]:not(.assistant-open)');
- if([...protectedPanels].some(node=>node.getClientRects().length))return;
+ if(editingControl())return;
  statusRefreshBusy=true;
  try{await refresh({background:true});}catch{}finally{statusRefreshBusy=false;}
 }

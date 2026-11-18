@@ -35,10 +35,31 @@ window.pushokCommunity=(()=>{
   const more=v().iconAction(button('',load),'plus','Ещё приглашённые');actions.append(more);actions.hidden=true;
   async function load(){if(busy||s!==token)return;busy=true;more.disabled=true;feedback.textContent='Загрузка…';box.setAttribute('aria-busy','true');
    try{const data=await api('/community/users/'+id+'/invited?page='+nextPage);if(s!==token||!box.isConnected)return;
-    for(const u of data.items){if(seen.has(u.id))continue;seen.add(u.id);const row=el('div',undefined,'person-line invitee user-identity');row.append(v().userAvatar(u.id,names(u)),window.pushokProfiles.names(u,true));list.append(row);}
+    for(const u of data.items){if(seen.has(u.id))continue;seen.add(u.id);const row=el('div',undefined,'person-line invitee user-identity');row.append(v().userAvatar(u.id,names(u)),window.pushokProfiles.names(u,true));if(me?.role==='admin')row.append(v().iconAction(button('',async()=>{
+      const result=await api('/admin/growth/referrals/'+u.id+'/from/'+id,{method:'DELETE'});
+      if(s!==token||!box.isConnected)return;
+      row.remove();seen.delete(u.id);
+      head.querySelector('strong').textContent=String((await api('/users/'+id+'/profile')).counts.invited);
+      feedback.textContent=result.removed?'Приглашение снято.':'Список изменился.';
+      nextPage=0;seen.clear();list.replaceChildren();await load();
+     }),'close','Убрать из приглашённых'));
+     list.append(row);}
     loaded=true;nextPage++;feedback.textContent=seen.size?'':'Пока никто не приглашён';actions.hidden=!data.more;v().iconAction(more,'plus','Ещё приглашённые');
    }catch(e){if(s===token&&box.isConnected){feedback.textContent=e.message;actions.hidden=false;v().iconAction(more,'refresh','Повторить загрузку приглашённых');}}
    finally{busy=false;more.disabled=false;box.setAttribute('aria-busy','false');}
+  }
+  if(me?.role==='admin'){
+   const form=el('form'),picker=window.pushokUsers.picker(form,{label:'Кого пригласил этот пользователь'}),submit=el('button','Назначить приглашённого');submit.type='submit';form.append(submit);box.append(form);
+   form.addEventListener('submit',async event=>{
+    event.preventDefault();if(submit.disabled)return;submit.disabled=true;
+    try{
+     const friend=await picker.resolve();if(!friend||!box.isConnected||s!==token)return;
+     await api('/admin/growth/referrals/'+friend.id,{method:'PUT',body:{inviter_user_id:id}});
+     if(!box.isConnected||s!==token)return;
+     const profile=await api('/users/'+id+'/profile');head.querySelector('strong').textContent=String(profile.counts.invited);
+     nextPage=0;seen.clear();list.replaceChildren();await load();notice('Приглашённый назначен.',true);
+    }catch(e){feedback.textContent=e.message;}finally{submit.disabled=false;}
+   });
   }
   box.addEventListener('toggle',()=>{if(box.open&&!loaded)void load();});return box;
  }

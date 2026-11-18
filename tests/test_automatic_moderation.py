@@ -86,6 +86,32 @@ class AutomaticRejectionIntegration(unittest.TestCase):
             classify = stack.enter_context(patch.object(ai, 'classify', return_value=answer or rejection()))
             yield classify
 
+    def reconsider(self, decision):
+        cid = self.pending()
+        with self.ai_result():
+            self.assertEqual(ai.service_once(self.dsn, limit=1)['rejected'], 1)
+        path = '/operator/campaigns/'+cid+'/moderation'
+        body = dict(decision=decision, comment='Ручная проверка канала', reconsider_ai=True)
+        self.request('POST',path,403,json=body)
+        self.act(self.admin)
+        card = next(row for row in self.request('GET','/operator/campaigns') if row['id']==cid)
+        self.assertTrue(card['ai_rejected'])
+        self.assertEqual(card['ai_description'],DESCRIPTION)
+        self.assertTrue(card['ai_checked_at'])
+        result=self.request('POST',path,json=body)
+        self.assertEqual(result['moderation_status'],decision)
+        self.request('POST',path,409,json=body)
+        notices=self.db('SELECT decision,ai_moderation_event_id FROM bot_advertiser_notice_outbox WHERE campaign_id=%s AND abandoned_at IS NULL',(cid,))
+        self.assertEqual(len(notices),1)
+        self.assertEqual(notices[0]['decision'],decision)
+        self.assertIsNone(notices[0]['ai_moderation_event_id'])
+
+    def test_operator_approves_rejected_agent_application(self):
+        self.reconsider('approved')
+
+    def test_operator_maintains_rejection_with_own_reason(self):
+        self.reconsider('rejected')
+
     def test_rejection_notifies_owner_and_counts_once_with_real_outbox(self):
         cid = self.pending()
         self.act(self.admin)

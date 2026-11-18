@@ -11,24 +11,24 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .wallet_ledger import post
 from .channel_logos import user_avatar
 
-KINDS = ('week', 'month', 'year')
+KINDS = ('month', 'year')
 METRICS = {'invited': 'Приглашённые пользователи', 'paid_referrals': 'Платящие приглашённые',
            'spend': 'Расходы на рекламу',
            'paid_campaigns': 'Оплаченные кампании'}
 MOSCOW = ZoneInfo('Europe/Moscow')
-Kind = Literal['week', 'month', 'year']
+Kind = Literal['month', 'year']
 Metric = Literal['invited', 'paid_referrals', 'spend', 'spend_rub', 'spend_xtr', 'paid_campaigns']
 
 
 def bounds(kind, at):
     start = at.astimezone(MOSCOW).replace(hour=0, minute=0, second=0, microsecond=0)
-    if kind == 'week':
-        start -= timedelta(days=start.weekday()); end = start + timedelta(days=7)
-    elif kind == 'month':
+    if kind == 'month':
         start = start.replace(day=1)
         end = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
-    else:
+    elif kind == 'year':
         start = start.replace(month=1, day=1); end = start.replace(year=start.year+1)
+    else:
+        raise ValueError('invalid_period')
     return start, end
 
 
@@ -220,10 +220,10 @@ def router_for(dsn,current_user,require_admin):
             cfg=conn.execute('SELECT top_size,rewards,started_at,rewards_started_at FROM hall_settings WHERE singleton').fetchone()
             cfg['started_at']=counting_start(conn,cfg)
             totals=conn.execute('''SELECT count(DISTINCT user_id) FILTER(WHERE rank<=3) winners,count(*) FILTER(WHERE bonus_amount>0) awards,coalesce(sum(bonus_amount),0) bonus
-                FROM hall_results''').fetchone()
+                FROM hall_results r JOIN hall_periods p ON p.id=r.period_id WHERE p.kind IN ('month','year')''').fetchone()
             history=conn.execute('''SELECT p.id,p.kind,p.starts_at,p.ends_at,p.closed_at,count(r.user_id) places,
                 coalesce(sum(r.bonus_amount),0) bonus FROM hall_periods p LEFT JOIN hall_results r ON r.period_id=p.id
-                GROUP BY p.id ORDER BY p.starts_at DESC,p.kind LIMIT 100''').fetchall()
+                WHERE p.kind IN ('month','year') GROUP BY p.id ORDER BY p.starts_at DESC,p.kind LIMIT 100''').fetchall()
             start,end=bounds('month',datetime.now(timezone.utc))
             activity={}
             for metric in METRICS:

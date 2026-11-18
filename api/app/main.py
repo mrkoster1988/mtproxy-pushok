@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.94",
+    version="1.95",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -231,6 +231,9 @@ class CampaignResponse(BaseModel):
     price_kopecks_snapshot: int
     currency_snapshot: str
     moderation_status: str
+    ai_rejected: bool = False
+    ai_description: str | None = None
+    ai_checked_at: datetime | None = None
     moderation_check: Literal['review', 'retry'] | None = None
     moderation_reason: str | None = None
     moderation_attempted_at: datetime | None = None
@@ -285,6 +288,7 @@ class PaymentProofResponse(BaseModel):
 
 
 class ModerationRequest(BaseModel):
+    reconsider_ai: bool = False
     decision: str = Field(pattern="^(approved|rejected|changes_requested)$")
     comment: str | None = Field(default=None, max_length=2000)
 
@@ -703,10 +707,12 @@ def list_campaigns(
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
                        c.scheduled_end_at, c.moderator_comment,
                        latest_proof.review_comment AS payment_review_comment,
+                       review.ai_description, review.ai_checked_at, review.ai_rejected,
                        ac.decision AS moderation_check, NULLIF(ac.reason, '') AS moderation_reason,
                        ac.attempted_at AS moderation_attempted_at
                 FROM campaigns AS c
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
+                JOIN campaign_agent_reviews review ON review.campaign_id=c.id
                 LEFT JOIN ai_moderation_checks ac ON ac.campaign_id = c.id AND ac.snapshot = c.updated_at
                     AND c.moderation_status = 'pending' AND c.archived_at IS NULL
                     AND (ac.decision = 'review' OR (ac.decision = 'retry' AND ac.reason <> ''))
@@ -804,6 +810,19 @@ def moderate_campaign(
         raise HTTPException(status_code=422, detail="moderation_comment_required")
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            if payload.reconsider_ai:
+                # Повторная проверка после блокировки видит решение конкурирующего модератора.
+                connection.execute("SELECT id FROM campaigns WHERE id=%s FOR UPDATE", (campaign_id,))
+                current = connection.execute("SELECT ai_rejected FROM campaign_agent_reviews WHERE campaign_id=%s",
+                                             (campaign_id,)).fetchone()
+                if not current:
+                    raise HTTPException(404, "campaign_not_found")
+                if not current['ai_rejected'] or payload.decision not in ('approved','rejected'):
+                    raise HTTPException(409, "campaign_not_pending")
+                connection.execute("""UPDATE bot_advertiser_notice_outbox
+                    SET abandoned_at=clock_timestamp(), claim_token=NULL, lease_until=NULL
+                    WHERE campaign_id=%s AND ai_moderation_event_id IS NOT NULL
+                    AND decision='rejected' AND delivered_at IS NULL AND abandoned_at IS NULL""", (campaign_id,))
             row = connection.execute(
                 """
                 UPDATE campaigns
@@ -812,7 +831,7 @@ def moderate_campaign(
                                           THEN 'awaiting_payment' ELSE payment_status END,
                     moderator_comment = %s,
                     updated_at = now()
-                WHERE id = %s AND moderation_status = 'pending' AND archived_at IS NULL
+                WHERE id = %s AND moderation_status = %s AND archived_at IS NULL
                 RETURNING id, channel_id, tariff_id, tariff_name_snapshot,
                           duration_seconds_snapshot, price_kopecks_snapshot,
                           currency_snapshot, moderation_status, payment_status,
@@ -820,7 +839,8 @@ def moderate_campaign(
                           scheduled_end_at, moderator_comment
                 """,
                 (payload.decision, payload.decision,
-                 payload.comment.strip() if payload.comment else None, campaign_id),
+                 payload.comment.strip() if payload.comment else None, campaign_id,
+                 "rejected" if payload.reconsider_ai else "pending"),
             ).fetchone()
             if row is None:
                 exists = connection.execute(
@@ -829,12 +849,16 @@ def moderate_campaign(
                 if exists is None:
                     raise HTTPException(status_code=404, detail="campaign_not_found")
                 raise HTTPException(status_code=409, detail="campaign_not_pending")
+            if payload.reconsider_ai and payload.decision == "rejected":
+                connection.execute("""INSERT INTO bot_advertiser_notice_outbox
+                    (campaign_id,recipient_user_id,decision,comment_snapshot)
+                    SELECT id,advertiser_user_id,'rejected',moderator_comment FROM campaigns WHERE id=%s""", (campaign_id,))
             connection.execute(
                 """
-                INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json)
-                VALUES (%s, %s, 'campaign_moderated', jsonb_build_object('decision', %s::text))
+                INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json, created_at)
+                VALUES (%s, %s, 'campaign_moderated', jsonb_build_object('decision', %s::text,'reconsidered_ai',%s::boolean),clock_timestamp())
                 """,
-                (operator["id"], campaign_id, payload.decision),
+                (operator["id"], campaign_id, payload.decision, payload.reconsider_ai),
             )
     except HTTPException:
         raise
@@ -1818,10 +1842,12 @@ def list_operator_campaigns(
                        c.placement_status, c.requested_start_at, c.scheduled_start_at,
                        c.scheduled_end_at, c.moderator_comment,
                        latest_proof.review_comment AS payment_review_comment,
+                       review.ai_description, review.ai_checked_at, review.ai_rejected,
                        ac.decision AS moderation_check, NULLIF(ac.reason, '') AS moderation_reason,
                        ac.attempted_at AS moderation_attempted_at
                 FROM campaigns AS c
                 JOIN sponsor_channels AS sc ON sc.id = c.channel_id
+                JOIN campaign_agent_reviews review ON review.campaign_id=c.id
                 LEFT JOIN ai_moderation_checks ac ON ac.campaign_id = c.id AND ac.snapshot = c.updated_at
                     AND c.moderation_status = 'pending' AND c.archived_at IS NULL
                     AND (ac.decision = 'review' OR (ac.decision = 'retry' AND ac.reason <> ''))

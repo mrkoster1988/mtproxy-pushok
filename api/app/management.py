@@ -298,7 +298,8 @@ def router_for(get_dsn, get_user, admin_dependency, operator_dependency, normali
                         c.scheduled_start_at,c.scheduled_end_at,c.topic,c.tariff_name_snapshot,
                         c.duration_seconds_snapshot,c.price_kopecks_snapshot,
                         CASE WHEN c.pricing_version=1 THEN c.stars_price_snapshot ELSE t.stars_price_xtr END AS stars_price_snapshot,
-                        c.currency_snapshot FROM campaigns c JOIN sponsor_channels sc ON sc.id=c.channel_id
+                        c.currency_snapshot,review.ai_description,review.ai_checked_at FROM campaigns c JOIN sponsor_channels sc ON sc.id=c.channel_id
+                        JOIN campaign_agent_reviews review ON review.campaign_id=c.id
                         JOIN tariffs t ON t.id=c.tariff_id
                         WHERE c.archived_at IS NOT NULL'''+condition+' ORDER BY c.archived_at DESC LIMIT 100',params).fetchall()
                     for row in rows:
