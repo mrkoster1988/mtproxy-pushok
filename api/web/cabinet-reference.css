@@ -49,6 +49,8 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .cabinet-mode .metrics{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}.cabinet-mode .metrics:empty{display:none}.cabinet-mode .metric{flex:1;display:grid;gap:4px;padding:12px}.cabinet-mode .metric strong{font-size:20px}.cabinet-mode .metric span,.cabinet-mode .metric small{font-size:11px;color:var(--muted)}
 /* Главная: один призыв, реальный остаток и две ближайшие кампании. */
 .dashboard-intro{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(260px,1fr);gap:12px;margin-bottom:18px}.dashboard-intro>div{min-width:0}
+.dashboard-intro #dashboard-referral .referral-overview{margin:0}
+.dashboard-intro #dashboard-verification:empty{display:none}
 .cabinet-mode .dashboard-hero{display:grid;grid-template-columns:minmax(0,1fr) 122px;gap:8px 10px;align-items:center;padding:16px;border:1px solid var(--line);border-radius:14px;background:radial-gradient(at 90% 60%,#1d5d5d40,transparent 65%),var(--surface);overflow:hidden}
 .dashboard-hero-copy{min-width:0}.cabinet-mode .dashboard-hero-copy h2{font-size:26px;line-height:1.15;letter-spacing:-.7px;margin:0 0 8px}.dashboard-hero-copy p{font-size:12px;margin:0}.dashboard-hero>img{width:100%;max-height:138px;height:auto;object-fit:contain;align-self:end}
 .dashboard-hero-actions{grid-column:1/-1}.dashboard-hero-actions>a{display:flex;justify-content:center;align-items:center;padding:10px;min-height:44px;box-sizing:border-box;background:var(--mint);color:#052b33!important;border-radius:9px;font-size:14px;font-weight:700;text-decoration:none}

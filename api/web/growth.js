@@ -126,11 +126,11 @@ window.pushokGrowth=(()=>{
   card.setAttribute('aria-busy','true');
   try{
    const mine=await myInvitation();if(version!==overviewEpoch||session!==token||uid!==me?.id)return;
-   const signature=JSON.stringify([mine.referrals_enabled,mine.link,mine.proxy_invite,mine.invited,mine.reward_mode,mine.reward_bonus_kopecks,mine.reward_percent,mine.reward_days]);
+   const signature=JSON.stringify([mine.referrals_enabled,mine.link,mine.proxy_invite,mine.invited]);
    if(card.dataset.snapshot===signature){card.querySelector('h2').lastChild.textContent='Приглашайте друзей';card.removeAttribute('title');card.setAttribute('aria-busy','false');return;}
    const expanded=card.dataset.inviteLink===mine.link && card.querySelector('.invite-toggle')?.getAttribute('aria-expanded')==='true';
    const head=el('div',undefined,'section-heading'),title=el('h2','Приглашайте друзей');title.prepend(window.pushokViews.icon('users'));head.append(title);card.replaceChildren(head);
-   card.append(el('p',mine.referrals_enabled?'За первое оплаченное рублями и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены.','muted'));
+   if(!mine.referrals_enabled)card.append(el('p','Новые приглашения пока отключены.','muted'));
    if(mine.referrals_enabled && mine.link){
     card.dataset.inviteLink=mine.link;
     const invite=el('div',undefined,'invite-details');
