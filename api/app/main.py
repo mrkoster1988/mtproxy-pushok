@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.109",
+    version="1.110",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -296,6 +296,10 @@ class ModerationRequest(BaseModel):
     reconsider_ai: bool = False
     decision: str = Field(pattern="^(approved|rejected|changes_requested)$")
     comment: str | None = Field(default=None, max_length=2000)
+
+
+class ModeratorDecisionRequest(ModerationRequest):
+    operator_decision_id: UUID | None = None
 
 
 class PlacementCompletionRequest(BaseModel):
@@ -815,17 +819,25 @@ def submit_campaign(
 def moderator_queue(response: Response, page: int = Query(0, ge=0, le=100000), viewer=Depends(require_moderator)):
     response.headers["Cache-Control"] = "private, no-store"
     with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as conn:
-        rows = conn.execute("""SELECT id,title,telegram_url,reason,description FROM moderator_review_queue
-            WHERE advertiser_user_id<>%s AND owner_user_id<>%s ORDER BY attempted_at,id LIMIT 21 OFFSET %s""",
-            (viewer['id'], viewer['id'], page * 20)).fetchall()
+        rows = conn.execute("""SELECT id,title,telegram_url,reason,description,moderation_status,operator_decision_id
+            FROM (
+                SELECT id,advertiser_user_id,owner_user_id,title,telegram_url,reason,description,attempted_at,
+                       'pending' AS moderation_status,NULL::uuid AS operator_decision_id FROM moderator_review_queue
+                UNION ALL
+                SELECT id,advertiser_user_id,owner_user_id,title,telegram_url,reason,'' AS description,attempted_at,
+                       moderation_status,operator_decision_id FROM moderation_operator_reviews WHERE %s
+            ) queue WHERE advertiser_user_id<>%s AND owner_user_id<>%s
+            ORDER BY (operator_decision_id IS NOT NULL),attempted_at DESC,id LIMIT 21 OFFSET %s""",
+            (viewer['role'] in ('moderator','admin'), viewer['id'], viewer['id'], page * 20)).fetchall()
     return {"items": rows[:20], "more": len(rows) > 20}
 
 
 @app.post("/api/v1/moderation/queue/{campaign_id}", tags=["moderation"])
-def decide_disputed_campaign(campaign_id: UUID, payload: ModerationRequest, viewer=Depends(require_moderator)):
+def decide_disputed_campaign(campaign_id: UUID, payload: ModeratorDecisionRequest, viewer=Depends(require_moderator)):
     if payload.reconsider_ai:
         raise HTTPException(409, "campaign_not_pending")
-    result = _moderate_campaign(campaign_id, payload, viewer, disputed_only=True)
+    result = _moderate_campaign(campaign_id, payload, viewer, disputed_only=True,
+                                operator_decision_id=payload.operator_decision_id)
     return {"moderation_status": result.moderation_status}
 
 
@@ -842,22 +854,37 @@ def moderate_campaign(
     return _moderate_campaign(campaign_id, payload, operator)
 
 
-def _moderate_campaign(campaign_id, payload, operator, *, disputed_only=False):
-    if payload.decision != "approved" and not (payload.comment and payload.comment.strip()):
+def _moderate_campaign(campaign_id, payload, operator, *, disputed_only=False, operator_decision_id=None):
+    if (payload.decision != "approved" or operator_decision_id) and not (payload.comment and payload.comment.strip()):
         raise HTTPException(status_code=422, detail="moderation_comment_required")
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
+            allowed_roles = ('admin','operator','moderator') if disputed_only else ('admin','operator')
+            actor = connection.execute("SELECT role,blocked_at FROM users WHERE id=%s FOR SHARE",
+                                       (operator['id'],)).fetchone()
+            if not actor or actor['blocked_at'] or actor['role'] not in allowed_roles:
+                raise HTTPException(403, "moderator_role_required" if disputed_only else "operator_role_required")
+            previous_status = "rejected" if payload.reconsider_ai else "pending"
             if disputed_only:
-                actor = connection.execute("SELECT role,blocked_at FROM users WHERE id=%s FOR SHARE",
-                                           (operator['id'],)).fetchone()
-                if not actor or actor['blocked_at'] or actor['role'] not in ('moderator','operator','admin'):
-                    raise HTTPException(403, "moderator_role_required")
                 connection.execute("SELECT id FROM campaigns WHERE id=%s FOR UPDATE", (campaign_id,))
-                eligible = connection.execute("""SELECT id FROM moderator_review_queue WHERE id=%s
-                    AND advertiser_user_id<>%s AND owner_user_id<>%s""",
-                    (campaign_id, operator['id'], operator['id'])).fetchone()
-                if not eligible:
-                    raise HTTPException(409, "campaign_not_pending")
+                if operator_decision_id:
+                    if actor['role'] not in ('moderator','admin'):
+                        raise HTTPException(403, "moderator_role_required")
+                    eligible = connection.execute("""SELECT moderation_status FROM moderation_operator_reviews
+                        WHERE id=%s AND advertiser_user_id<>%s AND owner_user_id<>%s AND operator_decision_id=%s""",
+                        (campaign_id, operator['id'], operator['id'], operator_decision_id)).fetchone()
+                    if not eligible or eligible['moderation_status']==payload.decision:
+                        raise HTTPException(409, "operator_decision_changed")
+                    previous_status = eligible['moderation_status']
+                    connection.execute("""UPDATE bot_advertiser_notice_outbox
+                        SET abandoned_at=clock_timestamp(), claim_token=NULL, lease_until=NULL
+                        WHERE campaign_id=%s AND delivered_at IS NULL AND abandoned_at IS NULL""", (campaign_id,))
+                else:
+                    eligible = connection.execute("""SELECT id FROM moderator_review_queue WHERE id=%s
+                        AND advertiser_user_id<>%s AND owner_user_id<>%s""",
+                        (campaign_id, operator['id'], operator['id'])).fetchone()
+                    if not eligible:
+                        raise HTTPException(409, "campaign_not_pending")
             if payload.reconsider_ai:
                 # Повторная проверка после блокировки видит решение конкурирующего модератора.
                 connection.execute("SELECT id FROM campaigns WHERE id=%s FOR UPDATE", (campaign_id,))
@@ -876,7 +903,7 @@ def _moderate_campaign(campaign_id, payload, operator, *, disputed_only=False):
                 UPDATE campaigns
                 SET moderation_status = %s,
                     payment_status = CASE WHEN %s = 'approved' AND payment_status <> 'verified'
-                                          THEN 'awaiting_payment' ELSE payment_status END,
+                                          THEN 'awaiting_payment' WHEN %s THEN 'not_required' ELSE payment_status END,
                     moderator_comment = %s,
                     updated_at = now()
                 WHERE id = %s AND moderation_status = %s AND archived_at IS NULL
@@ -886,9 +913,8 @@ def _moderate_campaign(campaign_id, payload, operator, *, disputed_only=False):
                           placement_status, requested_start_at, scheduled_start_at,
                           scheduled_end_at, moderator_comment
                 """,
-                (payload.decision, payload.decision,
-                 payload.comment.strip() if payload.comment else None, campaign_id,
-                 "rejected" if payload.reconsider_ai else "pending"),
+                (payload.decision, payload.decision, operator_decision_id is not None,
+                 payload.comment.strip() if payload.comment else None, campaign_id, previous_status),
             ).fetchone()
             if row is None:
                 exists = connection.execute(
@@ -897,6 +923,10 @@ def _moderate_campaign(campaign_id, payload, operator, *, disputed_only=False):
                 if exists is None:
                     raise HTTPException(status_code=404, detail="campaign_not_found")
                 raise HTTPException(status_code=409, detail="campaign_not_pending")
+            if operator_decision_id:
+                connection.execute("""UPDATE bot_advertiser_notice_outbox SET operator_decision_reviewed=true
+                    WHERE campaign_id=%s AND decision=%s AND created_at=transaction_timestamp()
+                      AND abandoned_at IS NULL""", (campaign_id, payload.decision))
             if payload.reconsider_ai and payload.decision == "rejected":
                 connection.execute("""INSERT INTO bot_advertiser_notice_outbox
                     (campaign_id,recipient_user_id,decision,comment_snapshot)
@@ -904,9 +934,10 @@ def _moderate_campaign(campaign_id, payload, operator, *, disputed_only=False):
             connection.execute(
                 """
                 INSERT INTO audit_events (actor_user_id, campaign_id, event_type, details_json, created_at)
-                VALUES (%s, %s, 'campaign_moderated', jsonb_build_object('decision', %s::text,'reconsidered_ai',%s::boolean),clock_timestamp())
+                VALUES (%s, %s, 'campaign_moderated', jsonb_build_object('decision', %s::text,'reconsidered_ai',%s::boolean,
+                    'actor_role',%s::text,'operator_decision_id',%s::uuid),clock_timestamp())
                 """,
-                (operator["id"], campaign_id, payload.decision, payload.reconsider_ai),
+                (operator["id"], campaign_id, payload.decision, payload.reconsider_ai, actor["role"], operator_decision_id),
             )
     except HTTPException:
         raise

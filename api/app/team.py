@@ -39,6 +39,8 @@ def router_for(get_dsn, require_admin, require_operator):
         if target['is_owner']:raise HTTPException(403, 'team_owner_protected')
         if actor['role']=='operator' and target['role']=='admin':
             raise HTTPException(403, 'team_admin_protected')
+        if actor['role']=='operator' and target['role']=='moderator':
+            raise HTTPException(403, 'team_moderator_protected')
         return actor,target
 
     def keep_admin(conn, target):
@@ -64,13 +66,15 @@ def router_for(get_dsn, require_admin, require_operator):
                 actor,target=lock_users(conn,viewer['id'],payload.telegram_user_id)
                 if actor['role']=='operator' and payload.role=='admin':
                     raise HTTPException(403, 'team_admin_grant_forbidden')
+                if actor['role']=='operator' and payload.role=='moderator':
+                    raise HTTPException(403, 'team_moderator_grant_forbidden')
                 if target['id']==viewer['id'] and payload.role!=actor['role']:
                     raise HTTPException(409, 'team_cannot_remove_self')
                 if target['role']!=payload.role:
                     if payload.role!='admin':keep_admin(conn,target)
                     conn.execute('UPDATE users SET role=%s,updated_at=now() WHERE id=%s', (payload.role,target['id']))
                     conn.execute('DELETE FROM user_sessions WHERE user_id=%s', (target['id'],))
-                    conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'team_role_changed',jsonb_build_object('telegram_user_id',%s::bigint,'old_role',%s::text,'new_role',%s::text))", (viewer['id'],payload.telegram_user_id,target['role'],payload.role))
+                    conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json,created_at) VALUES(%s,'team_role_changed',jsonb_build_object('telegram_user_id',%s::bigint,'old_role',%s::text,'new_role',%s::text),clock_timestamp())", (viewer['id'],payload.telegram_user_id,target['role'],payload.role))
                 if payload.role in ('admin','operator') and not target['blocked_at']:
                     conn.execute('INSERT INTO bot_operator_subscriptions(operator_user_id) VALUES(%s) ON CONFLICT DO NOTHING', (target['id'],))
                 else:

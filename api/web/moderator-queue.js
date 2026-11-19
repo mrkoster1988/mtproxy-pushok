@@ -15,11 +15,17 @@ window.pushokModeratorQueue=(()=>{
    const view=JSON.stringify([page,data]);
    if(view===lastView&&root.dataset.viewer==='moderator')return;
    const list=document.createDocumentFragment();
-   list.append(el('h2','Спорные заявки'));
+   list.append(el('h2','Заявки на проверку'));
+   let showingOperatorDecisions=false;
    for(const item of data.items){
+    if(item.operator_decision_id&&!showingOperatorDecisions){
+     list.append(el('h2','Решения операторов'));showingOperatorDecisions=true;
+    }
     const card=el('article',undefined,'card'),heading=el('h3'),channel=el('a',item.title||item.telegram_url);
     channel.href=item.telegram_url;channel.target='_blank';channel.rel='noopener noreferrer';
-    heading.append(channel);card.append(heading,el('p',item.reason));
+    heading.append(channel);card.append(heading);
+    if(item.operator_decision_id)card.append(el('p','Решение оператора: '+({approved:'одобрено',changes_requested:'запрошены исправления',rejected:'отклонено'}[item.moderation_status]),'muted'));
+    if(item.reason)card.append(el('p',item.reason));
     if(item.description)card.append(el('p',item.description,'muted'));
     const reasonLabel=el('label','Комментарий рекламодателю'),reason=el('textarea');
     reason.maxLength=2000;reason.rows=2;reason.value=drafts.get(item.id)||'';
@@ -27,10 +33,11 @@ window.pushokModeratorQueue=(()=>{
     reasonLabel.append(reason);card.append(reasonLabel);
     const actions=el('div',undefined,'actions');
     for(const [decision,label] of [['approved','Одобрить'],['changes_requested','Запросить исправления'],['rejected','Отклонить']]){
+     if(decision===item.moderation_status)continue;
      const action=button(label,async()=>{
       const comment=reason.value.trim()||null;
-      if(decision!=='approved'&&!comment){reason.focus();throw Error('Укажите причину для рекламодателя.');}
-      await api('/moderation/queue/'+item.id,{method:'POST',body:{decision,comment}});
+      if((decision!=='approved'||item.operator_decision_id)&&!comment){reason.focus();throw Error('Укажите причину для рекламодателя.');}
+      await api('/moderation/queue/'+item.id,{method:'POST',body:{decision,comment,operator_decision_id:item.operator_decision_id}});
       if(session===token&&me?.role==='moderator'&&location.hash.split('/')[1]==='moderation'){
        drafts.delete(item.id);notice('Решение сохранено.',true);await render();
       }
@@ -42,7 +49,7 @@ window.pushokModeratorQueue=(()=>{
     }
     card.append(actions);list.append(card);
    }
-   if(!data.items.length)list.append(el('p','Спорных заявок сейчас нет.','empty'));
+   if(!data.items.length)list.append(el('p','Заявок на проверку сейчас нет.','empty'));
    if(page)list.append(button('Назад',()=>{page--;return render();}));
    if(data.more)list.append(button('Далее',()=>{page++;return render();}));
    root.replaceChildren(list);root.dataset.viewer='moderator';lastView=view;

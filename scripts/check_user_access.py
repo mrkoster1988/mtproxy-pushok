@@ -59,7 +59,7 @@ def check_user_access(browser,base,output,failures,dsn):
         operator=launch('operator');go(operator,'profile');operator.get_by_role('link',name='Пользователи',exact=True).click()
         operator.get_by_label('Поиск пользователей',exact=True).fill('@access_target');operator.locator('.directory-search button[type=submit]').click()
         row=operator.locator('.user-directory .directory-user');expect(row).to_have_count(1);expect(row).to_contain_text('@access_target')
-        row.locator('.role-button').click();expect(row.locator('.role-editor option')).to_have_count(3)
+        row.locator('.role-button').click();expect(row.locator('.role-editor option')).to_have_count(2)
         expect(row.locator('.role-editor option[value=admin]')).to_have_count(0)
         row.get_by_label('Роль пользователя',exact=True).press('Escape');expect(row.locator('.role-editor')).to_be_hidden()
         save(operator,row,'operator');save(operator,row,'advertiser')
