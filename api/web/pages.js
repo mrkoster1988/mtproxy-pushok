@@ -549,7 +549,7 @@
   if(name==='sponsors')void renderAutomation();
   if(name==='moderation'){
    if(me.role==='moderator'){
-    helpText.textContent='Здесь появляются заявки, по которым ИИ нашёл основание для ручной проверки.';
+    helpText.textContent='Здесь можно разобрать спорную заявку и пересмотреть решение оператора до оплаты и планирования.';
     void window.pushokModeratorQueue.render();
    }else window.pushokApproval?.render();
   }

@@ -55,14 +55,14 @@ class OperatorDecisionResult(BaseModel):
 def _operator(connection, telegram_id: int):
     row = connection.execute(
         """
-        SELECT id FROM users
-        WHERE telegram_user_id = %s AND blocked_at IS NULL AND role IN ('admin', 'operator')
+        SELECT id,role FROM users
+        WHERE telegram_user_id = %s AND blocked_at IS NULL AND role IN ('admin', 'operator') FOR SHARE
         """,
         (telegram_id,),
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=403, detail="operator_role_required")
-    return row["id"]
+    return row
 
 
 @router.post("/api/v1/internal/bot/operators/queue",
@@ -77,7 +77,8 @@ def operator_queue(
         with psycopg.connect(
             os.environ["DATABASE_URL"], connect_timeout=3, row_factory=dict_row
         ) as connection:
-            actor_id = _operator(connection, payload.telegram_user_id)
+            actor = _operator(connection, payload.telegram_user_id)
+            actor_id = actor['id']
             if payload.subscribe:
                 connection.execute(
                     """
@@ -177,7 +178,7 @@ def operator_decision(
         with psycopg.connect(
             os.environ["DATABASE_URL"], connect_timeout=3, row_factory=dict_row
         ) as connection:
-            actor_id = _operator(connection, payload.telegram_user_id)
+            actor = _operator(connection, payload.telegram_user_id)
             row = connection.execute(
                 """
                 UPDATE campaigns
@@ -196,11 +197,11 @@ def operator_decision(
             connection.execute(
                 """
                 INSERT INTO audit_events
-                    (actor_user_id, campaign_id, event_type, details_json)
+                    (actor_user_id, campaign_id, event_type, details_json, created_at)
                 VALUES (%s, %s, 'campaign_moderated',
-                        jsonb_build_object('decision', %s::text, 'source', 'telegram_bot'))
+                        jsonb_build_object('decision', %s::text, 'source', 'telegram_bot', 'actor_role', %s::text),clock_timestamp())
                 """,
-                (actor_id, payload.campaign_id, payload.decision),
+                (actor['id'], payload.campaign_id, payload.decision, actor['role']),
             )
     except psycopg.Error as exc:
         explain_database_error(exc)

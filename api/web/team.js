@@ -9,9 +9,9 @@ window.pushokTeam=(()=>{
   return user.role;
  }
  function displayRole(user){return (roles[category(user)]||roles.user)+(user.is_friend?' · Друзья':'');}
- Object.assign(errors,{user_blocked:'Доступ к кабинету заблокирован. Обратитесь к администратору.',team_admin_protected:'Оператор не может менять права или блокировать администратора.',team_admin_grant_forbidden:'Назначить администратора может только администратор.',team_cannot_block_self:'Нельзя заблокировать собственный аккаунт.'});
+ Object.assign(errors,{user_blocked:'Доступ к кабинету заблокирован. Обратитесь к администратору.',team_admin_protected:'Оператор не может менять права или блокировать администратора.',team_admin_grant_forbidden:'Назначить администратора может только администратор.',team_moderator_protected:'Управлять доступом модератора может администратор.',team_moderator_grant_forbidden:'Назначить модератора может администратор.',team_cannot_block_self:'Нельзя заблокировать собственный аккаунт.'});
  function roleControl(user){
-  const editable=!user.is_owner&&['admin','operator'].includes(me?.role)&&user.id!==me.id&&(me.role==='admin'||user.role!=='admin');
+  const editable=!user.is_owner&&['admin','operator'].includes(me?.role)&&user.id!==me.id&&(me.role==='admin'||!['admin','moderator'].includes(user.role));
   const label=()=>displayRole(user);
   const badge=el(editable?'button':'span',undefined,'person-role'+(editable?' role-button':'')),editor=el('form',undefined,'role-editor');editor.hidden=true;
   function paint(){badge.dataset.role=user.is_owner?'owner':category(user);badge.replaceChildren(document.createTextNode(label()+(user.blocked_at?' · Заблокирован':'')));badge.classList.toggle('is-blocked',Boolean(user.blocked_at));if(editable){badge.setAttribute('aria-label','Изменить права: '+label());}}
@@ -19,8 +19,8 @@ window.pushokTeam=(()=>{
   badge.type='button';badge.setAttribute('aria-expanded','false');editor.id='role-'+crypto.randomUUID();badge.setAttribute('aria-controls',editor.id);
   const session=token,viewer=me.id,current=()=>session===token&&viewer===me?.id&&badge.isConnected;
   const fields=el('fieldset'),title=el('legend','Права пользователя'),select=el('select'),selectLabel=el('label','Роль пользователя'),hint=el('p',undefined,'muted'),feedback=el('p',undefined,'muted'),actions=el('div',undefined,'role-actions');
-  select.setAttribute('aria-label','Роль пользователя');for(const role of ['advertiser','moderator','operator',...(me.role==='admin'?['admin']:[])])option(select,role,role==='advertiser'?'Базовый доступ':roles[role]);select.value=user.role;selectLabel.append(select);
-  const descriptions={moderator:'Разбирает спорные заявки и сообщает рекламодателю решение.',advertiser:'Собственные каналы, заявки и оплаты.',operator:'Модерация, назначение операторов и блокировка пользователей. Без управления администраторами и чужими балансами.',admin:'Полный доступ к настройкам, ролям и балансам пользователей.'};
+  select.setAttribute('aria-label','Роль пользователя');for(const role of ['advertiser','operator',...(me.role==='admin'?['moderator','admin']:[])])option(select,role,role==='advertiser'?'Базовый доступ':roles[role]);select.value=user.role;selectLabel.append(select);
+  const descriptions={moderator:'Разбирает спорные заявки и пересматривает решения операторов до оплаты и планирования.',advertiser:'Собственные каналы, заявки и оплаты.',operator:'Модерация, назначение операторов и блокировка пользователей. Снимает каналы с чёрного списка.',admin:'Полный доступ к настройкам, ролям и балансам пользователей.'};
   const save=window.pushokViews.iconAction(el('button'),'check','Сохранить права');save.type='submit';save.classList.add('primary');
   const cancel=button('Отмена',()=>close()),block=button('',async()=>{
    if(!current())return;const blocked=!user.blocked_at;

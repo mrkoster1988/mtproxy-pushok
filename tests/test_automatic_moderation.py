@@ -255,7 +255,7 @@ class AutomaticRejectionIntegration(unittest.TestCase):
         self.db("""INSERT INTO ai_moderation_checks(campaign_id,snapshot,revision,decision,reason)
                    SELECT id,updated_at,'test','review','Требуется оценка смысла публикации' FROM campaigns WHERE id=%s""",(cid,))
         card=next(row for row in self.request('GET',path)['items'] if row['id']==cid)
-        self.assertEqual(set(card),{'id','title','telegram_url','reason','description'})
+        self.assertEqual(set(card),{'id','title','telegram_url','reason','description','moderation_status','operator_decision_id'})
         self.act(self.member)
         self.actor['role']='moderator'
         self.db("UPDATE users SET role='moderator' WHERE id=%s",(self.member,))
@@ -267,6 +267,39 @@ class AutomaticRejectionIntegration(unittest.TestCase):
         self.assertEqual(self.request('POST',action,json=body),{'moderation_status':'approved'})
         self.request('POST',action,409,json=body)
         self.assertNotIn(cid,[row['id'] for row in self.request('GET',path)['items']])
+
+    def test_review_operator_decision_and_protect_moderator_role(self):
+        cid=self.pending()
+        self.addCleanup(self.db,'UPDATE campaigns SET archived_at=now() WHERE id=%s',(cid,))
+        path='/moderation/queue'
+        admin, operator, moderator=self.owner,self.admin,self.friend
+        self.act(admin)
+        for uid,role in [(operator,'operator'),(moderator,'moderator')]:
+            self.request('PUT','/admin/team',json={'telegram_user_id':int(uid.hex[:12],16),'role':role})
+        self.act(operator)
+        self.actor['role']='operator'
+        self.request('PUT','/admin/team',403,json={'telegram_user_id':int(self.member.hex[:12],16),'role':'moderator'})
+        target={'telegram_user_id':int(moderator.hex[:12],16)}
+        self.request('PUT','/admin/team',403,json=target|{'role':'advertiser'})
+        self.request('PUT','/admin/team/access',403,json=target|{'blocked':True})
+        self.request('POST','/operator/campaigns/'+cid+'/moderation',json={'decision':'approved'})
+        decision_id=str(self.db("""SELECT id FROM audit_events WHERE campaign_id=%s
+                                   AND event_type='campaign_moderated'""",(cid,))[0]['id'])
+        self.assertNotIn(cid,[row['id'] for row in self.request('GET',path)['items']])
+        body={'decision':'rejected','comment':'Содержание канала требует отказа.','operator_decision_id':decision_id}
+        self.request('POST',path+'/'+cid,403,json=body)
+        self.act(moderator)
+        self.actor['role']='moderator'
+        item=next(row for row in self.request('GET',path)['items'] if row['id']==cid)
+        self.assertEqual((item['moderation_status'],item['operator_decision_id']),('approved',decision_id))
+        self.db("INSERT INTO payment_attempts(campaign_id,provider,payment_channel,amount,currency) VALUES(%s,'sbp','external_web',30000,'RUB')",(cid,))
+        self.request('POST',path+'/'+cid,409,json=body)
+        self.db("DELETE FROM payment_attempts WHERE campaign_id=%s",(cid,))
+        self.request('POST',path+'/'+cid,json=body)
+        self.request('POST',path+'/'+cid,409,json=body)
+        self.assertEqual(self.db('SELECT payment_status FROM campaigns WHERE id=%s',(cid,))[0]['payment_status'],'not_required')
+        notices=self.db('SELECT decision,comment_snapshot FROM bot_advertiser_notice_outbox WHERE campaign_id=%s AND abandoned_at IS NULL',(cid,))
+        self.assertEqual(notices,[{'decision':'rejected','comment_snapshot':body['comment']}])
 
     def test_friend_mark_is_independent_and_idempotent(self):
         target=int(self.friend.hex[:12],16)
