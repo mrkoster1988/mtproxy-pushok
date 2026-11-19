@@ -327,6 +327,7 @@ def main():
                     assert abs(bounds['width'] - bounds['height']) < 1
                     assert abs(bounds['x'] + bounds['width']/2 - width/2) < 2
                     assert proxy.evaluate("e=>getComputedStyle(e).borderRadius==='50%'")
+                    assert 'rgba(255, 51, 76' in proxy.evaluate('e=>getComputedStyle(e).boxShadow')
                     if width == 390:
                         proxy.scroll_into_view_if_needed()
                         advertiser.screenshot(path=str(output/'dashboard-connect-390.png'))

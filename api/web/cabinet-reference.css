@@ -372,11 +372,15 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
   flex-direction:column;
   gap:clamp(8px,2vw,16px);
   margin-block:8px;
-  border:2px solid #ff9298;
+  border:2px solid #ff727d;
   border-radius:50%;
   background-color:#d94750;
   background-image:linear-gradient(155deg,#df4651 0%,#bf3242 55%,#991f34 100%);
-  box-shadow:inset 0 1px 0 #ffc2c5,0 4px 18px #a3233840;
+  box-shadow:
+    inset 0 0 10px #ff919a80,
+    0 0 0 3px #ff43533d,
+    0 0 12px 3px #ff334cbd,
+    0 0 26px 6px #ff263d70;
   color:#fff!important;
   font-size:clamp(20px,5vw,32px);
   line-height:1.15;
@@ -384,6 +388,7 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .dashboard-connect-proxy>.ui-icon{width:clamp(40px,12vw,72px);height:auto;aspect-ratio:1;color:inherit}
 .dashboard-connect-proxy[href]:focus-visible{outline:3px solid white;outline-offset:4px}
 .dashboard-connect-proxy[href]:active{filter:brightness(.90)}
+.dashboard-hero-actions>a.dashboard-connect-proxy[aria-disabled=true]{box-shadow:none}
 .dashboard-connect-proxy[aria-disabled=true]{opacity:.65;cursor:default}
 
 /* Пользователи: компактная идентичность слева, роль справа сверху. */
