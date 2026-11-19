@@ -1,5 +1,6 @@
 """Профиль доступен владельцу и сотрудникам; фото не раскрывает токен Bot API."""
 from uuid import UUID
+from .user_visibility import can_view_username, hide_username
 from .channel_topics import label as topic_label
 
 import psycopg
@@ -23,7 +24,7 @@ def _user(conn, uid, viewer):
         FROM users WHERE id=%s''', (environment_name(), uid)).fetchone()
     if not row:
         raise HTTPException(404, 'user_profile_not_found')
-    return row
+    return row if can_view_username(viewer) else hide_username(row)
 
 
 def router_for(dsn, current_user):

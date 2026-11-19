@@ -12,3 +12,5 @@ __pycache__/
 *.session-wal
 *.session-shm
 telegram-owner/
+
+.maintenance/

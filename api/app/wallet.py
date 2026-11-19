@@ -8,6 +8,7 @@ from uuid import UUID
 import psycopg
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, Query, Path
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from .user_visibility import can_view_username
 from . import wallet_ledger as ledger, wallet_topups as topups, wallet_controls as controls, wallet_history
 from .bot_stars import StarsPrecheckoutInput, StarsReceiptInput, authorize
 from .sbp_provider import SBPProviderError
@@ -244,7 +245,7 @@ def router_for(dsn,current_user,require_admin):
 
     @router.get('/api/v1/wallet/entries')
     def entries(page:int=Query(default=0,ge=0,le=100000),user=Depends(current_user)):
-        with db() as conn:return wallet_history.history(conn,user['id'],page)
+        with db() as conn:return wallet_history.history(conn,user['id'],page,show_username=can_view_username(user))
 
     @router.delete('/api/v1/wallet/topups/{tid}')
     def hide_topup(tid:UUID,user=Depends(current_user)):

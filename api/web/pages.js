@@ -164,7 +164,9 @@
  const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
  dashboardHero.append(heroCopy,dashboardMascot,heroActions);
  const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardReferral=el('div');dashboardReferral.id='dashboard-referral';dashboardIntro.append(dashboardReferral,dashboardHero);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
- const dashboardVerification=el('div');dashboardVerification.id='dashboard-verification';dashboardIntro.append(dashboardVerification);
+ const dashboardVerification=el('div');dashboardVerification.id='dashboard-verification';
+ const verificationPanel=el('details',undefined,'dashboard-verify');
+ verificationPanel.append(el('summary','Подтвердить номер'),dashboardVerification);
  const bottomNav=el('nav',undefined,'mobile-bottom-nav');bottomNav.setAttribute('aria-label','Основные разделы');
  [['dashboard','home','Главная'],['moderation','moderation','Модерация'],['campaigns','campaign','Кампании'],['wallet','wallet','Баланс'],['hall','star','Лидеры'],['profile','user','Профиль']].forEach(([route,icon,title])=>{
   const a=link(title,route);a.dataset.route=route;a.hidden=route==='moderation';
@@ -174,7 +176,9 @@
  shell.append(bottomNav);
  const homeLeaders=el('section',undefined,'panel home-leaders');homeLeaders.setAttribute('aria-label','Лидеры месяца');dashboardHero.after(homeLeaders);
 
- const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);content.dashboard.append(dashboardHelp);
+ const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);
+ const dashboardUtilities=el('div',undefined,'dashboard-utilities');
+ dashboardUtilities.append(verificationPanel,dashboardHelp);content.dashboard.append(dashboardUtilities);
  const onboarding=window.pushokViews.disclosure('Как начать',[el('p','Выберите канал и тариф, отправьте заявку. После одобрения оплатите размещение — запуск и завершение выполняются по расписанию.')]);onboarding.id='onboarding';content.help.prepend(onboarding);
  const paymentRows=el('div',undefined,'payment-workspace');content.payments.append(paymentRows);
  // Постоянные панели сохраняют открытые формы при переключении вкладок.
@@ -368,6 +372,8 @@
   state.renderKey=dataKey();
   profileShortcut.replaceChildren(window.pushokViews.profileAvatar());
   window.pushokVerification.home(dashboardVerification);
+  verificationPanel.hidden=dashboardVerification.hidden;
+  if(verificationPanel.hidden)verificationPanel.open=false;
   metrics('dashboard',[]);
   if(state.route==='dashboard'){void window.pushokGrowth.overview(dashboardReferral);}
 
@@ -536,6 +542,7 @@
   }
   if(name==='users')window.pushokUsers.directory(content.users);
   if(name==='dashboard'&&!background)void window.pushokCommunity.leaders(homeLeaders);
+  if(name==='dashboard'&&id==='verify'&&!verificationPanel.hidden)verificationPanel.open=true;
   if(name==='member')void window.pushokCommunity.show(content.member,id);
   if(name==='user')window.pushokProfiles.show(content.user,id);
   helpText.textContent=hints[name]||'Удалённые объекты можно восстановить. Для заявки сначала восстановите её канал и тариф.';

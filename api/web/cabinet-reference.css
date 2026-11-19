@@ -363,17 +363,17 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 
 .cabinet-mode .page-heading h1:focus{outline:none!important}
 
-/* Главная: два действия под баннером, приглашение внизу. */
+/* Квадрат подключения и короткие панели главной. */
 .dashboard-intro{grid-template-columns:1fr}.dashboard-hero-actions{display:grid;gap:8px}
 .dashboard-hero-actions>a.dashboard-connect-proxy{
   justify-self:center;
-  width:min(66.666667vw,100%);
+  width:min(clamp(112px,43vw,192px),clamp(112px,26dvh,192px),100%);
   aspect-ratio:1;
   flex-direction:column;
-  gap:clamp(8px,2vw,16px);
+  gap:8px;
   margin-block:8px;
   border:2px solid #ff727d;
-  border-radius:50%;
+  border-radius:18px;
   background-color:#d94750;
   background-image:linear-gradient(155deg,#df4651 0%,#bf3242 55%,#991f34 100%);
   box-shadow:
@@ -385,7 +385,7 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
   font-size:clamp(20px,5vw,32px);
   line-height:1.15;
 }
-.dashboard-connect-proxy>.ui-icon{width:clamp(40px,12vw,72px);height:auto;aspect-ratio:1;color:inherit}
+.dashboard-connect-proxy>.ui-icon{width:clamp(36px,10vw,54px);height:auto;aspect-ratio:1;color:inherit}
 .dashboard-connect-proxy[href]:focus-visible{outline:3px solid white;outline-offset:4px}
 .dashboard-connect-proxy[href]:active{filter:brightness(.90)}
 .dashboard-hero-actions>a.dashboard-connect-proxy[aria-disabled=true]{box-shadow:none}
@@ -694,3 +694,31 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .cabinet-mode .approval-card,.cabinet-mode .campaign-detail{display:grid;gap:12px;background:transparent;border:0;border-radius:0;padding:0;margin:0;min-width:0}
 .cabinet-mode .campaign-detail>.actions{margin:0}
 .cabinet-mode .campaign-detail>.campaign-timing{margin:0}
+
+.cabinet-mode .dashboard-intro{max-width:620px;margin:0 auto;gap:8px}
+.cabinet-mode .dashboard-hero{padding:9px 12px;gap:4px 8px}
+.cabinet-mode .dashboard-hero-copy h2{font-size:clamp(16px,4.5vw,22px);line-height:1.15;margin:0 0 3px}
+.cabinet-mode .dashboard-hero-copy p{font-size:11px}
+.cabinet-mode .dashboard-hero>img{max-height:52px;align-self:center}
+.cabinet-mode [data-page=dashboard] .dashboard-hero-actions>a.dashboard-connect-proxy{margin-block:4px 7px}
+#dashboard-referral .referral-overview{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:4px 8px;padding:6px 9px}
+#dashboard-referral .referral-overview h2{font-size:13px;line-height:1.2}
+#dashboard-referral .referral-overview > :is(.referral-meta,.invite-details,p){grid-column:1/-1}
+#dashboard-referral .invite-toggle{margin:0;min-height:44px;padding:6px 9px;font-size:12px;line-height:1.2;white-space:normal}
+.cabinet-mode .dashboard-intro .home-leaders{min-height:49px;gap:8px;margin:0;padding:6px 9px;justify-content:space-between}
+.dashboard-intro .home-leaders h2{font-size:13px;line-height:1.2;margin:0}
+.dashboard-intro .home-leader-avatars{gap:5px;font-size:11px}
+.dashboard-intro .home-leaders .user-avatar{width:32px;height:32px}
+.dashboard-utilities{display:flex;align-items:center;flex-wrap:wrap;gap:0 12px;max-width:620px;width:100%;margin:auto}
+.dashboard-verify{order:1}
+.dashboard-verify[open]{width:100%}
+.dashboard-verify>summary{display:flex;align-items:center;min-height:44px;cursor:pointer;color:var(--mint);font-size:12px}
+.dashboard-verify>summary::after{content:'›';margin-inline-start:7px}
+.dashboard-verify[open]>summary::after{transform:rotate(90deg)}
+.cabinet-mode .dashboard-utilities .dashboard-help{gap:5px;margin:0}
+.dashboard-utilities .dashboard-help>span{margin-left:0}
+@media(max-height:670px){
+  .cabinet-mode .dashboard-hero>img{max-height:40px}
+  .cabinet-mode .dashboard-hero-copy h2{font-size:16px}
+  .cabinet-mode .dashboard-intro{gap:6px}
+}

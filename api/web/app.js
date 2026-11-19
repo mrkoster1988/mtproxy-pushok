@@ -859,8 +859,23 @@ run(async()=>{
 });
 
 let displayedVersion=null,softwareControl=null,softwareRelease=null,softwareSession=null;
+let updateScreen=null;
+function showUpdateScreen(show){
+ if(show&&!updateScreen){
+  const frame=document.createElement('iframe');
+  frame.className='update-screen-frame';
+  frame.title='Идёт обновление';
+  frame.src='/update/screen.html?embedded=1';
+  document.body.append(frame);
+  updateScreen=frame;
+ }else if(!show&&updateScreen){
+  updateScreen.remove();
+  updateScreen=null;
+ }
+}
 let controlFlight=null,releaseFlight=null,lastReleaseRequest=0,autoSaveSession=null;
 function clearSoftware(){
+ showUpdateScreen(false);
  displayedVersion=null;softwareControl=null;softwareRelease=null;softwareSession=null;controlFlight=null;releaseFlight=null;lastReleaseRequest=0;
  autoSaveSession=null;$('software-auto-row').hidden=true;$('software-auto-status').textContent='';
  $('software-updates').hidden=true;$('software-update-notice').hidden=true;
@@ -870,6 +885,7 @@ function clearSoftware(){
 function renderSoftware(){
  if(me?.role!=='admin')return;
  const c=softwareControl,r=softwareRelease,busy=Boolean(c&&(c.requested||c.update.state==='running'));
+ if(c)showUpdateScreen(busy);
  if(c)$('software-installed').textContent='v'+c.version;
  const known=r?.available_version;
  $('software-available').textContent=known?'v'+known+(r.state==='unavailable'?' (ранее)':''):r?'Не удалось узнать':'Проверяем…';

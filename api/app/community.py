@@ -7,6 +7,7 @@ import time
 import psycopg
 from psycopg.rows import dict_row
 from fastapi import APIRouter,Depends,HTTPException,Query,Response
+from .user_visibility import can_view_username, hide_username
 from .verified_profiles import today, Birthday, private_profile
 from .telegram_environment import environment_name
 from .hall_of_fame import scores,bounds,METRICS
@@ -188,13 +189,17 @@ def router_for(dsn,current_user):
     @router.get('/users/{uid}')
     def profile(uid:UUID,response:Response,user=Depends(current_user)):
         response.headers['Cache-Control']='private, no-store'
-        return db(lambda c:person(c,uid))
+        row = db(lambda c:person(c,uid))
+        return row if can_view_username(user) else hide_username(row)
     @router.get('/users/{uid}/invited')
     def invited(uid:UUID,response:Response,page:int=Query(0,ge=0),user=Depends(current_user)):
         if str(user['id'])!=str(uid) and user['role'] not in ('admin','operator'):raise HTTPException(403,'profile_private')
         response.headers['Cache-Control']='private, no-store'
         def read(c):
             rows=c.execute('''SELECT u.id,u.first_name,u.last_name,u.username FROM growth_referrals r JOIN users u ON u.id=r.referred_user_id WHERE r.inviter_user_id=%s ORDER BY r.created_at,u.id LIMIT 21 OFFSET %s''',(uid,page*20)).fetchall()
+            if not can_view_username(user):
+                for row in rows:
+                    hide_username(row)
             return {'items':rows[:20],'more':len(rows)>20,'page':page}
         return db(read)
     return router

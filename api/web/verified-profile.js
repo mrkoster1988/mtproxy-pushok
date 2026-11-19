@@ -101,7 +101,7 @@ window.pushokVerification=(()=>{
   function paint(data){
    const summary=el('summary'),heading=el('span','Личные сведения');summary.append(heading);if(data.phone_verified){const state=el('span',undefined,'profile-verified-state');state.append(badge(),el('span','Верифицирован'));state.title=title;summary.append(state);}const account=box.querySelector('.profile-details')||window.pushokProfiles.accountDetails(me);box.replaceChildren(summary);const body=el('div',undefined,'personal-body');box.append(body);body.append(account);
    const phone=el('div',undefined,'profile-phone');phone.append(el('span','Номер телефона','muted'),el('strong',data.phone_number||'Не подтверждён'));body.append(phone);
-   if(!data.phone_verified)body.append(button('Подтвердить номер',()=>window.cabinet.go('dashboard')));
+   if(!data.phone_verified)body.append(button('Подтвердить номер',()=>window.cabinet.go('dashboard/verify')));
    const privacy=el('p','Номер и дата рождения видны вам и администратору. Изменение и перенос доступны только разработчику.','muted block-note');body.append(privacy);
    const form=el('form'),fields=el('div',undefined,'birthday-fields'),day=el('input'),month=el('select'),year=el('input');
    day.type='number';day.min='1';day.max='31';day.inputMode='numeric';day.placeholder='День';day.value=data.birthday?.day||'';

@@ -2,6 +2,7 @@
 import psycopg
 from psycopg.rows import dict_row
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from .user_visibility import can_view_username, hide_username
 from .telegram_environment import environment_name
 
 USER_SORTS = {
@@ -35,20 +36,23 @@ def router_for(dsn, require_operator):
         if sort and sort not in USER_SORTS:
             raise HTTPException(422, 'invalid_user_sort')
         value = query.strip().lstrip('@')
+        show_username = can_view_username(admin)
         order = USER_SORTS[sort or 'recent']
+        if sort == 'name' and not show_username:
+            order = order.replace("nullif(username,''),", '')
         ranking = ()
-        if value and not sort:
+        if value and not sort and show_username:
             order = '(telegram_user_id::text=%s OR lower(username)=lower(%s)) DESC NULLS LAST, ' + order
             ranking = (value, value)
         where = """telegram_user_id>0 AND (%s='' OR telegram_user_id::text=%s OR id::text=%s
-            OR position(lower(%s) in lower(coalesce(username,'')))>0
+            OR (%s AND position(lower(%s) in lower(coalesce(username,'')))>0)
             OR position(lower(%s) in lower(concat_ws(' ',first_name,last_name)))>0)
             AND (%s='' OR role=%s) AND (NOT %s OR last_login_at IS NOT NULL)"""
         if category:
             if category not in DIRECTORY_CATEGORIES:
                 raise HTTPException(422, 'invalid_user_category')
             where += ' AND (' + DIRECTORY_CATEGORIES[category] + ')'
-        params = (value, value, value, value, value, role, role, visited)
+        params = (value, value, value, show_username, value, value, role, role, visited)
         try:
             with psycopg.connect(dsn(), row_factory=dict_row, connect_timeout=3) as conn:
                 conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
@@ -58,6 +62,9 @@ def router_for(dsn, require_operator):
                     EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=users.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
                     FROM users WHERE '''+where+' ORDER BY '+order+', id LIMIT 20 OFFSET %s',
                     (environment_name(), *params, *ranking, page*20)).fetchall()
+                if not show_username:
+                    for row in rows:
+                        hide_username(row)
                 return dict(items=rows,total=total,page=page,page_size=20,more=(page+1)*20<total)
         except psycopg.Error as exc:
             raise HTTPException(503, 'database_unavailable') from exc

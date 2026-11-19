@@ -1,0 +1,22 @@
+:root{color-scheme:dark;font:16px/1.55 system-ui,sans-serif;color:#eaf7ff;background:#091724}
+*{box-sizing:border-box}
+body{min-block-size:100vh;min-block-size:100dvh;margin:0;display:grid;place-items:center;padding:max(36px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom));background:radial-gradient(ellipse at 50% 42%,#103846,#091724 62%)}
+main{text-align:center;width:min(100%,440px)}
+.brand{margin:0;color:#5ce3d4;font-size:23px;font-weight:800;letter-spacing:-.04em}
+.brand span{display:inline-block;margin-inline-start:.35em;color:#91adbc;font-size:.62em;letter-spacing:.08em}
+.scene{position:relative;display:grid;place-items:center;width:min(76vw,300px);height:auto;aspect-ratio:5/4;margin:4px auto -4px;overflow:hidden}
+.scene::before{content:"";position:absolute;inset:26% 4% 13%;border-radius:50%;background:radial-gradient(ellipse,#27d6bf26,transparent 68%)}
+.scene img{position:relative;width:82%;animation:walking 5s ease-in-out infinite alternate}
+@keyframes walking{from{transform:translateX(-8%)}to{transform:translateX(8%)}}
+h1{margin:0;font-size:clamp(26px,7vw,38px);line-height:1.15;letter-spacing:-.045em}
+#stage{margin:10px 0 20px;color:#b8d1df;min-height:1.55em}
+progress{appearance:none;display:block;width:100%;height:9px;border:0;border-radius:99px;overflow:hidden;background:#203a4a;accent-color:#54edcf}
+progress::-webkit-progress-bar{background:#203a4a;border-radius:99px}
+progress::-webkit-progress-value{border-radius:99px;background:linear-gradient(90deg,#1ea89d,#62f3cd)}
+progress::-moz-progress-bar{border-radius:99px;background:#54edcf}
+progress:indeterminate{background:linear-gradient(90deg,#203a4a 27%,#37c9b3 49%,#203a4a 72%);background-size:250% 100%;animation:glide 1.8s linear infinite}
+progress:indeterminate::-webkit-progress-bar{background:transparent}
+@keyframes glide{to{background-position:-166% 0}}
+#note{color:#9ab7c7;font-size:.875rem;margin:16px 0 0}
+button{margin-top:18px;padding:10px 20px;min-height:44px;border:1px solid #459a9b;border-radius:12px;background:#143544;color:#d5fffa;font:inherit;cursor:pointer}
+@media(prefers-reduced-motion:reduce){*,*::before{animation:none!important}}

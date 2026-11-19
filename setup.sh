@@ -122,7 +122,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v1.112 — мастер настройки" >&2
+echo "MTProxy Pushok v1.113 — мастер настройки" >&2
 echo "Чистый трафик · ИИ-модерация · спонсорские кампании" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
@@ -364,6 +364,7 @@ networks:
 EOF
     fi
   fi
+  python3 scripts/update_screen.py
   command -v curl >/dev/null || { apt-get update; apt-get -o DPkg::Lock::Timeout=600 install -y curl; }
   if "$PAYMENT_CHANGED" && ! "$NEW_CONFIG"; then
     INSTALL_STAGE="обновление инструкции оплаты"

@@ -6,7 +6,8 @@ window.pushokProfiles=(()=>{
  function person(user){
   const username=typeof user.username==='string'&&/^[A-Za-z0-9_]{1,32}$/.test(user.username)?user.username:'';
   const name=[user.first_name,user.last_name].filter(Boolean).join(' ').trim();
-  return {username,name:username&&name.replace(/^@/,'').toLowerCase()===username.toLowerCase()?'':name};
+  return {username:['admin','moderator'].includes(me?.role)?username:'',
+   name:username&&name.replace(/^@/,'').toLowerCase()===username.toLowerCase()?'':name};
  }
  function telegramHandle(user,linked=true){
   const {username}=person(user);

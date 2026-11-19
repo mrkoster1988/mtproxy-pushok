@@ -79,6 +79,26 @@ class UpdaterTests(unittest.TestCase):
         self.assertIn(('python3', 'scripts/installer_runtime.py', 'wait-api'), commands)
         self.assertEqual(json.loads((self.root / '.control/status.json').read_text())['state'], 'succeeded')
 
+    def test_public_screen_keeps_only_state_and_stage_during_update(self):
+        from update_screen import prepare
+        repo = Path(__file__).resolve().parents[1]
+        (self.root / 'api').symlink_to(repo / 'api', target_is_directory=True)
+        (self.root / 'Caddyfile').write_text('test.example.org {\n reverse_proxy api:8000\n}\n')
+        override = self.root / 'compose.override.yaml'
+        override.write_text('services:\n  caddy:\n    volumes:\n      - ./Caddyfile:/etc/caddy/Caddyfile:ro\n')
+        prepare(self.root)
+        installed = (self.root / 'Caddyfile').read_text()
+        prepare(self.root)
+        self.assertEqual((self.root / 'Caddyfile').read_text(), installed)
+        self.assertEqual(override.read_text().count('.maintenance:'), 1)
+        public = self.root / '.maintenance'
+        updater.status('running', stage='migration', previous_commit='private')
+        self.assertTrue((public / 'running').exists())
+        self.assertEqual(json.loads((public / 'status.json').read_text()), {'state':'running','stage':'migration'})
+        updater.status('failed', stage='migration', code='private')
+        self.assertFalse((public / 'running').exists())
+        self.assertEqual(json.loads((public / 'status.json').read_text()), {'state':'failed'})
+
     def test_backup_failure_never_merges_or_migrates(self):
         self.request()
         def run(*args, **kwargs):
