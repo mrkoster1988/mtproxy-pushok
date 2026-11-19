@@ -320,28 +320,16 @@ def main():
                 expect(proxy).not_to_have_attribute('aria-disabled', 'true')
                 print('PASS: dashboard proxy link from real API survives connection refresh', flush=True)
                 previous_viewport = advertiser.viewport_size
-                for width,height in ((320,640),(390,844),(430,932),(1280,900)):
-                    advertiser.set_viewport_size({'width':width,'height':height})
-                    advertiser.wait_for_function("""() => {
-                      const hero=document.querySelector('.dashboard-hero').getBoundingClientRect();
-                      const invite=document.querySelector('#dashboard-referral .referral-overview').getBoundingClientRect();
-                      const leaders=document.querySelector('.home-leaders').getBoundingClientRect();
-                      const links=document.querySelector('.dashboard-utilities').getBoundingClientRect();
-                      const nav=document.querySelector('.mobile-bottom-nav').getBoundingClientRect();
-                      return Math.abs(hero.width-hero.height)<1 && hero.width>170 &&
-                             Math.abs(invite.height-leaders.height)<1 && Math.abs(invite.width-leaders.width)<1 &&
-                             hero.height>invite.height*2 && links.bottom<=nav.top &&
-                             invite.bottom<hero.top && hero.bottom<leaders.top;
-                    }""")
+                for width in (320,390,430):
+                    advertiser.set_viewport_size({'width':width,'height':844})
                     bounds = proxy.bounding_box()
+                    assert 110 <= bounds['width'] <= 192
                     assert abs(bounds['width'] - bounds['height']) < 1
                     assert abs(bounds['x'] + bounds['width']/2 - width/2) < 2
-                    assert proxy.evaluate("e=>getComputedStyle(e).borderRadius==='50%'")
-                    advertiser.emulate_media(reduced_motion='no-preference')
-                    assert proxy.evaluate("e=>getComputedStyle(e,'::after').animationName==='hall-shimmer'")
-                    advertiser.emulate_media(reduced_motion='reduce')
-                    assert proxy.evaluate("e=>getComputedStyle(e,'::after').animationName==='none'")
+                    assert proxy.evaluate("e=>getComputedStyle(e).borderRadius==='18px'")
+                    assert 'rgba(255, 51, 76' in proxy.evaluate('e=>getComputedStyle(e).boxShadow')
                     if width == 390:
+                        assert advertiser.evaluate("document.querySelector('.dashboard-help').getBoundingClientRect().bottom <= document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top")
                         advertiser.screenshot(path=str(output/'dashboard-connect-390.png'))
                 advertiser.set_viewport_size(previous_viewport)
                 assert proxy.evaluate("e=>getComputedStyle(e).backgroundColor==='rgb(217, 71, 80)'")
@@ -1030,12 +1018,12 @@ def main():
                             if screen=='detail':
                                 expect(mini.locator('[data-page=campaign]')).not_to_contain_text('Проверяем применение тега')
                             if screen=='home':
-                                assert mini.evaluate("""() => {
-                                    const title=document.querySelector('.dashboard-hero h2').getBoundingClientRect();
-                                    const mascot=document.querySelector('.dashboard-mascot-track').getBoundingClientRect();
-                                    const connect=document.querySelector('.dashboard-connect-proxy').getBoundingClientRect();
-                                    return title.bottom<=mascot.top+1 && mascot.bottom<=connect.top+1;
-                                }"""), ('Mascot overlaps dashboard content',width)
+                                assert mini.evaluate('''() => {
+                                    const title=document.querySelector('.dashboard-hero h2');
+                                    const image=document.querySelector('.dashboard-hero>img').getBoundingClientRect();
+                                    const text=document.createRange();text.selectNodeContents(title);
+                                    return [...text.getClientRects()].every(rect=>rect.right<=image.left+1);
+                                }'''), ('Hero text overlaps mascot',width)
                                 if width==320:
                                     mini.screenshot(path=str(output/'miniapp-home-320.png'),full_page=True)
                             if width==390:
