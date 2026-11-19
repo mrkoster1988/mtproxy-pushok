@@ -161,10 +161,8 @@
  const connectProxy=el('a','Подключить','dashboard-connect-proxy');
  connectProxy.prepend(window.pushokViews.icon('power'));
  connectProxy.setAttribute('role','link');connectProxy.tabIndex=0;connectProxy.setAttribute('aria-disabled','true');connectProxy.title='Ссылка подключения ещё не настроена';connectProxy.addEventListener('click',event=>{if(!connectProxy.hasAttribute('href')){event.preventDefault();notice('Ссылка подключения прокси пока не настроена.');}});const promoteChannel=link('Продвигать канал','create');promoteChannel.classList.add('dashboard-promote-channel');heroActions.append(connectProxy);listTools.before(promoteChannel);
- const mascotTrack=el('div',undefined,'dashboard-mascot-track');
- const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-connect.svg';dashboardMascot.alt='';
- dashboardMascot.width=240;dashboardMascot.height=180;mascotTrack.append(dashboardMascot);
- dashboardHero.append(heroCopy,mascotTrack,heroActions);
+ const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
+ dashboardHero.append(heroCopy,dashboardMascot,heroActions);
  const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardReferral=el('div');dashboardReferral.id='dashboard-referral';dashboardIntro.append(dashboardReferral,dashboardHero);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
  const dashboardVerification=el('div');dashboardVerification.id='dashboard-verification';
  const verificationPanel=el('details',undefined,'dashboard-verify');
@@ -181,20 +179,6 @@
  const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);
  const dashboardUtilities=el('div',undefined,'dashboard-utilities');
  dashboardUtilities.append(verificationPanel,dashboardHelp);content.dashboard.append(dashboardUtilities);
- function fitDashboard(){
-  if(pages.dashboard.hidden)return;
-  const navigationTop=bottomNav.getBoundingClientRect().top;
-  const introTop=dashboardIntro.getBoundingClientRect().top+window.scrollY;
-  const gaps=2*parseFloat(getComputedStyle(dashboardIntro).rowGap);
-  const reserved=dashboardReferral.offsetHeight+homeLeaders.offsetHeight+dashboardUtilities.offsetHeight+gaps;
-  const room=Math.max(170,Math.floor(navigationTop-introTop-reserved-4));
-  dashboardIntro.style.setProperty('--connect-room',room+'px');
-  stage.style.setProperty('--home-nav-space',Math.ceil(window.innerHeight-navigationTop)+'px');
- }
- const dashboardSize=new ResizeObserver(fitDashboard);
- for(const node of [bar,updateNotice,bottomNav,dashboardReferral,homeLeaders,dashboardUtilities])dashboardSize.observe(node);
- window.addEventListener('resize',fitDashboard);
-
  const onboarding=window.pushokViews.disclosure('Как начать',[el('p','Выберите канал и тариф, отправьте заявку. После одобрения оплатите размещение — запуск и завершение выполняются по расписанию.')]);onboarding.id='onboarding';content.help.prepend(onboarding);
  const paymentRows=el('div',undefined,'payment-workspace');content.payments.append(paymentRows);
  // Постоянные панели сохраняют открытые формы при переключении вкладок.
@@ -640,7 +624,7 @@
   pages[name].querySelector('h1').textContent=pageTitle;
   mobileBrand.querySelector('strong').textContent=name==='dashboard'?'puShok':pageTitle;
   mobileBrand.classList.toggle('page-brand',name!=='dashboard');
-  render();window.scrollTo({top:0,left:0,behavior:'instant'});if(name==='dashboard')fitDashboard();pages[name].querySelector('h1').focus({preventScroll:true});document.title=pageTitle+' · MTProxy Pushok';
+  render();window.scrollTo({top:0,left:0,behavior:'instant'});pages[name].querySelector('h1').focus({preventScroll:true});document.title=pageTitle+' · MTProxy Pushok';
   if(name==='channels'&&section==='new'){$('channel-form').elements.telegram_url.focus({preventScroll:true});document.title='Добавить канал · MTProxy Pushok';}
   searchForm.hidden=name!=='campaigns';
   updatePanel.hidden=me.role!=='admin';
