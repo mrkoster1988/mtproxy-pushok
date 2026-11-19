@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 180" role="img" aria-labelledby="title">
+<title id="title">Пушок подходит и показывает на кнопку подключения</title>
+<style>
+.cat{animation:approach 7s ease-in-out infinite}
+.body{animation:steps 7s linear infinite}
+.leg{transform-origin:120px 122px;animation:walk 7s linear infinite}
+.rear{animation-name:walk-back}
+.paw{animation:point 7s ease-out infinite}
+@keyframes approach{
+  0%{transform:translateX(-39px);opacity:0}
+  8%{opacity:1}
+  37%,90%{transform:translateX(-24px);opacity:1}
+  100%{transform:translateX(-24px);opacity:0}
+}
+@keyframes steps{0%,14%,28%,38%,100%{transform:none}7%,21%,35%{transform:translateY(-4px)}}
+@keyframes walk{0%,14%,28%{transform:rotate(12deg)}7%,21%,35%{transform:rotate(-13deg)}38%,100%{transform:none}}
+@keyframes walk-back{0%,14%,28%{transform:rotate(-13deg)}7%,21%,35%{transform:rotate(12deg)}38%,100%{transform:none}}
+@keyframes point{0%,35%{opacity:0;transform:translate(4px,-7px)}43%,100%{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){
+ .cat,.body,.leg,.paw{animation:none}
+ .cat{transform:translateX(-24px)}
+}
+</style>
+<g class="cat">
+<ellipse cx="117" cy="162" rx="65" ry="7" fill="#0f746f" opacity=".25"/>
+<g class="body" stroke="#183d4c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+<path d="M75 116Q21 109 36 65Q42 55 48 67Q40 100 85 94" fill="#f5a14b"/>
+<g class="leg rear"><path d="M111 118L90 145L66 148" fill="none" stroke="#ef963f" stroke-width="17"/></g>
+<path d="M73 97Q105 80 148 100L158 129Q115 144 73 125Z" fill="#27c9b5"/>
+<g class="leg"><path d="M126 123L145 149L167 150" fill="none" stroke="#ffb65f" stroke-width="17"/></g>
+<path d="M136 53L131 18L158 35Q178 27 190 42L214 30L209 67Q218 105 177 111Q135 109 131 85Z" fill="#ffb65f"/>
+<path d="M137 29L143 51L154 40M197 48L209 39L205 61" fill="#ef907a"/>
+<ellipse cx="176" cy="88" rx="27" ry="16" fill="#fff0ce" stroke="none"/>
+<ellipse cx="158" cy="69" rx="9" ry="12" fill="#40d7bc"/><ellipse cx="193" cy="66" rx="9" ry="12" fill="#40d7bc"/>
+<ellipse cx="161" cy="69" rx="3" ry="8" fill="#183d4c" stroke="none"/><ellipse cx="196" cy="66" rx="3" ry="8" fill="#183d4c" stroke="none"/>
+<path d="M173 82L182 81L179 87Z" fill="#bd695c"/><path d="M179 87Q176 96 168 91M179 87Q185 94 190 88" fill="none"/>
+<path d="M114 103L129 107L125 123L115 127L106 116L106 106Z" fill="#c8fff0"/><path d="M111 114L115 118L123 110" fill="none"/>
+<g class="paw">
+<path d="M145 111Q159 119 152 129L139 148Q135 154 129 153L126 150L135 131Q131 125 135 117Z" fill="#22ae9e"/>
+<path d="M137 145L132 157Q129 164 124 161Q121 159 123 154L125 147Z" fill="#ffb65f"/>
+<path d="M118 162L110 164M124 168L122 174M132 166L138 171" fill="none" stroke="#ffcc84" stroke-width="2.5"/>
+</g>
+</g></g></svg>
