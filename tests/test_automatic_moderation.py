@@ -291,6 +291,8 @@ class AutomaticRejectionIntegration(unittest.TestCase):
         self.act(moderator)
         self.actor['role']='moderator'
         item=next(row for row in self.request('GET',path)['items'] if row['id']==cid)
+        self.db('UPDATE campaigns SET price_kopecks_snapshot=25000,updated_at=now() WHERE id=%s',(cid,))
+        item=next(row for row in self.request('GET',path)['items'] if row['id']==cid)
         self.assertEqual((item['moderation_status'],item['operator_decision_id']),('approved',decision_id))
         self.db("INSERT INTO payment_attempts(campaign_id,provider,payment_channel,amount,currency) VALUES(%s,'sbp','external_web',30000,'RUB')",(cid,))
         self.request('POST',path+'/'+cid,409,json=body)

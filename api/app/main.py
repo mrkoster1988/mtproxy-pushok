@@ -923,6 +923,10 @@ def _moderate_campaign(campaign_id, payload, operator, *, disputed_only=False, o
                 if exists is None:
                     raise HTTPException(status_code=404, detail="campaign_not_found")
                 raise HTTPException(status_code=409, detail="campaign_not_pending")
+            if operator_decision_id:
+                connection.execute("""UPDATE bot_advertiser_notice_outbox SET operator_decision_reviewed=true
+                    WHERE campaign_id=%s AND decision=%s AND created_at=transaction_timestamp()
+                      AND abandoned_at IS NULL""", (campaign_id, payload.decision))
             if payload.reconsider_ai and payload.decision == "rejected":
                 connection.execute("""INSERT INTO bot_advertiser_notice_outbox
                     (campaign_id,recipient_user_id,decision,comment_snapshot)

@@ -1,3 +1,17 @@
+ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS moderation_changed_at timestamptz;
+ALTER TABLE bot_advertiser_notice_outbox ADD COLUMN IF NOT EXISTS operator_decision_reviewed boolean NOT NULL DEFAULT false;
+
+CREATE OR REPLACE FUNCTION track_campaign_moderation_change() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    NEW.moderation_changed_at := clock_timestamp();
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER track_campaign_moderation_change BEFORE UPDATE OF moderation_status ON campaigns
+    FOR EACH ROW WHEN (OLD.moderation_status IS DISTINCT FROM NEW.moderation_status)
+    EXECUTE FUNCTION track_campaign_moderation_change();
+
 CREATE OR REPLACE VIEW moderation_operator_reviews AS
 SELECT c.id,c.advertiser_user_id,ch.owner_user_id,ch.title,ch.telegram_url,
        coalesce(c.moderator_comment,'') AS reason,c.moderation_status,
@@ -8,7 +22,8 @@ JOIN LATERAL (
     SELECT id,actor_user_id,created_at,details_json FROM audit_events
     WHERE campaign_id=c.id AND event_type='campaign_moderated'
     ORDER BY created_at DESC,id DESC LIMIT 1
-) decision ON decision.created_at>=c.updated_at AND decision.details_json->>'decision'=c.moderation_status
+) decision ON decision.created_at>=coalesce(c.moderation_changed_at,c.updated_at)
+    AND decision.details_json->>'decision'=c.moderation_status
 JOIN users actor ON actor.id=decision.actor_user_id
 LEFT JOIN LATERAL (
     SELECT details_json->>'old_role' AS old_role FROM audit_events

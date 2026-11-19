@@ -25,6 +25,7 @@ class AdvertiserNotice(BaseModel):
     decision: Literal["approved", "rejected", "changes_requested"]
     comment: str | None = None
     actor_id: str | None = None
+    operator_decision_reviewed: bool = False
 
 
 class NoticeFinish(BaseModel):
@@ -69,10 +70,12 @@ def claim_advertiser_notices(
                     WHERE n.id = due.id
                     RETURNING n.id AS notice_id, n.claim_token,
                               n.campaign_id, n.recipient_user_id,
-                              n.decision, n.comment_snapshot AS comment, n.ai_moderation_event_id
+                              n.decision, n.comment_snapshot AS comment, n.ai_moderation_event_id,
+                              n.operator_decision_reviewed
                 )
                 SELECT c.notice_id, c.claim_token, c.campaign_id,
-                       u.telegram_user_id, c.decision, c.comment, e.actor_id
+                       u.telegram_user_id, c.decision, c.comment, e.actor_id,
+                       c.operator_decision_reviewed
                 FROM claimed AS c
                 JOIN users AS u ON u.id = c.recipient_user_id
                 LEFT JOIN ai_moderation_events AS e ON e.id=c.ai_moderation_event_id

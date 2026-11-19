@@ -31,7 +31,7 @@ def render_advertiser_notice(notice):
         'Ваша рекламная заявка отклонена Агентом ИИ.' if ai_rejection else _DECISIONS[decision],
         "Заявка: " + str(campaign)[:8],
     ]
-    if decision != "approved":
+    if decision != "approved" or notice.get("operator_decision_reviewed"):
         comment = notice.get("comment")
         if isinstance(comment, str):
             cleaned = "".join(c for c in comment if c.isprintable() or c == "\n").strip()

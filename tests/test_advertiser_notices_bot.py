@@ -16,6 +16,12 @@ def notice(decision="approved", comment=None):
 
 
 class AdvertiserNoticeBotTests(unittest.TestCase):
+    def test_approval_after_review_includes_reason(self):
+        item = notice("approved", "Описание канала соответствует правилам.")
+        self.assertNotIn(item["comment"], render_advertiser_notice(item))
+        item["operator_decision_reviewed"] = True
+        self.assertIn(item["comment"], render_advertiser_notice(item))
+
     def test_all_three_templates(self):
         for status, phrase in (
             ("approved", "ожидание оплаты"),
