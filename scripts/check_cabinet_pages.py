@@ -320,7 +320,7 @@ def main():
                 expect(proxy).not_to_have_attribute('aria-disabled', 'true')
                 print('PASS: dashboard proxy link from real API survives connection refresh', flush=True)
                 previous_viewport = advertiser.viewport_size
-                for width,height in ((320,640),(390,844),(430,932)):
+                for width,height in ((320,640),(390,844),(430,932),(1280,900)):
                     advertiser.set_viewport_size({'width':width,'height':height})
                     advertiser.wait_for_function("""() => {
                       const hero=document.querySelector('.dashboard-hero').getBoundingClientRect();
@@ -330,7 +330,8 @@ def main():
                       const nav=document.querySelector('.mobile-bottom-nav').getBoundingClientRect();
                       return Math.abs(hero.width-hero.height)<1 && hero.width>170 &&
                              Math.abs(invite.height-leaders.height)<1 && Math.abs(invite.width-leaders.width)<1 &&
-                             hero.height>invite.height*2 && links.bottom<=nav.top;
+                             hero.height>invite.height*2 && links.bottom<=nav.top &&
+                             invite.bottom<hero.top && hero.bottom<leaders.top;
                     }""")
                     bounds = proxy.bounding_box()
                     assert abs(bounds['width'] - bounds['height']) < 1
