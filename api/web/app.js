@@ -22,6 +22,7 @@ function notice(message,ok=false,{actions=[],persistent=false}={}){
  box.className=ok?'ok':'';box.hidden=false;box.dataset.route=location.hash;
  if(!persistent)noticeTimer=setTimeout(()=>{box.hidden=true;},5000);
 }
+function hasDeveloperAccess(user){return Boolean(user?.is_developer||user?.is_owner);}
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x;}
 function button(text,fn){const b=el('button',text);b.type='button';b.addEventListener('click',()=>run(fn,b));return b;}
 async function api(path,{method='GET',body,signal}={}){
@@ -101,7 +102,7 @@ function showPaymentControls(config,replaceDraft){
  $('enable-sbp').disabled=!config.sbp_configured;
  if(!config.sbp_configured)$('enable-sbp').checked=false;
  const note=$('payment-config-note');
- note.textContent=config.sbp_configured?(config.sbp_test_mode?'Тестовый магазин':'Рабочий магазин'):(me.is_owner?'Подключите магазин ЮKassa':'Магазин подключает разработчик');
+ note.textContent=config.sbp_configured?(config.sbp_test_mode?'Тестовый магазин':'Рабочий магазин'):(hasDeveloperAccess(me)?'Подключите магазин ЮKassa':'Магазин подключает разработчик');
  note.dataset.mode=config.sbp_configured?(config.sbp_test_mode?'test':'live'):'missing';
  $('payment-switch-fields').disabled=false;
  paymentDraft();
@@ -888,7 +889,7 @@ function renderSoftware(){
  else if(c.update.at)status+=' '+date(c.update.at);
  $('software-update-status').textContent=status;
  }
- const auto=$('software-auto'),owner=me.is_owner===true;
+ const auto=$('software-auto'),owner=hasDeveloperAccess(me);
  $('software-auto-row').hidden=!owner;
  auto.disabled=!owner||!c?.auto_supported||autoSaveSession===token;
  if(autoSaveSession!==token)auto.checked=c?.auto_enabled===true;
@@ -962,7 +963,7 @@ $('payment-switches').addEventListener('submit',event=>{
 });
 $('software-auto').addEventListener('change',()=>run(async()=>{
  const session=token,enabled=$('software-auto').checked;
- if(!me?.is_owner||autoSaveSession===session)return;
+ if(!hasDeveloperAccess(me)||autoSaveSession===session)return;
  autoSaveSession=session;renderSoftware();
  try{
   const result=await api('/admin/control/auto-update',{method:'PUT',body:{enabled}});

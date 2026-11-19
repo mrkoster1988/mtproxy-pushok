@@ -260,7 +260,7 @@ def advise(metrics, config):
 
 def allowed(conn, cfg):
     return bool(cfg['enabled'] and channel_ai_connection.active('proxy_provisioning') and cfg['updated_by']
-        and conn.execute("SELECT 1 FROM users WHERE id=%s AND is_owner AND role='admin' AND blocked_at IS NULL",(cfg['updated_by'],)).fetchone())
+        and conn.execute("SELECT 1 FROM users WHERE id=%s AND is_developer AND role='admin' AND blocked_at IS NULL",(cfg['updated_by'],)).fetchone())
 
 
 def reserved_ports(conn, host, aliases=()):
@@ -284,7 +284,7 @@ def handle(conn, request):
         cfg = conn.execute('SELECT * FROM proxy_provisioning_settings WHERE singleton').fetchone()
         ai_ready = bool(channel_ai_connection.active('proxy_provisioning'))
         owner_ready = bool(cfg['updated_by'] and conn.execute(
-            "SELECT 1 FROM users WHERE id=%s AND is_owner AND role='admin' AND blocked_at IS NULL", (cfg['updated_by'],)).fetchone())
+            "SELECT 1 FROM users WHERE id=%s AND is_developer AND role='admin' AND blocked_at IS NULL", (cfg['updated_by'],)).fetchone())
         jobs = conn.execute('SELECT state,created_at FROM proxy_provisioning_jobs').fetchall()
         capacity = ('preparation_pending' if any(j['state']=='pending' for j in jobs) else
                     'preparation_failed' if any(j['state']=='failed' for j in jobs) else

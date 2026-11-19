@@ -303,7 +303,7 @@ def main():
                 advertiser = new_page("advertiser")
                 expect(advertiser.locator('.dashboard-campaigns')).to_have_count(0)
                 expect(advertiser.locator('[data-page=dashboard] .campaign-tile')).to_have_count(0)
-                proxy=advertiser.get_by_role('link',name='Подключить прокси',exact=True)
+                proxy=advertiser.get_by_role('link',name='Подключить',exact=True)
                 expect(proxy).to_be_visible()
                 expect(proxy).to_have_attribute('aria-disabled', 'true')
                 proxy_url = 'https://t.me/proxy?server=proxy.example.org&port=443&secret=ddaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
@@ -319,6 +319,19 @@ def main():
                 expect(proxy).to_have_attribute('href', proxy_url)
                 expect(proxy).not_to_have_attribute('aria-disabled', 'true')
                 print('PASS: dashboard proxy link from real API survives connection refresh', flush=True)
+                previous_viewport = advertiser.viewport_size
+                for width in (320,390,430):
+                    advertiser.set_viewport_size({'width':width,'height':844})
+                    bounds = proxy.bounding_box()
+                    assert abs(bounds['width'] - width * 2 / 3) < 1
+                    assert abs(bounds['width'] - bounds['height']) < 1
+                    assert abs(bounds['x'] + bounds['width']/2 - width/2) < 2
+                    assert proxy.evaluate("e=>getComputedStyle(e).borderRadius==='50%'")
+                    assert 'rgba(255, 51, 76' in proxy.evaluate('e=>getComputedStyle(e).boxShadow')
+                    if width == 390:
+                        proxy.scroll_into_view_if_needed()
+                        advertiser.screenshot(path=str(output/'dashboard-connect-390.png'))
+                advertiser.set_viewport_size(previous_viewport)
                 assert proxy.evaluate("e=>getComputedStyle(e).backgroundColor==='rgb(217, 71, 80)'")
                 expect(advertiser.locator(".dashboard-hero-actions").get_by_role("link",name="Продвигать канал",exact=True)).to_have_count(0)
                 go(advertiser,'campaigns')
@@ -326,7 +339,7 @@ def main():
                 expect(promote).to_be_visible()
                 expect(promote).to_have_attribute('href','#/create')
                 go(advertiser,'dashboard')
-                assert advertiser.locator(".dashboard-help").evaluate("e=>e.previousElementSibling.id==='dashboard-referral'")
+                expect(advertiser.locator('.dashboard-intro > #dashboard-referral:first-child + .dashboard-hero + .home-leaders')).to_have_count(1)
                 expect(advertiser.locator('[data-page=dashboard] .payment-counts')).to_have_count(0)
                 go(advertiser, "settings", expected_page="dashboard")
                 expect(advertiser.locator('[data-page=dashboard]')).to_be_visible()
@@ -1655,7 +1668,8 @@ def main():
                 go(advertiser,'dashboard')
                 expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
                 expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
-                assert advertiser.locator('#dashboard-referral').evaluate("e=>e.nextElementSibling.classList.contains('dashboard-help')&&e.nextElementSibling===e.parentElement.lastElementChild")
+                expect(advertiser.locator('#dashboard-referral')).not_to_contain_text('За первое')
+                expect(advertiser.locator('.dashboard-help')).to_be_visible()
                 invite=advertiser.get_by_role('button',name='Пригласить друга',exact=True)
                 expect(invite).to_have_attribute('aria-expanded','false')
                 invite.click()

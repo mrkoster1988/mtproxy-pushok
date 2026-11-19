@@ -4,7 +4,7 @@ window.pushokSBP=(()=>{
  async function load(force=false){
   const host=$('sbp-connection'),session=token,uid=me?.id;
   if(!host)return;
-  host.hidden=!me?.is_owner;
+  host.hidden=!hasDeveloperAccess(me);
   if(host.hidden){reset();return;}
   if(!force&&formSession===session&&host.querySelector('details[open]'))return;
   const version=++generation,wasOpen=Boolean(host.querySelector('details')?.open);
@@ -17,7 +17,7 @@ window.pushokSBP=(()=>{
    function field(label,type,value=''){const row=el('label',label),input=el('input');input.type=type;input.value=value;row.append(input);form.append(row);return input;}
    const shop=field('Shop ID магазина','text',saved.shop);shop.required=true;shop.inputMode='numeric';shop.pattern='[0-9]{1,32}';
    const key=field('Секретный ключ ЮKassa','password');key.autocomplete='new-password';key.required=!saved.secret_saved;key.maxLength=256;key.placeholder=saved.secret_saved?'Оставьте пустым, чтобы сохранить ключ':'Введите ключ магазина';
-   const domain=field('Домен возврата после оплаты','text',saved.host);domain.required=true;domain.placeholder='ads.pushok.shop';
+   const domain=field('Домен возврата после оплаты','text',saved.host);domain.required=true;domain.placeholder=location.hostname;
    const test=field('Тестовый магазин','checkbox');test.checked=saved.test_mode;
    shop.placeholder='ID из кабинета ЮKassa';
    key.parentElement.className='merchant-secret';

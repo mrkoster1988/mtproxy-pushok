@@ -838,11 +838,13 @@ class PostgresIntegration(unittest.TestCase):
                     "UPDATE users SET role = 'admin' WHERE telegram_user_id = %s",
                     (operator_id,),
                 )
+                connection.execute("UPDATE users SET username='notice_advertiser' WHERE telegram_user_id=%s",(advertiser_id,))
             first = self.client.post(base + "operators/outbox/claim", headers=headers)
             self.assertEqual(first.status_code, 200, first.text)
             matches = [notice for notice in first.json()
                        if notice["campaign_id"] == campaign_id]
             self.assertEqual(len(matches), 1)
+            self.assertEqual(matches[0]["advertiser_username"],"notice_advertiser")
             notice_id = matches[0]["notice_id"]
             self.assertEqual(matches[0]["telegram_user_id"], operator_id)
 
@@ -860,10 +862,12 @@ class PostgresIntegration(unittest.TestCase):
                        WHERE id = %s""",
                     (notice_id,),
                 )
+                connection.execute("UPDATE users SET role='operator' WHERE telegram_user_id=%s",(operator_id,))
             retry = self.client.post(base + "operators/outbox/claim",
                                      headers=headers)
             self.assertEqual(retry.status_code, 200, retry.text)
             self.assertIn(notice_id, [x["notice_id"] for x in retry.json()])
+            self.assertIsNone(next(x["advertiser_username"] for x in retry.json() if x["notice_id"]==notice_id))
 
             ack = self.client.post(base + "operators/outbox/ack",
                                    headers=headers, json={"notice_id": notice_id})

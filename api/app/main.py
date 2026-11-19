@@ -55,7 +55,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.111",
+    version="1.112",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -99,6 +99,7 @@ class UserResponse(BaseModel):
     is_friend: bool = False
     has_launched_ads: bool = False
     is_owner: bool = False
+    is_developer: bool = False
     phone_verified: bool = False
     id: UUID
     telegram_user_id: int
@@ -415,7 +416,7 @@ def get_current_user(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             user = connection.execute(
                 """
-                SELECT u.id, u.telegram_user_id, u.role, u.is_owner, u.is_friend, u.has_launched_ads, u.first_name, u.last_name,
+                SELECT u.id, u.telegram_user_id, u.role, u.is_owner, u.is_developer, u.is_friend, u.has_launched_ads, u.first_name, u.last_name,
                        u.username, u.blocked_at, s.id AS session_id, s.login_surface,
                        EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=u.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
                 FROM users AS u
@@ -454,7 +455,7 @@ def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str,
 
 
 def require_owner(user: dict[str, Any] = Depends(require_admin)) -> dict[str, Any]:
-    if not user.get('is_owner'):
+    if not (user.get('is_developer') or user.get('is_owner')):
         raise HTTPException(status_code=403, detail='owner_role_required')
     return user
 

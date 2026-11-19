@@ -23,7 +23,7 @@ window.pushokDeveloper = (() => {
 
     function render(data) {
       body.replaceChildren(el('p', data.description), el('h3', 'История программы'), el('p', data.history));
-      if (me.is_owner) {
+      if (hasDeveloperAccess(me)) {
         const edit = button('Редактировать', () => editor(data));
         edit.className = 'developer-edit';
         edit.prepend(window.pushokViews.icon('edit'));

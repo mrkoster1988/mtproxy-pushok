@@ -23,7 +23,7 @@ window.pushokAI=(()=>{
   finally{clearTimeout(timer);if(controller===own)controller=null;}
  }
  async function load(force=false){
-  const host=$('channel-ai-settings');if(!host||!me?.is_owner){reset();return;}
+  const host=$('channel-ai-settings');if(!host||!hasDeveloperAccess(me)){reset();return;}
   if(!force&&session===token&&(dirty||busy))return;
   const currentSession=token,uid=me.id,version=++generation;session=token;
   const valid=()=>version===generation&&currentSession===token&&uid===me?.id&&me?.role==='admin';
@@ -71,7 +71,7 @@ window.pushokAI=(()=>{
      const result=await request(kind==='check'?'/check':'',{method:kind==='check'?'POST':'PUT',body});if(!valid())return;
      if(kind==='check'){status.textContent='Проверка пройдена. Нажмите «Сохранить», чтобы применить настройки.';}
      else{
-      key.value='';dirty=false;busy=false;await load(true);if(currentSession!==token||!me?.is_owner)return;
+      key.value='';dirty=false;busy=false;await load(true);if(currentSession!==token||!hasDeveloperAccess(me))return;
       const fresh=$('channel-ai-status');if(fresh)fresh.textContent=result.enabled?'ИИ включён. Подключение проверено.':kind==='remove'?(saved.source==='environment'?'ИИ отключён. Ключ из настроек сервера больше не используется.':'Ключ удалён. Работают подсказки по ключевым словам.'):'Настройки сохранены. ИИ выключен.';
      }
     }catch(error){if(valid()){status.textContent=messages[error.code]||'Не удалось выполнить запрос. Проверьте соединение и повторите.';reload.hidden=error.code!=='channel_ai_changed';}}

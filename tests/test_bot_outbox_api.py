@@ -56,6 +56,7 @@ class OutboxAPITests(unittest.TestCase):
         self.assertEqual(response.json()[0]["notice_id"], str(NOTICE_ID))
         calls = conn.__enter__.return_value.execute.call_args_list
         self.assertIn("u.role IN ('admin', 'operator')", calls[0].args[0])
+        self.assertIn("CASE WHEN u.role IN ('admin','moderator') THEN advertiser.username END", calls[0].args[0])
         self.assertIn("bot_operator_subscriptions", calls[0].args[0])
         self.assertIn("FOR UPDATE OF n SKIP LOCKED", calls[0].args[0])
         self.assertIn("LIMIT 5", calls[0].args[0])

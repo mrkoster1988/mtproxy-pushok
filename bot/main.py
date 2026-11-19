@@ -1,5 +1,6 @@
 """Минимальный Telegram-бот MTProxy Pushok. Python standard library."""
 import json
+from html import escape
 import io
 import logging
 import os
@@ -200,11 +201,14 @@ def deliver_operator_outbox(token):
             # Уведомление должно быть новым сообщением, а не правкой меню навигации.
             title = " ".join(str(notice.get("channel_title") or "Канал").split())[:160]
             name = " ".join(str(notice.get("advertiser_name") or "Пользователь").split())[:160]
+            name = escape(name)
             username = notice.get("advertiser_username")
             if isinstance(username, str) and re.fullmatch(r"[A-Za-z0-9_]{1,32}", username):
                 name += " (@" + username + ")"
+            elif "@" in name or "t.me/" in name or "tg://" in name:
+                name = f"<code>{name}</code>"
             text = ("📨 Новая кампания на модерации\n"
-                    f"Канал: {title}\n"
+                    f"Канал: {escape(title)}\n"
                     f"Рекламодатель: {name}\n"
                     f"Заявка: {str(campaign_id)[:8]}\n"
                     "Цена и срок — в карточке заявки.")
@@ -212,7 +216,7 @@ def deliver_operator_outbox(token):
             button = ({"text": "📋 Открыть заявку", "web_app": {"url": url + "#/moderation/" + str(campaign_id)}}
                       if url else {"text": "📋 Открыть очередь", "callback_data": "moderation"})
             raw_telegram_call(token, "sendMessage", {
-                "chat_id": recipient, "text": text,
+                "chat_id": recipient, "text": text, "parse_mode": "HTML",
                 "reply_markup": {"inline_keyboard": [[button]]},
             }, timeout=4)
         except (HTTPError, URLError, OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:

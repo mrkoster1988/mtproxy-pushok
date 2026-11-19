@@ -62,7 +62,7 @@ PAYMENTS = '''WITH payments AS (
  FROM wallet_payments w JOIN campaigns c ON c.id=w.campaign_id
  WHERE w.status='paid' AND w.cash_amount>w.refunded_cash AND c.payment_status='verified'
  AND NOT EXISTS(SELECT 1 FROM payment_attempts p WHERE p.campaign_id=c.id AND p.status='succeeded')
-), eligible AS (SELECT id FROM users WHERE NOT is_owner AND blocked_at IS NULL) '''
+), eligible AS (SELECT id FROM users WHERE NOT is_developer AND blocked_at IS NULL) '''
 
 
 def scores(conn, metric, start, end, limit, viewer=None):
@@ -208,7 +208,7 @@ def router_for(dsn,current_user,require_admin):
         try: value=UUID(uid)
         except ValueError: raise HTTPException(404,'user_not_found')
         def find(conn):
-            row=conn.execute("SELECT telegram_user_id FROM users WHERE id=%s AND NOT is_owner AND blocked_at IS NULL",(value,)).fetchone()
+            row=conn.execute("SELECT telegram_user_id FROM users WHERE id=%s AND NOT is_developer AND blocked_at IS NULL",(value,)).fetchone()
             if not row: raise HTTPException(404,'user_not_found')
             return row['telegram_user_id']
         data=user_avatar(db(find))

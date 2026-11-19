@@ -104,6 +104,10 @@ window.pushokGrowth=(()=>{
   catch(error){if(error.status!==409)return;}
   try{if(read()===code)document.cookie=key+'=; Max-Age=0; Path=/; Secure; SameSite=Lax';}catch{/* Хранилище может быть отключено в WebView. */}
  }
+ function myInvitation(){
+  const query=location.protocol==='https:'?'?invite_origin='+encodeURIComponent(location.origin):'';
+  return api('/growth/me'+query);
+ }
  function referralLink(root,mine){
   if(!mine.referrals_enabled||!mine.link)return;
   const row=el('div',undefined,'referral-link-row'),link=el('a',mine.link.replace(/^https:\/\//,''),'referral-link');
@@ -121,12 +125,12 @@ window.pushokGrowth=(()=>{
   if(!card){card=el('section',undefined,'referral-overview');card.append(el('h2','Приглашайте друзей'),el('p','Загружаем приглашение…','muted'));node.replaceChildren(card);}
   card.setAttribute('aria-busy','true');
   try{
-   const mine=await api('/growth/me');if(version!==overviewEpoch||session!==token||uid!==me?.id)return;
-   const signature=JSON.stringify([mine.referrals_enabled,mine.link,mine.proxy_invite,mine.invited,mine.reward_mode,mine.reward_bonus_kopecks,mine.reward_percent,mine.reward_days]);
+   const mine=await myInvitation();if(version!==overviewEpoch||session!==token||uid!==me?.id)return;
+   const signature=JSON.stringify([mine.referrals_enabled,mine.link,mine.proxy_invite,mine.invited]);
    if(card.dataset.snapshot===signature){card.querySelector('h2').lastChild.textContent='Приглашайте друзей';card.removeAttribute('title');card.setAttribute('aria-busy','false');return;}
    const expanded=card.dataset.inviteLink===mine.link && card.querySelector('.invite-toggle')?.getAttribute('aria-expanded')==='true';
    const head=el('div',undefined,'section-heading'),title=el('h2','Приглашайте друзей');title.prepend(window.pushokViews.icon('users'));head.append(title);card.replaceChildren(head);
-   card.append(el('p',mine.referrals_enabled?'За первое оплаченное рублями и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены.','muted'));
+   if(!mine.referrals_enabled)card.append(el('p','Новые приглашения пока отключены.','muted'));
    if(mine.referrals_enabled && mine.link){
     card.dataset.inviteLink=mine.link;
     const invite=el('div',undefined,'invite-details');
@@ -145,7 +149,7 @@ window.pushokGrowth=(()=>{
  async function load(node){
   if(!node||!me)return;target=node;const version=++epoch,session=token,uid=me.id;node.replaceChildren(el('p','Загружаем бонусы…'));
   try{
-   const mine=await api('/growth/me');if(version!==epoch||session!==token||uid!==me?.id)return;
+   const mine=await myInvitation();if(version!==epoch||session!==token||uid!==me?.id)return;
    const root=el('div',undefined,'growth-page'),p=panel('Пригласить друга');
    root.append(window.pushokViews.mascot(mine.referrals_enabled?'Делитесь приглашением и получайте награду за первое оплаченное рублями и завершённое размещение друга.':'Здесь собраны ваши приглашения, купоны и подарочные размещения.'));
    p.append(el('p',mine.referrals_enabled?'Для новых приглашений: за первое оплаченное рублями и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены администратором.'),el('p','Приглашено: '+mine.invited));

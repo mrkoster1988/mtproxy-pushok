@@ -14,6 +14,7 @@ def check_user_access(browser,base,output,failures,dsn):
             conn.execute('INSERT INTO users(id,telegram_user_id,role,first_name,username) VALUES(%s,%s,%s,%s,%s)',(uid,tgs[role],'advertiser' if role=='target' else role,'Проверка '+role,'access_'+role))
             sid=uuid4();conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')",(sid,uid))
             tokens[role]=api._create_session_token(uid,sid)
+        conn.execute("UPDATE users SET developer_granted=true WHERE id=%s",(ids['admin'],))
     contexts=[]
     def launch(role):
         ctx=browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce');contexts.append(ctx)
@@ -27,7 +28,7 @@ def check_user_access(browser,base,output,failures,dsn):
     def profile(page,role):
         go(page,'user/'+str(ids[role]));expect(page.locator('[data-page=user] .profile-identity')).to_contain_text('@access_'+role)
     def state():
-        with psycopg.connect(dsn) as conn:return conn.execute('SELECT role,blocked_at FROM users WHERE id=%s',(ids['target'],)).fetchone()
+        with psycopg.connect(dsn) as conn:return conn.execute("SELECT CASE WHEN is_developer THEN 'developer' ELSE role END,blocked_at FROM users WHERE id=%s",(ids['target'],)).fetchone()
     def save(page,container,role):
         container.locator('.role-button').click();editor=container.locator('.role-editor')
         editor.get_by_label('Роль пользователя',exact=True).select_option(role)
@@ -37,7 +38,7 @@ def check_user_access(browser,base,output,failures,dsn):
     try:
         admin=launch('admin');profile(admin,'target');card=admin.locator('[data-page=user] .profile-identity')
         card.get_by_role('button',name='Изменить права: Пользователь',exact=True).click()
-        expect(card.locator('.role-editor option')).to_have_count(4)
+        expect(card.locator('.role-editor option')).to_have_count(5)
         expect(card.get_by_role('button',name='Сохранить права',exact=True)).to_be_disabled()
         for width in (320,390):
             admin.set_viewport_size({'width':width,'height':844})
@@ -47,6 +48,8 @@ def check_user_access(browser,base,output,failures,dsn):
         card.locator('.role-button').click()
         card.get_by_role('button',name='Добавить в «Друзья»',exact=True).click()
         expect(card.locator('.role-button')).to_contain_text('Пользователь · Друзья')
+        save(admin,card,'developer')
+        expect(card.locator('.role-button')).to_contain_text('Разработчик · Друзья')
         save(admin,card,'moderator')
         expect(card.locator('.role-button')).to_contain_text('Модератор · Друзья')
         card.locator('.role-button').click()

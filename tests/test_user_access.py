@@ -36,6 +36,37 @@ class UserAccessIntegration(unittest.TestCase):
     def block(self,target,blocked,status=200):
         return self.request('PUT','/admin/team/access',status,json={'telegram_user_id':self.tgs[target],'blocked':blocked})
 
+    def test_developer_assignment_requires_a_developer_and_preserves_installation_owner(self):
+        self.role('target','developer',403)
+        self.act('operator');self.role('target','developer',403)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE users SET is_owner=true WHERE id=%s",(self.ids['admin'],))
+        self.addCleanup(self.clear_developer_fixture)
+        self.act('admin');self.role('target','developer')
+        with psycopg.connect(self.dsn) as conn:
+            row=conn.execute("SELECT role,is_owner,is_developer FROM users WHERE id=%s",(self.ids['target'],)).fetchone()
+            self.assertEqual(row,('admin',False,True))
+            sid=uuid4()
+            conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')",(sid,self.ids['target']))
+        main.app.dependency_overrides.clear()
+        headers={'Authorization':'Bearer '+main._create_session_token(self.ids['target'],sid)}
+        self.assertTrue(self.request('GET','/me',headers=headers)['is_developer'])
+        self.request('GET','/admin/proxy-gateway',headers=headers)
+        self.request('PUT','/admin/team',403,headers=headers,json={'telegram_user_id':self.tgs['admin'],'role':'advertiser'})
+        self.request('PUT','/admin/team',headers=headers,json={'telegram_user_id':self.tgs['operator'],'role':'developer'})
+        self.act('admin');self.role('target','admin')
+        self.act('target');self.actor['role']='admin'
+        self.role('operator','admin',403);self.block('operator',True,403)
+        main.app.dependency_overrides.clear()
+        self.request('GET','/me',401,headers=headers)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute("SELECT is_developer FROM users WHERE id=%s",(self.ids['target'],)).fetchone(),(False,))
+            self.assertEqual(conn.execute("SELECT count(*) FROM users WHERE is_owner").fetchone(),(1,))
+
+    def clear_developer_fixture(self):
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("UPDATE users SET is_owner=false WHERE id=%s",(self.ids['admin'],))
+
     def test_admin_and_operator_matrix(self):
         for role in ('admin','operator','advertiser'):self.role('target',role)
         self.act('operator')

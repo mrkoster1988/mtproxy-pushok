@@ -8,12 +8,24 @@ window.pushokProfiles=(()=>{
   const name=[user.first_name,user.last_name].filter(Boolean).join(' ').trim();
   return {username,name:username&&name.replace(/^@/,'').toLowerCase()===username.toLowerCase()?'':name};
  }
+ function telegramHandle(user,linked=true){
+  const {username}=person(user);
+  if(!username)return null;
+  const clickable=linked&&['admin','moderator'].includes(me?.role);
+  const handle=el(clickable?'a':'span','@'+username,'person-handle');
+  if(clickable){
+   handle.href='https://t.me/'+username;
+   handle.target='_blank';
+   handle.rel='noopener noreferrer';
+  }
+  return handle;
+ }
  function names(user,linked=false){
-  const {name,username}=person(user),copy=el('div',undefined,'person-copy');copy.dataset.userRole=user.is_owner?'owner':user.role||'advertiser';if(user.id)copy.dataset.personId=user.id;
+  const {name,username}=person(user),copy=el('div',undefined,'person-copy');copy.dataset.userRole=hasDeveloperAccess(user)?'owner':user.role||'advertiser';if(user.id)copy.dataset.personId=user.id;
   if(name)copy.append(el('strong',name,'person-name'));
   if(username){
-   const handle=el(linked?'a':'span','@'+username,'person-handle'+(!name?' person-name':''));
-   if(linked){handle.href='https://t.me/'+username;handle.target='_blank';handle.rel='noopener noreferrer';}
+   const handle=telegramHandle(user,linked);
+   if(!name)handle.classList.add('person-name');
    copy.append(handle);
   }else if(!name)copy.append(el('strong','Пользователь','person-name'));
   if(user.phone_verified)copy.querySelector('.person-name')?.append(window.pushokVerification.badge());
@@ -27,7 +39,7 @@ window.pushokProfiles=(()=>{
  }
  function compact(user,back='wallet'){
   const id=user.user_id||user.id,row=el(id?'a':'div',undefined,'user-summary person-line'),copy=names(user);
-  if(id){row.href='#/user/'+id;row.setAttribute('aria-label','Открыть профиль пользователя');row.addEventListener('click',()=>{returnRoute=back;});}
+  if(id){row.href=(me?.role==='moderator'?'#/member/':'#/user/')+id;row.setAttribute('aria-label','Открыть профиль пользователя');row.addEventListener('click',()=>{returnRoute=back;});}
   if(user.telegram_user_id)copy.append(el('small','ID '+user.telegram_user_id,'muted'));
   row.append(views().userAvatar(id,person(user).name||person(user).username),copy);return row;
  }
@@ -138,5 +150,5 @@ window.pushokProfiles=(()=>{
   }
   void load();
  }
- return {agentCard,names,compact,identity,accountDetails,advertiser,ownOverview,show,setBackRoute:route=>{returnRoute=route;},backRoute:()=>returnRoute};
+ return {agentCard,names,telegramHandle,compact,identity,accountDetails,advertiser,ownOverview,show,setBackRoute:route=>{returnRoute=route;},backRoute:()=>returnRoute};
 })();

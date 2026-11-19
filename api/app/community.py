@@ -44,14 +44,14 @@ def require_verified(conn,uid):
 
 
 def person(conn,uid):
-    row=conn.execute('''SELECT id,first_name,last_name,username,role,is_owner,is_friend,has_launched_ads,
-       CASE WHEN is_owner THEN NULL ELSE coalesce(last_seen_at>now()-interval '2 minutes',false) END AS online
+    row=conn.execute('''SELECT id,first_name,last_name,username,role,is_owner,is_developer,is_friend,has_launched_ads,
+       CASE WHEN is_developer THEN NULL ELSE coalesce(last_seen_at>now()-interval '2 minutes',false) END AS online
        FROM users WHERE id=%s AND blocked_at IS NULL''',(uid,)).fetchone()
     if not row:raise HTTPException(404,'user_profile_not_found')
     d=today();birthday=conn.execute('SELECT birth_day,birth_month FROM verified_profiles WHERE user_id=%s AND telegram_environment=%s AND phone_verified_at IS NOT NULL',(uid,environment_name())).fetchone()
     row['phone_verified']=bool(birthday)
     row['birthday_today']=bool(birthday and birthday['birth_month']==d.month and min(birthday['birth_day'] or 32,calendar.monthrange(d.year,d.month)[1])==d.day)
-    row['frame_rank']=None if row['is_owner'] else frame_ranks(conn).get(row['id'])
+    row['frame_rank']=None if row['is_developer'] else frame_ranks(conn).get(row['id'])
     return row
 
 
@@ -80,7 +80,7 @@ def router_for(dsn,current_user):
         except psycopg.Error:
             raise HTTPException(503,'database_unavailable') from None
     def owner(conn,user):
-        if not conn.execute('SELECT 1 FROM users WHERE id=%s AND is_owner AND blocked_at IS NULL FOR SHARE',(user['id'],)).fetchone():
+        if not conn.execute('SELECT 1 FROM users WHERE id=%s AND is_developer AND blocked_at IS NULL FOR SHARE',(user['id'],)).fetchone():
             raise HTTPException(403,'owner_role_required')
     @router.get('/developer')
     def developer_profile(response: Response, user=Depends(current_user)):
@@ -183,7 +183,7 @@ def router_for(dsn,current_user):
         return {'enabled':bool(active('campaign_review')),'check':row}
     @router.post('/presence')
     def presence(user=Depends(current_user)):
-        db(lambda c:c.execute("UPDATE users SET last_seen_at=now() WHERE id=%s AND NOT is_owner AND (last_seen_at IS NULL OR last_seen_at<now()-interval '30 seconds')",(user['id'],)))
+        db(lambda c:c.execute("UPDATE users SET last_seen_at=now() WHERE id=%s AND NOT is_developer AND (last_seen_at IS NULL OR last_seen_at<now()-interval '30 seconds')",(user['id'],)))
         return {'ok':True}
     @router.get('/users/{uid}')
     def profile(uid:UUID,response:Response,user=Depends(current_user)):

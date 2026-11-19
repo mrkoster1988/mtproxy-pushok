@@ -252,7 +252,7 @@ def router_for(dsn, current_user, require_admin):
             b = payload.birthday
             conn.execute('SELECT id FROM users WHERE id=%s FOR NO KEY UPDATE',(user['id'],)).fetchone()
             previous=private_profile(conn,user['id'])
-            if previous.get('transferred_to') or (previous.get('birthday_locked') and not user.get('is_owner') and previous['birthday'] != (b.model_dump() if b else None)):
+            if previous.get('transferred_to') or (previous.get('birthday_locked') and not (user.get('is_developer') or user.get('is_owner')) and previous['birthday'] != (b.model_dump() if b else None)):
                 raise HTTPException(409,'personal_details_locked')
             conn.execute('''INSERT INTO verified_profiles(user_id,birth_day,birth_month,birth_year,birthday_source,
                 birthday_opt_in,consent_version,consent_at,telegram_environment,birthday_sync_state,birthday_sync_checked_at)

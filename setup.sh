@@ -75,7 +75,7 @@ valid_bot_token() {
 domain_input() {
   local target="$1" answer
   while true; do
-    ask answer "Домен кабинета без https:// и пути" "ads.pushok.shop"
+    read -r -u 3 -p "Введите действующий домен кабинета без https:// и пути: " answer
     if valid_cabinet_domain "$answer"; then
       printf -v "$target" '%s' "${answer,,}"; return
     fi
@@ -122,7 +122,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v1.111 — мастер настройки" >&2
+echo "MTProxy Pushok v1.112 — мастер настройки" >&2
 echo "Чистый трафик · ИИ-модерация · спонсорские кампании" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
@@ -456,6 +456,7 @@ EOF
     database/071_fallback_notice_scope.sql
     database/072_moderator_and_friends.sql
     database/073_operator_decision_review.sql
+    database/074_developer_grants.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"
