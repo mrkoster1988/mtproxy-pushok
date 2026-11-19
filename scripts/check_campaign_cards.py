@@ -155,7 +155,7 @@ def check_campaign_cards(browser, base, output, failures, dsn):
                     expect(use).to_be_in_viewport()
                     assert mobile.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
                 with psycopg.connect(dsn,row_factory=dict_row) as conn:
-                    conn.execute("UPDATE sponsor_channels SET title='Новости puShok' WHERE id=%s",(channel,))
+                    conn.execute("UPDATE sponsor_channels SET title='Атлас путешествий' WHERE id=%s",(channel,))
                     conn.execute("UPDATE campaigns SET price_kopecks_snapshot=39900,tariff_name_snapshot='Суточник',duration_seconds_snapshot=86400 WHERE id=%s",(paid,))
                     wallet_ledger.post(conn,users['advertiser'],'BONUS',130000,'manual_credit','ui-receipt:'+str(paid),'Проверка остатка')
                 mobile.evaluate('() => refresh()')
@@ -169,6 +169,7 @@ def check_campaign_cards(browser, base, output, failures, dsn):
                 expect(mobile.get_by_role('button',name='Оплатить бонусами',exact=False)).to_have_count(0)
         finally:
             with psycopg.connect(dsn) as conn:
+                conn.execute('UPDATE sponsor_channels SET title=%s WHERE id=%s',(title,channel))
                 conn.execute('UPDATE wallet_settings SET enabled=%s,bonus_spending_enabled=%s WHERE singleton',(previous['enabled'],previous['bonus_spending_enabled']))
     finally:
         for context in contexts:
