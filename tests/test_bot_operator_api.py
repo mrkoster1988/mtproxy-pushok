@@ -101,7 +101,7 @@ class OperatorApiTests(unittest.TestCase):
     def test_approved_sets_awaiting_payment_and_audit(self):
         row = {"campaign_id": UUID(CID), "moderation_status": "approved",
                "payment_status": "awaiting_payment"}
-        db = fake_conn({"id": UID}, row, None)
+        db = fake_conn({"id": UID, "role": "operator"}, row, None)
         with patch("app.bot_operator.psycopg.connect", return_value=db):
             response = self.client.post(
                 PREFIX + "decide", headers=self.headers,
@@ -112,7 +112,7 @@ class OperatorApiTests(unittest.TestCase):
         calls = db.__enter__.return_value.execute.call_args_list
         self.assertIn("moderation_status = 'pending'", calls[1].args[0])
         self.assertIn("campaign_moderated", calls[2].args[0])
-        self.assertEqual(calls[2].args[1][0], UID)
+        self.assertEqual(calls[2].args[1], (UID, UUID(CID), "approved", "operator"))
 
     def test_repeat_fails_without_extra_audit(self):
         db = fake_conn({"id": UID}, None)
