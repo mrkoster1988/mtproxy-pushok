@@ -9,7 +9,7 @@ from playwright.sync_api import expect
 
 
 def check_campaign_cards(browser, base, output, failures, dsn):
-    from app import main
+    from app import main, stars_checkout
     users = {role: uuid4() for role in ('advertiser', 'operator', 'outsider')}
     tokens, contexts = {}, []
     channel, tariff, node, paid, free, archived = [uuid4() for _ in range(6)]
@@ -143,7 +143,7 @@ def check_campaign_cards(browser, base, output, failures, dsn):
             expect(client.locator('.payment-receipt h2')).to_have_text(title)
             expect(client.locator('[data-page=payments] .campaign-tile')).to_have_count(0)
             expect(client.get_by_role('link',name='Открыть кампанию',exact=True)).to_have_attribute('href','#/campaign/'+str(paid))
-            with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'1','TELEGRAM_BOT_USERNAME':'mtproxy_pushok_bot'}), patch.object(main,'TELEGRAM_BOT_TOKEN','fixture-token'):
+            with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'1','TELEGRAM_BOT_USERNAME':'mtproxy_pushok_bot'}), patch.object(main,'TELEGRAM_BOT_TOKEN','fixture-token'), patch.object(stars_checkout,'stars_invoices_enabled',return_value=False):
                 mobile=launch('advertiser',mini=True)
                 go(mobile,'payments/'+str(paid))
                 expect(mobile.locator('.receipt-status')).to_have_text('К оплате')
