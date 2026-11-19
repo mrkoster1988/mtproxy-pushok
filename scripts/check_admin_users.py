@@ -73,7 +73,7 @@ def check_admin_users(browser,base,output,failures,dsn):
         category.select_option('user')
         expect(admin.locator('.directory-user>.person-role[data-role=user]').first).to_be_visible()
         admin.screenshot(path=str(output/'54-user-directory.png'))
-        operator=launch('operator');go(operator,'user/'+str(ids['advertiser']));expect(operator.locator('[data-page=user] .profile-identity')).to_contain_text('@directory_advertiser');expect(operator.locator('.profile-wallet')).to_have_count(0)
+        operator=launch('operator');go(operator,'user/'+str(ids['advertiser']));expect(operator.locator('[data-page=user] .profile-identity .person-handle')).to_have_count(0);expect(operator.locator('.profile-wallet')).to_have_count(0)
         go(admin,'management/payments');open_management(admin,'people');expect(admin.locator('#team-fields')).to_be_enabled()
         admin.get_by_label('Пользователь для назначения роли',exact=True).fill('@directory_new_staff');admin.locator('#team-role').select_option('operator');admin.once('dialog',lambda d:d.accept());admin.locator('#team-form button[type=submit]').click();expect(admin.locator('#team-status')).to_contain_text('Роль сохранена')
         with psycopg.connect(dsn) as conn:assert conn.execute('SELECT role FROM users WHERE id=%s',(ids['new_staff'],)).fetchone()[0]=='operator'

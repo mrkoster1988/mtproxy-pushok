@@ -323,13 +323,13 @@ def main():
                 for width in (320,390,430):
                     advertiser.set_viewport_size({'width':width,'height':844})
                     bounds = proxy.bounding_box()
-                    assert abs(bounds['width'] - width * 2 / 3) < 1
+                    assert 110 <= bounds['width'] <= 192
                     assert abs(bounds['width'] - bounds['height']) < 1
                     assert abs(bounds['x'] + bounds['width']/2 - width/2) < 2
-                    assert proxy.evaluate("e=>getComputedStyle(e).borderRadius==='50%'")
+                    assert proxy.evaluate("e=>getComputedStyle(e).borderRadius==='18px'")
                     assert 'rgba(255, 51, 76' in proxy.evaluate('e=>getComputedStyle(e).boxShadow')
                     if width == 390:
-                        proxy.scroll_into_view_if_needed()
+                        assert advertiser.evaluate("document.querySelector('.dashboard-help').getBoundingClientRect().bottom <= document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top")
                         advertiser.screenshot(path=str(output/'dashboard-connect-390.png'))
                 advertiser.set_viewport_size(previous_viewport)
                 assert proxy.evaluate("e=>getComputedStyle(e).backgroundColor==='rgb(217, 71, 80)'")
@@ -1360,6 +1360,13 @@ def main():
                 admin.locator('#software-update').click()
                 expect(admin.locator('#software-update')).to_be_disabled()
                 expect(admin.locator('#software-update-status')).to_contain_text('Запрос принят')
+                screen = admin.frame_locator('.update-screen-frame')
+                expect(screen.get_by_role('heading',name='Идёт обновление')).to_be_visible()
+                admin.route('**/update/status.json',lambda route:route.fulfill(json={'state':'running','stage':'build'}))
+                expect(screen.locator('#stage')).to_have_text('Собираем приложение')
+                expect(screen.locator('progress')).to_have_attribute('value','3')
+                admin.screenshot(path=str(output/'update-screen-mobile.png'))
+                admin.unroute('**/update/status.json')
                 assert requests==['POST']
                 control_fixture['requested']=False
                 control_fixture['update']={'state':'failed','stage':'build'}

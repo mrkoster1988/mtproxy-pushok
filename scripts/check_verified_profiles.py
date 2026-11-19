@@ -37,6 +37,13 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             raw = signed_data(user=json.dumps({'id': tg, 'first_name': 'Мария', 'username': 'verified_profile'}), query_id=str(uuid4()))
             fragment = urlencode({'tgWebAppData': raw, 'tgWebAppVersion': '8.0', 'tgWebAppPlatform': 'android', 'tgWebAppThemeParams': '{}'})
             page.goto(base+'/miniapp#'+fragment)
+            page.set_viewport_size({'width':320,'height':640})
+            summary = page.locator('.dashboard-verify > summary')
+            expect(summary).to_be_visible()
+            assert page.evaluate('''() =>
+                document.querySelector('.dashboard-verify > summary').getBoundingClientRect().bottom
+                <= document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top''')
+            summary.click()
             card = page.locator('#dashboard-verification')
             expect(card.get_by_role('button', name='Подтвердить номер', exact=True)).to_be_visible()
             for width in (320, 390):

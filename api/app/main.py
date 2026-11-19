@@ -1,3 +1,4 @@
+from .user_visibility import can_view_username, hide_username
 from .telegram_environment import environment_name
 from .payment_gate import sbp_reconciliation_enabled
 import binascii
@@ -55,7 +56,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.112",
+    version="1.113",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -570,7 +571,7 @@ def _start_telegram_session(payload: TelegramLoginPayload, *, surface="web") -> 
 
 @app.get("/api/v1/me", response_model=UserResponse, tags=["account"])
 def get_me(user: dict[str, Any] = Depends(get_current_user)) -> UserResponse:
-    return UserResponse(**user)
+    return UserResponse(**(user if can_view_username(user) else hide_username(dict(user))))
 
 
 @app.post("/api/v1/auth/logout", status_code=204, tags=["authentication"])
@@ -1949,6 +1950,9 @@ def list_operator_campaigns(
     except psycopg.Error as exc:
         explain_license_error(exc)
         raise HTTPException(status_code=503, detail="database_unavailable") from exc
+    if not can_view_username(operator):
+        for row in rows:
+            hide_username(row, username_key='advertiser_username', name_prefix='advertiser_')
     return [OperatorCampaignResponse(**(row | _campaign_response(row).model_dump())) for row in rows]
 
 
@@ -2787,6 +2791,22 @@ def get_availability(
 
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+@app.get("/update/status.json", include_in_schema=False)
+def public_update_status(response: Response):
+    response.headers["Cache-Control"] = "no-store"
+    from . import control
+    status = control.read("status.json", {})
+    if not isinstance(status, dict):
+        status = {}
+    state = status.get("state", "idle")
+    data = {"state": state if state in ("idle", "running", "succeeded", "failed") else "idle"}
+    stage = status.get("stage")
+    if state == "running" and stage in ("preflight", "backup", "source", "build", "migration", "restart", "health", "proxy"):
+        data["stage"] = stage
+    return data
+
+
+app.mount("/update", StaticFiles(directory=WEB_DIR / "update"), name="update")
 app.mount("/assets", StaticFiles(directory=WEB_DIR), name="assets")
 
 

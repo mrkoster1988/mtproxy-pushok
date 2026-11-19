@@ -13,6 +13,8 @@ import stat
 from pathlib import Path
 from datetime import datetime, timezone
 
+from update_screen import publish as publish_update_screen
+
 ROOT = Path(__file__).resolve().parent.parent
 CONTROL = ROOT / '.control'
 REMOTE = 'https://github.com/mrkoster1988/mtproxy-pushok.git'
@@ -35,6 +37,10 @@ def write_control(filename, data):
 
 def status(state, **fields):
     write_control('status.json', dict(state=state, at=datetime.now(timezone.utc).isoformat(), **fields))
+    try:
+        publish_update_screen(ROOT, state, fields.get('stage'))
+    except OSError:
+        print('Could not publish public update status', file=sys.stderr, flush=True)
 
 @contextmanager
 def lock_file(name):

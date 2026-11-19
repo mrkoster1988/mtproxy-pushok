@@ -67,6 +67,25 @@ class UserAccessIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             conn.execute("UPDATE users SET is_owner=false WHERE id=%s",(self.ids['admin'],))
 
+    def test_personal_username_is_visible_only_to_admin_and_moderator(self):
+        uid = self.ids['target']
+        handle = 'private_' + uid.hex[:12]
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE users SET first_name=%s,username=%s WHERE id=%s', ('@'+handle, handle, uid))
+        path = '/community/users/'+str(uid)
+        self.assertEqual(self.request('GET',path)['username'],handle)
+        self.role('advertiser','moderator')
+        self.act('advertiser');self.actor['role']='moderator'
+        self.assertEqual(self.request('GET',path)['username'],handle)
+        self.act('operator')
+        for row in (self.request('GET',path),
+                    self.request('GET','/users/'+str(uid)+'/profile')['user'],
+                    self.request('GET','/admin/users?query='+str(self.tgs['target']))['items'][0]):
+            self.assertIsNone(row['username'])
+            self.assertNotIn(handle,row['first_name'])
+        self.act('target');self.actor['role']='advertiser'
+        self.assertIsNone(self.request('GET',path)['username'])
+
     def test_admin_and_operator_matrix(self):
         for role in ('admin','operator','advertiser'):self.role('target',role)
         self.act('operator')

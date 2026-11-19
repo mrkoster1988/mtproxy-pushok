@@ -26,7 +26,7 @@ def check_user_access(browser,base,output,failures,dsn):
         page.evaluate('r=>window.cabinet.go(r)',route)
         expect(page.locator('[data-page='+route.split('/')[0]+']')).to_be_visible()
     def profile(page,role):
-        go(page,'user/'+str(ids[role]));expect(page.locator('[data-page=user] .profile-identity')).to_contain_text('@access_'+role)
+        go(page,'user/'+str(ids[role]));expect(page.locator('[data-page=user] .profile-identity')).to_contain_text('Проверка '+role)
     def state():
         with psycopg.connect(dsn) as conn:return conn.execute("SELECT CASE WHEN is_developer THEN 'developer' ELSE role END,blocked_at FROM users WHERE id=%s",(ids['target'],)).fetchone()
     def save(page,container,role):
@@ -60,14 +60,14 @@ def check_user_access(browser,base,output,failures,dsn):
         profile(admin,'admin');expect(admin.locator('[data-page=user] .profile-identity .role-button')).to_have_count(0)
 
         operator=launch('operator');go(operator,'profile');operator.get_by_role('link',name='Пользователи',exact=True).click()
-        operator.get_by_label('Поиск пользователей',exact=True).fill('@access_target');operator.locator('.directory-search button[type=submit]').click()
-        row=operator.locator('.user-directory .directory-user');expect(row).to_have_count(1);expect(row).to_contain_text('@access_target')
+        operator.get_by_label('Поиск пользователей',exact=True).fill(str(tgs['target']));operator.locator('.directory-search button[type=submit]').click()
+        row=operator.locator('.user-directory .directory-user');expect(row).to_have_count(1);expect(row).not_to_contain_text('@access_target')
         row.locator('.role-button').click();expect(row.locator('.role-editor option')).to_have_count(2)
         expect(row.locator('.role-editor option[value=admin]')).to_have_count(0)
         row.get_by_label('Роль пользователя',exact=True).press('Escape');expect(row.locator('.role-editor')).to_be_hidden()
         save(operator,row,'operator');save(operator,row,'advertiser')
         row.get_by_role('link',name='Открыть профиль пользователя',exact=True).click()
-        card=operator.locator('[data-page=user] .profile-identity');expect(card).to_contain_text('@access_target');expect(operator.locator('.profile-wallet')).to_have_count(0)
+        card=operator.locator('[data-page=user] .profile-identity');expect(card).not_to_contain_text('@access_target');expect(operator.locator('.profile-wallet')).to_have_count(0)
         card.locator('.role-button').click();operator.once('dialog',lambda d:d.dismiss())
         card.get_by_role('button',name='Заблокировать',exact=True).click();assert state()[1] is None
         expect(card.locator('.role-editor')).to_be_visible()

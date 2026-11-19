@@ -8,6 +8,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from .user_visibility import can_view_username, hide_username
 from .wallet_ledger import post
 from .channel_logos import user_avatar
 
@@ -197,6 +198,10 @@ def router_for(dsn,current_user,require_admin):
                         FROM hall_results r JOIN users u ON u.id=r.user_id
                         WHERE r.period_id=%s AND r.metric=%s ORDER BY rank''',(period_id,old)).fetchall()
                     if saved:legacy_spend[old]=saved
+            if not can_view_username(user):
+                for group in (rows, *legacy_spend.values()):
+                    for row in group:
+                        hide_username(row)
             own=next((r for r in rows if str(r['user_id'])==str(user['id'])),None)
             return dict(rows=rows[:effective['top_size']],own=own,periods=periods,starts_at=start,ends_at=end,closed=bool(period_id),top_size=effective['top_size'],
                         rewards=effective['rewards'].get(kind,{}).get(metric,[]),metrics=METRICS,started_at=cfg['started_at'],legacy_spend=legacy_spend)
