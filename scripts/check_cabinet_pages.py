@@ -1650,7 +1650,8 @@ def main():
                 expect(admin.locator('[data-page=growth]').get_by_label('Награда на бонусный баланс, ₽',exact=True)).to_have_value('125.50')
                 go(advertiser,'growth')
                 invite_link=advertiser.locator('[data-page=growth]').get_by_label('Ваша ссылка для друзей',exact=True).get_attribute('href')
-                assert len(invite_link.split('r_')[1])==8
+                invite_code=invite_link.rsplit('/p/',1)[-1] if '/p/' in invite_link else invite_link.split('r_')[1]
+                assert len(invite_code)==8
                 go(advertiser,'dashboard')
                 expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
                 expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
@@ -1674,7 +1675,7 @@ def main():
                     advertiser.screenshot(path=str(output/f'48-home-referral-{width}.png'),full_page=True)
                 check_navigation_icons(operator)
                 go(outsider,'growth')
-                outsider.get_by_label('Код пригласившего вас пользователя',exact=True).fill(invite_link.split('r_')[1])
+                outsider.get_by_label('Код пригласившего вас пользователя',exact=True).fill(invite_code)
                 outsider.get_by_role('button',name='Принять приглашение',exact=True).click()
                 expect(outsider.get_by_label('Код пригласившего вас пользователя',exact=True)).to_have_count(0)
                 with psycopg.connect(PostgresIntegration.dsn) as connection:

@@ -15,7 +15,8 @@ from uuid import UUID
 
 import psycopg
 from psycopg.rows import dict_row
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse, PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from .bot_routes import _verify_bot_secret
 
@@ -256,6 +257,30 @@ def router_for(get_dsn, get_user, require_admin):
             raise HTTPException(409,'growth_code_unavailable')
         return db(action)
 
+    public = APIRouter()
+
+    @public.get('/p/{code}', include_in_schema=False)
+    def open_proxy_invitation(code: str, request: Request):
+        from .proxy_link import current_proxy_url
+        headers = {'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer',
+                   'X-Robots-Tag': 'noindex, nofollow'}
+        code = code.upper()
+        if not re.fullmatch(r'[A-HJ-NP-Z2-9]{8}', code) or not db(lambda conn: conn.execute(
+            """SELECT 1 FROM growth_referral_links r CROSS JOIN growth_settings s
+               WHERE r.code=%s AND s.referrals_enabled""", (code,)).fetchone()):
+            return PlainTextResponse('Это приглашение недоступно.', status_code=404, headers=headers)
+        target = current_proxy_url()
+        if not target:
+            return PlainTextResponse('Прокси пока недоступен. Откройте эту же ссылку позднее.',
+                                     status_code=503, headers={**headers, 'Retry-After': '60'})
+        result = RedirectResponse(target, status_code=302, headers=headers)
+        # Переход относится к браузеру. Личность друга подтверждается при входе в кабинет.
+        if (request.headers.get('sec-fetch-mode', 'navigate') == 'navigate'
+                and not re.fullmatch(r'[A-HJ-NP-Z2-9]{8}', request.cookies.get('__Host-pushok_invite', ''))):
+            result.set_cookie('__Host-pushok_invite', code, max_age=30*86400, secure=True,
+                              samesite='lax', path='/')
+        return result
+
     @router.get('/growth/me')
     def mine(response: Response, user=Depends(get_user)):
         no_cache(response)
@@ -281,7 +306,13 @@ def router_for(get_dsn, get_user, require_admin):
             bound = conn.execute('SELECT 1 FROM growth_referrals WHERE referred_user_id=%s', (user['id'],)).fetchone()
             bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
             link = 'https://t.me/'+bot+'?start=r_'+code if re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot) else None
-            return {**settings, 'code':code, 'link':link, 'invite_qr':invitation_qr(link) if link and settings['referrals_enabled'] else None, 'invited':count, 'bound':bool(bound),
+            from .gift_sharing import public_origin
+            try:
+                proxy_invite = public_origin() + '/p/' + code
+            except HTTPException:
+                proxy_invite = None
+            link = proxy_invite or link
+            return {**settings, 'code':code, 'link':link, 'proxy_invite':bool(proxy_invite), 'invite_qr':invitation_qr(link) if link and settings['referrals_enabled'] else None, 'invited':count, 'bound':bool(bound),
                     'coupons':coupons, 'bonus_rewards':bonus, 'invitations':invitations}
         return db(action)
 
@@ -460,4 +491,5 @@ def router_for(get_dsn, get_user, require_admin):
             conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'growth_offer_restored',jsonb_build_object('offer_id',%s::uuid))",(admin['id'],offer_id))
             return {'saved':True}
         return db(action)
-    return router
+    public.include_router(router)
+    return public

@@ -94,13 +94,23 @@ window.pushokGrowth=(()=>{
   else p.append(el('p','Последние 100 приглашений. Для каждого сохранены условия на момент принятия.','muted'));
   mine.invitations.forEach(r=>{const row=el('article',undefined,'card');row.append(el('h3',({previous_inviter:'Награда была выдана до переназначения',waiting:'Ожидается оплаченное и завершённое размещение',rewarded:'Награда выдана',reversed:'Награда отменена после возврата'})[r.status]),el('p',rewardDescription(r)),el('p','Приглашение принято: '+date(r.created_at),'muted'));p.append(row);});root.append(p);
  }
+ async function claimProxyInvite(){
+  const key='__Host-pushok_invite';
+  const read=()=>document.cookie.split('; ').find(pair=>pair.startsWith(key+'='))?.slice(key.length+1);
+  let code;
+  try{code=read();}catch{return;}
+  if(!/^[A-HJ-NP-Z2-9]{8}$/.test(code||''))return;
+  try{await api('/growth/referral',{method:'POST',body:{code}});}
+  catch(error){if(error.status!==409)return;}
+  try{if(read()===code)document.cookie=key+'=; Max-Age=0; Path=/; Secure; SameSite=Lax';}catch{/* Хранилище может быть отключено в WebView. */}
+ }
  function referralLink(root,mine){
   if(!mine.referrals_enabled||!mine.link)return;
   const row=el('div',undefined,'referral-link-row'),link=el('a',mine.link.replace(/^https:\/\//,''),'referral-link');
   link.href=mine.link;link.target='_blank';link.rel='noopener noreferrer';link.setAttribute('aria-label','Ваша ссылка для друзей');
   const actions=el('div',undefined,'referral-actions');
   const copy=window.pushokViews.iconAction(button('',async()=>{await navigator.clipboard.writeText(mine.link);notice('Ссылка скопирована.',true);}), 'copy','Скопировать реферальную ссылку');
-  const share=el('a','','ui-button');share.href='https://t.me/share/url?url='+encodeURIComponent(mine.link)+'&text='+encodeURIComponent('Приглашаю в puShok — размещайте рекламу своего канала в Telegram.');share.target='_blank';share.rel='noopener noreferrer';
+  const share=el('a','','ui-button');share.href='https://t.me/share/url?url='+encodeURIComponent(mine.link)+'&text='+encodeURIComponent(mine.proxy_invite?'Подключайся к прокси puShok. Код приглашения в кабинет: '+mine.code:'Приглашаю в рекламный кабинет puShok.');share.target='_blank';share.rel='noopener noreferrer';
   window.pushokViews.iconAction(share,'share','Поделиться реферальной ссылкой');
   share.addEventListener('click',event=>{if(miniAppMode&&typeof window.Telegram?.WebApp?.openTelegramLink==='function'){event.preventDefault();window.Telegram.WebApp.openTelegramLink(share.href);}});
   actions.append(copy,share);row.append(link,actions);root.append(row);
@@ -112,7 +122,7 @@ window.pushokGrowth=(()=>{
   card.setAttribute('aria-busy','true');
   try{
    const mine=await api('/growth/me');if(version!==overviewEpoch||session!==token||uid!==me?.id)return;
-   const signature=JSON.stringify([mine.referrals_enabled,mine.link,mine.invited,mine.reward_mode,mine.reward_bonus_kopecks,mine.reward_percent,mine.reward_days]);
+   const signature=JSON.stringify([mine.referrals_enabled,mine.link,mine.proxy_invite,mine.invited,mine.reward_mode,mine.reward_bonus_kopecks,mine.reward_percent,mine.reward_days]);
    if(card.dataset.snapshot===signature){card.querySelector('h2').lastChild.textContent='Приглашайте друзей';card.removeAttribute('title');card.setAttribute('aria-busy','false');return;}
    const expanded=card.dataset.inviteLink===mine.link && card.querySelector('.invite-toggle')?.getAttribute('aria-expanded')==='true';
    const head=el('div',undefined,'section-heading'),title=el('h2','Приглашайте друзей');title.prepend(window.pushokViews.icon('users'));head.append(title);card.replaceChildren(head);
@@ -136,11 +146,11 @@ window.pushokGrowth=(()=>{
   if(!node||!me)return;target=node;const version=++epoch,session=token,uid=me.id;node.replaceChildren(el('p','Загружаем бонусы…'));
   try{
    const mine=await api('/growth/me');if(version!==epoch||session!==token||uid!==me?.id)return;
-   const root=el('div',undefined,'growth-page'),p=panel('Пригласить рекламодателя');
+   const root=el('div',undefined,'growth-page'),p=panel('Пригласить друга');
    root.append(window.pushokViews.mascot(mine.referrals_enabled?'Делитесь приглашением и получайте награду за первое оплаченное рублями и завершённое размещение друга.':'Здесь собраны ваши приглашения, купоны и подарочные размещения.'));
    p.append(el('p',mine.referrals_enabled?'Для новых приглашений: за первое оплаченное рублями и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены администратором.'),el('p','Приглашено: '+mine.invited));
    if(mine.reward_mode==='bonus')p.append(el('p','Бонусами можно оплатить рублёвое размещение на сайте. Они не обмениваются на Stars и не выводятся. Бесплатные, тестовые и полностью бонусные оплаты друга не дают награду. При возврате оплаты награда отменяется, даже если бонусы уже потрачены.','muted'));
-   referralLink(p,mine);if(mine.referrals_enabled&&mine.link)p.append(el('p','Друг должен открыть эту ссылку и нажать «Запустить» до создания первой заявки. Это приглашение в рекламный кабинет.','muted'));
+   referralLink(p,mine);if(mine.referrals_enabled&&mine.link)p.append(el('p',mine.proxy_invite?'Ссылка открывает подключение к прокси в Telegram. При входе в кабинет из того же браузера приглашение зачтётся автоматически. В другом браузере друг может ввести код '+mine.code+' до первой заявки.':'Откройте приглашение в боте и нажмите «Запустить» до создания первой заявки.','muted'));
    if(!mine.bound&&mine.referrals_enabled){const form=el('form'),code=field(form,'Код пригласившего вас пользователя','text','',true);code.maxLength=48;save(form,'Принять приглашение');bind(form,()=>api('/growth/referral',{method:'POST',body:{code:code.value}}));p.append(form);}
    root.append(p);invitationList(root,mine);
    const rewards=panel('Мои купоны');if(!mine.coupons.length)rewards.append(el('p','Бонусных купонов пока нет.'));
@@ -151,5 +161,5 @@ window.pushokGrowth=(()=>{
    node.replaceChildren(root);
   }catch(e){if(version===epoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить',()=>load(node)));}
  }
- return {load,overview,referralSettings,reset(){offersDeleted=false;epoch++;overviewEpoch++;if(target)target.replaceChildren();target=null;}};
+ return {load,overview,referralSettings,claimProxyInvite,reset(){offersDeleted=false;epoch++;overviewEpoch++;if(target)target.replaceChildren();target=null;}};
 })();

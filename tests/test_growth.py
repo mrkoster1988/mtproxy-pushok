@@ -74,7 +74,7 @@ class GrowthIntegration(unittest.TestCase):
         self.actor={'id':self.owner,'role':'advertiser'}
         mine=self.request('GET','/growth/me')
         self.assertRegex(mine['code'],r'^[A-Z2-9]{8}$')
-        self.assertTrue(mine['link'].endswith('?start=r_'+mine['code']))
+        self.assertTrue(mine['link'].endswith(('/p/' if mine['proxy_invite'] else '?start=r_')+mine['code']))
         self.assertEqual(self.request('GET','/growth/me')['link'],mine['link'])
         with psycopg.connect(self.dsn) as conn:
             legacy=conn.execute('SELECT code FROM growth_profiles WHERE user_id=%s',(self.owner,)).fetchone()[0]
@@ -85,6 +85,37 @@ class GrowthIntegration(unittest.TestCase):
         self.request('POST','/growth/referral',json={'code':legacy})
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT inviter_user_id FROM growth_referrals WHERE referred_user_id=%s',(self.friend,)).fetchone()[0],self.owner)
+
+    def test_direct_proxy_invitation(self):
+        self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':90})
+        self.actor={'id':self.owner,'role':'advertiser'}
+        with patch.dict(os.environ, PUSHOK_MINIAPP_URL='https://ads.example.org/miniapp'):
+            mine = self.request('GET','/growth/me')
+        path = '/p/' + mine['code']
+        self.assertEqual(mine['link'], 'https://ads.example.org' + path)
+        self.assertTrue(mine['proxy_invite'])
+        with patch('app.proxy_link.current_proxy_url', return_value=None):
+            self.assertEqual(self.client.get(path).status_code, 503)
+        for port in (8443, 9443):
+            target = f'https://t.me/proxy?server=example.org&port={port}&secret=dd' + '1'*32
+            with patch('app.proxy_link.current_proxy_url', return_value=target):
+                response = self.client.get(path, follow_redirects=False)
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response.headers['location'], target)
+                self.assertEqual(response.cookies['__Host-pushok_invite'], mine['code'])
+                self.assertIn('no-store', response.headers['cache-control'])
+                second = self.client.get(path, headers={'Cookie':'__Host-pushok_invite=ABCDEFGH'}, follow_redirects=False)
+                self.assertNotIn('set-cookie', second.headers)
+        self.assertEqual(self.request('GET','/growth/me')['invited'],0)
+        self.actor={'id':self.friend,'role':'advertiser'}
+        self.request('POST','/growth/referral',json={'code':mine['code']})
+        self.request('POST','/growth/referral',json={'code':mine['code']})
+        self.actor={'id':self.owner,'role':'advertiser'}
+        self.assertEqual(self.request('GET','/growth/me')['invited'],1)
+        self.assertEqual(self.client.get('/p/invalid').status_code,404)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE growth_settings SET referrals_enabled=false')
+        self.assertEqual(self.client.get(path).status_code,404)
 
     def test_short_alias_collision_and_concurrent_creation(self):
         from psycopg.rows import dict_row
