@@ -73,7 +73,7 @@ class SetupPlanTests(unittest.TestCase):
         self.assertNotIn("Начать установку пакетов",text)
 
     def test_invalid_domains_are_retried_before_installation(self):
-        invalid=['ads.-example.org','ads.example-.org','ads..example.org',
+        invalid=['', 'ads.-example.org','ads.example-.org','ads..example.org',
                  'https://ads.example.org','ads.example.org/path','ads.example.org:443',
                  '127.0.0.1','ads.example.org.','ads_example.org',
                  'a'*64+'.example.org',('a'*63+'.')*4+'org']

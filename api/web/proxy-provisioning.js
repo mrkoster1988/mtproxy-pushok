@@ -87,11 +87,11 @@ window.pushokProvisioning=(()=>{
  }
  function reset(){expanded=undefined;generation++;controller?.abort();controller=null;dirty=false;busy=false;session='';$('proxy-provisioning-settings')?.replaceChildren();}
  async function load(force=false){
-  const host=$('proxy-provisioning-settings');if(!host||!me?.is_owner){reset();return;}
+  const host=$('proxy-provisioning-settings');if(!host||!hasDeveloperAccess(me)){reset();return;}
   if(!force&&session===token&&(dirty||busy))return;
   controller?.abort();controller=new AbortController();const signal=controller.signal;
   const current=++generation,ownSession=token,user=me.id;session=token;
-  const valid=()=>current===generation&&ownSession===token&&user===me?.id&&me?.is_owner;
+  const valid=()=>current===generation&&ownSession===token&&user===me?.id&&hasDeveloperAccess(me);
   const previous=host.querySelector('#proxy-provisioning-card');
   if(previous)expanded=previous.open;
   host.replaceChildren(el('p','Проверяем автосоздание прокси…','muted'));

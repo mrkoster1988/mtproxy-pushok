@@ -15,7 +15,7 @@ window.pushokCommunity=(()=>{
  }
  function updateAvatar(node,id){
   const s=token;void person(id).then(data=>{if(s!==token)return;
-   const copy=node.parentElement?.querySelector('.person-copy,.hall-person');if(copy)copy.dataset.userRole=data.is_owner?'owner':data.role;
+   const copy=node.parentElement?.querySelector('.person-copy,.hall-person');if(copy)copy.dataset.userRole=hasDeveloperAccess(data)?'owner':data.role;
    if(!node.dataset.hallRank){node.classList.remove('hall-frame','hall-gold','hall-silver','hall-bronze','hall-teal');window.pushokHall.frame(node,data.frame_rank);}
    node.classList.toggle('user-online',data.online===true);
    if(data.online!==null)node.title=data.online?'В приложении сейчас':'Не в сети';
@@ -26,7 +26,7 @@ window.pushokCommunity=(()=>{
  async function show(target,id){const s=token;target.replaceChildren(el('p','Загрузка…','muted'));try{const u=await person(id);if(s!==token||!target.isConnected)return;
    const card=el('section',undefined,'profile-identity user-identity public-person'),row=el('div',undefined,'person-line'),copy=window.pushokProfiles.names(u,true);
    if(u.online!==null)copy.append(el('small',u.online?'Онлайн в приложении':'Не в сети','muted'));
-   row.append(v().userAvatar(id,names(u)),copy);card.append(row);const role=el('span',window.pushokTeam.displayRole(u),'profile-role');role.dataset.role=u.is_owner?'owner':u.role;card.append(role);target.replaceChildren(card);
+   row.append(v().userAvatar(id,names(u)),copy);card.append(row);const role=el('span',window.pushokTeam.displayRole(u),'profile-role');role.dataset.role=hasDeveloperAccess(u)?'owner':u.role;card.append(role);target.replaceChildren(card);
   }catch(e){if(s===token)target.replaceChildren(el('p',e.message,'empty'));}}
  function invited(id,count){
   const box=el('details',undefined,'panel profile-invited-block'),head=el('summary'),list=el('div',undefined,'invitees'),feedback=el('p',undefined,'invite-feedback'),actions=el('div',undefined,'invite-actions');
@@ -76,7 +76,7 @@ window.pushokCommunity=(()=>{
  async function leaders(target){const s=token;target.setAttribute('aria-busy','true');try{const data=await Promise.all(['invited','paid_referrals','spend','paid_campaigns'].map(metric=>api('/hall?kind=month&metric='+metric)));if(s!==token||!target.isConnected)return;
   const key=JSON.stringify(data.map(d=>d.rows.find(r=>r.rank===1)?.user_id));if(target.dataset.leaders===key)return;target.dataset.leaders=key;const ids=new Set(),rowNode=el('div',undefined,'home-leader-avatars');target.replaceChildren(el('h2','Лидеры месяца'),rowNode);for(const d of data){const row=d.rows.find(r=>r.rank===1);if(!row||ids.has(row.user_id))continue;ids.add(row.user_id);const avatar=v().userAvatar(row.user_id,row.first_name||'Участник');window.pushokHall.frame(avatar,1);rowNode.append(avatar);}if(!ids.size)rowNode.append(el('span','Первые места пока свободны','muted'));target.hidden=false;
  }catch{target.hidden=true;}finally{target.setAttribute('aria-busy','false');}}
- function ownerTools(target,uid,data,reload){if(!me?.is_owner)return;
+ function ownerTools(target,uid,data,reload){if(!hasDeveloperAccess(me))return;
   const box=el('details',undefined,'owner-personal-tools'),head=el('summary');head.append(v().icon('settings'),el('span','Изменить сведения'));head.title='Изменить или перенести сведения';head.setAttribute('aria-label',head.title);box.append(head);target.append(box);
   const form=el('form'),phone=el('input'),birthday=el('input'),year=el('input');phone.value=data.phone_number||'';phone.placeholder='+79991234567';birthday.placeholder='ДД.ММ';birthday.value=data.birthday?[data.birthday.day,data.birthday.month].map(x=>String(x).padStart(2,'0')).join('.'):'';year.type='number';year.value=data.birthday?.year||'';year.placeholder='Необязательно';
   for(const [label,input] of [['Телефон',phone],['День и месяц',birthday],['Год',year]]){const l=el('label',label);l.append(input);form.append(l);}
@@ -87,7 +87,7 @@ window.pushokCommunity=(()=>{
   transfer.onsubmit=async e=>{e.preventDefault();if(!confirm('Перенести личные сведения на Telegram ID '+dest.value+'? Старый аккаунт потеряет верификацию.'))return;move.disabled=true;try{await api('/community/users/'+uid+'/personal/transfer',{method:'POST',body:{target_telegram_id:Number(dest.value)}});await reload();}catch(err){status.textContent=err.message;}finally{move.disabled=false;}};
  }
  for(const event of ['pointerdown','keydown','touchstart'])document.addEventListener(event,()=>{activeAt=Date.now();},{passive:true});
- async function heartbeat(){if(!token||!me||me.is_owner||document.hidden||Date.now()-activeAt>120000)return;try{await api('/community/presence',{method:'POST'});}catch{}}
+ async function heartbeat(){if(!token||!me||hasDeveloperAccess(me)||document.hidden||Date.now()-activeAt>120000)return;try{await api('/community/presence',{method:'POST'});}catch{}}
  setInterval(()=>{void heartbeat();if(!document.hidden&&token)document.querySelectorAll('.user-avatar[data-user-id]').forEach(n=>{if(n.getClientRects().length)updateAvatar(n,n.dataset.userId);});},60000);document.addEventListener('visibilitychange',()=>{if(!document.hidden){activeAt=Date.now();void heartbeat();}});setTimeout(heartbeat,3000);
  Object.assign(errors,{personal_details_locked:'Сведения уже сохранены. Изменить их может только разработчик.',phone_verification_required:'Перед созданием кампании подтвердите номер в профиле.',personal_transfer_target_filled:'У нового аккаунта уже есть личные сведения.',personal_transfer_empty:'Нет сведений для переноса.',personal_transfer_same_user:'Выберите другой аккаунт.'});
  return {decorate,show,invited,leaders,ownerTools,backRoute:()=>returnRoute};

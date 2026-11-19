@@ -83,7 +83,7 @@ def snapshot(conn, request):
     if not isinstance(hosts, list) or not 1 <= len(hosts) <= 2 or any(
             not isinstance(h, str) or not re.fullmatch(r'[a-zA-Z0-9.:-]{1,253}', h) for h in hosts):
         raise ValueError('invalid_host')
-    owner = cfg['updated_by'] and conn.execute("SELECT 1 FROM users WHERE id=%s AND is_owner AND role='admin' AND blocked_at IS NULL", (cfg['updated_by'],)).fetchone()
+    owner = cfg['updated_by'] and conn.execute("SELECT 1 FROM users WHERE id=%s AND is_developer AND role='admin' AND blocked_at IS NULL", (cfg['updated_by'],)).fetchone()
     from .promotion_runtime import node_plan, confirmation
     nodes = conn.execute("""SELECT n.*,r.campaign_id,r.state,r.checked_at,r.plan_revision,c.topic
         FROM proxy_nodes n LEFT JOIN promotion_runtime r ON r.proxy_node_id=n.id

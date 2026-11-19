@@ -14,7 +14,8 @@ def check_user_profiles(browser, base, output, failures, dsn):
     campaigns=[uuid4() for _ in range(12)]
     tokens={}
     with psycopg.connect(dsn) as conn:
-        for uid,role,first,last,username in ((owner,'advertiser','Мария','Зиброва','ZibrovaM'),(staff,'admin','Администратор',None,'profile_admin')):
+        for uid,role,first,last,username in ((owner,'advertiser','Мария','Зиброва','ZibrovaM'),(staff,'admin','Администратор',None,'profile_admin'),
+            (uuid4(),'moderator','Модератор',None,'profile_moderator'),(uuid4(),'operator','Оператор',None,'profile_operator')):
             conn.execute('INSERT INTO users(id,telegram_user_id,role,first_name,last_name,username) VALUES(%s,%s,%s,%s,%s,%s)',(uid,int(uid.hex[:12],16),role,first,last,username))
             sid=uuid4();conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')",(sid,uid))
             tokens[role]=api._create_session_token(uid,sid)
@@ -45,6 +46,7 @@ def check_user_profiles(browser, base, output, failures, dsn):
             card.get_by_role('link',name='Открыть профиль рекламодателя').click()
             profile=admin.locator('[data-page=user]');expect(profile.locator('.person-name')).to_have_text('Мария Зиброва')
             expect(profile.locator('.user-avatar img')).to_have_count(1)
+            expect(profile.get_by_role('link',name='@ZibrovaM')).to_have_attribute('href','https://t.me/ZibrovaM')
             expect(profile.locator('.profile-invited-block summary')).to_have_text('Приглашено0')
             assert profile.locator('.profile-identity').inner_text().count('@ZibrovaM')==1
             expect(profile.locator('.profile-campaign-row')).to_have_count(10)
@@ -62,6 +64,15 @@ def check_user_profiles(browser, base, output, failures, dsn):
             admin.locator('.screen-back').click()
             expect(admin.locator('.approval-card')).to_have_attribute('data-campaign-id',str(campaigns[0]))
             client=launch('advertiser');go(client,'profile')
+            go(client,'member/'+str(staff))
+            expect(client.locator('.public-person span.person-handle')).to_have_text('@profile_admin')
+            expect(client.locator('.public-person a.person-handle')).to_have_count(0)
+            moderator=launch('moderator');go(moderator,'member/'+str(owner))
+            expect(moderator.locator('.public-person a.person-handle')).to_have_attribute('href','https://t.me/ZibrovaM')
+            operator=launch('operator');go(operator,'user/'+str(staff))
+            expect(operator.locator('[data-page=user] span.person-handle')).to_have_text('@profile_admin')
+            expect(operator.locator('[data-page=user] a.person-handle')).to_have_count(0)
+            go(client,'profile')
             own=client.locator('[data-page=profile]')
             expect(own.locator('.profile-stats')).to_contain_text('11')
             expect(own.get_by_role('button',name='Скопировать ID',exact=True)).to_be_hidden()

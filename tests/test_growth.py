@@ -86,6 +86,21 @@ class GrowthIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT inviter_user_id FROM growth_referrals WHERE referred_user_id=%s',(self.friend,)).fetchone()[0],self.owner)
 
+    def test_open_cabinet_domain_is_used_for_link_and_qr(self):
+        self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':90})
+        from app.growth import invitation_qr
+        with patch.dict(os.environ, PUSHOK_MINIAPP_URL='https://old.example.org/miniapp'):
+            def invitation(origin):
+                return self.request('GET', '/growth/me', params={'invite_origin': origin},
+                                    headers={'host':'cabinet.example.net:8443', 'x-forwarded-host':'external.example.org'})
+            active = invitation('https://cabinet.example.net:8443')
+            path = '/p/' + active['code']
+            self.assertEqual(active['link'], 'https://cabinet.example.net:8443' + path)
+            self.assertEqual(active['invite_qr'], invitation_qr(active['link']))
+            for invalid in ('https://external.example.org','https://cabinet.example.net','http://cabinet.example.net:8443',
+                            'https://user@cabinet.example.net:8443', 'https://cabinet.example.net:8443/other'):
+                self.assertEqual(invitation(invalid)['link'], 'https://old.example.org' + path)
+
     def test_direct_proxy_invitation(self):
         self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':90})
         self.actor={'id':self.owner,'role':'advertiser'}

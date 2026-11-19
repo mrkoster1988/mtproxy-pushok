@@ -11,6 +11,7 @@ import re
 import secrets
 from datetime import datetime, timezone
 from typing import Literal
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import psycopg
@@ -26,6 +27,25 @@ def invitation_qr(link: str) -> str:
     buffer = BytesIO()
     qrcode.make(link, box_size=6, border=4).save(buffer, format='PNG')
     return 'data:image/png;base64,' + base64.b64encode(buffer.getvalue()).decode('ascii')
+
+
+def invitation_origin(request: Request, browser_origin: str | None) -> str | None:
+    # Этот адрес возвращается только в личном приглашении текущего запроса.
+    if browser_origin and len(browser_origin) <= 300:
+        try:
+            url = urlsplit(browser_origin)
+            host = url.hostname or ''
+            if (re.fullmatch(r'https://[a-zA-Z0-9.\-\[\]:]+', browser_origin)
+                    and url.netloc.lower() == request.headers.get('host', '').lower()
+                    and host and url.port != 0):
+                return 'https://' + url.netloc.lower()
+        except ValueError:
+            pass
+    from .gift_sharing import public_origin
+    try:
+        return public_origin()
+    except HTTPException:
+        return None
 
 
 class Input(BaseModel):
@@ -282,7 +302,7 @@ def router_for(get_dsn, get_user, require_admin):
         return result
 
     @router.get('/growth/me')
-    def mine(response: Response, user=Depends(get_user)):
+    def mine(request: Request, response: Response, invite_origin: str | None = None, user=Depends(get_user)):
         no_cache(response)
         def action(conn):
             conn.execute('INSERT INTO growth_profiles(user_id) VALUES(%s) ON CONFLICT DO NOTHING', (user['id'],))
@@ -306,11 +326,8 @@ def router_for(get_dsn, get_user, require_admin):
             bound = conn.execute('SELECT 1 FROM growth_referrals WHERE referred_user_id=%s', (user['id'],)).fetchone()
             bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
             link = 'https://t.me/'+bot+'?start=r_'+code if re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot) else None
-            from .gift_sharing import public_origin
-            try:
-                proxy_invite = public_origin() + '/p/' + code
-            except HTTPException:
-                proxy_invite = None
+            origin = invitation_origin(request, invite_origin)
+            proxy_invite = origin + '/p/' + code if origin else None
             link = proxy_invite or link
             return {**settings, 'code':code, 'link':link, 'proxy_invite':bool(proxy_invite), 'invite_qr':invitation_qr(link) if link and settings['referrals_enabled'] else None, 'invited':count, 'bound':bool(bound),
                     'coupons':coupons, 'bonus_rewards':bonus, 'invitations':invitations}

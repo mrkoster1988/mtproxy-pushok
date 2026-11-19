@@ -47,7 +47,7 @@ def claim_notifications(
                 SELECT n.id AS notice_id, n.campaign_id, u.telegram_user_id,
                        sc.title AS channel_title, sc.telegram_url AS channel_url,
                        concat_ws(' ', advertiser.first_name, advertiser.last_name) AS advertiser_name,
-                       advertiser.username AS advertiser_username
+                       CASE WHEN u.role IN ('admin','moderator') THEN advertiser.username END AS advertiser_username
                 FROM bot_operator_notice_outbox AS n
                 JOIN bot_operator_subscriptions AS s
                   ON s.operator_user_id = n.operator_user_id

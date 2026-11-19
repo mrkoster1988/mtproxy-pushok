@@ -19,7 +19,10 @@ window.pushokHall=(()=>{
   function periodTitle(d){return new Date(d.starts_at).toLocaleDateString('ru-RU',{year:'numeric',...(kind==='month'?{month:'long'}:{}),timeZone:'Europe/Moscow'});}
   function person(row,metric,podium=false){
    const line=el('article',undefined,podium?'hall-podium-person hall-place-'+row.rank:'hall-row'),avatar=window.pushokViews.userAvatar(row.user_id,row.first_name||row.username||'',true),copy=el('div',undefined,'hall-person');frame(avatar,row.rank<=10?row.rank:null);avatar.dataset.hallRank=String(row.rank);
-   const name=[row.first_name,row.last_name].filter(Boolean).join(' ')||row.username||'Участник';copy.append(el('strong',name));if(!podium&&row.username&&/^[A-Za-z0-9_]+$/.test(row.username)){const link=el('a','@'+row.username);link.href='https://t.me/'+row.username;link.target='_blank';link.rel='noopener noreferrer';copy.append(link);}
+   const name=[row.first_name,row.last_name].filter(Boolean).join(' ')||row.username||'Участник';copy.append(el('strong',name));if(!podium){
+    const handle=window.pushokProfiles.telegramHandle(row);
+    if(handle)copy.append(handle);
+   }
    const value=el('div',undefined,'hall-value');value.append(el('strong',['spend','spend_rub'].includes(metric)?fmt(row.score/100)+' ₽':fmt(row.score)+(metric==='spend_xtr'?' Stars':'')));if(row.bonus_amount)value.append(el('small','+'+fmt(row.bonus_amount/100)+' бонусных ₽'));
    if(!podium)line.append(el('span',String(row.rank),'hall-rank'));line.append(avatar,copy,value);return line;
   }
