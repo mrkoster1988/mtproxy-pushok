@@ -327,6 +327,7 @@ window.pushokWallet=(()=>{
   try{
    const data=await api('/wallet/campaigns/'+c.id);if(!container.isConnected||session!==token||uid!==me?.id)return;container.replaceChildren();
    if(data.payment){
+    container.classList.add('wallet-paid');
     const paid=data.payment,parts=[];
     if(paid.cash_amount)parts.push(amount(paid.cash_amount,paid.currency));
     if(paid.bonus_amount)parts.push(amount(paid.bonus_amount,'BONUS'));
@@ -337,7 +338,7 @@ window.pushokWallet=(()=>{
    if(!data.payable){container.append(el('p','Оплата с баланса станет доступна после одобрения заявки, если по ней нет открытого внешнего счёта.','muted'));return;}
    const telegram=miniAppMode||data.stars_only,available=data.balances;
    const heading=el('div',undefined,'bonus-checkout-heading');
-   heading.append(window.pushokViews.icon('gift'),el('h3','Бонусы'));
+   heading.append(window.pushokViews.icon('gift'),el('h3','Бонусный баланс'));
    container.append(heading);
    const bonusPrice=data.amount_rub,bonusBalance=Math.max(0,available.BONUS);
    const canRedeem=data.bonus_spending_enabled&&!data.has_debt&&bonusPrice>0&&bonusBalance>=bonusPrice;
@@ -349,10 +350,10 @@ window.pushokWallet=(()=>{
    function payButton(label,fn){
     const control=button(label,fn);control.classList.add('action-positive','labeled-action');return control;
    }
-   container.append(el('p','На бонусном балансе '+money(bonusBalance),'bonus-available'));
+   heading.append(el('strong',money(bonusBalance),'bonus-available'));
    if(canRedeem){
     const use=payButton('Оплатить бонусами · '+money(bonusPrice),()=>pay('BONUS',true,bonusPrice));
-    use.prepend(window.pushokViews.icon('gift'));container.append(use);
+    use.prepend(window.pushokViews.icon('wallet'));container.append(use,el('small','После оплаты останется '+money(bonusBalance-bonusPrice),'bonus-remainder'));
    }else{
     const missing=Math.max(0,bonusPrice-bonusBalance);
     container.append(el('p',!data.bonus_spending_enabled?'Оплата бонусами выключена в настройках.':data.has_debt?'Оплата с баланса приостановлена из-за задолженности.':'Для полной оплаты бонусами не хватает '+money(missing)+'.','muted'));

@@ -444,6 +444,7 @@ def main():
                 expect(operator.locator('#queue .campaign-steps')).to_contain_text('К оплате')
                 refresh(advertiser)
                 go(advertiser, 'payments/' + campaign_id)
+                advertiser.locator('[data-page=payments] .receipt-manual > summary').click()
                 advertiser.get_by_role('button', name='Реквизиты и сумма', exact=True).click()
                 expect(advertiser.locator('.payment-instructions')).to_contain_text('ТЕСТОВАЯ ИНСТРУКЦИЯ')
                 expect(advertiser.get_by_role('button', name='Бронь на 15 минут', exact=True)).to_have_count(0)
@@ -454,7 +455,7 @@ def main():
                 advertiser.locator('[data-page=payments]').get_by_label('Подтверждение оплаты', exact=True).set_input_files(
                     {"name": "test-receipt.png", "mimeType": "image/png", "buffer": image_bytes.getvalue()})
                 advertiser.get_by_role('button', name='Загрузить чек', exact=True).click()
-                expect(advertiser.locator('[data-page=payments] .campaign-steps')).to_contain_text('Проверка')
+                expect(advertiser.locator('[data-page=payments] .receipt-status')).to_contain_text('Проверка')
                 refresh(operator)
                 operator.get_by_role('button', name='Посмотреть чеки', exact=True).click()
                 with operator.expect_download() as receipt:
@@ -468,7 +469,7 @@ def main():
                 advertiser.locator('[data-page=payments]').get_by_label('Подтверждение оплаты', exact=True).set_input_files(
                     {"name": "test-receipt-again.png", "mimeType": "image/png", "buffer": image_bytes.getvalue()})
                 advertiser.get_by_role('button', name='Загрузить чек', exact=True).click()
-                expect(advertiser.locator('[data-page=payments] .campaign-steps')).to_contain_text('Проверка')
+                expect(advertiser.locator('[data-page=payments] .receipt-status')).to_contain_text('Проверка')
                 refresh(operator)
                 operator.get_by_label('Проверил поступление денег, сумму и назначение платежа', exact=True).check()
                 operator.get_by_role('button', name='Подтвердить оплату', exact=True).click()
@@ -772,7 +773,7 @@ def main():
                 expect(operator.locator('#queue .campaign-steps')).to_contain_text('К оплате')
                 refresh(advertiser)
                 go(advertiser,'payments/'+sbp_cid)
-                expect(advertiser.locator('.sbp-checkout')).to_contain_text('Новые счета СБП выключены')
+                expect(advertiser.locator('.sbp-checkout')).to_contain_text('Недоступно')
                 bank_state={'status':'pending','paid':False}
                 invoice_calls=[]
                 def sbp_create(**kwargs):
@@ -793,7 +794,7 @@ def main():
                     with advertiser.expect_response(lambda r:r.url.endswith('/sbp/reconcile')):
                         advertiser.goto(base+'/?sbp_campaign='+sbp_cid)
                     expect(advertiser.locator('.sbp-checkout')).to_contain_text('Ожидается результат платежа')
-                    expect(advertiser.locator('[data-page=payments] .campaign-steps')).to_contain_text('К оплате')
+                    expect(advertiser.locator('[data-page=payments] .receipt-status')).to_contain_text('К оплате')
                     with psycopg.connect(PostgresIntegration.dsn) as connection:
                         aid=connection.execute("UPDATE payment_attempts SET sbp_requires_review=true WHERE campaign_id=%s AND provider='sbp' RETURNING id",(sbp_cid,)).fetchone()[0]
                     go(admin,'management/payments')
@@ -818,7 +819,7 @@ def main():
                     bank_state.update(status='succeeded',paid=True)
                     advertiser.get_by_role('button',name='Проверить платёж СБП',exact=True).click()
                     expect(advertiser.locator('.sbp-checkout')).to_contain_text('Платёж подтверждён серверной сверкой')
-                    expect(advertiser.locator('[data-page=payments] .campaign-steps')).to_contain_text('Оплачено')
+                    expect(advertiser.locator('[data-page=payments] .receipt-status')).to_contain_text('Оплачено')
                     advertiser.screenshot(path=str(output/'15-sbp-verified.png'),full_page=True)
 
                 refresh(admin)
@@ -906,10 +907,13 @@ def main():
                     expect(mini.locator('body')).to_have_class('miniapp-mode cabinet-mode')
                     assert len([x for x in mini_requests if x[0]=='POST' and x[1].endswith('/auth/telegram/miniapp')])==1
                     go(mini,'payments/'+sbp_cid)
-                    expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата Telegram Stars')
+                    expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата подтверждена сервером')
                     expect(mini.get_by_role('button',name='Реквизиты и сумма',exact=True)).to_have_count(0)
                     expect(mini.get_by_role('button',name='Загрузить чек',exact=True)).to_have_count(0)
                     assert not any('/sbp' in url or '/payment-instructions' in url or '/payment-proofs' in url for _,url in mini_requests)
+                    mini.get_by_role('link',name='Открыть кампанию',exact=True).click()
+                    expect(mini).to_have_url(base+'/miniapp#/campaign/'+sbp_cid)
+                    go(mini,'bot')
                     mini.get_by_role('link',name='Открыть @mtproxy_pushok_bot',exact=True).click()
                     assert mini.evaluate('window.__miniLink')=='https://t.me/mtproxy_pushok_bot'
                     go(mini,'create')
@@ -943,7 +947,7 @@ def main():
                         connection.execute("UPDATE campaigns SET moderation_status='approved',payment_status='awaiting_payment' WHERE id=%s",(stars_cid,))
                     mini.evaluate('() => refreshStatuses()')
                     expect(mini.locator('#order-result h2')).to_have_text('Ваша заявка')
-                    expect(mini.locator('.sbp-checkout')).to_contain_text('Оплата Stars выключена')
+                    expect(mini.locator('.sbp-checkout')).to_contain_text('Недоступно')
                     from app import stars_checkout
                     from app.bot_stars import parse_attempt
                     prepared=[]
@@ -1499,7 +1503,7 @@ def main():
                     advertiser.set_viewport_size({'width':width,'height':844})
                     go(advertiser,'payments')
                     assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
-                    for cell in advertiser.locator('[data-page=payments] .campaign-tile').all():
+                    for cell in advertiser.locator('[data-page=payments] .receipt-list-item').all():
                         rect=cell.bounding_box()
                         assert rect['x']>=0 and rect['x']+rect['width']<=width+1,rect
                 advertiser.screenshot(path=str(output/'33-compact-payments-mobile.png'),full_page=True)

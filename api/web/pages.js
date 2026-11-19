@@ -137,11 +137,6 @@
  content.create.append($('campaign-form').closest('section'));
  window.pushokViews.channelSearch($('order-channel-url'),$('order-channel-title'));
  window.pushokViews.channelSearch($('channel-form').elements.telegram_url,$('channel-form').elements.title);
- const paymentNav=el('nav',undefined,'payment-navigation');
- paymentNav.setAttribute('aria-label','Навигация оплат');
- const walletLink=link('Баланс','wallet');walletLink.prepend(window.pushokViews.icon('wallet'));
- const paymentsLink=link('Все оплаты','payments');paymentsLink.prepend(window.pushokViews.icon('back'));
- paymentNav.append(paymentsLink,walletLink);content.payments.prepend(paymentNav);
  const createNotice=el('p',undefined,'muted');content.create.prepend(createNotice);
  const calendar=$('availability-days').closest('.calendar');const calendarOrigin=$('order-calendar-home');
  const calendarPanel=section('Выбор даты'),calendarTariff=el('select');calendarTariff.setAttribute('aria-label','Тариф календаря');calendarPanel.querySelector('h2').remove();calendarPanel.append(calendarTariff);content.calendar.append(calendarPanel);
@@ -179,7 +174,7 @@
 
  const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);content.dashboard.append(dashboardReferral,dashboardHelp);
  const onboarding=window.pushokViews.disclosure('Как начать',[el('p','Выберите канал и тариф, отправьте заявку. После одобрения оплатите размещение — запуск и завершение выполняются по расписанию.')]);onboarding.id='onboarding';content.help.prepend(onboarding);
- const paymentOverview=el('div'),paymentRows=el('div');content.payments.append(paymentOverview,paymentRows);
+ const paymentRows=el('div',undefined,'payment-workspace');content.payments.append(paymentRows);
  // Постоянные панели сохраняют открытые формы при переключении вкладок.
  const sponsorTabs=el('div',undefined,'sponsor-tabs'),sponsorPanes={};let sponsorView='placements';
  sponsorTabs.setAttribute('role','tablist');sponsorTabs.setAttribute('aria-label','Спонсоры и узлы');
@@ -393,19 +388,7 @@
   const own=state.campaigns;
   window.pushokViews.campaigns(reportRows,own,'reports');
   const approved=own.filter(c=>c.moderation_status==='approved');
-  window.pushokViews.paymentOverview(paymentOverview,approved);
-  if(state.route!=='payments'||!routeParts()[1]){
-   if(!approved.length)window.pushokViews.campaigns(paymentRows,[],'payments');
-   else{
-    paymentRows.replaceChildren();
-    for(const [title,due] of [['К оплате',true],['Остальные заявки',false]]){
-     const rows=approved.filter(c=>(c.payment_status==='awaiting_payment'&&c.price_kopecks_snapshot>0)===due);
-     if(!rows.length)continue;
-     const group=el('section',undefined,'payment-group'),list=el('div');
-     group.append(el('h2',title),list);paymentRows.append(group);window.pushokViews.campaigns(list,rows,'payments');
-    }
-   }
-  }
+  if(state.route==='payments'&&!routeParts()[1])renderPaymentsList(approved);
   addNode.hidden=me.role!=='admin';nodeCreate.hidden=me.role!=='admin';
   $('sponsor-tab-setup').hidden=me.role!=='admin';sponsorRegistration.hidden=me.role!=='admin';selectSponsorView(sponsorView);
   const placements=operatorCampaigns.filter(c=>!c.archived_at);
@@ -413,20 +396,79 @@
   if(state.route)renderSelected({background});
  }
  function routeParts(){const p=location.hash.replace(/^#\/?/,'').split('/');if(p[0]==='settings')return ['management',p[1]==='system'?'automation':p[1]||'payments'];return [Object.hasOwn(routes,p[0])?p[0]:'dashboard',p[1]||''];}
+ function paymentStatus(c){
+  const label=c.price_kopecks_snapshot===0?'Без оплаты':({awaiting_payment:'К оплате',proof_submitted:'Проверка чека',verified:'Оплачено',rejected:'Чек отклонён',refunded:'Возврат'})[c.payment_status]||labels[c.payment_status];
+  return el('span',label,'receipt-status badge badge--'+c.payment_status);
+ }
+ function paymentName(c,heading){
+  const name=window.pushokViews.title(c),identity=el('div',undefined,'receipt-identity'),copy=el('div');
+  copy.append(el(heading,name),el('small','#'+c.id.slice(0,8)));
+  identity.append(window.pushokViews.channelAvatar(c.channel_id,name,c.channel_url),copy);
+  return identity;
+ }
+ function renderPaymentsList(campaigns){
+  paymentRows.replaceChildren();
+  if(!campaigns.length){paymentRows.append(window.pushokViews.emptyLine('Пока нет одобренных заявок','wallet'));return;}
+  for(const [title,due] of [['К оплате',true],['Другие заявки',false]]){
+   const items=campaigns.filter(c=>(['awaiting_payment','rejected'].includes(c.payment_status)&&c.price_kopecks_snapshot>0)===due);
+   if(!items.length)continue;
+   const group=el('section',undefined,'payment-group'),heading=el('h2',title);
+   heading.append(el('span',String(items.length),'queue-total'));group.append(heading);
+   for(const c of items){
+    const row=el('article',undefined,'receipt-list-item'),head=el('div',undefined,'receipt-head'),terms=el('p',undefined,'receipt-list-terms');
+    row.dataset.campaignId=c.id;head.append(paymentName(c,'h3'),paymentStatus(c));
+    terms.append(el('span',[c.tariff_name_snapshot,window.pushokViews.duration(c)].filter(Boolean).join(' · ')),el('strong',window.pushokViews.price(c)));
+    row.append(head,terms);
+    const open=link(due?'Оплатить':'Посмотреть оплату','payments/'+c.id);
+    if(due){
+     const actions=el('div',undefined,'campaign-buy-actions'),remove=window.pushokManagement.archiveCampaign(actions,c,'payments');
+     remove.classList.add('campaign-delete-action');remove.append(el('span','Удалить'));
+     open.classList.add('campaign-pay-action');open.prepend(window.pushokViews.icon('wallet'));actions.append(open);row.append(actions);
+    }else{open.classList.add('receipt-link');open.append(window.pushokViews.icon('chevron'));row.append(open);}
+    group.append(row);
+   }
+   paymentRows.append(group);
+  }
+ }
+ function paymentDetail(c){
+  const order=el('article',undefined,'payment-receipt'),head=el('header',undefined,'receipt-head');
+  head.append(paymentName(c,'h2'),paymentStatus(c));
+  const terms=el('dl',undefined,'receipt-terms');
+  for(const [label,value] of [['Тариф',c.tariff_name_snapshot||'—'],['Срок',window.pushokViews.duration(c)]]){
+   const cell=el('div');cell.append(el('dt',label),el('dd',value));terms.append(cell);
+  }
+  const external=el('section',undefined,'sbp-checkout');order.append(head,terms);
+  if(c.payment_review_comment)order.append(el('p',c.payment_review_comment,'receipt-comment'));
+  order.append(external);paymentRows.append(order);
+  if(!miniAppMode&&c.price_kopecks_snapshot>0){
+   const fold=window.pushokViews.disclosure('Перевод по реквизитам',[],'receipt-manual'),actions=el('div',undefined,'actions');
+   fold.querySelector('summary').prepend(window.pushokViews.icon('wallet'));
+   fold.append(actions);manualPaymentActions(c,fold,actions);
+   if(actions.childElementCount){fold.open=c.payment_status==='rejected';paymentRows.append(fold);}
+  }
+  const nav=el('nav',undefined,'receipt-links');nav.setAttribute('aria-label','Связанные разделы');
+  for(const [caption,path,icon] of [['Открыть кампанию','campaign/'+c.id,'campaign'],['Баланс','wallet','wallet']]){
+   const a=link(caption,path);a.prepend(window.pushokViews.icon(icon));nav.append(a);
+  }
+  paymentRows.append(nav);void renderSbp(c,external);
+ }
  async function renderStars(c,panel){
   const session=token,base='/campaigns/'+c.id+'/stars';
   const current=()=>panel.isConnected&&session===token&&me;
   panel.replaceChildren(el('p','Проверяем состояние Stars…'));
   try{
    const data=await api(base);if(!current())return;
-   panel.replaceChildren(el('h3','Оплата Telegram Stars'));
-   if(data.test_environment)panel.append(el('p','Тестовая среда Telegram · тестовые Stars'));
-   if(data.payment_status==='verified'){panel.append(el('p','Оплата подтверждена сервером.'));return;}
-   if(data.amount_xtr)panel.append(el('p','К оплате','eyebrow'),el('strong',data.amount_xtr+' XTR','checkout-amount'));
-   if(!data.available)panel.append(el('p','Оплата Stars выключена до настройки и приёмки.'));
-   if(data.available&&!data.amount_xtr)panel.append(el('p','Цена Stars ещё не настроена разработчиком.'));
-   if(data.processing)panel.append(el('p','Платёж обрабатывается. Не оплачивайте повторно.'));
-   else if(data.available&&data.amount_xtr&&data.payment_status==='awaiting_payment'){
+   const method=el('div',undefined,'receipt-method');
+   method.append(window.pushokViews.icon('star'),el('h3','Telegram Stars'));panel.replaceChildren(method);
+   if(data.payment_status==='verified'){
+    method.replaceChildren(window.pushokViews.icon('check'),el('p','Оплата подтверждена сервером.'));return;
+   }
+   if(!data.processing&&(!data.available||!data.amount_xtr)){
+    method.append(el('span','Недоступно','method-state'));return;
+   }
+   if(data.test_environment)panel.append(el('small','Тестовые Stars','muted'));
+   if(data.processing)panel.append(el('p','Платёж обрабатывается.','muted'));
+   else if(data.payment_status==='awaiting_payment'){
     const pay=button('Оплатить '+data.amount_xtr+' XTR',async()=>{
      if(!window.pushokMiniApp.canPay())throw Error('Обновите Telegram для оплаты Stars.');
      const invoice=await api(base+'/checkout',{method:'POST'});if(!current())return;
@@ -439,8 +481,6 @@
     });pay.classList.add('primary','action-positive','labeled-action');pay.prepend(window.pushokViews.icon('star'));panel.append(pay);
    }
    panel.append(button('Обновить статус оплаты',async()=>{await refresh();if(current())await renderStars(c,panel);}));
-   panel.append(window.pushokViews.mascot('Оплата и подтверждение запуска — отдельные этапы.'));
-   panel.append(el('p','Закрытие окна оплаты не подтверждает перевод. Если статус ещё не обновился, проверьте его позже.','muted'));
   }catch(e){if(current()){panel.replaceChildren(el('p',e.message));panel.append(button('Повторить проверку Stars',()=>renderStars(c,panel)));}}
  }
  async function renderSbp(c,panel){
@@ -451,7 +491,10 @@
   const base='/campaigns/'+c.id+'/sbp';
   async function paint(data){
    if(!panel.isConnected)return;
-   panel.replaceChildren(el('h3','СБП · внешний сайт'));
+   const method=el('div',undefined,'receipt-method');method.append(window.pushokViews.icon('wallet'),el('h3','СБП'));panel.replaceChildren(method);
+   if(!data.available&&data.status==='not_created'&&!data.can_verify&&state.returnCampaign!==c.id){
+    method.append(el('span','Недоступно','method-state'));return;
+   }
    panel.append(el('p','Сумма заявки: '+money(data.amount_kopecks)));
    if(data.test_mode)panel.append(el('p','Настроен ТЕСТОВЫЙ РЕЖИМ. Сервер проверяет режим счёта перед показом ссылки.','sbp-test-note'));
    const statuses={not_created:'Счёт не выставлен.',created:'Результат выпуска счёта ещё не подтверждён. Повторный запрос использует тот же ключ.',pending:'Ожидается результат платежа. Не переводите деньги повторно.',succeeded:'Платёж подтверждён серверной сверкой.',failed:'Платёж отменён провайдером.'};
@@ -530,15 +573,10 @@
    if(c){detail.append(card(c,false,{showPayment:true}));void renderPromotionStatus(c,detail);metrics('campaign',[]);}
    else{empty(detail,'Кампания отсутствует в рабочем списке или недоступна вашему аккаунту. Завершённые кампании находятся в архиве.');detail.append(link('Открыть архив','archive/'+id));metrics('campaign',[]);}
   }
-  paymentsLink.hidden=!id;paymentOverview.hidden=name==='payments'&&Boolean(id);
   if(name==='payments'&&id){
-   paymentRows.replaceChildren();const c=state.campaigns.find(c=>c.id===id&&c.moderation_status==='approved');
-
-   if(c){const panel=el('section',undefined,'panel sbp-checkout');const heading=el('header',undefined,'checkout-heading');
-    heading.append(el('small','Оплата размещения'),el('h2',c.channel_title||c.channel_url||'Рекламная кампания'),el('span',(c.tariff_name_snapshot||'')+' · #'+c.id.slice(0,8)));
-    paymentRows.append(heading,panel,card(c,false));
-    paymentRows.append(botLink());
-    void renderSbp(c,panel);}
+   paymentRows.replaceChildren();
+   const c=state.campaigns.find(c=>c.id===id&&c.moderation_status==='approved');
+   if(c)paymentDetail(c);
    else paymentRows.append(el('p','Заявка недоступна или ещё не одобрена.'));
   }
   const updatedCard=pages[name]?.querySelector('.campaign-detail');
@@ -573,7 +611,7 @@
   const canModerate=['admin','operator','moderator'].includes(me.role);bottomNav.style.setProperty('--nav-count',canModerate?6:5);
   bottomNav.querySelectorAll('a').forEach(a=>{a.hidden=a.dataset.route==='moderation'&&!canModerate;const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':name==='user'?'moderation':['dashboard','moderation','campaigns','wallet','hall'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   backButton.hidden=['dashboard','campaigns','wallet','profile'].includes(name)||(name==='moderation'&&!section);profileShortcut.hidden=name!=='dashboard';
-  const pageTitle=name==='management'?window.pushokInterface.managementSection(section).title:routes[name][0];
+  const pageTitle=name==='payments'&&section?'Оплата размещения':name==='management'?window.pushokInterface.managementSection(section).title:routes[name][0];
   pages[name].querySelector('h1').textContent=pageTitle;
   mobileBrand.querySelector('strong').textContent=name==='dashboard'?'puShok':pageTitle;
   mobileBrand.classList.toggle('page-brand',name!=='dashboard');
@@ -599,7 +637,7 @@
  },logout(){resetPaymentSettings();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();window.pushokVerification.reset();automationSession='';nodeEditorSession='';nodeCreate.open=false;window.pushokAppLicense?.reset();window.pushokLinks?.reset();window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   bottomNav.querySelector('[data-route=moderation]').hidden=true;bottomNav.style.setProperty('--nav-count',5);
   channelSearch.value='';selectSponsorView('placements');automationRevision++;automationFocusRoute='';automationBody.replaceChildren();automationRuntime.replaceChildren();diagnosticsSummary.replaceChildren();
-  [$('order-result'),detail,dashboardReferral,profileShortcut,paymentOverview,paymentRows,profileMain,aboutDeveloper,content.user,content.users,content.hall,sponsorQueue,reportRows,archiveRows,channelRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
+  [$('order-result'),detail,dashboardReferral,profileShortcut,paymentRows,profileMain,aboutDeveloper,content.user,content.users,content.hall,sponsorQueue,reportRows,archiveRows,channelRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());

@@ -1,4 +1,7 @@
 """Одинаковая карточка на реальных маршрутах, мобильная геометрия и действия."""
+import json
+import os
+from unittest.mock import patch
 from uuid import uuid4
 
 import psycopg
@@ -31,14 +34,18 @@ def check_campaign_cards(browser, base, output, failures, dsn):
             scheduled_start_at=now()+interval '1 day',scheduled_end_at=now()+interval '1 day 3 hours' WHERE id=%s""", (node, free))
         conn.execute("UPDATE campaigns SET archived_at=now(),placement_status='cancelled' WHERE id=%s", (archived,))
 
-    def launch(role):
+    def launch(role, mini=False):
         context = browser.new_context(viewport={'width': 390, 'height': 844}, reduced_motion='reduce')
         contexts.append(context)
         context.add_init_script('sessionStorage.setItem("pushok-session",' + repr(tokens[role]) + ')')
+        if mini:
+            from test_miniapp_auth import signed_data
+            raw = signed_data(user=json.dumps({'id': int(users[role].hex[:12], 16), 'first_name': 'Тест'}), query_id='receipt-mobile')
+            context.add_init_script('window.Telegram={WebApp:{initData:'+json.dumps(raw)+',colorScheme:"dark",ready(){},expand(){},onEvent(){},BackButton:{onClick(){},show(){},hide(){}}}}')
         page = context.new_page()
         page.on('pageerror', lambda error: failures.append(str(error)))
         page.route('**/*', lambda r: r.continue_() if r.request.url.startswith(base + '/') else r.abort())
-        page.goto(base)
+        page.goto(base + ('/miniapp' if mini else ''))
         expect(page.locator('body')).to_have_attribute('data-cabinet-loaded', 'true')
         return page
 
@@ -89,7 +96,7 @@ def check_campaign_cards(browser, base, output, failures, dsn):
 
     try:
         client, operator, outsider = launch('advertiser'), launch('operator'), launch('outsider')
-        for route in ('campaigns', 'reports', 'payments', 'campaign/' + str(paid), 'payments/' + str(paid), 'create/' + str(paid)):
+        for route in ('campaigns', 'reports', 'campaign/' + str(paid), 'create/' + str(paid)):
             card = check(client, route, paid, 'campaign/' + str(paid))
             if route == 'campaigns':
                 remove=card.get_by_role('button',name='Удалить',exact=True)
@@ -129,14 +136,37 @@ def check_campaign_cards(browser, base, output, failures, dsn):
             go(client,'wallet')
             expect(client.locator('.wallet-group h2').first).to_have_text('Мой кошелёк')
             client.locator('.wallet-bonus-shortcut').click()
-            expect(client.locator('.payment-group h2').first).to_have_text('К оплате')
-            client.locator('[data-page=payments] .campaign-tile[data-campaign-id="'+str(paid)+'"] .campaign-pay-action').click()
+            expect(client.locator('[data-page=payments] .payment-group h2').first).to_contain_text('К оплате')
+            client.locator('[data-page=payments] .receipt-list-item[data-campaign-id="'+str(paid)+'"] .campaign-pay-action').click()
             redeem=client.get_by_role('button',name='Оплатить бонусами',exact=False)
             expect(redeem).to_be_enabled()
-            assert redeem.bounding_box()['y']<client.locator('[data-page=payments] .campaign-tile').bounding_box()['y']
-            client.screenshot(path=str(output/'bonus-checkout-mobile.png'))
-            redeem.click()
-            expect(client.locator('[data-page=payments] .wallet-checkout')).to_contain_text('Оплачено с баланса')
+            expect(client.locator('.payment-receipt h2')).to_have_text(title)
+            expect(client.locator('[data-page=payments] .campaign-tile')).to_have_count(0)
+            expect(client.get_by_role('link',name='Открыть кампанию',exact=True)).to_have_attribute('href','#/campaign/'+str(paid))
+            with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'1','TELEGRAM_BOT_USERNAME':'mtproxy_pushok_bot'}), patch.object(main,'TELEGRAM_BOT_TOKEN','fixture-token'):
+                mobile=launch('advertiser',mini=True)
+                go(mobile,'payments/'+str(paid))
+                expect(mobile.locator('.receipt-status')).to_have_text('К оплате')
+                expect(mobile.locator('.payment-receipt .sbp-checkout .method-state')).to_have_text('Недоступно')
+                expect(mobile.locator('.payment-receipt .sbp-checkout button')).to_have_count(0)
+                use=mobile.get_by_role('button',name='Оплатить бонусами',exact=False)
+                for width in (320,390,768,1280):
+                    mobile.set_viewport_size({'width':width,'height':720})
+                    expect(use).to_be_in_viewport()
+                    assert mobile.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                with psycopg.connect(dsn,row_factory=dict_row) as conn:
+                    conn.execute("UPDATE sponsor_channels SET title='Новости puShok' WHERE id=%s",(channel,))
+                    conn.execute("UPDATE campaigns SET price_kopecks_snapshot=39900,tariff_name_snapshot='Суточник',duration_seconds_snapshot=86400 WHERE id=%s",(paid,))
+                    wallet_ledger.post(conn,users['advertiser'],'BONUS',130000,'manual_credit','ui-receipt:'+str(paid),'Проверка остатка')
+                mobile.evaluate('() => refresh()')
+                expect(use).to_contain_text('399')
+                expect(mobile.locator('.bonus-remainder')).to_contain_text('1 201')
+                mobile.set_viewport_size({'width':390,'height':720})
+                mobile.screenshot(path=str(output/'bonus-checkout-mobile.png'))
+                use.click()
+                expect(mobile.locator('.receipt-status')).to_have_text('Оплачено')
+                expect(mobile.locator('.wallet-checkout')).to_contain_text('Оплачено с баланса')
+                expect(mobile.get_by_role('button',name='Оплатить бонусами',exact=False)).to_have_count(0)
         finally:
             with psycopg.connect(dsn) as conn:
                 conn.execute('UPDATE wallet_settings SET enabled=%s,bonus_spending_enabled=%s WHERE singleton',(previous['enabled'],previous['bonus_spending_enabled']))

@@ -252,14 +252,6 @@ window.pushokViews=(()=>{
    target.append(item);
   });
  }
- function paymentOverview(target,list,{compact=false}={}){
-  target.replaceChildren();
-  const banner=el('section',undefined,'payment-overview');banner.append(icon('wallet'),el('h2','Оплата кампаний'),el('p','Оплачивайте одобренные заявки и следите за статусом.'));
-  const counts=el('div',undefined,'payment-counts');
-  [['Ожидают оплаты',list.filter(c=>c.price_kopecks_snapshot>0&&c.payment_status==='awaiting_payment').length],['Подтверждены',list.filter(c=>c.price_kopecks_snapshot>0&&c.payment_status==='verified').length]].forEach(([label,value])=>{const tile=el('div');tile.append(el('strong',String(value)),el('span',label));counts.append(tile);});banner.append(counts);
-  if(compact){banner.classList.add('payment-overview-compact');banner.append(link('Мои оплаты','payments'));}
-  target.append(banner);
- }
  function profile(target,updatePanel){
   target.replaceChildren(window.pushokProfiles.identity(me));
   const overview=el('div',undefined,'profile-overview');target.append(overview);
@@ -290,5 +282,5 @@ window.pushokViews=(()=>{
    if(!items.length)group.append(emptyLine(emptyText,'campaign'));else{const rows=el('div',undefined,'sponsor-placement-list');items.forEach(c=>rows.append(campaignSummary(c,'sponsors')));group.append(rows);}target.append(group);
   }
  }
- return {emptyLine,clearLogos,channelAvatar,channelPreview,channelSearch,channelVerification,userAvatar,icon,iconAction,disclosure,info,brand,mascot,profileAvatar,statusSteps,progress,facts,campaignSummary,campaignTools,campaigns,channelCards,paymentOverview,profile,sponsors};
+ return {emptyLine,clearLogos,channelAvatar,channelPreview,channelSearch,channelVerification,userAvatar,icon,iconAction,disclosure,info,brand,mascot,profileAvatar,statusSteps,progress,facts,campaignSummary,campaignTools,campaigns,channelCards,title,duration,price,profile,sponsors};
 })();

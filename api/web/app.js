@@ -355,6 +355,24 @@ function showCampaignReport(c, box,{refresh=false,embedded=false}={}){
  }).finally(()=>{if(current())panel.setAttribute('aria-busy','false');});
 }
 
+function manualPaymentActions(c,box,actions){
+  if(c.price_kopecks_snapshot>0&&!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected','proof_submitted','verified'].includes(c.payment_status)){
+   actions.append(button('Реквизиты и сумма',async()=>{
+    if(box.querySelector('.payment-instructions'))return;
+    const data=await api('/campaigns/'+c.id+'/payment-instructions');
+    const panel=el('section',undefined,'payment-instructions');panel.style.overflowWrap='anywhere';
+    panel.append(el('h3','К оплате: '+new Intl.NumberFormat('ru-RU',{style:'currency',currency:data.currency}).format(data.amount_kopecks/100)));
+    panel.append(el('p',data.instructions));
+    const reference=el('p','Комментарий к переводу: '+data.reference);reference.style.overflowWrap='anywhere';panel.append(reference);
+    panel.append(el('p','После перевода загрузите чек. Оператор проверит поступление вручную.','muted'),button('Скрыть реквизиты',async()=>panel.remove()));box.append(panel);
+   }));
+  }
+  if(c.price_kopecks_snapshot>0&&!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected'].includes(c.payment_status)){
+   const input=el('input');input.type='file';input.accept='image/jpeg,image/png,application/pdf';input.setAttribute('aria-label','Подтверждение оплаты');
+   actions.append(input,button('Загрузить чек',async()=>{if(!input.files[0])throw Error('Выберите чек.');if(input.files[0].size>5*1024*1024)throw Error('Файл должен быть меньше 5 МБ.');const data=new FormData();data.append('file',input.files[0]);await api('/campaigns/'+c.id+'/payment-proofs',{method:'POST',body:data});await refresh();notice('Чек отправлен на проверку.',true);}));
+  }
+}
+
 function card(c,op,{compact=false,showPayment=false}={}){
  const box=el('section',undefined,'campaign-detail');
  box.append(window.pushokViews.campaignSummary(c,op?'moderation':'campaign',{actions:showPayment}));
@@ -386,17 +404,7 @@ function card(c,op,{compact=false,showPayment=false}={}){
    });observationButton.setAttribute('aria-label','Статус автоматического размещения');observationButton.prepend(window.pushokViews.icon('status'));actions.append(observationButton);
   }
   addHoldAction(c,box,actions);
-  if(c.price_kopecks_snapshot>0&&!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected','proof_submitted','verified'].includes(c.payment_status)){
-   actions.append(button('Реквизиты и сумма',async()=>{
-    if(box.querySelector('.payment-instructions'))return;
-    const data=await api('/campaigns/'+c.id+'/payment-instructions');
-    const panel=el('section',undefined,'payment-instructions');panel.style.overflowWrap='anywhere';
-    panel.append(el('h3','К оплате: '+new Intl.NumberFormat('ru-RU',{style:'currency',currency:data.currency}).format(data.amount_kopecks/100)));
-    panel.append(el('p',data.instructions));
-    const reference=el('p','Комментарий к переводу: '+data.reference);reference.style.overflowWrap='anywhere';panel.append(reference);
-    panel.append(el('p','После перевода загрузите чек. Оператор проверит поступление вручную.','muted'),button('Скрыть реквизиты',async()=>panel.remove()));box.append(panel);
-   }));
-  }
+  manualPaymentActions(c,box,actions);
   if(['draft','changes_requested'].includes(c.moderation_status)){
    actions.append(button('Исправить канал',async()=>{
     if(box.querySelector('.correction-form'))return;
@@ -413,10 +421,7 @@ function card(c,op,{compact=false,showPayment=false}={}){
    }));
   }
   if(['draft','changes_requested'].includes(c.moderation_status))actions.append(button(c.moderation_status==='changes_requested'?'Отправить повторно':'Отправить на модерацию',async()=>{await api('/campaigns/'+c.id+'/submit',{method:'POST'});await refresh();notice('Заявка отправлена на проверку.',true);}));
-  if(c.price_kopecks_snapshot>0&&!miniAppMode&&c.moderation_status==='approved'&&['awaiting_payment','rejected'].includes(c.payment_status)){
-   const input=el('input');input.type='file';input.accept='image/jpeg,image/png,application/pdf';input.setAttribute('aria-label','Подтверждение оплаты');
-   actions.append(input,button('Загрузить чек',async()=>{if(!input.files[0])throw Error('Выберите чек.');if(input.files[0].size>5*1024*1024)throw Error('Файл должен быть меньше 5 МБ.');const data=new FormData();data.append('file',input.files[0]);await api('/campaigns/'+c.id+'/payment-proofs',{method:'POST',body:data});await refresh();notice('Чек отправлен на проверку.',true);}));
-  }
+
  }else{
   if(c.moderation_status==='pending'){
    actions.append(button('Одобрить канал',()=>change('moderation',{decision:'approved'})));
