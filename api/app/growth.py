@@ -29,6 +29,14 @@ def invitation_qr(link: str) -> str:
     return 'data:image/png;base64,' + base64.b64encode(buffer.getvalue()).decode('ascii')
 
 
+def telegram_invitation_link(code: str, *, miniapp: bool) -> str | None:
+    bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
+    if re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot):
+        parameter = '?startapp=r_' if miniapp else '?start=r_'
+        return 'https://t.me/' + bot + parameter + code
+    return None
+
+
 def invitation_origin(request: Request, browser_origin: str | None) -> str | None:
     # Этот адрес возвращается только в личном приглашении текущего запроса.
     if browser_origin and len(browser_origin) <= 300:
@@ -287,14 +295,17 @@ def router_for(get_dsn, get_user, require_admin):
             """SELECT 1 FROM growth_referral_links r CROSS JOIN growth_settings s
                WHERE r.code=%s AND s.referrals_enabled""", (code,)).fetchone()):
             return PlainTextResponse('Это приглашение недоступно.', status_code=404, headers=headers)
+        target = '/'
         if proxy:
             from .proxy_link import current_proxy_url
             target = current_proxy_url()
             if not target:
                 return PlainTextResponse('Прокси пока недоступен. Откройте эту же ссылку позднее.',
                                          status_code=503, headers={**headers, 'Retry-After': '60'})
-        else:
-            target = '/'
+        elif os.getenv('PUSHOK_MINIAPP_ENABLED', '0') == '1':
+            app_link = telegram_invitation_link(code, miniapp=True)
+            if app_link:
+                return RedirectResponse(app_link, status_code=302, headers=headers)
         result = RedirectResponse(target, status_code=302, headers=headers)
         # Переход относится к браузеру. Личность друга подтверждается при входе в кабинет.
         if (request.headers.get('sec-fetch-mode', 'navigate') == 'navigate'
@@ -334,13 +345,11 @@ def router_for(get_dsn, get_user, require_admin):
                 LEFT JOIN growth_offers o ON o.reward_for_user_id=r.referred_user_id
                 WHERE r.inviter_user_id=%s ORDER BY r.created_at DESC,r.referred_user_id LIMIT 100''', (user['id'],)).fetchall()
             bound = conn.execute('SELECT 1 FROM growth_referrals WHERE referred_user_id=%s', (user['id'],)).fetchone()
-            bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
-            origin = invitation_origin(request, invite_origin)
-            link = None
-            if origin:
-                link = origin + '/invite/' + code
-            elif re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot):
-                link = 'https://t.me/' + bot + '?startapp=r_' + code
+            miniapp = os.getenv('PUSHOK_MINIAPP_ENABLED', '0') == '1'
+            link = telegram_invitation_link(code, miniapp=True) if miniapp else None
+            if not link:
+                origin = invitation_origin(request, invite_origin)
+                link = origin + '/invite/' + code if origin else telegram_invitation_link(code, miniapp=False)
             return {**settings, 'code':code, 'link':link, 'proxy_invite':False,
                     'invite_qr':invitation_qr(link) if link and settings['referrals_enabled'] else None,
                     'invited':count, 'bound':bool(bound),
