@@ -886,6 +886,16 @@ def main():
                 # Настоящая серверная авторизация; подменяется только оболочка SDK Telegram.
                 from test_miniapp_auth import signed_data
                 mini_requests=[]
+                subscription_fixture={'joined':True}
+                def mini_route(route):
+                    if route.request.url.partition('?')[0].endswith('/api/v1/me/channel-subscription'):
+                        route.fulfill(status=200,content_type='application/json',body=json.dumps({
+                            'joined':subscription_fixture['joined'],'channel_url':'https://t.me/pushok_proxy',
+                            'channel_title':'Канал Pushok'}))
+                    elif route.request.url.startswith(base+'/'):
+                        route.continue_()
+                    else:
+                        route.abort()
                 def mini_page(raw, path='/miniapp', *, claim_referral=False):
                     context=browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce')
                     context.add_init_script("sessionStorage.setItem('pushok-session', "+repr(sessions['outsider'])+");")
@@ -900,7 +910,7 @@ def main():
                     """.replace('RAW_DATA',json.dumps(raw)))
                     page=context.new_page();page.on('pageerror',lambda error:failures.append(str(error)))
                     page.on('request',lambda request:mini_requests.append((request.method,request.url)))
-                    page.route('**/*',lambda route:route.continue_() if route.request.url.startswith(base+'/') else route.abort())
+                    page.route('**/*',mini_route)
                     if claim_referral:
                         with page.expect_response(lambda response: response.url.endswith('/api/v1/growth/referral')
                                                   and response.request.method == 'POST') as claim:
@@ -1714,12 +1724,19 @@ def main():
                     check_navigation_icons(operator)
                     raw=signed_data(user=json.dumps({'id':99116003,'first_name':'Тест приглашения'}),
                                     query_id='mini-referral',start_param=start_param)
+                    subscription_fixture['joined']=False
                     invited=mini_page(raw,'/miniapp#/growth',claim_referral=True)
                     expect(invited).to_have_url(base+'/miniapp#/dashboard')
                     connect=invited.get_by_role('link',name='Подключить',exact=True)
                     expect(connect).to_be_in_viewport()
                     expect(connect).to_have_css('background-color','rgb(217, 71, 80)')
+                    expect(connect).to_have_attribute('aria-disabled','true')
+                    expect(connect).not_to_have_attribute('href',proxy_url)
+                    expect(invited.locator('.dashboard-subscription')).to_be_visible()
+                    subscription_fixture['joined']=True
+                    invited.get_by_role('button',name='Проверить подписку',exact=True).click()
                     expect(connect).to_have_attribute('href',proxy_url)
+                    expect(invited.locator('.dashboard-subscription')).to_be_hidden()
                     go(invited,'growth')
                     expect(invited.get_by_label('Код пригласившего вас пользователя',exact=True)).to_have_count(0)
                     invited.reload()
