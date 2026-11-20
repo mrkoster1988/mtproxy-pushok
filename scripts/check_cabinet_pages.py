@@ -1670,7 +1670,7 @@ def main():
                 expect(admin.locator('[data-page=growth]').get_by_label('Награда на бонусный баланс, ₽',exact=True)).to_have_value('125.50')
                 go(advertiser,'growth')
                 invite_link=advertiser.locator('[data-page=growth]').get_by_label('Ваша ссылка для друзей',exact=True).get_attribute('href')
-                invite_code=invite_link.rsplit('/p/',1)[-1] if '/p/' in invite_link else invite_link.split('r_')[1]
+                invite_code=invite_link.rsplit('/invite/',1)[-1] if '/invite/' in invite_link else invite_link.split('r_')[1]
                 assert len(invite_code)==8
                 go(advertiser,'dashboard')
                 expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
@@ -1680,7 +1680,7 @@ def main():
                 invite=advertiser.get_by_role('button',name='Пригласить друга',exact=True)
                 expect(invite).to_have_attribute('aria-expanded','false')
                 invite.click()
-                qr=advertiser.get_by_alt_text('QR-код с вашей реферальной ссылкой')
+                qr=advertiser.get_by_alt_text('QR-код приглашения в рекламный кабинет')
                 expect(qr).to_be_visible()
                 assert qr.evaluate('img=>img.complete && img.naturalWidth>0')
                 share=advertiser.locator('#dashboard-referral').get_by_role('link',name='Поделиться реферальной ссылкой',exact=True)
@@ -1695,9 +1695,11 @@ def main():
                     assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
                     advertiser.screenshot(path=str(output/f'48-home-referral-{width}.png'),full_page=True)
                 check_navigation_icons(operator)
+                with outsider.expect_response(lambda r:r.url.endswith('/api/v1/growth/referral') and r.request.method=='POST') as claim:
+                    outsider.goto(base+'/invite/'+invite_code)
+                assert claim.value.ok, claim.value.text()
+                expect(outsider).to_have_url(base+'/')
                 go(outsider,'growth')
-                outsider.get_by_label('Код пригласившего вас пользователя',exact=True).fill(invite_code)
-                outsider.get_by_role('button',name='Принять приглашение',exact=True).click()
                 expect(outsider.get_by_label('Код пригласившего вас пользователя',exact=True)).to_have_count(0)
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     friend_id=connection.execute('SELECT id FROM users WHERE telegram_user_id=99116003').fetchone()[0]

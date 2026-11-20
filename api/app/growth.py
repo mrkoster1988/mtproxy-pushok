@@ -279,9 +279,7 @@ def router_for(get_dsn, get_user, require_admin):
 
     public = APIRouter()
 
-    @public.get('/p/{code}', include_in_schema=False)
-    def open_proxy_invitation(code: str, request: Request):
-        from .proxy_link import current_proxy_url
+    def invite_redirect(code: str, request: Request, *, proxy: bool):
         headers = {'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer',
                    'X-Robots-Tag': 'noindex, nofollow'}
         code = code.upper()
@@ -289,10 +287,14 @@ def router_for(get_dsn, get_user, require_admin):
             """SELECT 1 FROM growth_referral_links r CROSS JOIN growth_settings s
                WHERE r.code=%s AND s.referrals_enabled""", (code,)).fetchone()):
             return PlainTextResponse('Это приглашение недоступно.', status_code=404, headers=headers)
-        target = current_proxy_url()
-        if not target:
-            return PlainTextResponse('Прокси пока недоступен. Откройте эту же ссылку позднее.',
-                                     status_code=503, headers={**headers, 'Retry-After': '60'})
+        if proxy:
+            from .proxy_link import current_proxy_url
+            target = current_proxy_url()
+            if not target:
+                return PlainTextResponse('Прокси пока недоступен. Откройте эту же ссылку позднее.',
+                                         status_code=503, headers={**headers, 'Retry-After': '60'})
+        else:
+            target = '/'
         result = RedirectResponse(target, status_code=302, headers=headers)
         # Переход относится к браузеру. Личность друга подтверждается при входе в кабинет.
         if (request.headers.get('sec-fetch-mode', 'navigate') == 'navigate'
@@ -300,6 +302,14 @@ def router_for(get_dsn, get_user, require_admin):
             result.set_cookie('__Host-pushok_invite', code, max_age=30*86400, secure=True,
                               samesite='lax', path='/')
         return result
+
+    @public.get('/p/{code}', include_in_schema=False)
+    def open_proxy_invitation(code: str, request: Request):
+        return invite_redirect(code, request, proxy=True)
+
+    @public.get('/invite/{code}', include_in_schema=False)
+    def open_cabinet_invitation(code: str, request: Request):
+        return invite_redirect(code, request, proxy=False)
 
     @router.get('/growth/me')
     def mine(request: Request, response: Response, invite_origin: str | None = None, user=Depends(get_user)):
@@ -325,11 +335,15 @@ def router_for(get_dsn, get_user, require_admin):
                 WHERE r.inviter_user_id=%s ORDER BY r.created_at DESC,r.referred_user_id LIMIT 100''', (user['id'],)).fetchall()
             bound = conn.execute('SELECT 1 FROM growth_referrals WHERE referred_user_id=%s', (user['id'],)).fetchone()
             bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
-            link = 'https://t.me/'+bot+'?start=r_'+code if re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot) else None
             origin = invitation_origin(request, invite_origin)
-            proxy_invite = origin + '/p/' + code if origin else None
-            link = proxy_invite or link
-            return {**settings, 'code':code, 'link':link, 'proxy_invite':bool(proxy_invite), 'invite_qr':invitation_qr(link) if link and settings['referrals_enabled'] else None, 'invited':count, 'bound':bool(bound),
+            link = None
+            if origin:
+                link = origin + '/invite/' + code
+            elif re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot):
+                link = 'https://t.me/' + bot + '?startapp=r_' + code
+            return {**settings, 'code':code, 'link':link, 'proxy_invite':False,
+                    'invite_qr':invitation_qr(link) if link and settings['referrals_enabled'] else None,
+                    'invited':count, 'bound':bool(bound),
                     'coupons':coupons, 'bonus_rewards':bonus, 'invitations':invitations}
         return db(action)
 

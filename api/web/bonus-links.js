@@ -1,7 +1,7 @@
 "use strict";
 window.pushokLinks=(()=>{
  let pending='',busy=false;
- const valid=value=>/^(?:wallet_GIFT-[A-F0-9]{24}|(?:offer|pay)_[a-f0-9]{32})$/.test(value||'');
+ const valid=value=>/^(?:wallet_GIFT-[A-F0-9]{24}|(?:offer|pay)_[a-f0-9]{32}|r_[A-HJ-NP-Z2-9]{8})$/.test(value||'');
  function capture(value){pending=valid(value)?value:'';}
  function share(payload,text){
   const bot=window.cabinetBotConfig?.telegram_bot_username;
@@ -38,7 +38,10 @@ window.pushokLinks=(()=>{
   const payload=pending,session=token,uid=me.id;
   const current=()=>session===token&&uid===me?.id;
   try{
-   if(payload.startsWith('pay_')){
+   if(payload.startsWith('r_')){
+    await api('/growth/referral',{method:'POST',body:{code:payload.slice(2)}});
+    if(current())pending='';
+   }else if(payload.startsWith('pay_')){
     const id=payload.slice(4).replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,'$1-$2-$3-$4-$5');
     pending='';window.cabinet.go('payments/'+id);
    }else if(payload.startsWith('wallet_')){
@@ -51,6 +54,7 @@ window.pushokLinks=(()=>{
     setTimeout(()=>{if(current())notice('Предложение применено к форме заявки. Проверьте канал, тариф и итоговую цену.',true);},0);
    }
   }catch(e){if(current()){
+   if(payload.startsWith('r_')&&e.status===409){pending='';return;}
    const gift=payload.startsWith('wallet_');
    let message=e.message;
    if(e.code==='wallet_gift_wrong_recipient'){
