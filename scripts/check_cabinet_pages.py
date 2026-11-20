@@ -886,7 +886,7 @@ def main():
                 # Настоящая серверная авторизация; подменяется только оболочка SDK Telegram.
                 from test_miniapp_auth import signed_data
                 mini_requests=[]
-                def mini_page(raw):
+                def mini_page(raw, path='/miniapp', *, claim_referral=False):
                     context=browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce')
                     context.add_init_script("sessionStorage.setItem('pushok-session', "+repr(sessions['outsider'])+");")
                     context.add_init_script("if(!sessionStorage.getItem('mini-fixture-seeded')){sessionStorage.setItem('pushok-miniapp-session', "+repr(sessions['outsider'])+");sessionStorage.setItem('pushok-miniapp-init-hash','old-account-hash');sessionStorage.setItem('mini-fixture-seeded','1');}")
@@ -901,7 +901,14 @@ def main():
                     page=context.new_page();page.on('pageerror',lambda error:failures.append(str(error)))
                     page.on('request',lambda request:mini_requests.append((request.method,request.url)))
                     page.route('**/*',lambda route:route.continue_() if route.request.url.startswith(base+'/') else route.abort())
-                    page.goto(base+'/miniapp');return page
+                    if claim_referral:
+                        with page.expect_response(lambda response: response.url.endswith('/api/v1/growth/referral')
+                                                  and response.request.method == 'POST') as claim:
+                            page.goto(base+path)
+                        assert claim.value.ok, claim.value.text()
+                    else:
+                        page.goto(base+path)
+                    return page
                 with patch.dict(os.environ,{'PUSHOK_MINIAPP_ENABLED':'1','TELEGRAM_BOT_USERNAME':'mtproxy_pushok_bot'}),patch.object(api,'TELEGRAM_BOT_TOKEN','fixture-token'):
                     from check_miniapp_sdk import check_miniapp_sdk
                     check_miniapp_sdk(browser, base, output, failures)
@@ -1676,37 +1683,48 @@ def main():
                 assert referral_saved.value.status==200, referral_saved.value.text()
                 expect(admin.locator('[data-page=growth]').get_by_label('Награда за приглашённого',exact=True)).to_have_value('bonus')
                 expect(admin.locator('[data-page=growth]').get_by_label('Награда на бонусный баланс, ₽',exact=True)).to_have_value('125.50')
-                go(advertiser,'growth')
-                invite_link=advertiser.locator('[data-page=growth]').get_by_label('Ваша ссылка для друзей',exact=True).get_attribute('href')
-                invite_code=invite_link.rsplit('/invite/',1)[-1] if '/invite/' in invite_link else invite_link.split('r_')[1]
-                assert len(invite_code)==8
-                go(advertiser,'dashboard')
-                expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
-                expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
-                expect(advertiser.locator('#dashboard-referral')).not_to_contain_text('За первое')
-                expect(advertiser.locator('.dashboard-help')).to_be_visible()
-                invite=advertiser.get_by_role('button',name='Пригласить друга',exact=True)
-                expect(invite).to_have_attribute('aria-expanded','false')
-                invite.click()
-                qr=advertiser.get_by_alt_text('QR-код приглашения в рекламный кабинет')
-                expect(qr).to_be_visible()
-                assert qr.evaluate('img=>img.complete && img.naturalWidth>0')
-                share=advertiser.locator('#dashboard-referral').get_by_role('link',name='Поделиться реферальной ссылкой',exact=True)
-                expect(share).to_be_visible()
-                from urllib.parse import urlparse,parse_qs
-                assert parse_qs(urlparse(share.get_attribute('href')).query)['url']==[invite_link]
-                advertiser.evaluate("window.__copied='';Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{window.__copied=value}}})")
-                advertiser.locator('#dashboard-referral').get_by_role('button',name='Скопировать реферальную ссылку',exact=True).click()
-                assert advertiser.evaluate('window.__copied')==invite_link
-                for width in (320,390):
-                    advertiser.set_viewport_size({'width':width,'height':844})
-                    assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
-                    advertiser.screenshot(path=str(output/f'48-home-referral-{width}.png'),full_page=True)
-                check_navigation_icons(operator)
-                with outsider.expect_response(lambda r:r.url.endswith('/api/v1/growth/referral') and r.request.method=='POST') as claim:
-                    outsider.goto(base+'/invite/'+invite_code)
-                assert claim.value.ok, claim.value.text()
-                expect(outsider).to_have_url(base+'/')
+                with patch.dict(os.environ, PUSHOK_MINIAPP_ENABLED='1'), patch.object(api,'TELEGRAM_BOT_TOKEN','fixture-token'):
+                    go(advertiser,'growth')
+                    invite_link=advertiser.locator('[data-page=growth]').get_by_label('Ваша ссылка для друзей',exact=True).get_attribute('href')
+                    from urllib.parse import urlparse,parse_qs
+                    start_param, = parse_qs(urlparse(invite_link).query)['startapp']
+                    invite_code = start_param.removeprefix('r_')
+                    assert invite_link == 'https://t.me/mtproxy_pushok_bot?startapp=r_'+invite_code and len(invite_code)==8
+                    go(advertiser,'dashboard')
+                    expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
+                    expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
+                    expect(advertiser.locator('#dashboard-referral')).not_to_contain_text('За первое')
+                    expect(advertiser.locator('.dashboard-help')).to_be_visible()
+                    invite=advertiser.get_by_role('button',name='Пригласить друга',exact=True)
+                    expect(invite).to_have_attribute('aria-expanded','false')
+                    invite.click()
+                    qr=advertiser.get_by_alt_text('QR-код приглашения в приложение puShok')
+                    expect(qr).to_be_visible()
+                    assert qr.evaluate('img=>img.complete && img.naturalWidth>0')
+                    share=advertiser.locator('#dashboard-referral').get_by_role('link',name='Поделиться реферальной ссылкой',exact=True)
+                    expect(share).to_be_visible()
+                    assert parse_qs(urlparse(share.get_attribute('href')).query)['url']==[invite_link]
+                    advertiser.evaluate("window.__copied='';Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{window.__copied=value}}})")
+                    advertiser.locator('#dashboard-referral').get_by_role('button',name='Скопировать реферальную ссылку',exact=True).click()
+                    assert advertiser.evaluate('window.__copied')==invite_link
+                    for width in (320,390):
+                        advertiser.set_viewport_size({'width':width,'height':844})
+                        assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                        advertiser.screenshot(path=str(output/f'48-home-referral-{width}.png'),full_page=True)
+                    check_navigation_icons(operator)
+                    raw=signed_data(user=json.dumps({'id':99116003,'first_name':'Тест приглашения'}),
+                                    query_id='mini-referral',start_param=start_param)
+                    invited=mini_page(raw,'/miniapp#/growth',claim_referral=True)
+                    expect(invited).to_have_url(base+'/miniapp#/dashboard')
+                    connect=invited.get_by_role('link',name='Подключить',exact=True)
+                    expect(connect).to_be_in_viewport()
+                    expect(connect).to_have_css('background-color','rgb(217, 71, 80)')
+                    expect(connect).to_have_attribute('href',proxy_url)
+                    go(invited,'growth')
+                    expect(invited.get_by_label('Код пригласившего вас пользователя',exact=True)).to_have_count(0)
+                    invited.reload()
+                    expect(invited).to_have_url(base+'/miniapp#/growth')
+                    invited.context.close()
                 go(outsider,'growth')
                 expect(outsider.get_by_label('Код пригласившего вас пользователя',exact=True)).to_have_count(0)
                 with psycopg.connect(PostgresIntegration.dsn) as connection:

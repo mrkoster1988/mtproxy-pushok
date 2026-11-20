@@ -114,7 +114,7 @@ window.pushokGrowth=(()=>{
   link.href=mine.link;link.target='_blank';link.rel='noopener noreferrer';link.setAttribute('aria-label','Ваша ссылка для друзей');
   const actions=el('div',undefined,'referral-actions');
   const copy=window.pushokViews.iconAction(button('',async()=>{await navigator.clipboard.writeText(mine.link);notice('Ссылка скопирована.',true);}), 'copy','Скопировать реферальную ссылку');
-  const share=el('a','','ui-button');share.href='https://t.me/share/url?url='+encodeURIComponent(mine.link)+'&text='+encodeURIComponent('Приглашаю в рекламный кабинет puShok.');share.target='_blank';share.rel='noopener noreferrer';
+  const share=el('a','','ui-button');share.href='https://t.me/share/url?url='+encodeURIComponent(mine.link)+'&text='+encodeURIComponent('Открой puShok и нажми «Подключить».');share.target='_blank';share.rel='noopener noreferrer';
   window.pushokViews.iconAction(share,'share','Поделиться реферальной ссылкой');
   share.addEventListener('click',event=>{if(miniAppMode&&typeof window.Telegram?.WebApp?.openTelegramLink==='function'){event.preventDefault();window.Telegram.WebApp.openTelegramLink(share.href);}});
   actions.append(copy,share);row.append(link,actions);root.append(row);
@@ -137,7 +137,7 @@ window.pushokGrowth=(()=>{
     invite.id='home-invite-details';
     invite.hidden=!expanded;
     if(mine.invite_qr){
-     const qr=el('img');qr.src=mine.invite_qr;qr.alt='QR-код приглашения в рекламный кабинет';invite.append(qr);
+     const qr=el('img');qr.src=mine.invite_qr;qr.alt='QR-код приглашения в приложение puShok';invite.append(qr);
     }
     referralLink(invite,mine);
     const toggle=button('Пригласить друга',()=>{invite.hidden=!invite.hidden;toggle.setAttribute('aria-expanded',String(!invite.hidden));});
@@ -154,7 +154,7 @@ window.pushokGrowth=(()=>{
    root.append(window.pushokViews.mascot(mine.referrals_enabled?'Делитесь приглашением и получайте награду за первое оплаченное рублями и завершённое размещение друга.':'Здесь собраны ваши приглашения, купоны и подарочные размещения.'));
    p.append(el('p',mine.referrals_enabled?'Для новых приглашений: за первое оплаченное рублями и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены администратором.'),el('p','Приглашено: '+mine.invited));
    if(mine.reward_mode==='bonus')p.append(el('p','Бонусами можно оплатить рублёвое размещение на сайте. Они не обмениваются на Stars и не выводятся. Бесплатные, тестовые и полностью бонусные оплаты друга не дают награду. При возврате оплаты награда отменяется, даже если бонусы уже потрачены.','muted'));
-   referralLink(p,mine);if(mine.referrals_enabled&&mine.link)p.append(el('p','Приглашение зачтётся после входа в кабинет. Код '+mine.code+' также можно ввести вручную до первой заявки.','muted'));
+   referralLink(p,mine);if(mine.referrals_enabled&&mine.link)p.append(el('p','Приглашение зачтётся после входа через Telegram. Код '+mine.code+' также можно ввести вручную до первой заявки.','muted'));
    if(!mine.bound&&mine.referrals_enabled){const form=el('form'),code=field(form,'Код пригласившего вас пользователя','text','',true);code.maxLength=48;save(form,'Принять приглашение');bind(form,()=>api('/growth/referral',{method:'POST',body:{code:code.value}}));p.append(form);}
    root.append(p);invitationList(root,mine);
    const rewards=panel('Мои купоны');if(!mine.coupons.length)rewards.append(el('p','Бонусных купонов пока нет.'));
