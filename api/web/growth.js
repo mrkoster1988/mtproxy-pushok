@@ -104,13 +104,17 @@ window.pushokGrowth=(()=>{
   catch(error){if(error.status!==409)return;}
   try{if(read()===code)document.cookie=key+'=; Max-Age=0; Path=/; Secure; SameSite=Lax';}catch{/* Хранилище может быть отключено в WebView. */}
  }
+ function myInvitation(){
+  const query=location.protocol==='https:'?'?invite_origin='+encodeURIComponent(location.origin):'';
+  return api('/growth/me'+query);
+ }
  function referralLink(root,mine){
   if(!mine.referrals_enabled||!mine.link)return;
   const row=el('div',undefined,'referral-link-row'),link=el('a',mine.link.replace(/^https:\/\//,''),'referral-link');
   link.href=mine.link;link.target='_blank';link.rel='noopener noreferrer';link.setAttribute('aria-label','Ваша ссылка для друзей');
   const actions=el('div',undefined,'referral-actions');
   const copy=window.pushokViews.iconAction(button('',async()=>{await navigator.clipboard.writeText(mine.link);notice('Ссылка скопирована.',true);}), 'copy','Скопировать реферальную ссылку');
-  const share=el('a','','ui-button');share.href='https://t.me/share/url?url='+encodeURIComponent(mine.link)+'&text='+encodeURIComponent('Открой приложение puShok в Telegram и нажми «Подключить».');share.target='_blank';share.rel='noopener noreferrer';
+  const share=el('a','','ui-button');share.href='https://t.me/share/url?url='+encodeURIComponent(mine.link)+'&text='+encodeURIComponent('Открой puShok и нажми «Подключить».');share.target='_blank';share.rel='noopener noreferrer';
   window.pushokViews.iconAction(share,'share','Поделиться реферальной ссылкой');
   share.addEventListener('click',event=>{if(miniAppMode&&typeof window.Telegram?.WebApp?.openTelegramLink==='function'){event.preventDefault();window.Telegram.WebApp.openTelegramLink(share.href);}});
   actions.append(copy,share);row.append(link,actions);root.append(row);
@@ -121,7 +125,7 @@ window.pushokGrowth=(()=>{
   if(!card){card=el('section',undefined,'referral-overview');card.append(el('h2','Приглашайте друзей'),el('p','Загружаем приглашение…','muted'));node.replaceChildren(card);}
   card.setAttribute('aria-busy','true');
   try{
-   const mine=await api('/growth/me');if(version!==overviewEpoch||session!==token||uid!==me?.id)return;
+   const mine=await myInvitation();if(version!==overviewEpoch||session!==token||uid!==me?.id)return;
    const signature=JSON.stringify([mine.referrals_enabled,mine.link,mine.invited]);
    if(card.dataset.snapshot===signature){card.querySelector('h2').lastChild.textContent='Приглашайте друзей';card.removeAttribute('title');card.setAttribute('aria-busy','false');return;}
    const expanded=card.dataset.inviteLink===mine.link && card.querySelector('.invite-toggle')?.getAttribute('aria-expanded')==='true';
@@ -145,12 +149,12 @@ window.pushokGrowth=(()=>{
  async function load(node){
   if(!node||!me)return;target=node;const version=++epoch,session=token,uid=me.id;node.replaceChildren(el('p','Загружаем бонусы…'));
   try{
-   const mine=await api('/growth/me');if(version!==epoch||session!==token||uid!==me?.id)return;
+   const mine=await myInvitation();if(version!==epoch||session!==token||uid!==me?.id)return;
    const root=el('div',undefined,'growth-page'),p=panel('Пригласить друга');
    root.append(window.pushokViews.mascot(mine.referrals_enabled?'Делитесь приглашением и получайте награду за первое оплаченное рублями и завершённое размещение друга.':'Здесь собраны ваши приглашения, купоны и подарочные размещения.'));
    p.append(el('p',mine.referrals_enabled?'Для новых приглашений: за первое оплаченное рублями и завершённое размещение друга — '+rewardDescription(mine)+'.':'Новые приглашения пока отключены администратором.'),el('p','Приглашено: '+mine.invited));
    if(mine.reward_mode==='bonus')p.append(el('p','Бонусами можно оплатить рублёвое размещение на сайте. Они не обмениваются на Stars и не выводятся. Бесплатные, тестовые и полностью бонусные оплаты друга не дают награду. При возврате оплаты награда отменяется, даже если бонусы уже потрачены.','muted'));
-   referralLink(p,mine);if(mine.referrals_enabled&&mine.link)p.append(el('p','Ссылка откроет приложение puShok на экране «Подключить». Приглашение зачтётся после входа через Telegram. Код '+mine.code+' также можно ввести вручную до первой заявки.','muted'));
+   referralLink(p,mine);if(mine.referrals_enabled&&mine.link)p.append(el('p','Приглашение зачтётся после входа через Telegram. Код '+mine.code+' также можно ввести вручную до первой заявки.','muted'));
    if(!mine.bound&&mine.referrals_enabled){const form=el('form'),code=field(form,'Код пригласившего вас пользователя','text','',true);code.maxLength=48;save(form,'Принять приглашение');bind(form,()=>api('/growth/referral',{method:'POST',body:{code:code.value}}));p.append(form);}
    root.append(p);invitationList(root,mine);
    const rewards=panel('Мои купоны');if(!mine.coupons.length)rewards.append(el('p','Бонусных купонов пока нет.'));

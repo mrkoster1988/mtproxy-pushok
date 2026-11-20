@@ -74,7 +74,7 @@ class GrowthIntegration(unittest.TestCase):
         self.actor={'id':self.owner,'role':'advertiser'}
         mine=self.request('GET','/growth/me')
         self.assertRegex(mine['code'],r'^[A-Z2-9]{8}$')
-        self.assertTrue(mine['link'].endswith('?startapp=r_'+mine['code']))
+        self.assertTrue(mine['link'].endswith(('/invite/'+mine['code'], '?start=r_'+mine['code'])))
         self.assertEqual(self.request('GET','/growth/me')['link'],mine['link'])
         with psycopg.connect(self.dsn) as conn:
             legacy=conn.execute('SELECT code FROM growth_profiles WHERE user_id=%s',(self.owner,)).fetchone()[0]
@@ -89,12 +89,12 @@ class GrowthIntegration(unittest.TestCase):
     def test_invitation_link_and_qr_open_telegram_miniapp(self):
         from app.growth import invitation_qr
         self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':90})
-        with patch.dict(os.environ, TELEGRAM_BOT_USERNAME='@test_bot', PUSHOK_MINIAPP_URL='https://example.org/miniapp'):
+        with patch.dict(os.environ, PUSHOK_MINIAPP_ENABLED='1', TELEGRAM_BOT_USERNAME='@test_bot', PUSHOK_MINIAPP_URL='https://example.org/miniapp'):
             mine = self.request('GET', '/growth/me', params={'invite_origin':'https://example.org'},
                                 headers={'host':'example.org'})
         self.assertEqual(mine['link'], 'https://t.me/test_bot?startapp=r_' + mine['code'])
         self.assertEqual(mine['invite_qr'], invitation_qr(mine['link']))
-        with patch.dict(os.environ, TELEGRAM_BOT_USERNAME='invalid/bot'):
+        with patch('app.growth.invitation_origin', return_value=None), patch.dict(os.environ, PUSHOK_MINIAPP_ENABLED='1', TELEGRAM_BOT_USERNAME='invalid/bot'):
             unavailable = self.request('GET','/growth/me')
         self.assertIsNone(unavailable['link'])
         self.assertIsNone(unavailable['invite_qr'])
@@ -102,9 +102,9 @@ class GrowthIntegration(unittest.TestCase):
     def test_legacy_cabinet_invitation_redirects_to_telegram_miniapp(self):
         self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':90})
         self.actor={'id':self.owner,'role':'advertiser'}
-        mine = self.request('GET','/growth/me')
-        path = '/invite/' + mine['code']
-        with patch('app.proxy_link.current_proxy_url') as proxy:
+        with patch.dict(os.environ, PUSHOK_MINIAPP_ENABLED='1'), patch('app.proxy_link.current_proxy_url') as proxy:
+            mine = self.request('GET','/growth/me')
+            path = '/invite/' + mine['code']
             response = self.client.get(path, follow_redirects=False)
         proxy.assert_not_called()
         self.assertEqual(response.status_code, 302)
@@ -115,6 +115,18 @@ class GrowthIntegration(unittest.TestCase):
             conn.execute('UPDATE growth_settings SET referrals_enabled=false')
         self.assertEqual(self.client.get(path,follow_redirects=False).status_code,404)
         self.assertIsNone(self.request('GET','/growth/me')['invite_qr'])
+
+    def test_disabled_miniapp_keeps_cabinet_invitation_working(self):
+        from app.growth import invitation_qr
+        self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':90})
+        with patch.dict(os.environ, PUSHOK_MINIAPP_ENABLED='0', PUSHOK_MINIAPP_URL='https://example.org/miniapp'):
+            mine = self.request('GET','/growth/me')
+            path = '/invite/' + mine['code']
+            self.assertEqual(mine['link'], 'https://example.org' + path)
+            self.assertEqual(mine['invite_qr'], invitation_qr(mine['link']))
+            response = self.client.get(path, follow_redirects=False)
+        self.assertEqual(response.headers['location'], '/')
+        self.assertEqual(response.cookies['__Host-pushok_invite'], mine['code'])
 
     def test_legacy_direct_proxy_invitation(self):
         self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':90})

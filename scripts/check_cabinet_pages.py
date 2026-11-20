@@ -1675,35 +1675,35 @@ def main():
                 assert referral_saved.value.status==200, referral_saved.value.text()
                 expect(admin.locator('[data-page=growth]').get_by_label('Награда за приглашённого',exact=True)).to_have_value('bonus')
                 expect(admin.locator('[data-page=growth]').get_by_label('Награда на бонусный баланс, ₽',exact=True)).to_have_value('125.50')
-                go(advertiser,'growth')
-                invite_link=advertiser.locator('[data-page=growth]').get_by_label('Ваша ссылка для друзей',exact=True).get_attribute('href')
-                from urllib.parse import urlparse,parse_qs
-                start_param, = parse_qs(urlparse(invite_link).query)['startapp']
-                invite_code = start_param.removeprefix('r_')
-                assert invite_link == 'https://t.me/mtproxy_pushok_bot?startapp=r_'+invite_code and len(invite_code)==8
-                go(advertiser,'dashboard')
-                expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
-                expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
-                expect(advertiser.locator('#dashboard-referral')).not_to_contain_text('За первое')
-                expect(advertiser.locator('.dashboard-help')).to_be_visible()
-                invite=advertiser.get_by_role('button',name='Пригласить друга',exact=True)
-                expect(invite).to_have_attribute('aria-expanded','false')
-                invite.click()
-                qr=advertiser.get_by_alt_text('QR-код приглашения в приложение puShok')
-                expect(qr).to_be_visible()
-                assert qr.evaluate('img=>img.complete && img.naturalWidth>0')
-                share=advertiser.locator('#dashboard-referral').get_by_role('link',name='Поделиться реферальной ссылкой',exact=True)
-                expect(share).to_be_visible()
-                assert parse_qs(urlparse(share.get_attribute('href')).query)['url']==[invite_link]
-                advertiser.evaluate("window.__copied='';Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{window.__copied=value}}})")
-                advertiser.locator('#dashboard-referral').get_by_role('button',name='Скопировать реферальную ссылку',exact=True).click()
-                assert advertiser.evaluate('window.__copied')==invite_link
-                for width in (320,390):
-                    advertiser.set_viewport_size({'width':width,'height':844})
-                    assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
-                    advertiser.screenshot(path=str(output/f'48-home-referral-{width}.png'),full_page=True)
-                check_navigation_icons(operator)
                 with patch.dict(os.environ, PUSHOK_MINIAPP_ENABLED='1'), patch.object(api,'TELEGRAM_BOT_TOKEN','fixture-token'):
+                    go(advertiser,'growth')
+                    invite_link=advertiser.locator('[data-page=growth]').get_by_label('Ваша ссылка для друзей',exact=True).get_attribute('href')
+                    from urllib.parse import urlparse,parse_qs
+                    start_param, = parse_qs(urlparse(invite_link).query)['startapp']
+                    invite_code = start_param.removeprefix('r_')
+                    assert invite_link == 'https://t.me/mtproxy_pushok_bot?startapp=r_'+invite_code and len(invite_code)==8
+                    go(advertiser,'dashboard')
+                    expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
+                    expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
+                    expect(advertiser.locator('#dashboard-referral')).not_to_contain_text('За первое')
+                    expect(advertiser.locator('.dashboard-help')).to_be_visible()
+                    invite=advertiser.get_by_role('button',name='Пригласить друга',exact=True)
+                    expect(invite).to_have_attribute('aria-expanded','false')
+                    invite.click()
+                    qr=advertiser.get_by_alt_text('QR-код приглашения в приложение puShok')
+                    expect(qr).to_be_visible()
+                    assert qr.evaluate('img=>img.complete && img.naturalWidth>0')
+                    share=advertiser.locator('#dashboard-referral').get_by_role('link',name='Поделиться реферальной ссылкой',exact=True)
+                    expect(share).to_be_visible()
+                    assert parse_qs(urlparse(share.get_attribute('href')).query)['url']==[invite_link]
+                    advertiser.evaluate("window.__copied='';Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async value=>{window.__copied=value}}})")
+                    advertiser.locator('#dashboard-referral').get_by_role('button',name='Скопировать реферальную ссылку',exact=True).click()
+                    assert advertiser.evaluate('window.__copied')==invite_link
+                    for width in (320,390):
+                        advertiser.set_viewport_size({'width':width,'height':844})
+                        assert advertiser.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                        advertiser.screenshot(path=str(output/f'48-home-referral-{width}.png'),full_page=True)
+                    check_navigation_icons(operator)
                     raw=signed_data(user=json.dumps({'id':99116003,'first_name':'Тест приглашения'}),
                                     query_id='mini-referral',start_param=start_param)
                     invited=mini_page(raw,'/miniapp#/growth',claim_referral=True)
