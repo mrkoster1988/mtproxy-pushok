@@ -326,11 +326,19 @@ def main():
                     assert 110 <= bounds['width'] <= 192
                     assert abs(bounds['width'] - bounds['height']) < 1
                     assert abs(bounds['x'] + bounds['width']/2 - width/2) < 2
-                    assert proxy.evaluate("e=>getComputedStyle(e).borderRadius==='18px'")
-                    assert 'rgba(255, 51, 76' in proxy.evaluate('e=>getComputedStyle(e).boxShadow')
+                    expect(proxy).to_have_css('border-radius', '50%')
+                    ring = proxy.evaluate("""e => {
+                        const style = getComputedStyle(e, '::after');
+                        return [style.borderRadius, style.animationName, style.getPropertyValue('--hall-glow').trim()];
+                    }""")
+                    assert ring == ['50%', 'hall-shimmer', '#ff384f']
                     if width == 390:
                         assert advertiser.evaluate("document.querySelector('.dashboard-help').getBoundingClientRect().bottom <= document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top")
                         advertiser.screenshot(path=str(output/'dashboard-connect-390.png'))
+                advertiser.emulate_media(reduced_motion='reduce')
+                assert proxy.evaluate("e=>getComputedStyle(e, '::after').animationName") == 'none'
+                assert proxy.evaluate("e=>getComputedStyle(e, '::after').boxShadow") != 'none'
+                advertiser.emulate_media(reduced_motion='no-preference')
                 advertiser.set_viewport_size(previous_viewport)
                 assert proxy.evaluate("e=>getComputedStyle(e).backgroundColor==='rgb(217, 71, 80)'")
                 expect(advertiser.locator(".dashboard-hero-actions").get_by_role("link",name="Продвигать канал",exact=True)).to_have_count(0)
