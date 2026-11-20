@@ -74,7 +74,7 @@ class GrowthIntegration(unittest.TestCase):
         self.actor={'id':self.owner,'role':'advertiser'}
         mine=self.request('GET','/growth/me')
         self.assertRegex(mine['code'],r'^[A-Z2-9]{8}$')
-        self.assertTrue(mine['link'].endswith(('/invite/'+mine['code'], '?startapp=r_'+mine['code'])))
+        self.assertTrue(mine['link'].endswith('?startapp=r_'+mine['code']))
         self.assertEqual(self.request('GET','/growth/me')['link'],mine['link'])
         with psycopg.connect(self.dsn) as conn:
             legacy=conn.execute('SELECT code FROM growth_profiles WHERE user_id=%s',(self.owner,)).fetchone()[0]
@@ -86,55 +86,41 @@ class GrowthIntegration(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT inviter_user_id FROM growth_referrals WHERE referred_user_id=%s',(self.friend,)).fetchone()[0],self.owner)
 
-    def test_open_cabinet_domain_is_used_for_link_and_qr(self):
-        self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':90})
-        from app.growth import invitation_qr
-        with patch.dict(os.environ, PUSHOK_MINIAPP_URL='https://old.example.org/miniapp'):
-            def invitation(origin):
-                return self.request('GET', '/growth/me', params={'invite_origin': origin},
-                                    headers={'host':'cabinet.example.net:8443', 'x-forwarded-host':'external.example.org'})
-            active = invitation('https://cabinet.example.net:8443')
-            path = '/invite/' + active['code']
-            self.assertEqual(active['link'], 'https://cabinet.example.net:8443' + path)
-            self.assertEqual(active['invite_qr'], invitation_qr(active['link']))
-            for invalid in ('https://external.example.org','https://cabinet.example.net','http://cabinet.example.net:8443',
-                            'https://user@cabinet.example.net:8443', 'https://cabinet.example.net:8443/other'):
-                self.assertEqual(invitation(invalid)['link'], 'https://old.example.org' + path)
-
-    def test_mini_app_fallback_contains_referral_code(self):
+    def test_invitation_link_and_qr_open_telegram_miniapp(self):
         from app.growth import invitation_qr
         self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':90})
-        with patch('app.growth.invitation_origin', return_value=None), patch.dict(os.environ, TELEGRAM_BOT_USERNAME='test_bot'):
-            mine = self.request('GET','/growth/me')
+        with patch.dict(os.environ, TELEGRAM_BOT_USERNAME='@test_bot', PUSHOK_MINIAPP_URL='https://example.org/miniapp'):
+            mine = self.request('GET', '/growth/me', params={'invite_origin':'https://example.org'},
+                                headers={'host':'example.org'})
         self.assertEqual(mine['link'], 'https://t.me/test_bot?startapp=r_' + mine['code'])
         self.assertEqual(mine['invite_qr'], invitation_qr(mine['link']))
+        with patch.dict(os.environ, TELEGRAM_BOT_USERNAME='invalid/bot'):
+            unavailable = self.request('GET','/growth/me')
+        self.assertIsNone(unavailable['link'])
+        self.assertIsNone(unavailable['invite_qr'])
 
-    def test_cabinet_invitation_works_without_proxy(self):
+    def test_legacy_cabinet_invitation_redirects_to_telegram_miniapp(self):
         self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':90})
         self.actor={'id':self.owner,'role':'advertiser'}
         mine = self.request('GET','/growth/me')
         path = '/invite/' + mine['code']
-        with patch('app.proxy_link.current_proxy_url', return_value=None) as proxy:
+        with patch('app.proxy_link.current_proxy_url') as proxy:
             response = self.client.get(path, follow_redirects=False)
         proxy.assert_not_called()
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.headers['location'], '/')
-        self.assertEqual(response.cookies['__Host-pushok_invite'], mine['code'])
-        preview = self.client.get(path, headers={'Sec-Fetch-Mode':'cors'}, follow_redirects=False)
-        self.assertNotIn('set-cookie', preview.headers)
-        self.assertEqual(self.client.get('/invite/invalid').status_code,404)
+        self.assertEqual(response.headers['location'], mine['link'])
+        self.assertNotIn('set-cookie', response.headers)
+        self.assertEqual(self.client.get('/invite/invalid',follow_redirects=False).status_code,404)
         with psycopg.connect(self.dsn) as conn:
             conn.execute('UPDATE growth_settings SET referrals_enabled=false')
-        self.assertEqual(self.client.get(path).status_code,404)
+        self.assertEqual(self.client.get(path,follow_redirects=False).status_code,404)
         self.assertIsNone(self.request('GET','/growth/me')['invite_qr'])
 
     def test_legacy_direct_proxy_invitation(self):
         self.request('PUT','/admin/growth/settings',json={'referrals_enabled':True,'reward_percent':10,'reward_days':90})
         self.actor={'id':self.owner,'role':'advertiser'}
-        with patch.dict(os.environ, PUSHOK_MINIAPP_URL='https://ads.example.org/miniapp'):
-            mine = self.request('GET','/growth/me')
+        mine = self.request('GET','/growth/me')
         path = '/p/' + mine['code']
-        self.assertEqual(mine['link'], 'https://ads.example.org/invite/' + mine['code'])
         with patch('app.proxy_link.current_proxy_url', return_value=None):
             self.assertEqual(self.client.get(path).status_code, 503)
         for port in (8443, 9443):

@@ -11,7 +11,6 @@ import re
 import secrets
 from datetime import datetime, timezone
 from typing import Literal
-from urllib.parse import urlsplit
 from uuid import UUID
 
 import psycopg
@@ -29,23 +28,11 @@ def invitation_qr(link: str) -> str:
     return 'data:image/png;base64,' + base64.b64encode(buffer.getvalue()).decode('ascii')
 
 
-def invitation_origin(request: Request, browser_origin: str | None) -> str | None:
-    # Этот адрес возвращается только в личном приглашении текущего запроса.
-    if browser_origin and len(browser_origin) <= 300:
-        try:
-            url = urlsplit(browser_origin)
-            host = url.hostname or ''
-            if (re.fullmatch(r'https://[a-zA-Z0-9.\-\[\]:]+', browser_origin)
-                    and url.netloc.lower() == request.headers.get('host', '').lower()
-                    and host and url.port != 0):
-                return 'https://' + url.netloc.lower()
-        except ValueError:
-            pass
-    from .gift_sharing import public_origin
-    try:
-        return public_origin()
-    except HTTPException:
-        return None
+def miniapp_invitation_link(code: str) -> str | None:
+    bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
+    if re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot):
+        return 'https://t.me/' + bot + '?startapp=r_' + code
+    return None
 
 
 class Input(BaseModel):
@@ -287,14 +274,17 @@ def router_for(get_dsn, get_user, require_admin):
             """SELECT 1 FROM growth_referral_links r CROSS JOIN growth_settings s
                WHERE r.code=%s AND s.referrals_enabled""", (code,)).fetchone()):
             return PlainTextResponse('Это приглашение недоступно.', status_code=404, headers=headers)
-        if proxy:
-            from .proxy_link import current_proxy_url
-            target = current_proxy_url()
+        if not proxy:
+            target = miniapp_invitation_link(code)
             if not target:
-                return PlainTextResponse('Прокси пока недоступен. Откройте эту же ссылку позднее.',
-                                         status_code=503, headers={**headers, 'Retry-After': '60'})
-        else:
-            target = '/'
+                return PlainTextResponse('Приложение пока недоступно.', status_code=503, headers=headers)
+            return RedirectResponse(target, status_code=302, headers=headers)
+
+        from .proxy_link import current_proxy_url
+        target = current_proxy_url()
+        if not target:
+            return PlainTextResponse('Прокси пока недоступен. Откройте эту же ссылку позднее.',
+                                     status_code=503, headers={**headers, 'Retry-After': '60'})
         result = RedirectResponse(target, status_code=302, headers=headers)
         # Переход относится к браузеру. Личность друга подтверждается при входе в кабинет.
         if (request.headers.get('sec-fetch-mode', 'navigate') == 'navigate'
@@ -312,7 +302,7 @@ def router_for(get_dsn, get_user, require_admin):
         return invite_redirect(code, request, proxy=False)
 
     @router.get('/growth/me')
-    def mine(request: Request, response: Response, invite_origin: str | None = None, user=Depends(get_user)):
+    def mine(response: Response, user=Depends(get_user)):
         no_cache(response)
         def action(conn):
             conn.execute('INSERT INTO growth_profiles(user_id) VALUES(%s) ON CONFLICT DO NOTHING', (user['id'],))
@@ -334,13 +324,7 @@ def router_for(get_dsn, get_user, require_admin):
                 LEFT JOIN growth_offers o ON o.reward_for_user_id=r.referred_user_id
                 WHERE r.inviter_user_id=%s ORDER BY r.created_at DESC,r.referred_user_id LIMIT 100''', (user['id'],)).fetchall()
             bound = conn.execute('SELECT 1 FROM growth_referrals WHERE referred_user_id=%s', (user['id'],)).fetchone()
-            bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
-            origin = invitation_origin(request, invite_origin)
-            link = None
-            if origin:
-                link = origin + '/invite/' + code
-            elif re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot):
-                link = 'https://t.me/' + bot + '?startapp=r_' + code
+            link = miniapp_invitation_link(code)
             return {**settings, 'code':code, 'link':link, 'proxy_invite':False,
                     'invite_qr':invitation_qr(link) if link and settings['referrals_enabled'] else None,
                     'invited':count, 'bound':bool(bound),

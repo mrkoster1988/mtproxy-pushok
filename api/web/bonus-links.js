@@ -2,7 +2,7 @@
 window.pushokLinks=(()=>{
  let pending='',busy=false;
  const valid=value=>/^(?:wallet_GIFT-[A-F0-9]{24}|(?:offer|pay)_[a-f0-9]{32}|r_[A-HJ-NP-Z2-9]{8})$/.test(value||'');
- function capture(value){pending=valid(value)?value:'';}
+ function capture(value){pending=valid(value)?value:'';return pending;}
  function share(payload,text){
   const bot=window.cabinetBotConfig?.telegram_bot_username;
   const a=el('a','Поделиться','ui-button bonus-share');a.prepend(window.pushokViews.icon('share'));
