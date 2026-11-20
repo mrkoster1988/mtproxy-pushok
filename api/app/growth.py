@@ -307,7 +307,7 @@ def router_for(get_dsn, get_user, require_admin):
     def open_proxy_invitation(code: str, request: Request):
         return invite_redirect(code, request, proxy=True)
 
-    @public.get('/r/{code}', include_in_schema=False)
+    @public.get('/invite/{code}', include_in_schema=False)
     def open_cabinet_invitation(code: str, request: Request):
         return invite_redirect(code, request, proxy=False)
 
@@ -338,7 +338,7 @@ def router_for(get_dsn, get_user, require_admin):
             origin = invitation_origin(request, invite_origin)
             link = None
             if origin:
-                link = origin + '/r/' + code
+                link = origin + '/invite/' + code
             elif re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot):
                 link = 'https://t.me/' + bot + '?startapp=r_' + code
             return {**settings, 'code':code, 'link':link, 'proxy_invite':False,

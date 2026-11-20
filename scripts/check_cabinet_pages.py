@@ -1670,7 +1670,7 @@ def main():
                 expect(admin.locator('[data-page=growth]').get_by_label('Награда на бонусный баланс, ₽',exact=True)).to_have_value('125.50')
                 go(advertiser,'growth')
                 invite_link=advertiser.locator('[data-page=growth]').get_by_label('Ваша ссылка для друзей',exact=True).get_attribute('href')
-                invite_code=invite_link.rsplit('/r/',1)[-1] if '/r/' in invite_link else invite_link.split('r_')[1]
+                invite_code=invite_link.rsplit('/invite/',1)[-1] if '/invite/' in invite_link else invite_link.split('r_')[1]
                 assert len(invite_code)==8
                 go(advertiser,'dashboard')
                 expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
@@ -1696,7 +1696,7 @@ def main():
                     advertiser.screenshot(path=str(output/f'48-home-referral-{width}.png'),full_page=True)
                 check_navigation_icons(operator)
                 with outsider.expect_response(lambda r:r.url.endswith('/api/v1/growth/referral') and r.request.method=='POST') as claim:
-                    outsider.goto(base+'/r/'+invite_code)
+                    outsider.goto(base+'/invite/'+invite_code)
                 assert claim.value.ok, claim.value.text()
                 expect(outsider).to_have_url(base+'/')
                 go(outsider,'growth')
