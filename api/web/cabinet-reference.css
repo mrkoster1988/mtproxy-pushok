@@ -363,9 +363,10 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 
 .cabinet-mode .page-heading h1:focus{outline:none!important}
 
-/* Квадрат подключения и короткие панели главной. */
+/* Круглая кнопка подключения и короткие панели главной. */
 .dashboard-intro{grid-template-columns:1fr}.dashboard-hero-actions{display:grid;gap:8px}
 .dashboard-hero-actions>a.dashboard-connect-proxy{
+  position:relative;
   justify-self:center;
   width:min(clamp(112px,43vw,192px),clamp(112px,26dvh,192px),100%);
   aspect-ratio:1;
@@ -373,14 +374,9 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
   gap:8px;
   margin-block:8px;
   border:2px solid #ff727d;
-  border-radius:18px;
+  border-radius:50%;
   background-color:#d94750;
   background-image:linear-gradient(155deg,#df4651 0%,#bf3242 55%,#991f34 100%);
-  box-shadow:
-    inset 0 0 10px #ff919a80,
-    0 0 0 3px #ff43533d,
-    0 0 12px 3px #ff334cbd,
-    0 0 26px 6px #ff263d70;
   color:#fff!important;
   font-size:clamp(20px,5vw,32px);
   line-height:1.15;
@@ -388,7 +384,20 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .dashboard-connect-proxy>.ui-icon{width:clamp(36px,10vw,54px);height:auto;aspect-ratio:1;color:inherit}
 .dashboard-connect-proxy[href]:focus-visible{outline:3px solid white;outline-offset:4px}
 .dashboard-connect-proxy[href]:active{filter:brightness(.90)}
-.dashboard-hero-actions>a.dashboard-connect-proxy[aria-disabled=true]{box-shadow:none}
+/* Красное кольцо пульсирует в том же ритме, что и обводка аватарок. */
+.dashboard-connect-proxy[href]::after{
+  content:"";
+  position:absolute;
+  inset:-4px;
+  border:1px solid #ff5b6b;
+  border-radius:inherit;
+  --hall-glow:#ff384f;
+  animation:hall-shimmer 3.8s ease-in-out infinite;
+  pointer-events:none;
+}
+@media(prefers-reduced-motion:reduce){
+  .dashboard-connect-proxy[href]::after{animation:none;box-shadow:0 0 7px #ff384f}
+}
 .dashboard-connect-proxy[aria-disabled=true]{opacity:.65;cursor:default}
 
 /* Пользователи: компактная идентичность слева, роль справа сверху. */
