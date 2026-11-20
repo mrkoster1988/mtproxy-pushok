@@ -168,7 +168,7 @@
   else{connectProxy.removeAttribute('href');connectProxy.removeAttribute('target');connectProxy.setAttribute('aria-disabled','true');connectProxy.title=!subscriptionJoined?'Сначала подпишитесь на канал Pushok':'Ссылка подключения ещё не настроена';}
  }
  connectProxy.addEventListener('click',event=>{if(!connectProxy.hasAttribute('href')){event.preventDefault();notice(!subscriptionJoined?'Сначала подпишитесь на канал Pushok и нажмите «Проверить подписку».':'Ссылка подключения прокси пока не настроена.');}});
- const subscription=el('section',undefined,'dashboard-subscription');subscription.hidden=!miniAppMode;
+ const subscription=el('section',undefined,'dashboard-subscription');subscription.hidden=true;
  const subscriptionStatus=el('p','Проверяем подписку…','dashboard-subscription-status');subscriptionStatus.setAttribute('role','status');subscriptionStatus.setAttribute('aria-live','polite');
  const subscriptionActions=el('div',undefined,'dashboard-subscription-actions');
  const subscribeLink=el('a','Подписаться на канал');subscribeLink.href='https://t.me/pushok_proxy';subscribeLink.target='_blank';subscribeLink.rel='noopener noreferrer';
@@ -176,7 +176,7 @@
  subscriptionActions.append(subscribeLink,verifySubscription);subscription.append(subscriptionStatus,subscriptionActions);
  async function refreshDashboardSubscription(){
   if(!miniAppMode)return;const version=++subscriptionEpoch,session=token,uid=me?.id;
-  subscription.hidden=false;verifySubscription.disabled=true;subscriptionStatus.textContent='Проверяем подписку на канал…';
+  verifySubscription.disabled=true;subscriptionStatus.textContent='Проверяем подписку на канал…';
   try{const result=await api('/me/channel-subscription');if(version!==subscriptionEpoch||session!==token||uid!==me?.id)return;
    subscribeLink.href=result.channel_url;subscribeLink.textContent='Открыть канал '+result.channel_title;
    subscriptionJoined=result.joined===true;updateDashboardConnect();
