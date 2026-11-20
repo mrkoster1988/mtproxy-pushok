@@ -399,6 +399,12 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
   .dashboard-connect-proxy[href]::after{animation:none;box-shadow:0 0 7px #ff384f}
 }
 .dashboard-connect-proxy[aria-disabled=true]{opacity:.65;cursor:default}
+.dashboard-subscription[hidden]{display:none}
+.dashboard-subscription{display:grid;gap:7px;padding:9px 11px;border:1px solid #35d4c477;border-radius:12px;background:linear-gradient(135deg,#153649,#10283b);text-align:left}
+.dashboard-subscription-status{margin:0;color:var(--text-soft);font-size:12px;line-height:1.35}
+.dashboard-subscription-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.dashboard-subscription-actions>a,.dashboard-subscription-actions>button{display:inline-flex;justify-content:center;align-items:center;min-height:34px;padding:6px 11px;border:1px solid #35d4c477;border-radius:9px;background:#173b4d;color:var(--mint)!important;font:600 12px/1.2 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;text-decoration:none;cursor:pointer}
+.dashboard-subscription-actions>button:disabled{opacity:.6;cursor:wait}
 
 /* Пользователи: компактная идентичность слева, роль справа сверху. */
 .user-directory{gap:8px}

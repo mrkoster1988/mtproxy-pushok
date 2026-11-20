@@ -30,7 +30,15 @@ def check_verified_profiles(browser, base, output, failures, dsn):
     context.add_init_script("window.__nativeEvents=[];window.TelegramWebviewProxy={postEvent(name,data){__nativeEvents.push({name,data:JSON.parse(data||'{}')});}};")
     page = context.new_page()
     page.on('pageerror', lambda e: failures.append(str(e)))
-    page.route('**/*', lambda route: route.continue_() if route.request.url.startswith(base+'/') else route.abort())
+    def mini_route(route):
+        if route.request.url.partition('?')[0].endswith('/api/v1/me/channel-subscription'):
+            route.fulfill(status=200, content_type='application/json', body=json.dumps({
+                'joined': True, 'channel_url': 'https://t.me/pushok_proxy', 'channel_title': 'Канал Pushok'}))
+        elif route.request.url.startswith(base+'/'):
+            route.continue_()
+        else:
+            route.abort()
+    page.route('**/*', mini_route)
     try:
         with patch.dict(os.environ, {'PUSHOK_MINIAPP_ENABLED': '1', 'TELEGRAM_BOT_USERNAME': 'mtproxy_pushok_bot',
                                     'BOT_INTERNAL_SECRET': 'e'*64}), patch.object(api, 'TELEGRAM_BOT_TOKEN', 'fixture-token'):
