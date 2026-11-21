@@ -158,8 +158,9 @@
  const heroCopy=el('div',undefined,'dashboard-hero-copy');
  heroCopy.append(el('h2','Добро пожаловать в puShok'),el('p','Подключайтесь к MTProxy'));
  const heroActions=el('div',undefined,'dashboard-hero-actions');
- const connectProxy=el('a','Подключить','dashboard-connect-proxy');
- connectProxy.prepend(window.pushokViews.icon('power'));
+ const connectProxy=el('a',undefined,'dashboard-connect-proxy');
+ connectProxy.setAttribute('aria-label','Подключить');
+ connectProxy.append(window.pushokViews.icon('power'),el('span','Подключить','dashboard-connect-label'),el('span','трафик','dashboard-connect-caption'));
  let dashboardProxyUrl='',subscriptionJoined=!miniAppMode,subscriptionEpoch=0;
  connectProxy.setAttribute('role','link');connectProxy.tabIndex=0;connectProxy.setAttribute('aria-disabled','true');connectProxy.title='Ссылка подключения ещё не настроена';
  function updateDashboardConnect(){

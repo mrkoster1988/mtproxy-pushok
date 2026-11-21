@@ -363,40 +363,46 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 
 .cabinet-mode .page-heading h1:focus{outline:none!important}
 
-/* Круглая кнопка подключения и короткие панели главной. */
+/* Круглая неоновая кнопка подключения в стиле Pushok Flow. */
 .dashboard-intro{grid-template-columns:1fr}.dashboard-hero-actions{display:grid;gap:8px}
 .dashboard-hero-actions>a.dashboard-connect-proxy{
-  position:relative;
+  position:relative;isolation:isolate;
   justify-self:center;
   width:min(clamp(112px,43vw,192px),clamp(112px,26dvh,192px),100%);
   aspect-ratio:1;
   flex-direction:column;
-  gap:8px;
+  gap:4px;
   margin-block:8px;
-  border:2px solid #ff727d;
+  border:3px solid transparent;
   border-radius:50%;
-  background-color:#d94750;
-  background-image:linear-gradient(155deg,#df4651 0%,#bf3242 55%,#991f34 100%);
-  color:#fff!important;
+  background-color:#040c20;
+  background-image:linear-gradient(155deg,#07152e 0%,#02091d 100%),linear-gradient(135deg,#00e2d6 0%,#168cff 54%,#ad45e8 100%);
+  background-origin:padding-box,border-box;
+  background-clip:padding-box,border-box;
+  color:#f5f7ff!important;
   font-size:clamp(20px,5vw,32px);
   line-height:1.15;
+  box-shadow:0 0 24px #00dffc55,0 0 30px #9e43ec33;
 }
-.dashboard-connect-proxy>.ui-icon{width:clamp(36px,10vw,54px);height:auto;aspect-ratio:1;color:inherit}
-.dashboard-connect-proxy[href]:focus-visible{outline:3px solid white;outline-offset:4px}
+.dashboard-connect-proxy>.ui-icon{width:clamp(36px,10vw,54px);height:auto;aspect-ratio:1;color:#08dce5}
+.dashboard-connect-label{font-size:clamp(20px,5vw,32px);font-weight:750;line-height:1.15;color:#f5f7ff}
+.dashboard-connect-caption{font-size:clamp(12px,3vw,15px);font-weight:500;line-height:1.1;color:#9aabc2}
+.dashboard-connect-proxy[href]:focus-visible{outline:3px solid white;outline-offset:5px}
 .dashboard-connect-proxy[href]:active{filter:brightness(.90)}
-/* Красное кольцо пульсирует в том же ритме, что и обводка аватарок. */
 .dashboard-connect-proxy[href]::after{
-  content:"";
-  position:absolute;
-  inset:-4px;
-  border:1px solid #ff5b6b;
-  border-radius:inherit;
-  --hall-glow:#ff384f;
-  animation:hall-shimmer 3.8s ease-in-out infinite;
+  content:"";position:absolute;z-index:-1;inset:-5px;
+  border:2px solid transparent;border-radius:inherit;
+  background:linear-gradient(transparent,transparent) padding-box,linear-gradient(135deg,#00e2d6,#168cff,#ad45e8) border-box;
+  box-shadow:0 0 10px #08dce566,0 0 18px #a342e855;
+  animation:dashboard-connect-glow 2.8s ease-in-out infinite;
   pointer-events:none;
 }
+@keyframes dashboard-connect-glow{
+  0%,100%{opacity:.68;filter:brightness(.9);transform:scale(1)}
+  50%{opacity:1;filter:brightness(1.2);transform:scale(1.018)}
+}
 @media(prefers-reduced-motion:reduce){
-  .dashboard-connect-proxy[href]::after{animation:none;box-shadow:0 0 7px #ff384f}
+  .dashboard-connect-proxy[href]::after{animation:none;opacity:.85;filter:none}
 }
 .dashboard-connect-proxy[aria-disabled=true]{opacity:.65;cursor:default}
 .dashboard-subscription[hidden]{display:none}

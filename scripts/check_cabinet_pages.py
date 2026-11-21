@@ -329,9 +329,9 @@ def main():
                     expect(proxy).to_have_css('border-radius', '50%')
                     ring = proxy.evaluate("""e => {
                         const style = getComputedStyle(e, '::after');
-                        return [style.borderRadius, style.animationName, style.getPropertyValue('--hall-glow').trim()];
+                        return [style.borderRadius, style.animationName];
                     }""")
-                    assert ring == ['50%', 'hall-shimmer', '#ff384f']
+                    assert ring == ['50%', 'dashboard-connect-glow']
                     if width == 390:
                         assert advertiser.evaluate("document.querySelector('.dashboard-help').getBoundingClientRect().bottom <= document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top")
                         advertiser.screenshot(path=str(output/'dashboard-connect-390.png'))
@@ -340,7 +340,7 @@ def main():
                 assert proxy.evaluate("e=>getComputedStyle(e, '::after').boxShadow") != 'none'
                 advertiser.emulate_media(reduced_motion='no-preference')
                 advertiser.set_viewport_size(previous_viewport)
-                assert proxy.evaluate("e=>getComputedStyle(e).backgroundColor==='rgb(217, 71, 80)'")
+                assert proxy.evaluate("e=>getComputedStyle(e).backgroundColor==='rgb(4, 12, 32)'")
                 expect(advertiser.locator(".dashboard-hero-actions").get_by_role("link",name="Продвигать канал",exact=True)).to_have_count(0)
                 go(advertiser,'campaigns')
                 promote=advertiser.get_by_role('link',name='Продвигать канал',exact=True)
@@ -1729,7 +1729,8 @@ def main():
                     expect(invited).to_have_url(base+'/miniapp#/dashboard')
                     connect=invited.get_by_role('link',name='Подключить',exact=True)
                     expect(connect).to_be_in_viewport()
-                    expect(connect).to_have_css('background-color','rgb(217, 71, 80)')
+                    expect(connect).to_have_css('background-color','rgb(4, 12, 32)')
+                    expect(connect).to_contain_text('трафик')
                     expect(connect).to_have_attribute('aria-disabled','true')
                     expect(connect).not_to_have_attribute('href',proxy_url)
                     expect(invited.locator('.dashboard-subscription')).to_be_visible()
