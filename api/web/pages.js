@@ -204,7 +204,7 @@
 
  const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);
  const dashboardUtilities=el('div',undefined,'dashboard-utilities');
- dashboardUtilities.append(verificationPanel,dashboardHelp);content.dashboard.append(dashboardUtilities);
+ dashboardUtilities.append(verificationPanel,dashboardHelp);dashboardHero.append(dashboardUtilities);
  const onboarding=window.pushokViews.disclosure('Как начать',[el('p','Выберите канал и тариф, отправьте заявку. После одобрения оплатите размещение — запуск и завершение выполняются по расписанию.')]);onboarding.id='onboarding';content.help.prepend(onboarding);
  const paymentRows=el('div',undefined,'payment-workspace');content.payments.append(paymentRows);
  // Постоянные панели сохраняют открытые формы при переключении вкладок.
