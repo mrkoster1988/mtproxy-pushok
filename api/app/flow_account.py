@@ -40,8 +40,9 @@ CAPACITY_LOCK = 803176
 MAX_DEVICE_REQUESTS = 1000
 MAX_SESSIONS = 10000
 MAX_SESSIONS_PER_USER = 10
-# Per socket address, global; every bucket uses a fixed one-minute window.
-RATE_LIMITS = {'device': (6, 120), 'token': (120, 1200),
+# Per principal, global; every bucket uses a fixed one-minute window.
+# Anonymous issuance has no reliable individual identity behind the shared proxy.
+RATE_LIMITS = {'device': (None, 120), 'token': (120, 1200),
                'consent': (60, 600), 'profile': (120, 1200), 'logout': (30, 300)}
 RATE_BUCKETS = {'/device': 'device', '/device/token': 'token',
                 '/device/review': 'consent', '/device/decision': 'consent',
@@ -111,15 +112,22 @@ def _cleanup(conn, now):
     conn.execute("DELETE FROM flow_rate_windows WHERE window_started < %s - interval '2 minutes'", (now,))
 
 
-def _rate_limit(dsn, host, bucket):
-    """Global first: spoofed/rotating addresses cannot grow the limiter without bound.
+def _rate_key(kind, identity):
+    return digest('pushok-flow-rate-v1\0' + kind + '\0' + str(identity))
 
-    Commit a consumed global attempt even if the per-client limit rejects it.
-    Never trust X-Forwarded-For (or any other caller-supplied identity header).
+
+def _rate_limit(dsn, bucket, principal_key=None, *, principal_only=False):
+    """Global first: rotating unknown secrets cannot grow the limiter without bound.
+
+    Commit a consumed global attempt even if the principal limit rejects it.
+    Consent checks its verified account separately, after the global gate and auth.
+    Socket peers and forwarded headers are not individual account identities.
     """
     retry = None
-    client_key = digest('pushok-flow-client-v1:' + (host or 'unknown'))
-    client_limit, global_limit = RATE_LIMITS[bucket]
+    principal_limit, global_limit = RATE_LIMITS[bucket]
+    limits = [] if principal_only else [('*', global_limit)]
+    if principal_key is not None and principal_limit is not None:
+        limits.append((principal_key, principal_limit))
     with connect(dsn) as conn:
         conn.execute('SELECT pg_advisory_xact_lock(%s)', (RATE_LOCK,))
         # Cleanup may cascade from a revoked session to its grant. Use the
@@ -128,7 +136,7 @@ def _rate_limit(dsn, host, bucket):
         now = _now(conn)
         _cleanup(conn, now)
         window = now.replace(second=0, microsecond=0)
-        for key, limit in (('*', global_limit), (client_key, client_limit)):
+        for key, limit in limits:
             row = conn.execute('SELECT window_started, requests FROM flow_rate_windows WHERE bucket=%s AND client_key=%s',
                                (bucket, key)).fetchone()
             count = row['requests'] if row and row['window_started'] == window else 0
@@ -218,6 +226,23 @@ def _flow_token(request):
     return match.group(1)
 
 
+def _request_rate_principal(request, bucket):
+    if bucket == 'token':
+        data = request.state.flow_payload
+        secret = data.get('device_code')
+        if set(data) == {'device_code'} and isinstance(secret, str) and DEVICE_CODE.fullmatch(secret):
+            return _rate_key('device-code', secret)
+    elif bucket in ('profile', 'logout'):
+        try:
+            return _rate_key('flow-access-token', _flow_token(request))
+        except FlowError:
+            pass
+    else:
+        # Issuance is global-only. Consent identity is available only after auth.
+        return None
+    return _rate_key('malformed', bucket)
+
+
 def _active_user(conn, user_id):
     row = conn.execute('SELECT id FROM users WHERE id=%s AND blocked_at IS NULL FOR SHARE', (user_id,)).fetchone()
     if row is None:
@@ -256,8 +281,8 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
                     request.state.flow_payload = await _read_json(request)
                     bucket = RATE_BUCKETS.get(request.url.path.removeprefix(PREFIX))
                     if bucket:
-                        host = request.client.host if request.client else 'unknown'
-                        await run_in_threadpool(_rate_limit, get_dsn(), host, bucket)
+                        principal = _request_rate_principal(request, bucket)
+                        await run_in_threadpool(_rate_limit, get_dsn(), bucket, principal)
                     return await original(request)
                 except FlowError as exc:
                     return _error_response(exc)
@@ -273,6 +298,10 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
             return route
 
     router = APIRouter(prefix=PREFIX, tags=['flow-account'], route_class=FlowRoute)
+
+    def consent_user(user=Depends(cabinet_user)):
+        _rate_limit(get_dsn(), 'consent', _rate_key('cabinet-user', user['id']), principal_only=True)
+        return user
 
     @router.get('/capabilities')
     def capabilities():
@@ -299,7 +328,7 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
             raise FlowError(503, 'service_unavailable')
 
     @router.post('/device/review')
-    def review(request: Request, user=Depends(cabinet_user)):
+    def review(request: Request, user=Depends(consent_user)):
         data = _public_code(request)
         with connect(get_dsn()) as conn:
             _active_user(conn, user['id'])
@@ -308,7 +337,7 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
                     'scopes': SCOPES, 'expires_in': _remaining(row['expires_at'], now), 'status': row['state']}
 
     @router.post('/device/decision')
-    def decision(request: Request, user=Depends(cabinet_user)):
+    def decision(request: Request, user=Depends(consent_user)):
         data = _public_code(request, decision=True)
         desired = 'approved' if data['decision'] == 'approve' else 'denied'
         with connect(get_dsn()) as conn:

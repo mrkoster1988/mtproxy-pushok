@@ -3,6 +3,7 @@ const $=id=>document.getElementById(id);
 const miniAppMode=document.body.dataset.miniapp==='true';
 const sessionKey=miniAppMode?'pushok-miniapp-session':'pushok-session';
 let token=miniAppMode?'':sessionStorage.getItem(sessionKey)||'',me=null,channels=[],tariffs=[],nodes=[],ownCampaigns=[],operatorCampaigns=[];
+let authGeneration=0,enterGeneration=0;
 const labels={draft:'Черновик',pending:'На модерации',approved:'Одобрено',rejected:'Отклонено',changes_requested:'Нужны исправления',not_required:'Оплата после одобрения',awaiting_payment:'Ожидает оплаты',proof_submitted:'Чек на проверке',verified:'Оплачено',refunded:'Возврат',not_scheduled:'Слот не назначен',scheduled:'Запланировано',active:'Размещение активно',completed:'Завершено',cancelled:'Отменено'};
 const errors={operator_decision_changed:'Решение уже изменилось или кампания перешла к оплате или размещению. Обновите список.',sbp_connection_invalid:"Проверьте Shop ID, домен и ключ.",sbp_connection_has_payments:"По магазину уже есть счета. Смена магазина, домена или режима требует переноса и сверки платежей.",sbp_connection_check_failed:"ЮKassa не подтвердила подключение. Проверьте ключ и повторите.",sbp_connection_shop_not_ready:"Проверьте режим магазина, доступность СБП и статус подключения в ЮKassa.",team_user_must_login:'Пользователь должен сначала войти в кабинет через Telegram.',team_cannot_remove_self:'Нельзя снять права администратора с самого себя.',team_last_admin:'Нельзя удалить последнего администратора.',evidence_integrity_failed:'Скриншот повреждён или изменён после загрузки.',evidence_invalid_metadata:'Данные файла некорректны.',evidence_file_missing:'Файл не найден в хранилище.',invalid_integrity_limit:'Проверка ограничена 1–100 файлами.',evidence_empty:'Выберите изображение.',evidence_too_large:'Скриншот должен быть меньше 5 МБ.',evidence_corrupt_image:'Не удалось прочитать изображение.',unsupported_evidence_format:'Поддерживаются только PNG и JPEG.',evidence_format_mismatch:'Тип файла не соответствует изображению.',evidence_dimensions_invalid:'Изображение слишком велико.',evidence_already_attached:'У этого отчёта уже есть скриншот.',evidence_observation_unavailable:'Добавить файл можно только к собственному отчёту за последние сутки.',evidence_storage_unavailable:'Хранилище скриншотов временно недоступно.',placement_not_ready_for_observation:'Проверять показ можно только в запланированный период после подтверждённой оплаты.',observation_timezone_required:'Для проверки нужен часовой пояс.',observation_outside_placement_window:'Время наблюдения должно быть внутри рекламного периода.',observation_not_recent:'Наблюдение должно быть выполнено не более 10 минут назад.',observation_note_too_short:'Укажите подробности проверки (от 12 символов).',active_slot_hold_not_found:'Активной брони нет.',slot_start_requires_timezone:'Укажите время с часовым поясом.',slot_start_out_of_range:'Выберите время в пределах ближайших 90 дней.',campaign_not_holdable:'Бронирование доступно только после модерации и до подтверждения оплаты.',slot_held_by_another_campaign:'Место занято другой бронью.',slot_hold_conflict:'Бронь уже существует. Обновите состояние.',invalid_calendar_range:'Выберите период в пределах ближайших 90 дней, не больше 31 дня.',invalid_calendar_timezone:'Часовой пояс не поддерживается.',active_tariff_not_found:'Тариф больше недоступен. Обновите страницу.',payment_instructions_not_configured:'Реквизиты ещё не настроены. Дождитесь инструкции администратора перед оплатой.',campaign_not_editable:'Заявку сейчас нельзя редактировать или отправить повторно.',channel_in_review_or_approved:'Этот канал связан с заявкой на проверке или одобренным размещением. Его изменение заблокировано.',admin_tariff_required:'Тариф доступен только администратору.',admin_tariff_must_be_free:'Админский тариф всегда бесплатный: 0 ₽, без Stars.',admin_role_required:'Нужны права администратора.',owner_role_required:'Ключи и подключения доступны только разработчику.',team_owner_protected:'Права разработчика защищены.',invalid_proxy_host:'Укажите домен или IP без протокола и порта.',proxy_node_already_exists:'Этот адрес и порт уже добавлены.',proxy_node_has_placements:'На узле есть запланированное или активное размещение. Сначала завершите его.',authentication_required:'Войдите через Telegram.',session_revoked_or_expired:'Сессия завершена. Войдите снова.',telegram_login_expired:'Данные входа устарели. Повторите вход.',telegram_login_replayed:'Повторите вход через Telegram.',telegram_login_invalid_signature:'Telegram не подтвердил вход.',database_unavailable:'База данных временно недоступна.',invalid_telegram_channel_url:'Укажите ссылку вида https://t.me/channel.',channel_title_required:'Введите название канала.',channel_already_added:'Этот канал уже добавлен.',payment_proof_too_large:'Файл должен быть меньше 5 МБ.',unsupported_payment_proof_format:'Загрузите JPEG, PNG или PDF.',payment_proof_content_type_mismatch:'Тип файла не соответствует содержимому.',payment_proof_storage_unavailable:'Хранилище чеков временно недоступно.',proxy_node_slot_unavailable:'Этот слот уже занят. Выберите другое время или узел.',placement_not_in_active_window:'Активация доступна только в назначенное время.',campaign_not_ready_for_placement:'Для размещения нужны одобрение канала и подтверждённая оплата.',operator_role_required:'Нужны права оператора.',payment_proof_not_expected:'Заявка сейчас не ожидает чек.',campaign_not_draft:'Эта заявка уже отправлена.',campaign_not_pending:'Заявка уже обработана.',payment_proof_not_pending_review:'Оплата уже обработана.',channel_or_active_tariff_not_found:'Выберите свой канал и действующий тариф.',schedule_start_must_be_future:'Выберите время в будущем.'};
 Object.assign(errors,{
@@ -25,11 +26,23 @@ function notice(message,ok=false,{actions=[],persistent=false}={}){
 function hasDeveloperAccess(user){return Boolean(user?.is_developer||user?.is_owner);}
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x;}
 function button(text,fn){const b=el('button',text);b.type='button';b.addEventListener('click',()=>run(fn,b));return b;}
-async function api(path,{method='GET',body,signal}={}){
- const headers={},requestToken=token;if(requestToken)headers.Authorization='Bearer '+requestToken;
+function clearCabinetSession({preserveUnboundFlow=false,expired=false,clearWorkspace=true}={}){
+ const generation=++authGeneration;++enterGeneration;++calendarRequest;
+ token='';me=null;sessionStorage.removeItem(sessionKey);
+ window.pushokFlowAccount?.reset({preserveUnbound:preserveUnboundFlow});
+ $('workspace').hidden=true;$('login').hidden=miniAppMode;$('logout').hidden=true;
+ if(clearWorkspace){
+  window.pushokSBP?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();
+  window.cabinet?.logout({preserveUnboundFlow});
+ }
+ if(expired&&miniAppMode)window.pushokMiniApp.expired({preserveUnboundFlow});
+ return generation;
+}
+async function api(path,{method='GET',body,signal,session=token}={}){
+ const headers={},requestToken=session,requestGeneration=authGeneration;if(requestToken)headers.Authorization='Bearer '+requestToken;
  if(body&&!(body instanceof FormData))headers['Content-Type']='application/json';
  let r;try{r=await fetch('/api/v1'+path,{method,headers,signal,cache:'no-store',body:body instanceof FormData?body:body?JSON.stringify(body):undefined});}catch{throw Error('Нет связи с сервером. Проверьте соединение и повторите действие.');}
- if(!r.ok){let d;try{const data=await r.json();d=data?.detail??data?.error;}catch{d='';}if(r.status===401&&requestToken&&token===requestToken){token='';sessionStorage.removeItem(sessionKey);window.pushokFlowAccount?.reset();$('workspace').hidden=true;$('login').hidden=false;$('logout').hidden=true;window.pushokSBP?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();if(window.cabinet)window.cabinet.logout();if(miniAppMode)window.pushokMiniApp.expired();}
+ if(!r.ok){let d;try{const data=await r.json();d=data?.detail??data?.error;}catch{d='';}if(r.status===401&&requestToken&&token===requestToken&&requestGeneration===authGeneration){clearCabinetSession({preserveUnboundFlow:window.pushokFlowAccount?.unbound()===true,expired:true});}
  const error=Error(errors[d]||(r.status===422?'Проверьте заполненные поля.':typeof d==='string'&&d.endsWith('_not_configured')?'Вход ещё не настроен администратором.':'Не удалось выполнить действие. Попробуйте снова.'));error.status=r.status;error.code=typeof d==='string'?d:'';throw error;}
  return r.status===204?null:r.json();
 }
@@ -764,8 +777,8 @@ $('node-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{
 async function refresh({background=false}={}){
  if(!token)return;
  if(!background)window.pushokViews?.clearLogos();
- const refreshSession=token,refreshUser=me?.id;
- const current=()=>token===refreshSession&&me?.id===refreshUser&&(!background||!editingControl());
+ const refreshSession=token,refreshUser=me?.id,refreshGeneration=authGeneration;
+ const current=()=>token===refreshSession&&me?.id===refreshUser&&refreshGeneration===authGeneration&&(!background||!editingControl());
  const selectedChannel=$('channel-select').value,selectedTariff=$('tariff-select').value;
  const [own,currentChannels,currentTariffs]=await Promise.all([api('/campaigns'),api('/channels'),api('/me/tariffs')]);
  if(!current())return;
@@ -775,7 +788,8 @@ async function refresh({background=false}={}){
  if(channels.some(c=>c.id===selectedChannel))$('channel-select').value=selectedChannel;
  $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,tariffLabel(t)));
  if(tariffs.some(t=>t.id===selectedTariff))$('tariff-select').value=selectedTariff;
- if(calendarChanged){try{await loadAvailability();}catch(e){notice(e.message);}}
+ if(calendarChanged){try{await loadAvailability();}catch(e){if(current())notice(e.message);}}
+ if(!current())return;
  if(!window.cabinet)$('campaigns').replaceChildren(...own.map(c=>card(c,false)));$('campaign-count').textContent=own.length+' заявок';
  ownCampaigns=own;
  if(!own.length&&!window.cabinet)$('campaigns').append(el('div','Заявок пока нет. Добавьте канал и создайте первое размещение.','empty'));
@@ -792,14 +806,25 @@ async function refresh({background=false}={}){
  if(window.cabinet)window.cabinet.sync(own,{background});
 }
 async function enter(){
- me=await api('/me');window.pushokFlowAccount?.authenticated();await window.pushokGrowth.claimProxyInvite();channels=await api('/channels');tariffs=await api('/me/tariffs');updatePublicPrice();
- const isOperator=['operator','admin'].includes(me.role);nodes=isOperator?await api('/operator/proxy-nodes'):[];
- $('identity').textContent=me.first_name||'Рекламодатель';$('logout').hidden=false;
- $('login').hidden=true;$('workspace').hidden=false;$('operator-tab').hidden=!isOperator;
- $('settings-tab').hidden=me.role!=='admin';if(!window.cabinet)showWorkspace('advertiser');showSettingsPane('payments');
- $('channel-select').replaceChildren();option($('channel-select'),'','Выберите канал');channels.forEach(c=>option($('channel-select'),c.id,c.title));
- $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,tariffLabel(t)));
- try{await refresh();}finally{window.cabinetBootReady=true;if(window.cabinet)window.cabinet.enter();}await loadAvailability();
+ const session=token,generation=authGeneration,entry=++enterGeneration;
+ const current=()=>Boolean(session&&token===session&&generation===authGeneration&&entry===enterGeneration);
+ if(!current())return false;
+ try{
+  const profile=await api('/me');if(!current())return false;
+  me=profile;window.pushokFlowAccount?.authenticated();
+  await window.pushokGrowth.claimProxyInvite();if(!current())return false;
+  const loadedChannels=await api('/channels');if(!current())return false;channels=loadedChannels;
+  const loadedTariffs=await api('/me/tariffs');if(!current())return false;tariffs=loadedTariffs;updatePublicPrice();
+  const isOperator=['operator','admin'].includes(me.role);
+  const loadedNodes=isOperator?await api('/operator/proxy-nodes'):[];if(!current())return false;nodes=loadedNodes;
+  $('identity').textContent=me.first_name||'Рекламодатель';$('logout').hidden=false;
+  $('login').hidden=true;$('workspace').hidden=false;$('operator-tab').hidden=!isOperator;
+  $('settings-tab').hidden=me.role!=='admin';if(!window.cabinet)showWorkspace('advertiser');showSettingsPane('payments');
+  $('channel-select').replaceChildren();option($('channel-select'),'','Выберите канал');channels.forEach(c=>option($('channel-select'),c.id,c.title));
+  $('tariff-select').replaceChildren();tariffs.forEach(t=>option($('tariff-select'),t.id,tariffLabel(t)));
+  try{await refresh();}finally{if(current()){window.cabinetBootReady=true;if(window.cabinet)window.cabinet.enter();}}
+  if(!current())return false;await loadAvailability();return current();
+ }catch(error){if(!current())return false;throw error;}
 }
 
 function localDay(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
@@ -831,10 +856,25 @@ $('calendar-from').value=localDay(new Date());$('calendar-from').min=localDay(ne
 $('calendar-clear').addEventListener('click',clearRequestedDate);
 for(const id of ['calendar-from','calendar-time','tariff-select'])$(id).addEventListener('change',()=>run(loadAvailability));
 
-window.onTelegramAuth=data=>run(async()=>{const session=await api('/auth/telegram',{method:'POST',body:data});token=session.access_token;sessionStorage.setItem(sessionKey,token);await enter();notice('Вход выполнен.',true);});
+window.onTelegramAuth=data=>run(async()=>{
+ const generation=clearCabinetSession({preserveUnboundFlow:window.pushokFlowAccount?.unbound()===true,clearWorkspace:Boolean(me||window.cabinetBootReady)});
+ try{
+  const session=await api('/auth/telegram',{method:'POST',body:data,session:''});
+  if(generation!==authGeneration)return;
+  token=session.access_token;sessionStorage.setItem(sessionKey,token);
+  if(await enter()&&generation===authGeneration)notice('Вход выполнен.',true);
+ }catch(error){if(generation===authGeneration)throw error;}
+});
 $('channel-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{await e.target.elements.telegram_url.pushokChannelCheck?.check();const data=Object.fromEntries(new FormData(e.target)),match=data.telegram_url.trim().match(/^(?:@|https:\/\/(?:t\.me|telegram\.me)\/)?([a-z][a-z0-9_]{3,31})\/?$/i);if(!match)throw Error('Укажите публичный @username или ссылку https://t.me/channel.');data.telegram_url='https://t.me/'+match[1].toLowerCase();await api('/channels',{method:'POST',body:data});e.target.reset();await enter();if(location.hash==='#/channels/new')window.cabinet?.go('channels');notice('Канал добавлен.',true);},e.submitter);});
 
-$('logout').addEventListener('click',()=>run(async()=>{window.pushokFlowAccount?.reset();await api('/auth/logout',{method:'POST'});window.pushokSBP?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();sessionStorage.removeItem(sessionKey);if(miniAppMode)window.pushokMiniApp.signedOut();else location.reload();}));
+$('logout').addEventListener('click',()=>run(async()=>{
+ const session=token,generation=clearCabinetSession();
+ if(miniAppMode)window.pushokMiniApp.signedOut();
+ if(!session)return;
+ try{await api('/auth/logout',{method:'POST',session});}
+ catch(error){if(generation===authGeneration)throw error;return;}
+ if(generation===authGeneration&&!miniAppMode)location.reload();
+}));
 $('refresh').addEventListener('click',()=>run(async()=>{await refresh();await loadAvailability();},$('refresh')));
 $('queue-filter').addEventListener('change',()=>run(refresh));
 $('advertiser-tab').addEventListener('click',()=>operatorView(false));
@@ -847,7 +887,7 @@ $('settings-tab').addEventListener('click',()=>run(async()=>{
 run(async()=>{
  if(miniAppMode){await window.pushokMiniApp.start();return;}
  try{const publicTariffs=await api('/tariffs');if(!me)tariffs=publicTariffs;updatePublicPrice();}catch(e){$('hero-tariff-price').textContent='Цена временно недоступна';}
- const config=await api('/public-config');window.cabinetBotConfig=config;if(window.cabinet)window.cabinet.config(config);
+ const config=await api('/public-config');window.cabinetBotConfig=config;if(window.cabinet)window.cabinet.config(config);window.pushokFlowAccount?.configure(config);
  const botShortcut=document.querySelector('.hero-link-primary');
  const validBot=/^[A-Za-z0-9_]{5,32}$/.test(config.telegram_bot_username||'');
  if(validBot){botShortcut.href='https://t.me/'+config.telegram_bot_username;botShortcut.removeAttribute('aria-disabled');}

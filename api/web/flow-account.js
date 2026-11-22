@@ -5,8 +5,11 @@
 window.pushokFlowAccount = (() => {
   const codePattern = /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/;
   const scopes = ['profile:read', 'wallet:read'];
+  const storageKey = 'pushok-flow-intent-v1', maxAge = 300000;
+  const expectedBot = 'mtproxy_pushok_bot';
   let code = '', context = null, epoch = 0, controller = null;
   let busy = false, deadline = 0, timer = null, dialog = null, intro = null;
+  let receivedAt = 0, botName = '';
   let invalid = false;
 
   const node = (tag, text, className) => {
@@ -20,6 +23,73 @@ window.pushokFlowAccount = (() => {
     value.session === token && value.userId === me?.id);
   const current = (value, generation) => sameAccount(value) && generation === epoch;
 
+  function validIntent(value, now = Date.now()) {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value) &&
+      Object.keys(value).length === 2 && typeof value.code === 'string' && codePattern.test(value.code) &&
+      Number.isSafeInteger(value.receivedAt) && value.receivedAt > 0 &&
+      now >= value.receivedAt && now - value.receivedAt < maxAge);
+  }
+
+  function forgetIntent() {
+    code = '';
+    receivedAt = 0;
+    try { sessionStorage.removeItem(storageKey); } catch (_) {}
+  }
+
+  function storedIntent() {
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      const value = raw && raw.length <= 100 ? JSON.parse(raw) : null;
+      if (validIntent(value)) return value;
+      sessionStorage.removeItem(storageKey);
+    } catch (_) {
+      try { sessionStorage.removeItem(storageKey); } catch (_) {}
+    }
+    return null;
+  }
+
+  const liveIntent = () => validIntent({code, receivedAt});
+  const unbound = () => Boolean(code && !context && liveIntent());
+
+  function showIntro() {
+    if (!liveIntent()) return;
+    intro?.remove();
+    intro = node('section', undefined, 'panel flow-auth-intro');
+    intro.id = 'flow-account-intro';
+    intro.append(node('h2', 'Вход в Pushok Flow'),
+      info('Войдите в существующий аккаунт через Telegram. Затем кабинет попросит подтвердить подключение.'),
+      node('p', formatted(code), 'flow-auth-code'));
+    if (botName) {
+      const link = node('a', 'Открыть подтверждение в Telegram', 'flow-auth-telegram');
+      link.id = 'flow-account-telegram';
+      const destination = new URL('https://t.me/' + botName);
+      destination.searchParams.set('start', 'flow_' + code);
+      link.href = destination.href;
+      link.rel = 'noopener noreferrer';
+      link.addEventListener('click', event => {
+        if (!liveIntent()) {
+          event.preventDefault();
+          unavailable('Срок запроса истёк. Начните вход заново в Pushok Flow.');
+        }
+      });
+      intro.append(link, info('Если кнопка входа на сайте не работает, откройте бота и нажмите «Подтвердить в кабинете». Сверьте тот же код с Pushok Flow.'));
+    }
+    intro.append(info('Запрос действует не больше пяти минут. Подключение требует вашего подтверждения.'));
+    document.querySelector('main').prepend(intro);
+    clearInterval(timer);
+    timer = setInterval(() => {
+      if (!liveIntent()) unavailable('Срок запроса истёк. Начните вход заново в Pushok Flow.');
+    }, 1000);
+  }
+
+  function configure(config) {
+    // Flow uses this existing bot only. No server-provided URL is opened.
+    const configured = config?.telegram_bot_username;
+    botName = typeof configured === 'string' && /^[A-Za-z0-9_]{5,32}$/.test(configured) &&
+      configured.toLowerCase() === expectedBot ? expectedBot : '';
+    if (intro && unbound()) showIntro();
+  }
+
   function stopRequest() {
     epoch++;
     controller?.abort();
@@ -29,9 +99,10 @@ window.pushokFlowAccount = (() => {
     busy = false;
   }
 
-  function reset() {
+  function reset({preserveUnbound = false} = {}) {
+    const keep = preserveUnbound && unbound();
     stopRequest();
-    code = '';
+    if (!keep) forgetIntent();
     context = null;
     deadline = 0;
     intro?.remove();
@@ -39,6 +110,7 @@ window.pushokFlowAccount = (() => {
     if (dialog?.open) dialog.close();
     dialog?.remove();
     dialog = null;
+    if (keep) showIntro();
   }
 
   function action(text, id, callback, className = '') {
@@ -88,20 +160,20 @@ window.pushokFlowAccount = (() => {
 
   function terminal(status) {
     stopRequest();
-    code = '';
+    forgetIntent();
     context = null;
     const approved = status === 'approved';
     const panel = frame(approved ? 'Подключение разрешено' : 'Запрос отклонён');
     panel.dataset.state = status;
     panel.append(info(approved
-      ? 'Вернитесь в Pushok Flow. Приложение получит ваш профиль и баланс кабинета MTProxy.'
+      ? 'Разрешение сохранено. Вернитесь в Pushok Flow. Если там уже другой код или запрос истёк, начните вход заново.'
       : 'Доступ к аккаунту не предоставлен. Вернитесь в Pushok Flow.'),
       action('Закрыть', 'flow-account-close', reset));
   }
 
   function unavailable(message) {
     stopRequest();
-    code = '';
+    forgetIntent();
     context = null;
     const panel = frame('Запрос недоступен');
     panel.dataset.state = 'unavailable';
@@ -114,7 +186,7 @@ window.pushokFlowAccount = (() => {
     const name = [value.firstName, value.lastName].filter(Boolean).join(' ') || 'Аккаунт MTProxy';
     person.append(node('strong', name));
     if (value.telegramId) person.append(node('span', 'Telegram ID: ' + value.telegramId));
-    person.append(info('Проверьте, что это ваш аккаунт. Для другого аккаунта закройте запрос и повторите вход через нужный Telegram.'));
+    person.append(info('Проверьте, что это ваш аккаунт. Если нужен другой, закройте запрос, переключите аккаунт в Telegram и начните вход заново в Pushok Flow.'));
     panel.append(person);
   }
 
@@ -143,7 +215,7 @@ window.pushokFlowAccount = (() => {
 
   function renderPending(data, value) {
     busy = false;
-    deadline = Date.now() + data.expires_in * 1000;
+    deadline = Math.min(receivedAt + maxAge, Date.now() + data.expires_in * 1000);
     const panel = frame('Подключить аккаунт к Pushok Flow?');
     panel.dataset.state = 'pending';
     identity(panel, value);
@@ -177,6 +249,10 @@ window.pushokFlowAccount = (() => {
 
   async function review(value) {
     if (!code || !sameAccount(value)) return;
+    if (!liveIntent()) {
+      unavailable('Срок запроса истёк. Начните вход заново в Pushok Flow.');
+      return;
+    }
     stopRequest();
     busy = true;
     const generation = epoch;
@@ -186,6 +262,10 @@ window.pushokFlowAccount = (() => {
     try {
       const data = await request('/flow/device/review', {user_code: code});
       if (!current(value, generation)) return;
+      if (!liveIntent()) {
+        unavailable('Срок запроса истёк. Начните вход заново в Pushok Flow.');
+        return;
+      }
       if (!validReview(data)) {
         unavailable('Не удалось проверить параметры доступа. Начните вход заново в Pushok Flow.');
         return;
@@ -206,7 +286,7 @@ window.pushokFlowAccount = (() => {
 
   async function decide(decision, value) {
     if (busy || !code || !sameAccount(value) || dialog?.dataset.state !== 'pending') return;
-    if (Date.now() >= deadline) {
+    if (!liveIntent() || Date.now() >= deadline) {
       unavailable('Срок запроса истёк. Начните вход заново в Pushok Flow.');
       return;
     }
@@ -237,6 +317,10 @@ window.pushokFlowAccount = (() => {
 
   function authenticated() {
     if (!code || !token || !me?.id) return;
+    if (!liveIntent()) {
+      unavailable('Срок запроса истёк. Начните вход заново в Pushok Flow.');
+      return;
+    }
     if (context) {
       if (!sameAccount(context)) reset();
       return;
@@ -251,6 +335,7 @@ window.pushokFlowAccount = (() => {
   // This module loads before app.js. Capture only the public code, before the
   // ordinary Telegram Login Widget can create third-party requests.
   try {
+    const saved = storedIntent();
     const url = new URL(location.href);
     const values = url.searchParams.getAll('flow');
     if (values.length) {
@@ -258,19 +343,21 @@ window.pushokFlowAccount = (() => {
       invalid = !code;
       url.searchParams.delete('flow');
       history.replaceState(null, '', url);
-      if (code) {
-        intro = node('section', undefined, 'panel flow-auth-intro');
-        intro.id = 'flow-account-intro';
-        intro.append(node('h2', 'Вход в Pushok Flow'),
-          info('Войдите в существующий аккаунт через Telegram. Затем кабинет попросит подтвердить подключение.'),
-          node('p', formatted(code), 'flow-auth-code'));
-        document.querySelector('main').prepend(intro);
-      }
+      if (code) receivedAt = saved?.code === code ? saved.receivedAt : Date.now();
+    } else if (saved) {
+      code = saved.code;
+      receivedAt = saved.receivedAt;
+    }
+    if (code) {
+      try { sessionStorage.setItem(storageKey, JSON.stringify({code, receivedAt})); } catch (_) {}
+      showIntro();
+    } else {
+      forgetIntent();
     }
   } catch (_) {
-    code = '';
+    forgetIntent();
     invalid = true;
   }
   if (invalid) unavailable('Ссылка недействительна. Начните вход заново в Pushok Flow.');
-  return {authenticated, reset};
+  return {authenticated, configure, reset, unbound};
 })();

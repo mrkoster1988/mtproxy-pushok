@@ -17,8 +17,8 @@ window.pushokMiniApp=(()=>{
  document.body.classList.add('miniapp-mode');
  function message(text,canRetry=false){document.body.classList.add('miniapp-loading');panel.classList.toggle('load-failed',canRetry);panel.hidden=false;status.textContent=text;retry.hidden=!canRetry;}
  function clear(){token='';sessionStorage.removeItem(sessionKey);sessionStorage.removeItem(cacheKey);}
- function end(text){
-  clear();if(window.cabinet)window.cabinet.logout();
+ function end(text,{preserveUnboundFlow=false}={}){
+  clear();if(window.cabinet)window.cabinet.logout({preserveUnboundFlow});
   $('workspace').hidden=true;$('login').hidden=true;$('logout').hidden=true;
   message(text);syncNavigation();
  }
@@ -53,12 +53,15 @@ window.pushokMiniApp=(()=>{
  }
  async function start(){
   if(busy)return;busy=true;retry.disabled=true;message('Проверяем вход через Telegram…');
+  const generation=authGeneration,current=()=>generation===authGeneration;
   try{
    const config=await api('/miniapp/config');
+   if(!current())return;
    title.textContent=config.loading_title||'Пушок готовит кабинет…';
    if(!config.enabled){message('Mini App пока не включён разработчиком. Попробуйте позже.');return;}
-   const publicConfig=await api('/public-config');window.cabinetBotConfig=publicConfig;window.cabinet?.config(publicConfig);
+   const publicConfig=await api('/public-config');if(!current())return;window.cabinetBotConfig=publicConfig;window.cabinet?.config(publicConfig);
    app=await sdk();
+   if(!current())return;
    if(!app?.initData){clear();message('Откройте Mini App из меню Telegram-бота.');return;}
    if(!loaded){
     loaded=true;app.ready?.();app.expand?.();theme();
@@ -79,10 +82,12 @@ window.pushokMiniApp=(()=>{
    else{
     clear();
     const session=await api('/auth/telegram/miniapp',{method:'POST',body:{init_data:app.initData}});
+    if(!current())return;
     token=session.access_token;sessionStorage.setItem(sessionKey,token);sessionStorage.setItem(cacheKey,fingerprint);sessionStorage.removeItem(exitKey);
    }
-   await enter();panel.hidden=true;document.body.classList.remove('miniapp-loading');syncNavigation();await window.pushokLinks.apply();
+   const entered=await enter();if(!current()||!entered)return;panel.hidden=true;document.body.classList.remove('miniapp-loading');syncNavigation();await window.pushokLinks.apply();
   }catch(e){
+   if(!current())return;
    if(!token)message(e.code==='user_blocked'?e.message:e.message==='sdk_unavailable'?'Не удалось загрузить компонент приложения. Проверьте соединение и повторите.':
     'Вход не завершён. Закройте Mini App и откройте заново. Если ошибка повторяется, обратитесь к разработчику.',e.message==='sdk_unavailable'||!e.status||e.status>=500);
    else message('Не удалось загрузить кабинет. Проверьте соединение и повторите.',true);
@@ -98,6 +103,6 @@ window.pushokMiniApp=(()=>{
   payInvoice(url){return new Promise((resolve,reject)=>{
    if(!/^https:\/\/t\.me\/\$[A-Za-z0-9_-]{1,256}$/.test(url)||typeof app?.openInvoice!=='function'){reject(Error('Обновите Telegram для оплаты Stars.'));return;}
    try{app.openInvoice(url,resolve);}catch{reject(Error('Не удалось открыть счёт. Обновите статус перед повтором.'));}
-  });},expired(){end('Сессия завершена. Закройте Mini App и откройте заново.');},
+  });},expired(options){end('Сессия завершена. Закройте Mini App и откройте заново.',options);},
   signedOut(){const hash=sessionStorage.getItem(cacheKey);if(hash)sessionStorage.setItem(exitKey,hash);end('Вы вышли. Закройте Mini App и откройте заново для нового входа.');}};
 })();

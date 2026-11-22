@@ -190,6 +190,18 @@ class FlowAccountIntegration(unittest.TestCase):
     def bearer(token):
         return {'Authorization': 'Bearer ' + token['access_token']}
 
+    def fixed_rate_clock(self):
+        # A real DB still owns every limiter transaction; freeze only the clock so
+        # crossing a wall-clock minute cannot make a quota assertion intermittent.
+        with flow.connect(self.dsn) as conn:
+            now = flow._now(conn)
+        return patch.object(flow, '_now', return_value=now)
+
+    def rate_rows(self, bucket):
+        with flow.connect(self.dsn) as conn:
+            rows = conn.execute('SELECT client_key,requests FROM flow_rate_windows WHERE bucket=%s', (bucket,))
+            return {row['client_key']: row['requests'] for row in rows}
+
     def test_explicit_consent_read_only_wallet_and_bearer_separation(self):
         with flow.connect(self.dsn) as conn:
             before = conn.execute('SELECT count(*) AS n FROM users').fetchone()['n']
@@ -328,24 +340,127 @@ class FlowAccountIntegration(unittest.TestCase):
         with flow.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT count(*) AS n FROM flow_sessions').fetchone()['n'], 0)
 
-    def test_client_and_global_limits_ignore_forwarded_headers_and_bound_state(self):
-        limits = {**flow.RATE_LIMITS, 'device': (1, 2)}
-        with patch.object(flow, 'RATE_LIMITS', limits):
-            first = self.client.post('/api/v1/flow/device', json={}, headers={'X-Forwarded-For': '198.51.100.1'})
-            self.assertEqual(first.status_code, 201, first.text)
-            second = self.client.post('/api/v1/flow/device', json={}, headers={'X-Forwarded-For': '198.51.100.2'})
-            self.assertEqual(second.status_code, 429, second.text)
-            self.assertTrue(1 <= second.json()['interval'] <= 60)
-            with self.assertRaises(flow.FlowError) as caught:
-                flow._rate_limit(self.dsn, 'another-socket-address', 'device')
-            self.assertEqual(caught.exception.status, 429)
+    def test_seven_logins_behind_one_proxy_share_only_the_global_issuance_cap(self):
+        with self.fixed_rate_clock():
+            devices = [self.device() for _ in range(7)]
+            self.assertEqual(len({device['device_code'] for device in devices}), 7)
+            self.assertEqual(self.rate_rows('device'), {'*': 7})
+            with patch.dict(flow.RATE_LIMITS, {'device': (None, 8)}):
+                self.device()
+                response = self.client.post('/api/v1/flow/device', json={},
+                                            headers={'X-Forwarded-For': '198.51.100.1'})
+                self.assertEqual(response.status_code, 429, response.text)
+                self.assertTrue(1 <= response.json()['interval'] <= 60)
+                self.assertEqual(response.headers['cache-control'], 'private, no-store')
+            self.assertEqual(self.rate_rows('device'), {'*': 8})
+
+    def test_token_limit_is_per_device_and_forwarded_headers_cannot_reset_it(self):
+        with self.fixed_rate_clock(), patch.dict(flow.RATE_LIMITS, {'token': (1, 10)}):
+            first, second = self.device(), self.device()
+            self.assertEqual(self.poll(first)['status'], 'pending')
+            blocked = self.client.post('/api/v1/flow/device/token', json={'device_code': first['device_code']},
+                                       headers={'X-Forwarded-For': '203.0.113.9'})
+            self.assertEqual(blocked.status_code, 429, blocked.text)
+            self.assertEqual(self.poll(second)['status'], 'pending')
+            rows = self.rate_rows('token')
+            self.assertEqual(rows.pop('*'), 3)  # The rejected principal still consumed a global attempt.
+            self.assertEqual(sorted(rows.values()), [1, 1])
+            self.assertNotIn(first['device_code'], str(rows))
+            self.assertNotIn(second['device_code'], str(rows))
+
+    def test_flow_sessions_do_not_share_profile_or_logout_quotas(self):
+        with self.fixed_rate_clock():
+            _, first = self.authorize()
+            _, second = self.authorize(actor=self.other)
+            limits = {'profile': (1, 10), 'logout': (1, 10)}
+            with patch.dict(flow.RATE_LIMITS, limits):
+                self.request('GET', '/flow/me', headers=self.bearer(first))
+                rotated = {'Authorization': 'bearer ' + first['access_token'], 'X-Forwarded-For': '203.0.113.7'}
+                self.request('GET', '/flow/me', 429, headers=rotated)
+                self.request('GET', '/flow/me', headers=self.bearer(second))
+                self.request('POST', '/flow/logout', 204, json={}, headers=self.bearer(first))
+                self.request('POST', '/flow/logout', 429, json={}, headers=rotated)
+                self.request('POST', '/flow/logout', 204, json={}, headers=self.bearer(second))
+            for bucket in ('profile', 'logout'):
+                rows = self.rate_rows(bucket)
+                self.assertEqual(rows.pop('*'), 3)
+                self.assertEqual(sorted(rows.values()), [1, 1])
+                self.assertNotIn(first['access_token'], str(rows))
+                self.assertNotIn(second['access_token'], str(rows))
+
+    def test_consent_is_global_before_auth_and_per_verified_user_after_auth(self):
+        with self.fixed_rate_clock(), patch.dict(flow.RATE_LIMITS, {'consent': (1, 6)}):
+            device = self.device()
+            body = {'user_code': device['user_code']}
+            self.request('POST', '/flow/device/review', json=body, headers=self.cabinet[self.owner])
+            sid = uuid4()
             with flow.connect(self.dsn) as conn:
-                self.assertEqual(conn.execute('SELECT count(*) AS n FROM flow_rate_windows WHERE bucket=%s', ('device',)).fetchone()['n'], 2)
-                conn.execute("INSERT INTO flow_rate_windows VALUES('device','stale',now()-interval '3 minutes',1)")
-            with self.assertRaises(flow.FlowError):
-                flow._rate_limit(self.dsn, 'yet-another-socket-address', 'device')
-            with flow.connect(self.dsn) as conn:
-                self.assertIsNone(conn.execute("SELECT 1 FROM flow_rate_windows WHERE client_key='stale'").fetchone())
+                conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '12 hours')",
+                             (sid, self.owner))
+            rotated = {'Authorization': 'Bearer ' + main._create_session_token(self.owner, sid),
+                       'X-Forwarded-For': '198.51.100.4'}
+            self.request('POST', '/flow/device/review', 429, json=body, headers=rotated)
+            self.request('POST', '/flow/device/review', json=body, headers=self.cabinet[self.other])
+            for headers in ({}, {'Authorization': 'Bearer unverified-identity'},
+                            {'Authorization': 'Bearer pfa_' + 'f' * 64}):
+                self.request('POST', '/flow/device/review', 401, json=body, headers=headers)
+            rows = self.rate_rows('consent')
+            self.assertEqual(rows.pop('*'), 6)
+            self.assertEqual(sorted(rows.values()), [1, 1])  # Unauthenticated headers created no identity rows.
+
+            def must_not_authenticate():
+                raise AssertionError('An exhausted global cap must reject before cabinet authentication')
+            main.app.dependency_overrides[main.get_current_user] = must_not_authenticate
+            self.request('POST', '/flow/device/review', 429, json=body)
+            self.assertEqual(self.rate_rows('consent')['*'], 6)
+
+    def test_malformed_credentials_share_bounded_buckets_and_cleanup_still_runs(self):
+        cases = (
+            ('token', 'POST', '/api/v1/flow/device/token', 410,
+             lambda index: {'json': {'device_code': 'invalid-' + str(index)}}),
+            ('profile', 'GET', '/api/v1/flow/me', 401,
+             lambda index: {'headers': {'Authorization': 'Basic invalid-' + str(index)}}),
+            ('logout', 'POST', '/api/v1/flow/logout', 401,
+             lambda index: {'json': {}, 'headers': {'Authorization': 'Bearer invalid-' + str(index)}}),
+        )
+        with self.fixed_rate_clock():
+            for bucket, method, path, initial_status, arguments in cases:
+                with self.subTest(bucket=bucket), patch.dict(flow.RATE_LIMITS, {bucket: (2, 10)}):
+                    for index in range(3):
+                        response = self.client.request(method, path, **arguments(index))
+                        self.assertEqual(response.status_code, initial_status if index < 2 else 429, response.text)
+                    with flow.connect(self.dsn) as conn:
+                        conn.execute("INSERT INTO flow_rate_windows VALUES(%s,'stale',now()-interval '3 minutes',1)", (bucket,))
+                    response = self.client.request(method, path, **arguments(3))
+                    self.assertEqual(response.status_code, 429, response.text)
+                    rows = self.rate_rows(bucket)
+                    self.assertNotIn('stale', rows)
+                    self.assertEqual(rows.pop('*'), 4)
+                    self.assertEqual(list(rows.values()), [2])
+                    self.assertRegex(next(iter(rows)), r'^[0-9a-f]{64}$')
+
+    def test_rotating_unknown_principals_cannot_grow_state_after_global_cap(self):
+        cases = (
+            ('token', 'POST', '/api/v1/flow/device/token', 410,
+             lambda index: {'json': {'device_code': 'pfd_' + f'{index:043d}'}}),
+            ('profile', 'GET', '/api/v1/flow/me', 401,
+             lambda index: {'headers': {'Authorization': 'Bearer pfa_' + f'{index:064x}'}}),
+            ('logout', 'POST', '/api/v1/flow/logout', 401,
+             lambda index: {'json': {}, 'headers': {'Authorization': 'Bearer pfa_' + f'{index:064x}'}}),
+        )
+        with self.fixed_rate_clock():
+            for bucket, method, path, initial_status, arguments in cases:
+                with self.subTest(bucket=bucket), patch.dict(flow.RATE_LIMITS, {bucket: (120, 3)}):
+                    for index in range(8):
+                        kwargs = arguments(index)
+                        kwargs.setdefault('headers', {})['X-Forwarded-For'] = f'198.51.100.{index + 1}'
+                        response = self.client.request(method, path, **kwargs)
+                        self.assertEqual(response.status_code, initial_status if index < 3 else 429, response.text)
+                        self.assertEqual(response.headers['cache-control'], 'private, no-store')
+                    rows = self.rate_rows(bucket)
+                    self.assertEqual(rows.pop('*'), 3)
+                    self.assertEqual(sorted(rows.values()), [1, 1, 1])
+                    self.assertTrue(all(len(key) == 64 for key in rows))
 
     def test_grant_and_session_caps_are_enforced_without_partial_issuance(self):
         with patch.object(flow, 'MAX_DEVICE_REQUESTS', 1):
