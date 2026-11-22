@@ -56,7 +56,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.120",
+    version="1.121",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2867,7 +2867,7 @@ def miniapp_client():
 
 @app.get("/", include_in_schema=False)
 def cabinet() -> FileResponse:
-    return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-store"})
+    return FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"})
 
 
 # v0.022 — Регистрация MTProxyBot и подготовка без реального изменения прокси.
@@ -3350,3 +3350,11 @@ app.include_router(refunds_router(lambda: DATABASE_URL, require_admin))
 
 from .channel_blocks import router_for as channel_blocks_router
 app.include_router(channel_blocks_router(lambda: DATABASE_URL, require_operator))
+
+from .flow_account import router_for as flow_account_router, FlowNoStoreMiddleware
+app.add_middleware(FlowNoStoreMiddleware)
+app.include_router(flow_account_router(
+    lambda: DATABASE_URL,
+    lambda: _required_secret(SESSION_SIGNING_KEY, 'SESSION_SIGNING_KEY'),
+    get_current_user,
+))

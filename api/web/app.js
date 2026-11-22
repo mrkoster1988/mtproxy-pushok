@@ -26,10 +26,10 @@ function hasDeveloperAccess(user){return Boolean(user?.is_developer||user?.is_ow
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x;}
 function button(text,fn){const b=el('button',text);b.type='button';b.addEventListener('click',()=>run(fn,b));return b;}
 async function api(path,{method='GET',body,signal}={}){
- const headers={};if(token)headers.Authorization='Bearer '+token;
+ const headers={},requestToken=token;if(requestToken)headers.Authorization='Bearer '+requestToken;
  if(body&&!(body instanceof FormData))headers['Content-Type']='application/json';
  let r;try{r=await fetch('/api/v1'+path,{method,headers,signal,cache:'no-store',body:body instanceof FormData?body:body?JSON.stringify(body):undefined});}catch{throw Error('Нет связи с сервером. Проверьте соединение и повторите действие.');}
- if(!r.ok){let d;try{d=(await r.json()).detail;}catch{d='';}if(r.status===401&&token){token='';sessionStorage.removeItem(sessionKey);$('workspace').hidden=true;$('login').hidden=false;$('logout').hidden=true;window.pushokSBP?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();if(window.cabinet)window.cabinet.logout();if(miniAppMode)window.pushokMiniApp.expired();}
+ if(!r.ok){let d;try{const data=await r.json();d=data?.detail??data?.error;}catch{d='';}if(r.status===401&&requestToken&&token===requestToken){token='';sessionStorage.removeItem(sessionKey);window.pushokFlowAccount?.reset();$('workspace').hidden=true;$('login').hidden=false;$('logout').hidden=true;window.pushokSBP?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();if(window.cabinet)window.cabinet.logout();if(miniAppMode)window.pushokMiniApp.expired();}
  const error=Error(errors[d]||(r.status===422?'Проверьте заполненные поля.':typeof d==='string'&&d.endsWith('_not_configured')?'Вход ещё не настроен администратором.':'Не удалось выполнить действие. Попробуйте снова.'));error.status=r.status;error.code=typeof d==='string'?d:'';throw error;}
  return r.status===204?null:r.json();
 }
@@ -792,7 +792,7 @@ async function refresh({background=false}={}){
  if(window.cabinet)window.cabinet.sync(own,{background});
 }
 async function enter(){
- me=await api('/me');await window.pushokGrowth.claimProxyInvite();channels=await api('/channels');tariffs=await api('/me/tariffs');updatePublicPrice();
+ me=await api('/me');window.pushokFlowAccount?.authenticated();await window.pushokGrowth.claimProxyInvite();channels=await api('/channels');tariffs=await api('/me/tariffs');updatePublicPrice();
  const isOperator=['operator','admin'].includes(me.role);nodes=isOperator?await api('/operator/proxy-nodes'):[];
  $('identity').textContent=me.first_name||'Рекламодатель';$('logout').hidden=false;
  $('login').hidden=true;$('workspace').hidden=false;$('operator-tab').hidden=!isOperator;
@@ -834,7 +834,7 @@ for(const id of ['calendar-from','calendar-time','tariff-select'])$(id).addEvent
 window.onTelegramAuth=data=>run(async()=>{const session=await api('/auth/telegram',{method:'POST',body:data});token=session.access_token;sessionStorage.setItem(sessionKey,token);await enter();notice('Вход выполнен.',true);});
 $('channel-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{await e.target.elements.telegram_url.pushokChannelCheck?.check();const data=Object.fromEntries(new FormData(e.target)),match=data.telegram_url.trim().match(/^(?:@|https:\/\/(?:t\.me|telegram\.me)\/)?([a-z][a-z0-9_]{3,31})\/?$/i);if(!match)throw Error('Укажите публичный @username или ссылку https://t.me/channel.');data.telegram_url='https://t.me/'+match[1].toLowerCase();await api('/channels',{method:'POST',body:data});e.target.reset();await enter();if(location.hash==='#/channels/new')window.cabinet?.go('channels');notice('Канал добавлен.',true);},e.submitter);});
 
-$('logout').addEventListener('click',()=>run(async()=>{await api('/auth/logout',{method:'POST'});window.pushokSBP?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();sessionStorage.removeItem(sessionKey);if(miniAppMode)window.pushokMiniApp.signedOut();else location.reload();}));
+$('logout').addEventListener('click',()=>run(async()=>{window.pushokFlowAccount?.reset();await api('/auth/logout',{method:'POST'});window.pushokSBP?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();sessionStorage.removeItem(sessionKey);if(miniAppMode)window.pushokMiniApp.signedOut();else location.reload();}));
 $('refresh').addEventListener('click',()=>run(async()=>{await refresh();await loadAvailability();},$('refresh')));
 $('queue-filter').addEventListener('change',()=>run(refresh));
 $('advertiser-tab').addEventListener('click',()=>operatorView(false));

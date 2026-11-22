@@ -40,6 +40,7 @@ def main():
     parser.add_argument("--ai-only", action="store_true", help="Подключение ИИ, хранение ключа и роли")
     parser.add_argument("--controls-only", action="store_true")
     parser.add_argument("--refunds-only", action="store_true", help="Возвраты: реальные API, баланс, история и мобильная форма")
+    parser.add_argument("--flow-account-only", action="store_true", help="Flow: реальный вход, явное подтверждение, отзыв и устаревшие ответы")
     args = parser.parse_args()
     # main.py captures this setting when imported, before test sessions are issued.
     os.environ["SESSION_SIGNING_KEY"] = "browser-test-only-" * 8
@@ -173,6 +174,11 @@ def main():
                         page.locator('#refresh').click()
                     expect(page.locator('#refresh')).to_be_enabled()
 
+                if args.flow_account_only:
+                    from check_flow_account import check_flow_account
+                    check_flow_account(browser, base, output, failures, PostgresIntegration.dsn)
+                    print('PASS: Flow consent, Widget/Mini App auth, account lifecycle and mobile widths')
+                    return
                 if args.refunds_only:
                     from check_campaign_refunds import check_campaign_refunds
                     check_campaign_refunds(browser, base, output, failures, PostgresIntegration.dsn)
@@ -1937,6 +1943,8 @@ def main():
                 check_campaign_assistant_ui(new_page,go,output,PostgresIntegration.dsn)
                 from check_application_licenses import check_application_licenses
                 check_application_licenses(browser,base,output,failures,PostgresIntegration.dsn)
+                from check_flow_account import check_flow_account
+                check_flow_account(browser, base, output, failures, PostgresIntegration.dsn)
                 assert not failures, failures
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     connection.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s', (session_ids['advertiser'],))

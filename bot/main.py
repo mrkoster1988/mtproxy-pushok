@@ -518,6 +518,23 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
     stars = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+stars', str(message.get('text') or ''), re.IGNORECASE)
     if stars and chat.get('type') == 'private' and type(actor.get('id')) is int and actor['id'] == chat.get('id'):
         return ({'chat_id':chat['id'], 'text':'⭐ <a href="tg://settings/stars">Открыть мои Stars</a>\n\nЕсли Telegram не открывает ссылку: Настройки → Мои звёзды. Это личный баланс Telegram.', 'parse_mode':'HTML', 'reply_markup':keyboard()}, None)
+    flow = re.fullmatch(r'(?i:/start(?:@'+re.escape(configured_bot_username())+r')?)\s+flow_([23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12})', str(message.get('text') or ''))
+    if flow:
+        if (chat.get('type') != 'private' or type(actor.get('id')) is not int
+                or type(chat.get('id')) is not int or actor['id'] <= 0
+                or actor['id'] != chat['id'] or actor.get('is_bot')):
+            return None
+        if not launch:
+            return ({'chat_id': chat['id'], 'text': 'Вход через кабинет пока недоступен. Вернитесь в Pushok Flow и попробуйте позже.'}, None)
+        public_code = flow[1]
+        display_code = ' '.join(public_code[index:index + 4] for index in range(0, 12, 4))
+        return ({'chat_id': chat['id'],
+                 'text': 'Вход в Pushok Flow\n\nКод: ' + display_code +
+                         '\n\nОткройте кабинет и сверьте код с приложением. Аккаунт подключится только после вашего подтверждения.',
+                 'reply_markup': {'inline_keyboard': [[{
+                     'text': 'Подтвердить в кабинете',
+                     'web_app': {'url': launch + '?flow=' + public_code},
+                 }]]}}, None)
     invite = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+(?:ref_|r_)([A-Za-z0-9_-]{3,48})', str(message.get('text') or ''), re.IGNORECASE)
     if invite and referral_handler and chat.get('type') == 'private' and type(actor.get('id')) is int and actor['id'] == chat.get('id'):
         try:
