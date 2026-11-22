@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS flow_device_requests (
 );
 CREATE INDEX IF NOT EXISTS flow_device_requests_expiry ON flow_device_requests(expires_at);
 
--- Общие для всех API workers минутные лимиты; client_key — хеш типизированной идентичности или '*'.
+-- Общие для всех API workers минутные лимиты; client_key — хеш адреса сокета.
 CREATE TABLE IF NOT EXISTS flow_rate_windows (
     bucket TEXT NOT NULL CHECK (bucket IN ('device','token','consent','profile','logout')),
     client_key VARCHAR(64) NOT NULL,
