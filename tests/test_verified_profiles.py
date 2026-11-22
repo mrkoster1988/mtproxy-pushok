@@ -102,18 +102,16 @@ class VerificationIntegration(unittest.TestCase):
             return cursor.fetchall() if cursor.description else None
 
     def test_polling_bot_real_transport_verifies_contact_and_delivers_annual_gift(self):
-        """Тот же Request/заголовки, что на VPS; подменяется только HTTP-соединение."""
+        """Реальные Request/заголовки и API; тестовые Telegram updates и часы outbox."""
         from bot import main as bot
         birthday = verified.today()
         self.db('UPDATE birthday_settings SET bonus_amount=12500')
         messages, routes = [], []
-        updates = [
-            {'update_id': self.update, 'message': {'from': {'id': self.tg},
-             'chat': {'id': self.tg, 'type': 'private'}, 'text': '/verify'}},
-            {'update_id': self.update+1, 'message': {'from': {'id': self.tg},
-             'chat': {'id': self.tg, 'type': 'private'}, 'date': int(time.time()),
-             'contact': {'user_id': self.tg, 'phone_number': '+79991234567'}}},
-        ]
+        poll_clock = Mock(wraps=time)
+        poll_clock.monotonic.return_value = 0.0
+        poll_clock.sleep.side_effect = AssertionError('The polling fixture must not enter a transport retry')
+        verify_update = {'update_id': self.update, 'message': {'from': {'id': self.tg},
+                         'chat': {'id': self.tg, 'type': 'private'}, 'text': '/verify'}}
 
         def bridge(request, **kwargs):
             path = urlsplit(request.full_url).path
@@ -131,10 +129,29 @@ class VerificationIntegration(unittest.TestCase):
             if method == 'getWebhookInfo':
                 return {}
             if method == 'getUpdates':
-                if payload['offset'] is not None:
-                    self.assertEqual(payload['offset'], self.update+2)
-                    raise KeyboardInterrupt  # Закончить после полного прохода polling/outbox.
-                return updates
+                if payload['offset'] is None:
+                    return [verify_update]
+                if payload['offset'] == self.update+1:
+                    # The user can send a new contact only after receiving the prompt.
+                    # Prebuilding it before /verify crosses a second boundary races
+                    # the server's legitimate message_date >= requested_at check.
+                    self.assertTrue(any(button.get('request_contact') is True
+                                        for message in messages if message.get('chat_id') == self.tg
+                                        for row in message.get('reply_markup', {}).get('keyboard', [])
+                                        for button in row))
+                    intent = self.db('''SELECT floor(extract(epoch FROM requested_at))::bigint AS message_after
+                        FROM phone_verification_requests WHERE user_id=%s AND telegram_environment='production' ''', (self.uid,))
+                    self.assertEqual(len(intent), 1)
+                    contact_date = int(time.time())
+                    self.assertGreaterEqual(contact_date, intent[0]['message_after'])
+                    # Advance only the bot's outbox scheduler, without real sleeps
+                    # or weakening the API's wall-clock contact freshness guard.
+                    poll_clock.monotonic.return_value = 30.0
+                    return [{'update_id': self.update+1, 'message': {'from': {'id': self.tg},
+                        'chat': {'id': self.tg, 'type': 'private'}, 'date': contact_date,
+                        'contact': {'user_id': self.tg, 'phone_number': '+79991234567'}}}]
+                self.assertEqual(payload['offset'], self.update+2)
+                raise KeyboardInterrupt  # Закончить после полного прохода polling/outbox.
             if method == 'getChat':
                 self.assertEqual(kwargs['timeout'], 3)
                 return {'birthdate': {'day': birthday.day, 'month': birthday.month}}
@@ -148,6 +165,7 @@ class VerificationIntegration(unittest.TestCase):
              patch.object(bot, 'urlopen', side_effect=bridge), \
              patch.object(bot, 'raw_telegram_call', side_effect=telegram), \
              patch.object(bot, 'telegram_call', side_effect=telegram), \
+             patch.object(bot, 'time', poll_clock), \
              patch.object(bot, 'Navigation'), patch.object(bot, '_navigation', None), \
              patch.object(bot, 'deliver_operator_outbox'), patch.object(bot, 'deliver_advertiser_notices'), \
              patch.object(bot, 'deliver_lifecycle_notices'):
@@ -170,7 +188,9 @@ class VerificationIntegration(unittest.TestCase):
         for changes in ({'contact_user_id': self.tg+1}, {'chat_id': self.tg+1}, {'private_chat': False},
                         {'forwarded': True}, {'phone_number': '555 abc 12345'}):
             self.request('POST', path, 400, json=self.payload(**changes), headers=self.headers)
-        self.request('POST', path, 409, json=self.payload(message_date=int(time.time())-600), headers=self.headers)
+        intent = self.db('''SELECT floor(extract(epoch FROM requested_at))::bigint AS message_after
+            FROM phone_verification_requests WHERE user_id=%s AND telegram_environment='production' ''', (self.uid,))[0]
+        self.request('POST', path, 409, json=self.payload(message_date=intent['message_after']-1), headers=self.headers)
         self.request('POST', path, 409, json=self.payload(message_date=int(time.time())+60), headers=self.headers)
         self.assertFalse(self.request('GET', '/me/verification')['phone_verified'])
         self.verify(birthday={'day': 29, 'month': 2})

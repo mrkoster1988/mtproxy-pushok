@@ -1405,9 +1405,15 @@ def main():
                 assert requests==['POST']
                 control_fixture['requested']=False
                 control_fixture['update']={'state':'failed','stage':'build'}
+                # The queued-update screen covers the cabinet until its normal
+                # 10-second control poll observes failure. Wait for that real
+                # transition before clicking a control underneath the iframe.
+                expect(admin.locator('#software-update-status')).to_contain_text('Последняя установка не завершена',timeout=15000)
+                expect(admin.locator('.update-screen-frame')).to_have_count(0)
                 admin.locator('#software-check').click()
                 expect(admin.locator('#software-update-status')).to_contain_text('сборка')
                 expect(admin.locator('#software-update')).to_be_enabled()
+                assert requests==['POST'], 'Checking a failed installation must not queue another update'
                 release_fixture.return_value={**release_fixture.return_value,'state':'current','available_version':api.app.version}
                 admin.locator('#software-check').click()
                 expect(admin.locator('#software-update')).to_have_attribute('aria-label','Повторить установку v'+api.app.version)
