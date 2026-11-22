@@ -158,8 +158,9 @@
  const heroCopy=el('div',undefined,'dashboard-hero-copy');
  heroCopy.append(el('h2','Добро пожаловать в puShok'),el('p','Подключайтесь к MTProxy'));
  const heroActions=el('div',undefined,'dashboard-hero-actions');
- const connectProxy=el('a','Подключить','dashboard-connect-proxy');
- connectProxy.prepend(window.pushokViews.icon('power'));
+ const connectProxy=el('a',undefined,'dashboard-connect-proxy');
+ connectProxy.setAttribute('aria-label','Подключить');
+ connectProxy.append(window.pushokViews.icon('power'),el('span','Подключить','dashboard-connect-label'),el('span','трафик','dashboard-connect-caption'));
  let dashboardProxyUrl='',subscriptionJoined=!miniAppMode,subscriptionEpoch=0;
  connectProxy.setAttribute('role','link');connectProxy.tabIndex=0;connectProxy.setAttribute('aria-disabled','true');connectProxy.title='Ссылка подключения ещё не настроена';
  function updateDashboardConnect(){
@@ -203,7 +204,7 @@
 
  const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);
  const dashboardUtilities=el('div',undefined,'dashboard-utilities');
- dashboardUtilities.append(verificationPanel,dashboardHelp);content.dashboard.append(dashboardUtilities);
+ dashboardUtilities.append(verificationPanel,dashboardHelp);dashboardHero.append(dashboardUtilities);
  const onboarding=window.pushokViews.disclosure('Как начать',[el('p','Выберите канал и тариф, отправьте заявку. После одобрения оплатите размещение — запуск и завершение выполняются по расписанию.')]);onboarding.id='onboarding';content.help.prepend(onboarding);
  const paymentRows=el('div',undefined,'payment-workspace');content.payments.append(paymentRows);
  // Постоянные панели сохраняют открытые формы при переключении вкладок.
