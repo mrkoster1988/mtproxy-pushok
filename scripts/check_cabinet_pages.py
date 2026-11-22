@@ -324,12 +324,16 @@ def main():
                 advertiser.evaluate('async () => { await window.pushokGateway.connection(true); }')
                 expect(proxy).to_have_attribute('href', proxy_url)
                 expect(proxy).not_to_have_attribute('aria-disabled', 'true')
+                expect(advertiser.locator('body')).to_have_attribute('data-cabinet-loaded', 'true')
                 print('PASS: dashboard proxy link from real API survives connection refresh', flush=True)
                 previous_viewport = advertiser.viewport_size
-                for width in (320,390,430):
+                # v1.120 enlarged the button to the 150px / 46vw / 220px
+                # design. Check each intended diameter, including 430px where
+                # the old shared 192px ceiling rejected the correct layout.
+                for width, diameter in ((320,150),(390,179.4),(430,197.8)):
                     advertiser.set_viewport_size({'width':width,'height':844})
                     bounds = proxy.bounding_box()
-                    assert 110 <= bounds['width'] <= 192
+                    assert abs(bounds['width'] - diameter) < 1, {'viewport':width,'expected':diameter,'actual':bounds}
                     assert abs(bounds['width'] - bounds['height']) < 1
                     assert abs(bounds['x'] + bounds['width']/2 - width/2) < 2
                     expect(proxy).to_have_css('border-radius', '50%')
@@ -346,7 +350,7 @@ def main():
                 assert proxy.evaluate("e=>getComputedStyle(e, '::after').boxShadow") != 'none'
                 advertiser.emulate_media(reduced_motion='no-preference')
                 advertiser.set_viewport_size(previous_viewport)
-                assert proxy.evaluate("e=>getComputedStyle(e).backgroundColor==='rgb(4, 12, 32)'")
+                expect(proxy).to_have_css('background-color', 'rgb(3, 10, 30)')
                 expect(advertiser.locator(".dashboard-hero-actions").get_by_role("link",name="Продвигать канал",exact=True)).to_have_count(0)
                 go(advertiser,'campaigns')
                 promote=advertiser.get_by_role('link',name='Продвигать канал',exact=True)
@@ -1735,7 +1739,7 @@ def main():
                     expect(invited).to_have_url(base+'/miniapp#/dashboard')
                     connect=invited.get_by_role('link',name='Подключить',exact=True)
                     expect(connect).to_be_in_viewport()
-                    expect(connect).to_have_css('background-color','rgb(4, 12, 32)')
+                    expect(connect).to_have_css('background-color','rgb(3, 10, 30)')
                     expect(connect).to_contain_text('трафик')
                     expect(connect).to_have_attribute('aria-disabled','true')
                     expect(connect).not_to_have_attribute('href',proxy_url)
