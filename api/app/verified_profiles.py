@@ -257,8 +257,8 @@ def router_for(dsn, current_user, require_admin):
             conn.execute('''INSERT INTO verified_profiles(user_id,birth_day,birth_month,birth_year,birthday_source,
                 birthday_opt_in,consent_version,consent_at,telegram_environment,birthday_sync_state,birthday_sync_checked_at)
                 VALUES(%s,%s,%s,%s,%s,%s,%s,now(),%s,
-                    CASE WHEN %s IS NOT NULL THEN 'manual' ELSE NULL END,
-                    CASE WHEN %s IS NOT NULL THEN now() ELSE NULL END)
+                    CASE WHEN %s::smallint IS NOT NULL THEN 'manual' ELSE NULL END,
+                    CASE WHEN %s::smallint IS NOT NULL THEN now() ELSE NULL END)
                 ON CONFLICT(user_id,telegram_environment) DO UPDATE SET birth_day=EXCLUDED.birth_day,birth_month=EXCLUDED.birth_month,
                 birth_year=EXCLUDED.birth_year,birthday_source=EXCLUDED.birthday_source,
                 birthday_opt_in=EXCLUDED.birthday_opt_in,consent_version=EXCLUDED.consent_version,
