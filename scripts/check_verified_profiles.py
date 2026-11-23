@@ -69,17 +69,10 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
             expect(card.locator('.verification-status')).to_contain_text('Проверяем подтверждение…')
             expect(card.locator('.phone-verified-badge')).to_have_count(0)  # Client callback cannot grant a badge.
-            # Остановить ожидание можно без выхода; отсутствие бота не держит кнопку минуту.
-            card.get_by_role('button', name='Отменить ожидание').click()
-            expect(card.get_by_role('button', name='Верификация', exact=True)).to_be_enabled()
-            expect(card.locator('.verification-status')).to_contain_text('Ожидание остановлено')
-            expect(card.get_by_role('link', name='Подтвердить через бота')).to_be_visible()
-            card.get_by_role('button', name='Верификация', exact=True).click()
-            page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===3")
-            page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
-            expect(card.locator('.verification-status')).to_contain_text('Проверяем подтверждение…')
             expect(card.locator('.verification-status')).to_contain_text('Подтверждение пока не получено', timeout=20000)
             expect(card.get_by_role('button', name='Верификация', exact=True)).to_be_enabled()
+            expect(card.get_by_role('button', name='Отменить ожидание')).to_have_count(0)
+            expect(card.get_by_role('link', name='Подтвердить через бота')).to_have_count(0)
             expect(card.locator('.phone-verified-badge')).to_have_count(0)
             # Соединение, которое не отвечает, прерывается по AbortSignal.
             page.clock.install()
@@ -97,7 +90,7 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             page.evaluate('window.fetch=window.__realFetch')
             card.screenshot(path=str(output/'verification-recovery-390.png'))
             card.get_by_role('button', name='Верификация', exact=True).click()
-            page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===4")
+            page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===3")
             page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
             # Контакт идёт через обработчик бота и настоящий конструктор HTTP-запроса.
             def bridge(request, **kwargs):
