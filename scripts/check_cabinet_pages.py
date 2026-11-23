@@ -343,7 +343,7 @@ def main():
                     }""")
                     assert ring == ['50%', 'dashboard-connect-glow']
                     if width == 390:
-                        assert advertiser.evaluate("document.querySelector('.dashboard-help').getBoundingClientRect().bottom <= document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top")
+                        assert advertiser.evaluate("document.querySelector('.dashboard-connect-proxy').getBoundingClientRect().bottom <= document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top")
                         advertiser.screenshot(path=str(output/'dashboard-connect-390.png'))
                 advertiser.emulate_media(reduced_motion='reduce')
                 assert proxy.evaluate("e=>getComputedStyle(e, '::after').animationName") == 'none'
