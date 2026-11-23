@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 6727)
+Total output lines: 508
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 # Диалог читает терминал отдельно от потока загрузки скрипта.
@@ -122,7 +125,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v1.123 — мастер настройки" >&2
+echo "MTProxy Pushok v1.126 — мастер настройки" >&2
 echo "Чистый трафик · ИИ-модерация · спонсорские кампании" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.
@@ -179,113 +182,7 @@ if [[ "$COMPONENTS" != 1 ]]; then
     if [[ "$HTTPS" != 3 ]]; then domain_input CABINET_DOMAIN; fi
     while true; do
       ask API_PORT "Локальный порт API" "$PORT_DEFAULT"
-      if [[ "$API_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && ((API_PORT>=1024 && API_PORT<=65535)); then break; fi
-      echo "Порт должен быть от 1024 до 65535." >&2
-    done
-    choose TELEGRAM "Настроить Telegram-вход?" 1 "Настроить сейчас" "Позже (вход временно недоступен)"
-    BOT_TOKEN=""
-    BOT_USERNAME=""
-    if [[ "$TELEGRAM" == 1 ]]; then
-      choose TELEGRAM_ENV "Среда Telegram (нужны разные боты и базы)" 1 "Основная среда" "Тестовый Telegram: отдельный аккаунт и BotFather"
-      if [[ "$TELEGRAM_ENV" == 2 ]]; then
-        if [[ "$COMPONENTS" != 2 ]]; then
-          echo "Тестовый Telegram настраивается только с вариантом «Только спонсорский кабинет». Запустите мастер заново; рабочий прокси не изменён." >&2
-          exit 1
-        fi
-        TELEGRAM_TEST_ENVIRONMENT=1
-        echo "Нужен новый бот из BotFather тестовой среды. Отдельные каталог, Compose-проект, БД и домен обязательны; не используйте рабочий токен." >&2
-      fi
-      while true; do
-        read -r -s -u 3 -p "Токен бота из BotFather (скрыт): " BOT_TOKEN; echo >&2
-        valid_bot_token "$BOT_TOKEN" && break
-        echo "Ожидается токен вида 123456:ABC..." >&2
-      done
-      while true; do
-        ask BOT_USERNAME "Имя бота без @" ""
-        [[ "$BOT_USERNAME" =~ ^[a-zA-Z0-9_]{5,32}$ ]] && break
-      done
-      choose ADMIN_SETUP "Назначить владельца кабинета?" 1 "Указать Telegram ID" "Настроить позже"
-      if [[ "$ADMIN_SETUP" == 1 ]]; then
-        while true; do
-          ask ADMIN_ID "Числовой Telegram ID владельца" ""
-          [[ "$ADMIN_ID" =~ ^[1-9][0-9]{0,15}$ ]] && ((ADMIN_ID < 4503599627370496)) && break
-          echo "Нужен числовой Telegram ID от 1 до 4503599627370495, а не @username или телефон." >&2
-        done
-      fi
-    fi
-    if [[ "$TELEGRAM" == 1 ]]; then
-      BOT_LAUNCH=true
-      if [[ "$HTTPS" != 3 ]]; then
-        choose MINIAPP_SETUP "Telegram Mini App" 2 "Подготовить запуск по HTTPS-домену кабинета" "Позже (кнопка Mini App скрыта)"
-        if [[ "$MINIAPP_SETUP" == 1 ]]; then
-          MINIAPP_ENABLED=1
-          MINIAPP_URL="https://$CABINET_DOMAIN/miniapp"
-          echo "Mini App: $MINIAPP_URL. DNS, HTTPS и доступ из Telegram проверяются после запуска." >&2
-          if [[ "$TELEGRAM_TEST_ENVIRONMENT" == 1 ]]; then
-            choose STARS_SETUP "Stars в изолированном тестовом Telegram" 2 "Разрешить тестовые счета (цену XTR настрою в кабинете)" "Позже: выдача счетов выключена"
-            if [[ "$STARS_SETUP" == 1 ]]; then STARS_ENABLED=1; fi
-          else
-            echo "Основная среда: выдача Stars-счетов останется выключенной до отдельной приёмки." >&2
-          fi
-        fi
-      else
-        echo "Mini App выключена: нужен HTTPS-домен, доступный из Telegram. Локальный staging подходит для проверки API; настройка Mini App описана в docs/MINIAPP.md." >&2
-      fi
-    fi
-    configure_payments
-  fi
-fi
-if [[ "$COMPONENTS" != 2 ]]; then
-  INSTALL_STAGE="установка MTProxy"
-  if [[ "$PROXY_ENGINE" == 1 ]]; then
-    echo "Движок: telegrammessenger/proxy:latest (Docker, изолированный проект)." >&2
-    echo "После подтверждения будут дополнительные вопросы о порте и TAG." >&2
-  else
-    if [[ "$PROXY_ENGINE" == 3 ]]; then
-      echo "Автовыбор Pushok: Classic/native (без изменений работающих сервисов до подтверждения)." >&2
-    fi
-    echo "Движок: классический Telegram MTProxy, systemd (текущий способ)." >&2
-  fi
-fi
-case "$COMPONENTS" in
-  1) echo "Будет установлен MTProxy." >&2 ;;
-  2) echo "Будет установлен кабинет." >&2 ;;
-  3) echo "Будут установлены MTProxy и кабинет." >&2 ;;
-esac
-if [[ "$COMPONENTS" != 1 ]]; then
-  if "$NEW_CONFIG"; then
-    echo "Compose-проект: $PROJECT_NAME" >&2
-    echo "Локальный порт API: $API_PORT" >&2
-    if [[ "$HTTPS" != 3 ]]; then echo "Домен кабинета: $CABINET_DOMAIN" >&2; fi
-    case "$HTTPS" in
-      1) echo "Доступ: через существующий reverse proxy (его настройка вручную)." >&2 ;;
-      2) echo "Доступ: новый Caddy, порты 80/443; DNS должен указывать на сервер." >&2 ;;
-      3) echo "Доступ: только локальный." >&2 ;;
-    esac
-    echo "PUSHOK_TELEGRAM_TEST_ENVIRONMENT=$TELEGRAM_TEST_ENVIRONMENT (0 — основная, 1 — тестовая среда)" >&2
-    echo "PUSHOK_MINIAPP_ENABLED=$MINIAPP_ENABLED; PUSHOK_STARS_PAYMENTS_ENABLED=$STARS_ENABLED" >&2
-    [[ -z "$MINIAPP_URL" ]] || echo "Адрес Mini App: $MINIAPP_URL" >&2
-    echo "СБП выключена; автоматический приём включается отдельно после настройки и проверки." >&2
-    [[ -z "$ADMIN_ID" ]] || echo "Telegram ID владельца: $ADMIN_ID" >&2
-  else
-    echo "Существующие настройки и секреты будут сохранены." >&2
-  fi
-  if "$BOT_LAUNCH"; then
-    echo "Telegram-бот: запуск polling вместе с кабинетом (Compose-профиль bot)." >&2
-  else
-    echo "Telegram-бот: новый запуск не запланирован; уже запущенный бот не останавливается." >&2
-  fi
-fi
-choose CONFIRM "Начать установку пакетов и запуск сервисов?" 2 "Начать" "Выйти без изменений"
-[[ "$CONFIRM" == 1 ]] || exit 0
-if "$PLAN"; then echo "План собран. Режим --plan: изменения не выполнялись."; exit 0; fi
-[[ "$(id -u)" == 0 ]] || { echo "Запустите: sudo bash setup.sh"; exit 1; }
-command -v apt-get >/dev/null || { echo "Требуется Ubuntu/Debian с apt."; exit 1; }
-cd "$ROOT_DIR"
-INSTALL_STAGE="блокировка установщика"
-command -v flock >/dev/null || { echo "Нужен flock из пакета util-linux." >&2; exit 1; }
-exec 9<"$ROOT_DIR"
-flock -n 9 || { echo "В этом каталоге уже работает установщик. Дождитесь его завершения." >&2; exit 1; }
+      if [[ "$API_PORT" =~ ^[1-9][0-9]{0,4}$ ]] && ((API_PORT>=1024 && API…1727 tokens truncated…ождитесь его завершения." >&2; exit 1; }
 if [[ "$COMPONENTS" != 1 ]]; then
   INSTALL_STAGE="проверка существующей конфигурации"
   command -v python3 >/dev/null || { echo "Для кабинета нужен python3 (Ubuntu: apt-get -o DPkg::Lock::Timeout=600 install python3)." >&2; exit 1; }
