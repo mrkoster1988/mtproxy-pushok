@@ -343,7 +343,7 @@ def main():
                     }""")
                     assert ring == ['50%', 'dashboard-connect-glow']
                     if width == 390:
-                        assert advertiser.evaluate("document.querySelector('.dashboard-help').getBoundingClientRect().bottom <= document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top")
+                        assert advertiser.evaluate("document.querySelector('.dashboard-connect-proxy').getBoundingClientRect().bottom <= document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top")
                         advertiser.screenshot(path=str(output/'dashboard-connect-390.png'))
                 advertiser.emulate_media(reduced_motion='reduce')
                 assert proxy.evaluate("e=>getComputedStyle(e, '::after').animationName") == 'none'
@@ -1396,8 +1396,10 @@ def main():
                 expect(admin.locator('#software-update')).to_be_disabled()
                 expect(admin.locator('#software-update-status')).to_contain_text('Запрос принят')
                 screen = admin.frame_locator('.update-screen-frame')
-                expect(screen.get_by_role('heading',name='Идёт обновление')).to_be_visible()
+                # Install the running-state response before the iframe loads;
+                # otherwise its first status poll can observe the real idle state.
                 admin.route('**/update/status.json',lambda route:route.fulfill(json={'state':'running','stage':'build'}))
+                expect(screen.get_by_role('heading',name='Идёт обновление')).to_be_visible()
                 expect(screen.locator('#stage')).to_have_text('Собираем приложение')
                 expect(screen.locator('progress')).to_have_attribute('value','3')
                 admin.screenshot(path=str(output/'update-screen-mobile.png'))
@@ -1720,7 +1722,7 @@ def main():
                     expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
                     expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
                     expect(advertiser.locator('#dashboard-referral')).not_to_contain_text('За первое')
-                    expect(advertiser.locator('.dashboard-help')).to_be_visible()
+                    expect(advertiser.locator('.dashboard-connect-proxy')).to_be_visible()
                     invite=advertiser.get_by_role('button',name='Пригласить друга',exact=True)
                     expect(invite).to_have_attribute('aria-expanded','false')
                     invite.click()

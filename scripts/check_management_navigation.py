@@ -129,7 +129,7 @@ def check_management_navigation(browser, base, output, failures, dsn):
                 expect(page.locator('[data-page=management]')).to_be_hidden()
         admin.evaluate("window.cabinet.go('profile/management')")
         admin.set_viewport_size({'width': 390, 'height': 844})
-        admin.locator('#profile-management').screenshot(path=str(output/'management-menu.png'))
+        admin.locator('#profile-management').screenshot(path=str(output/'management-menu.png'), animations='disabled')
     finally:
         for context in contexts:
             context.close()

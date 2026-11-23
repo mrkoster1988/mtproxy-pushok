@@ -56,7 +56,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="1.123",
+    version="1.126",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -436,7 +436,7 @@ def get_current_user(
         raise HTTPException(status_code=401, detail='user_blocked')
     # Разработчик получает весь административный интерфейс и API. В БД
     # разработчик обычно хранится как admin + is_developer, но поддерживаем
-    # и отдельную роль developer, чтобы ни одна проверка по role не урезала права.
+    # и отдельную роль developer, чтобы проверки по role не урезали права.
     if user['role'] == 'developer':
         user['is_developer'] = True
     if user.get('is_developer') or user.get('is_owner'):
@@ -445,7 +445,7 @@ def get_current_user(
 
 
 def require_operator(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    if user["role"] not in {"operator", "moderator", "admin", "developer"}:
+    if user["role"] not in {"operator", "admin", "developer"}:
         raise HTTPException(status_code=403, detail="operator_role_required")
     return user
 
@@ -2868,7 +2868,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=1.124" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=1.126" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 

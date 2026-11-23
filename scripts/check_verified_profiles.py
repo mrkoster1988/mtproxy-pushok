@@ -51,34 +51,28 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             assert page.evaluate('''() =>
                 document.querySelector('.dashboard-verify > summary').getBoundingClientRect().bottom
                 <= document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top''')
-            summary.click()
+            if not page.locator('.dashboard-verify').evaluate('(node) => node.open'):
+                summary.click()
             card = page.locator('#dashboard-verification')
-            expect(card.get_by_role('button', name='Подтвердить номер', exact=True)).to_be_visible()
+            expect(card.get_by_role('button', name='Верификация', exact=True)).to_be_visible()
             for width in (320, 390):
                 page.set_viewport_size({'width': width, 'height': 844})
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
                 card.screenshot(path=str(output/f'verification-home-{width}.png'))
-            card.get_by_role('button', name='Подтвердить номер', exact=True).click()
+            card.get_by_role('button', name='Верификация', exact=True).click()
             page.wait_for_function("__nativeEvents.some(e=>e.name==='web_app_request_phone')")
             page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'cancelled'})")
             expect(card.locator('.verification-status')).to_contain_text('Номер не передан')
             expect(card.locator('.phone-verified-badge')).to_have_count(0)
-            card.get_by_role('button', name='Подтвердить номер', exact=True).click()
+            card.get_by_role('button', name='Верификация', exact=True).click()
             page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===2")
             page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
-            expect(card.locator('.verification-status')).to_contain_text('Ждём подтверждения бота')
+            expect(card.locator('.verification-status')).to_contain_text('Проверяем подтверждение…')
             expect(card.locator('.phone-verified-badge')).to_have_count(0)  # Client callback cannot grant a badge.
-            # Остановить ожидание можно без выхода; отсутствие бота не держит кнопку минуту.
-            card.get_by_role('button', name='Отменить ожидание').click()
-            expect(card.get_by_role('button', name='Подтвердить номер', exact=True)).to_be_enabled()
-            expect(card.locator('.verification-status')).to_contain_text('Ожидание остановлено')
-            expect(card.get_by_role('link', name='Подтвердить через бота')).to_be_visible()
-            card.get_by_role('button', name='Подтвердить номер', exact=True).click()
-            page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===3")
-            page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
-            expect(card.locator('.verification-status')).to_contain_text('Ждём подтверждения бота')
-            expect(card.locator('.verification-status')).to_contain_text('Бот пока не подтвердил', timeout=20000)
-            expect(card.get_by_role('button', name='Подтвердить номер', exact=True)).to_be_enabled()
+            expect(card.locator('.verification-status')).to_contain_text('Подтверждение пока не получено', timeout=20000)
+            expect(card.get_by_role('button', name='Верификация', exact=True)).to_be_enabled()
+            expect(card.get_by_role('button', name='Отменить ожидание')).to_have_count(0)
+            expect(card.get_by_role('link', name='Подтвердить через бота')).to_have_count(0)
             expect(card.locator('.phone-verified-badge')).to_have_count(0)
             # Соединение, которое не отвечает, прерывается по AbortSignal.
             page.clock.install()
@@ -88,15 +82,15 @@ def check_verified_profiles(browser, base, output, failures, dsn):
                 new Promise((resolve,reject)=>options.signal.addEventListener('abort',()=>reject(new Error('timeout')),{once:true})):
                 window.__realFetch(url,options);
             }""")
-            card.get_by_role('button', name='Подтвердить номер', exact=True).click()
-            expect(card.locator('.verification-status')).to_contain_text('Подготавливаем запрос')
+            card.get_by_role('button', name='Верификация', exact=True).click()
+            expect(card.locator('.verification-status')).to_contain_text('Подтвердите передачу номера в Telegram')
             page.clock.fast_forward(9000)
             expect(card.locator('.verification-status')).to_contain_text('Нет связи с сервером')
-            expect(card.get_by_role('button', name='Подтвердить номер', exact=True)).to_be_enabled()
+            expect(card.get_by_role('button', name='Верификация', exact=True)).to_be_enabled()
             page.evaluate('window.fetch=window.__realFetch')
             card.screenshot(path=str(output/'verification-recovery-390.png'))
-            card.get_by_role('button', name='Подтвердить номер', exact=True).click()
-            page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===4")
+            card.get_by_role('button', name='Верификация', exact=True).click()
+            page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===3")
             page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
             # Контакт идёт через обработчик бота и настоящий конструктор HTTP-запроса.
             def bridge(request, **kwargs):
@@ -122,8 +116,8 @@ def check_verified_profiles(browser, base, output, failures, dsn):
                 page.screenshot(path=str(output/f'home-clean-{width}.png'))
             with patch.object(verified, 'telegram_birthday', return_value=None) as lookup:
                 page.evaluate("window.cabinet.go('profile')")
-                expect(page.locator('.profile-personal')).to_contain_text('Telegram не передал дату рождения')
-                lookup.assert_called_once_with(tg)
+                expect(page.locator('.profile-personal')).to_contain_text('Дату рождения можно взять из Telegram или указать здесь')
+                lookup.assert_not_called()
             personal = page.locator('.profile-personal')
             expect(personal).not_to_have_attribute('open', '')
             personal.locator(':scope > summary').click()
@@ -131,17 +125,20 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             expect(personal.locator('.profile-phone')).to_contain_text('+79990001122')
             expect(page.locator('.profile-identity .phone-verified-badge')).to_have_count(1)
             expect(personal.get_by_label('День', exact=True)).to_have_value('')
-            with psycopg.connect(dsn) as conn:
-                conn.execute("UPDATE verified_profiles SET birthday_sync_checked_at=now()-interval '2 minutes'")
-            with patch.object(verified, 'telegram_birthday', return_value=verified.Birthday(day=11, month=11)):
+            with patch.object(verified, 'telegram_birthday', side_effect=[None, verified.Birthday(day=11, month=11)]) as lookup:
+                personal.get_by_label('Присылать поздравление с днём рождения в Telegram', exact=True).check()
+                personal.get_by_role('button', name='Сохранить', exact=True).click()
+                expect(personal.get_by_role('button', name='Взять из Telegram', exact=True)).to_be_visible()
+                expect(personal).to_contain_text('Telegram не передал дату рождения')
+                lookup.assert_called_once_with(tg)
+                with psycopg.connect(dsn) as conn:
+                    conn.execute("UPDATE verified_profiles SET birthday_sync_checked_at=now()-interval '2 minutes'")
                 personal.get_by_role('button', name='Взять из Telegram', exact=True).click()
                 expect(personal.get_by_label('День', exact=True)).to_have_value('11')
+                assert lookup.call_count == 2
             expect(personal).to_contain_text('Изменить сведения может только разработчик')
             expect(personal.get_by_label('День', exact=True)).to_be_disabled()
             expect(personal.get_by_label('Месяц', exact=True)).to_be_disabled()
-            expect(personal.get_by_role('button', name='Сохранить', exact=True)).to_be_hidden()
-            personal.get_by_label('Поздравления и подарок в день рождения', exact=True).uncheck()
-            personal.get_by_role('button', name='Сохранить', exact=True).click()
             expect(personal.get_by_role('button', name='Сохранить', exact=True)).to_be_hidden()
             for width in (320, 390):
                 page.set_viewport_size({'width': width, 'height': 844})

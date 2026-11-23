@@ -10,7 +10,7 @@ window.pushokVerification=(()=>{
   const check=document.createElementNS(svg.namespaceURI,'path');check.setAttribute('d','m7 12 3 3 7-7');check.setAttribute('fill','none');check.setAttribute('stroke','white');check.setAttribute('stroke-width','2.4');check.setAttribute('stroke-linecap','round');check.setAttribute('stroke-linejoin','round');svg.append(circle,check);wrap.append(svg);return wrap;
  }
  function label(text,input){const node=el('label',text);input.setAttribute('aria-label',text);node.append(input);return node;}
- function optIn(checked){const input=el('input');input.type='checkbox';input.checked=checked;const node=label('Поздравления и подарок в день рождения',input);node.className='verification-opt-in';return {input,node};}
+ function optIn(checked){const input=el('input');input.type='checkbox';input.checked=Boolean(checked);return {input,node:label('Присылать поздравление с днём рождения в Telegram',input)};}
  function botLink(){
   const username=window.cabinetBotConfig?.telegram_bot_username;
   if(!/^[A-Za-z0-9_]{5,32}$/.test(username||''))return null;
@@ -43,44 +43,43 @@ window.pushokVerification=(()=>{
   if(!me||me.phone_verified){target.replaceChildren();target.hidden=true;delete target.dataset.state;return;}
   target.hidden=false;
   const key=me.id+':'+Boolean(me.phone_verified);if(target.dataset.state===key)return;target.dataset.state=key;
-  target.replaceChildren();const card=el('section',undefined,'verification-card');target.append(card);
-  const heading=el('div',undefined,'verification-heading'),copy=el('div');
-  heading.append(window.pushokViews.icon('user'),copy);card.append(heading);
-  copy.append(el('h2','Подтвердите свой номер'),el('p','Номер будет виден вам и администратору.'));
-  const help=el('details',undefined,'verification-consent');help.append(el('summary','Какие сведения сохранятся'),el('p','Ваш номер будет виден вам и администратору. Доступную дату рождения из Telegram используем для поздравлений и ежегодного бонуса по условиям puShok. Год рождения необязателен. Это подтверждение номера внутри puShok.'));card.append(help);
-  const consent=optIn(true),status=el('p',undefined,'verification-status');status.setAttribute('role','status');card.append(consent.node);
-  const actions=el('div',undefined,'verification-actions');
-  const fallback=el('div');fallback.hidden=Boolean(miniAppMode&&window.Telegram?.WebApp?.requestContact);const link=botLink();fallback.append(link||el('p','Откройте бота puShok и отправьте /verify.'));
-  const cancel=button('Отменить ожидание',()=>{activeAttempt?.abort();pollEpoch++;cancel.hidden=true;status.textContent='Ожидание остановлено. Можно проверить статус или подтвердить номер через бота.';fallback.hidden=false;});cancel.hidden=true;
-  const confirm=button('Подтвердить номер',async()=>{
-   activeAttempt?.abort();const controller=new AbortController();activeAttempt=controller;
-   const signal=controller.signal,session=token,epoch=++pollEpoch;
-   const valid=()=>session===token&&epoch===pollEpoch&&!signal.aborted;
-   cancel.hidden=false;status.textContent='Подготавливаем запрос…';
-   try{
-    await request('/me/verification/request',{method:'POST',body:{birthday_opt_in:consent.input.checked}},signal);if(!valid())return;
-    const app=window.Telegram?.WebApp;
-    if(!miniAppMode||!app?.requestContact||!app.isVersionAtLeast?.('6.9')){
-     status.textContent='Откройте бота и передайте свой контакт кнопкой Telegram.';fallback.hidden=false;return;
-    }
-    status.textContent='Разрешите Telegram передать ваш номер.';
-    const sent=await askContact(app,signal);if(!valid())return;
-    if(!sent){status.textContent='Номер не передан. Можно повторить подтверждение.';fallback.hidden=false;return;}
-    status.textContent='Telegram передал контакт. Ждём подтверждения бота…';
-    const deadline=Date.now()+12000;
-    while(valid()&&Date.now()<deadline){
-     if(await refreshStatus(session,signal,Math.min(8000,deadline-Date.now())))return;
-     await pause(Math.min(2000,Math.max(0,deadline-Date.now())),signal);
-    }
-    if(valid()){status.textContent='Бот пока не подтвердил контакт. Проверьте статус позже или подтвердите номер через бота.';fallback.hidden=false;}
-   }catch(e){if(valid()){status.textContent=e.message+' Проверьте статус или подтвердите номер через бота.';fallback.hidden=false;}}
-   finally{if(activeAttempt===controller){activeAttempt=null;cancel.hidden=true;}}
-  });confirm.classList.add('primary');actions.append(confirm);
-  actions.append(button('Проверить статус',async()=>{
-   const session=token;try{const verified=await refreshStatus(session);if(session===token){status.textContent=verified?'Номер подтверждён.':'Подтверждение ещё не получено. Проверьте ответ бота.';fallback.hidden=verified;}}
-   catch(e){if(session===token){status.textContent=e.message;fallback.hidden=false;}}
-  }),cancel);
-  card.append(actions,fallback,status);
+  target.replaceChildren();
+  const status=el('p',undefined,'verification-status');status.setAttribute('role','status');
+  const say=text=>{status.textContent=text;};
+  const link=botLink();
+  let action;
+  if(!miniAppMode||!window.Telegram?.WebApp?.requestContact){
+   if(link){link.textContent='Верификация';link.classList.add('primary','verification-cta');action=link;}
+   else action=button('Верификация',()=>say('Откройте Telegram-бот puShok и отправьте /verify.'));
+  }else{
+   action=button('Верификация',async()=>{
+    if(activeAttempt)return;
+    const controller=new AbortController();activeAttempt=controller;
+    const signal=controller.signal,session=token,epoch=++pollEpoch;
+    const valid=()=>session===token&&epoch===pollEpoch&&!signal.aborted;
+    action.disabled=true;say('Подтвердите передачу номера в Telegram.');
+    try{
+     await request('/me/verification/request',{method:'POST',body:{birthday_opt_in:false}},signal);
+     if(!valid())return;
+     const app=window.Telegram?.WebApp;
+     if(!app?.requestContact||!app.isVersionAtLeast?.('6.9')){
+      say('Откройте Telegram-бот puShok и отправьте /verify.');return;
+     }
+     const sent=await askContact(app,signal);if(!valid())return;
+     if(!sent){say('Номер не передан. Нажмите «Верификация» и повторите.');return;}
+     say('Проверяем подтверждение…');
+     const deadline=Date.now()+12000;
+     while(valid()&&Date.now()<deadline){
+      if(await refreshStatus(session,signal,Math.min(8000,deadline-Date.now())))return;
+      await pause(Math.min(2000,Math.max(0,deadline-Date.now())),signal);
+     }
+     if(valid())say('Подтверждение пока не получено. Нажмите «Верификация» ещё раз.');
+    }catch(error){if(valid()){const unavailable=signal.aborted||error?.name==='AbortError'||error?.message==='timeout';say(unavailable?'Нет связи с сервером. Проверьте подключение и повторите.':error.message||'Не удалось подтвердить номер. Попробуйте ещё раз.');}}
+    finally{if(activeAttempt===controller)activeAttempt=null;if(valid())action.disabled=false;}
+   });
+   action.classList.add('primary','verification-cta');
+  }
+  target.append(action,status);
  }
  function readOnly(data){
   const box=el('details',undefined,'verification-card verification-private profile-personal'),summary=el('summary','Личные сведения'),body=el('div',undefined,'personal-body');box.append(summary,body);
