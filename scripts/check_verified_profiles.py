@@ -116,8 +116,8 @@ def check_verified_profiles(browser, base, output, failures, dsn):
                 page.screenshot(path=str(output/f'home-clean-{width}.png'))
             with patch.object(verified, 'telegram_birthday', return_value=None) as lookup:
                 page.evaluate("window.cabinet.go('profile')")
-                expect(page.locator('.profile-personal')).to_contain_text('Telegram не передал дату рождения')
-                lookup.assert_called_once_with(tg)
+                expect(page.locator('.profile-personal')).to_contain_text('Дату рождения можно взять из Telegram или указать здесь')
+                lookup.assert_not_called()
             personal = page.locator('.profile-personal')
             expect(personal).not_to_have_attribute('open', '')
             personal.locator(':scope > summary').click()
