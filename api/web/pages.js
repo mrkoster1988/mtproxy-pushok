@@ -88,7 +88,7 @@
   date(c.scheduled_start_at),link('Открыть','create/'+c.id)
  ]);}
  const campaignHeaders=['Канал','Статусы','Цена заявки','Начало','Действие'];
- function staffCampaigns(){return ['admin','operator'].includes(me?.role)&&state.scope==='all';}
+ function staffCampaigns(){return ['developer','admin','moderator','operator'].includes(me?.role)&&state.scope==='all';}
  function campaignSource(){return staffCampaigns()?operatorCampaigns.filter(c=>!c.archived_at):state.campaigns;}
  function filtered(){return campaignSource().filter(c=>
   (!state.filter||[c.moderation_status,c.payment_status,c.placement_status].includes(state.filter))&&
@@ -184,11 +184,11 @@
   if(!miniAppMode)return;const version=++subscriptionEpoch,session=token,uid=me?.id;
   verifySubscription.disabled=true;subscriptionStatus.textContent='Проверяем подписку на канал…';
   try{const result=await api('/me/channel-subscription');if(version!==subscriptionEpoch||session!==token||uid!==me?.id)return;
-   subscriptionRequired=result.required!==false;subscription.hidden=!subscriptionRequired;
+   subscriptionRequired=result.required!==false;
    subscribeLink.href=result.channel_url;subscribeLink.textContent='Подписаться на канал';
-   subscriptionJoined=!subscriptionRequired||result.joined===true;updateDashboardConnect();
+   subscriptionJoined=!subscriptionRequired||result.joined===true;subscriptionActions.hidden=subscriptionJoined||!subscriptionRequired;updateDashboardConnect();
    subscriptionStatus.textContent=!subscriptionRequired?'Подписка не требуется. Можно подключиться без проверки.':subscriptionJoined?'Подписка подтверждена. Подключение доступно.':'Откройте канал кнопкой ниже. После подписки вернитесь стрелкой «Назад» и нажмите «Проверить подписку».';
-  }catch(error){if(version!==subscriptionEpoch||session!==token||uid!==me?.id)return;subscriptionRequired=true;subscriptionJoined=false;updateDashboardConnect();subscriptionStatus.textContent='Не удалось проверить подписку. Повторите позже; если ошибка сохраняется, попросите добавить бота администратором канала.';subscription.hidden=false;}
+  }catch(error){if(version!==subscriptionEpoch||session!==token||uid!==me?.id)return;subscriptionRequired=true;subscriptionJoined=false;updateDashboardConnect();subscriptionStatus.textContent='Не удалось проверить подписку. Повторите позже; если ошибка сохраняется, попросите добавить бота администратором канала.';subscription.hidden=false;subscriptionActions.hidden=false;}
   finally{if(version===subscriptionEpoch)verifySubscription.disabled=false;}
  }
  const promoteChannel=link('Продвигать канал','create');promoteChannel.classList.add('dashboard-promote-channel');heroActions.append(connectProxy,subscription);listTools.before(promoteChannel);
@@ -207,9 +207,8 @@
  shell.append(bottomNav);
  const homeLeaders=el('section',undefined,'panel home-leaders');homeLeaders.setAttribute('aria-label','Лидеры месяца');dashboardHero.after(homeLeaders);
 
- const dashboardHelp=link('Как работает реклама','help');dashboardHelp.className='dashboard-help';dashboardHelp.prepend(window.pushokViews.icon('support'));const helpArrow=el('span','›');helpArrow.setAttribute('aria-hidden','true');dashboardHelp.append(helpArrow);
  const dashboardUtilities=el('div',undefined,'dashboard-utilities');
- dashboardUtilities.append(verificationPanel,dashboardHelp);dashboardHero.append(dashboardUtilities);
+ dashboardUtilities.append(verificationPanel);dashboardHero.append(dashboardUtilities);
  const onboarding=window.pushokViews.disclosure('Как начать',[el('p','Выберите канал и тариф, отправьте заявку. После одобрения оплатите размещение — запуск и завершение выполняются по расписанию.')]);onboarding.id='onboarding';content.help.prepend(onboarding);
  const paymentRows=el('div',undefined,'payment-workspace');content.payments.append(paymentRows);
  // Постоянные панели сохраняют открытые формы при переключении вкладок.
