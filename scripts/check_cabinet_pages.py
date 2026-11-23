@@ -1720,7 +1720,7 @@ def main():
                     expect(advertiser.locator('#dashboard-referral .referral-overview')).to_be_visible()
                     expect(advertiser.locator('#dashboard-referral').get_by_label('Ваша ссылка для друзей',exact=True)).to_have_attribute('href',invite_link)
                     expect(advertiser.locator('#dashboard-referral')).not_to_contain_text('За первое')
-                    expect(advertiser.locator('.dashboard-help')).to_be_visible()
+                    expect(advertiser.locator('.dashboard-connect-proxy')).to_be_visible()
                     invite=advertiser.get_by_role('button',name='Пригласить друга',exact=True)
                     expect(invite).to_have_attribute('aria-expanded','false')
                     invite.click()
