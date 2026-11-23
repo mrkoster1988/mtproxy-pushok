@@ -10,6 +10,7 @@ window.pushokVerification=(()=>{
   const check=document.createElementNS(svg.namespaceURI,'path');check.setAttribute('d','m7 12 3 3 7-7');check.setAttribute('fill','none');check.setAttribute('stroke','white');check.setAttribute('stroke-width','2.4');check.setAttribute('stroke-linecap','round');check.setAttribute('stroke-linejoin','round');svg.append(circle,check);wrap.append(svg);return wrap;
  }
  function label(text,input){const node=el('label',text);input.setAttribute('aria-label',text);node.append(input);return node;}
+ function optIn(checked){const input=el('input');input.type='checkbox';input.checked=Boolean(checked);return {input,node:label('Присылать поздравление с днём рождения в Telegram',input)};}
  function botLink(){
   const username=window.cabinetBotConfig?.telegram_bot_username;
   if(!/^[A-Za-z0-9_]{5,32}$/.test(username||''))return null;
