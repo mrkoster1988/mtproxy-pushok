@@ -210,7 +210,7 @@ function loadAdminSettings(){
  $('tariff-admin-fields').disabled=true;
  adminSettingsLoad=(async()=>{
   const results=await Promise.allSettled([loadControl({payments:true}),api('/admin/icons').then(showIcons),
-   window.pushokVerification.settings(),window.pushokGrowth.referralSettings(),window.pushokAI?.load(),window.pushokProvisioning?.load(),window.pushokGateway?.load(),window.pushokDefaultSponsor.load(),window.pushokTeam.load(),renderLoadingSettings(),renderPaymentSettings(),window.pushokWallet.settings(),renderHomeBanner(),renderSBPReview(),renderTariffAdmin(),renderCoreReadiness(),renderLaunchReadiness()]);
+   window.pushokVerification.settings(),window.pushokGrowth.referralSettings(),window.pushokAI?.load(),window.pushokProvisioning?.load(),window.pushokGateway?.load(),window.pushokDefaultSponsor.load(),window.pushokTeam.load(),renderLoadingSettings(),renderPaymentSettings(),window.pushokWallet.settings(),renderHomeBanner(),renderSBPReview(),renderTariffAdmin(),renderCoreReadiness(),renderLaunchReadiness(),window.pushokChannelSubscriptionSettings?.load()]);
   window.pushokInterface?.settings();const failed=results.find(x=>x.status==='rejected');if(failed)throw failed.reason;
  })().finally(()=>{$('tariff-admin-fields').disabled=false;adminSettingsLoad=null;});
  return adminSettingsLoad;
