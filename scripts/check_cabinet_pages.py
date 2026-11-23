@@ -1396,8 +1396,10 @@ def main():
                 expect(admin.locator('#software-update')).to_be_disabled()
                 expect(admin.locator('#software-update-status')).to_contain_text('Запрос принят')
                 screen = admin.frame_locator('.update-screen-frame')
-                expect(screen.get_by_role('heading',name='Идёт обновление')).to_be_visible()
+                # Install the running-state response before the iframe loads;
+                # otherwise its first status poll can observe the real idle state.
                 admin.route('**/update/status.json',lambda route:route.fulfill(json={'state':'running','stage':'build'}))
+                expect(screen.get_by_role('heading',name='Идёт обновление')).to_be_visible()
                 expect(screen.locator('#stage')).to_have_text('Собираем приложение')
                 expect(screen.locator('progress')).to_have_attribute('value','3')
                 admin.screenshot(path=str(output/'update-screen-mobile.png'))
