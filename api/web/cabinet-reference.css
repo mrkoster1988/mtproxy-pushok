@@ -815,3 +815,62 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 @media(prefers-reduced-motion:reduce){
   .cabinet-mode .dashboard-connect-proxy[href]::after{animation:none;opacity:.85;filter:none}
 }
+
+
+/* Подписка размещена после основной кнопки и не перекрывает её. */
+.cabinet-mode .dashboard-hero-actions{justify-items:center;align-content:center;gap:10px}
+.cabinet-mode .dashboard-subscription{
+  width:min(100%,380px);
+  box-sizing:border-box;
+  margin:0 auto;
+  padding:9px;
+  gap:8px;
+  border-color:#35d4c488;
+  background:linear-gradient(135deg,#12354b,#10283b);
+}
+.cabinet-mode .dashboard-subscription-status{font-size:12px;line-height:1.35;text-align:center}
+.cabinet-mode .dashboard-subscription-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.cabinet-mode .dashboard-subscription-actions>a,
+.cabinet-mode .dashboard-subscription-actions>button{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width:0;
+  min-height:44px;
+  box-sizing:border-box;
+  margin:0;
+  padding:8px 10px;
+  border:1px solid #35d4c4aa;
+  border-radius:10px;
+  background:#12364a;
+  color:var(--text);
+  font-size:12px;
+  font-weight:700;
+  line-height:1.2;
+  text-align:center;
+  text-decoration:none;
+  white-space:normal;
+}
+.cabinet-mode .dashboard-subscription-actions>.dashboard-subscription-check{background:#1c5260}
+.cabinet-mode .dashboard-subscription-actions>*:disabled{opacity:.6}
+.cabinet-mode .dashboard-verify{
+  padding:0 10px;
+  border:1px solid #38d4c477;
+  border-radius:12px;
+  background:linear-gradient(135deg,#12364a,#10283b);
+}
+.cabinet-mode .dashboard-verify>summary{
+  min-height:48px;
+  color:#8deadd;
+  font-size:13px;
+  font-weight:750;
+}
+.cabinet-mode .dashboard-verify[open]{padding-bottom:10px}
+.cabinet-mode .dashboard-verify .verification-card{
+  border:0;
+  padding:8px 0 0;
+  background:transparent;
+}
+@media(max-width:360px){
+  .cabinet-mode .dashboard-subscription-actions{grid-template-columns:1fr}
+}
