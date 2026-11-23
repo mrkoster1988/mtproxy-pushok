@@ -184,7 +184,7 @@
   if(!miniAppMode)return;const version=++subscriptionEpoch,session=token,uid=me?.id;
   verifySubscription.disabled=true;subscriptionStatus.textContent='Проверяем подписку на канал…';
   try{const result=await api('/me/channel-subscription');if(version!==subscriptionEpoch||session!==token||uid!==me?.id)return;
-   subscriptionRequired=result.required!==false;
+   subscriptionRequired=result.required!==false;subscription.hidden=!subscriptionRequired;
    subscribeLink.href=result.channel_url;subscribeLink.textContent='Подписаться на канал';
    subscriptionJoined=!subscriptionRequired||result.joined===true;subscriptionActions.hidden=subscriptionJoined||!subscriptionRequired;updateDashboardConnect();
    subscriptionStatus.textContent=!subscriptionRequired?'Подписка не требуется. Можно подключиться без проверки.':subscriptionJoined?'Подписка подтверждена. Подключение доступно.':'Откройте канал кнопкой ниже. После подписки вернитесь стрелкой «Назад» и нажмите «Проверить подписку».';
