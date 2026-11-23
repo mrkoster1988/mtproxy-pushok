@@ -851,7 +851,6 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
   text-decoration:none;
   white-space:normal;
 }
-.cabinet-mode .dashboard-subscription-actions>.dashboard-subscription-check{background:#1c5260}
 .cabinet-mode .dashboard-subscription-actions>*:disabled{opacity:.6}
 .cabinet-mode .dashboard-verify{
   padding:0 10px;
