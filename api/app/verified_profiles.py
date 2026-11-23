@@ -256,13 +256,17 @@ def router_for(dsn, current_user, require_admin):
                 raise HTTPException(409,'personal_details_locked')
             conn.execute('''INSERT INTO verified_profiles(user_id,birth_day,birth_month,birth_year,birthday_source,
                 birthday_opt_in,consent_version,consent_at,telegram_environment,birthday_sync_state,birthday_sync_checked_at)
-                VALUES(%s,%s,%s,%s,%s,%s,%s,now(),%s,'manual',now())
+                VALUES(%s,%s,%s,%s,%s,%s,%s,now(),%s,
+                    CASE WHEN %s IS NOT NULL THEN 'manual' ELSE NULL END,
+                    CASE WHEN %s IS NOT NULL THEN now() ELSE NULL END)
                 ON CONFLICT(user_id,telegram_environment) DO UPDATE SET birth_day=EXCLUDED.birth_day,birth_month=EXCLUDED.birth_month,
                 birth_year=EXCLUDED.birth_year,birthday_source=EXCLUDED.birthday_source,
                 birthday_opt_in=EXCLUDED.birthday_opt_in,consent_version=EXCLUDED.consent_version,
-                consent_at=now(),updated_at=now(),birthday_sync_state='manual',birthday_sync_checked_at=now()''',
+                consent_at=now(),updated_at=now(),
+                birthday_sync_state=CASE WHEN EXCLUDED.birth_day IS NOT NULL OR verified_profiles.birthday_locked THEN 'manual' ELSE NULL END,
+                birthday_sync_checked_at=CASE WHEN EXCLUDED.birth_day IS NOT NULL OR verified_profiles.birthday_locked THEN now() ELSE NULL END''',
                 (user['id'], b.day if b else None, b.month if b else None, b.year if b else None,
-                 'manual' if b else None, payload.birthday_opt_in, CONSENT, environment_name()))
+                 'manual' if b else None, payload.birthday_opt_in, CONSENT, environment_name(), b.day if b else None, b.day if b else None))
             conn.execute('UPDATE verified_profiles SET birthday_locked=birthday_locked OR birth_day IS NOT NULL WHERE user_id=%s AND telegram_environment=%s',(user['id'],environment_name()))
             return private_profile(conn, user['id'])
         return db(save)
