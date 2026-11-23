@@ -73,7 +73,7 @@ window.pushokVerification=(()=>{
       await pause(Math.min(2000,Math.max(0,deadline-Date.now())),signal);
      }
      if(valid())say('Подтверждение пока не получено. Нажмите «Верификация» ещё раз.');
-    }catch(error){if(valid())say(error.message||'Не удалось подтвердить номер. Попробуйте ещё раз.');}
+    }catch(error){if(valid()){const unavailable=signal.aborted||error?.name==='AbortError'||error?.message==='timeout';say(unavailable?'Нет связи с сервером. Проверьте подключение и повторите.':error.message||'Не удалось подтвердить номер. Попробуйте ещё раз.');}}
     finally{if(activeAttempt===controller)activeAttempt=null;if(valid())action.disabled=false;}
    });
    action.classList.add('primary','verification-cta');

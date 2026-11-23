@@ -83,7 +83,7 @@ def check_verified_profiles(browser, base, output, failures, dsn):
                 window.__realFetch(url,options);
             }""")
             card.get_by_role('button', name='Верификация', exact=True).click()
-            expect(card.locator('.verification-status')).to_contain_text('Подготавливаем запрос')
+            expect(card.locator('.verification-status')).to_contain_text('Подтвердите передачу номера в Telegram')
             page.clock.fast_forward(9000)
             expect(card.locator('.verification-status')).to_contain_text('Нет связи с сервером')
             expect(card.get_by_role('button', name='Верификация', exact=True)).to_be_enabled()
