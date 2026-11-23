@@ -438,7 +438,7 @@ def get_current_user(
 
 
 def require_operator(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    if user["role"] not in {"operator", "admin"}:
+    if user["role"] not in {"operator", "moderator", "admin", "developer"}:
         raise HTTPException(status_code=403, detail="operator_role_required")
     return user
 
