@@ -161,7 +161,7 @@
  const connectProxy=el('a',undefined,'dashboard-connect-proxy');
  connectProxy.setAttribute('aria-label','Подключить');
  connectProxy.append(window.pushokViews.icon('power'),el('span','Подключить','dashboard-connect-label'),el('span','трафик','dashboard-connect-caption'));
- let dashboardProxyUrl='',subscriptionJoined=!miniAppMode,subscriptionEpoch=0;
+ let dashboardProxyUrl='',subscriptionJoined=!miniAppMode,subscriptionRequired=miniAppMode,subscriptionEpoch=0;
  connectProxy.setAttribute('role','link');connectProxy.tabIndex=0;connectProxy.setAttribute('aria-disabled','true');connectProxy.title='Ссылка подключения ещё не настроена';
  function updateDashboardConnect(){
   const ready=/^https:\/\/t\.me\/proxy\?/.test(dashboardProxyUrl);
@@ -169,30 +169,35 @@
   else{connectProxy.removeAttribute('href');connectProxy.removeAttribute('target');connectProxy.setAttribute('aria-disabled','true');connectProxy.title=!subscriptionJoined?'Сначала подпишитесь на канал Pushok':'Ссылка подключения ещё не настроена';}
  }
  connectProxy.addEventListener('click',event=>{if(!connectProxy.hasAttribute('href')){event.preventDefault();notice(!subscriptionJoined?'Сначала подпишитесь на канал Pushok и нажмите «Проверить подписку».':'Ссылка подключения прокси пока не настроена.');}});
- const subscription=el('section',undefined,'dashboard-subscription');subscription.hidden=true;
+ const subscription=el('section',undefined,'dashboard-subscription');subscription.hidden=!miniAppMode;
  const subscriptionStatus=el('p','Проверяем подписку…','dashboard-subscription-status');subscriptionStatus.setAttribute('role','status');subscriptionStatus.setAttribute('aria-live','polite');
  const subscriptionActions=el('div',undefined,'dashboard-subscription-actions');
  const subscribeLink=el('a','Подписаться на канал');subscribeLink.href='https://t.me/pushok_proxy';subscribeLink.target='_blank';subscribeLink.rel='noopener noreferrer';
  const verifySubscription=button('Проверить подписку',refreshDashboardSubscription);verifySubscription.className='dashboard-subscription-check';
  subscriptionActions.append(subscribeLink,verifySubscription);subscription.append(subscriptionStatus,subscriptionActions);
+ subscribeLink.addEventListener('click',event=>{
+  const app=window.Telegram?.WebApp;
+  subscriptionStatus.textContent='После подписки нажмите стрелку «Назад» в Telegram, вернитесь в приложение и выберите «Проверить подписку».';
+  if(miniAppMode&&typeof app?.openTelegramLink==='function'){event.preventDefault();app.openTelegramLink(subscribeLink.href);}
+ });
  async function refreshDashboardSubscription(){
   if(!miniAppMode)return;const version=++subscriptionEpoch,session=token,uid=me?.id;
   verifySubscription.disabled=true;subscriptionStatus.textContent='Проверяем подписку на канал…';
   try{const result=await api('/me/channel-subscription');if(version!==subscriptionEpoch||session!==token||uid!==me?.id)return;
-   subscribeLink.href=result.channel_url;subscribeLink.textContent='Открыть канал '+result.channel_title;
-   subscriptionJoined=result.joined===true;updateDashboardConnect();
-   subscriptionStatus.textContent=subscriptionJoined?'Подписка подтверждена.':'Подпишитесь на канал, затем нажмите «Проверить подписку».';
-   subscription.hidden=subscriptionJoined;
-  }catch(error){if(version!==subscriptionEpoch||session!==token||uid!==me?.id)return;subscriptionJoined=false;updateDashboardConnect();subscriptionStatus.textContent='Не удалось проверить подписку. Повторите позже; если ошибка сохраняется, попросите добавить бота администратором канала.';subscription.hidden=false;}
+   subscriptionRequired=result.required!==false;subscription.hidden=!subscriptionRequired;
+   subscribeLink.href=result.channel_url;subscribeLink.textContent='Подписаться на канал';
+   subscriptionJoined=!subscriptionRequired||result.joined===true;updateDashboardConnect();
+   subscriptionStatus.textContent=!subscriptionRequired?'Подписка не требуется. Можно подключиться без проверки.':subscriptionJoined?'Подписка подтверждена. Подключение доступно.':'Откройте канал кнопкой ниже. После подписки вернитесь стрелкой «Назад» и нажмите «Проверить подписку».';
+  }catch(error){if(version!==subscriptionEpoch||session!==token||uid!==me?.id)return;subscriptionRequired=true;subscriptionJoined=false;updateDashboardConnect();subscriptionStatus.textContent='Не удалось проверить подписку. Повторите позже; если ошибка сохраняется, попросите добавить бота администратором канала.';subscription.hidden=false;}
   finally{if(version===subscriptionEpoch)verifySubscription.disabled=false;}
  }
- const promoteChannel=link('Продвигать канал','create');promoteChannel.classList.add('dashboard-promote-channel');heroActions.append(subscription,connectProxy);listTools.before(promoteChannel);
+ const promoteChannel=link('Продвигать канал','create');promoteChannel.classList.add('dashboard-promote-channel');heroActions.append(connectProxy,subscription);listTools.before(promoteChannel);
  const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
  dashboardHero.append(heroCopy,dashboardMascot,heroActions);
  const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardReferral=el('div');dashboardReferral.id='dashboard-referral';dashboardIntro.append(dashboardReferral,dashboardHero);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
  const dashboardVerification=el('div');dashboardVerification.id='dashboard-verification';
  const verificationPanel=el('details',undefined,'dashboard-verify');
- verificationPanel.append(el('summary','Подтвердить номер'),dashboardVerification);
+ verificationPanel.append(el('summary','Подтвердите номер телефона · нужно для кампаний'),dashboardVerification);
  const bottomNav=el('nav',undefined,'mobile-bottom-nav');bottomNav.setAttribute('aria-label','Основные разделы');
  [['dashboard','home','Главная'],['moderation','moderation','Модерация'],['campaigns','campaign','Кампании'],['wallet','wallet','Баланс'],['hall','star','Лидеры'],['profile','user','Профиль']].forEach(([route,icon,title])=>{
   const a=link(title,route);a.dataset.route=route;a.hidden=route==='moderation';
@@ -399,7 +404,7 @@
   profileShortcut.replaceChildren(window.pushokViews.profileAvatar());
   window.pushokVerification.home(dashboardVerification);
   verificationPanel.hidden=dashboardVerification.hidden;
-  if(verificationPanel.hidden)verificationPanel.open=false;
+  if(verificationPanel.hidden){verificationPanel.open=false;delete verificationPanel.dataset.autoOpened;}else if(!verificationPanel.dataset.autoOpened){verificationPanel.open=true;verificationPanel.dataset.autoOpened='true';}
   metrics('dashboard',[]);
   if(state.route==='dashboard'){void window.pushokGrowth.overview(dashboardReferral);}
 
