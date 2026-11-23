@@ -67,7 +67,7 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             card.get_by_role('button', name='Верификация', exact=True).click()
             page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===2")
             page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
-            expect(card.locator('.verification-status')).to_contain_text('Ждём подтверждения бота')
+            expect(card.locator('.verification-status')).to_contain_text('Проверяем подтверждение…')
             expect(card.locator('.phone-verified-badge')).to_have_count(0)  # Client callback cannot grant a badge.
             # Остановить ожидание можно без выхода; отсутствие бота не держит кнопку минуту.
             card.get_by_role('button', name='Отменить ожидание').click()
@@ -77,8 +77,8 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             card.get_by_role('button', name='Верификация', exact=True).click()
             page.wait_for_function("__nativeEvents.filter(e=>e.name==='web_app_request_phone').length===3")
             page.evaluate("Telegram.WebView.receiveEvent('phone_requested',{status:'sent'})")
-            expect(card.locator('.verification-status')).to_contain_text('Ждём подтверждения бота')
-            expect(card.locator('.verification-status')).to_contain_text('Бот пока не подтвердил', timeout=20000)
+            expect(card.locator('.verification-status')).to_contain_text('Проверяем подтверждение…')
+            expect(card.locator('.verification-status')).to_contain_text('Подтверждение пока не получено', timeout=20000)
             expect(card.get_by_role('button', name='Верификация', exact=True)).to_be_enabled()
             expect(card.locator('.phone-verified-badge')).to_have_count(0)
             # Соединение, которое не отвечает, прерывается по AbortSignal.
