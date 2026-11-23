@@ -900,12 +900,14 @@ run(async()=>{
 
 let displayedVersion=null,softwareControl=null,softwareRelease=null,softwareSession=null;
 let updateScreen=null;
-function showUpdateScreen(show){
+function showUpdateScreen(show,requestedAt=null){
  if(show&&!updateScreen){
   const frame=document.createElement('iframe');
   frame.className='update-screen-frame';
   frame.title='Идёт обновление';
-  frame.src='/update/screen.html?embedded=1';
+  const params=new URLSearchParams({embedded:'1'});
+  if(requestedAt)params.set('requested_at',requestedAt);
+  frame.src='/update/screen.html?'+params.toString();
   document.body.append(frame);
   updateScreen=frame;
  }else if(!show&&updateScreen){
@@ -925,7 +927,7 @@ function clearSoftware(){
 function renderSoftware(){
  if(me?.role!=='admin')return;
  const c=softwareControl,r=softwareRelease,busy=Boolean(c&&(c.requested||c.update.state==='running'));
- if(c)showUpdateScreen(busy);
+ if(c)showUpdateScreen(busy,c.requested_at||c.update?.at);
  if(c)$('software-installed').textContent='v'+c.version;
  const known=r?.available_version;
  $('software-available').textContent=known?'v'+known+(r.state==='unavailable'?' (ранее)':''):r?'Не удалось узнать':'Проверяем…';
