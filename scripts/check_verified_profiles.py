@@ -125,17 +125,20 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             expect(personal.locator('.profile-phone')).to_contain_text('+79990001122')
             expect(page.locator('.profile-identity .phone-verified-badge')).to_have_count(1)
             expect(personal.get_by_label('День', exact=True)).to_have_value('')
-            with psycopg.connect(dsn) as conn:
-                conn.execute("UPDATE verified_profiles SET birthday_sync_checked_at=now()-interval '2 minutes'")
-            with patch.object(verified, 'telegram_birthday', return_value=verified.Birthday(day=11, month=11)):
+            with patch.object(verified, 'telegram_birthday', side_effect=[None, verified.Birthday(day=11, month=11)]) as lookup:
+                personal.get_by_label('Присылать поздравление с днём рождения в Telegram', exact=True).check()
+                personal.get_by_role('button', name='Сохранить', exact=True).click()
+                expect(personal.get_by_role('button', name='Взять из Telegram', exact=True)).to_be_visible()
+                expect(personal).to_contain_text('Telegram не передал дату рождения')
+                lookup.assert_called_once_with(tg)
+                with psycopg.connect(dsn) as conn:
+                    conn.execute("UPDATE verified_profiles SET birthday_sync_checked_at=now()-interval '2 minutes'")
                 personal.get_by_role('button', name='Взять из Telegram', exact=True).click()
                 expect(personal.get_by_label('День', exact=True)).to_have_value('11')
+                assert lookup.call_count == 2
             expect(personal).to_contain_text('Изменить сведения может только разработчик')
             expect(personal.get_by_label('День', exact=True)).to_be_disabled()
             expect(personal.get_by_label('Месяц', exact=True)).to_be_disabled()
-            expect(personal.get_by_role('button', name='Сохранить', exact=True)).to_be_hidden()
-            personal.get_by_label('Поздравления и подарок в день рождения', exact=True).uncheck()
-            personal.get_by_role('button', name='Сохранить', exact=True).click()
             expect(personal.get_by_role('button', name='Сохранить', exact=True)).to_be_hidden()
             for width in (320, 390):
                 page.set_viewport_size({'width': width, 'height': 844})
