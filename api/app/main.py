@@ -434,6 +434,13 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="session_revoked_or_expired")
     if user['blocked_at'] is not None:
         raise HTTPException(status_code=401, detail='user_blocked')
+    # Разработчик получает весь административный интерфейс и API. В БД
+    # разработчик обычно хранится как admin + is_developer, но поддерживаем
+    # и отдельную роль developer, чтобы ни одна проверка по role не урезала права.
+    if user['role'] == 'developer':
+        user['is_developer'] = True
+    if user.get('is_developer') or user.get('is_owner'):
+        user['role'] = 'admin'
     return user
 
 
@@ -450,7 +457,7 @@ def require_moderator(user: dict[str, Any] = Depends(get_current_user)) -> dict[
 
 
 def require_admin(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
-    if user["role"] != "admin":
+    if user["role"] != "admin" and not user.get("is_developer") and not user.get("is_owner"):
         raise HTTPException(status_code=403, detail="admin_role_required")
     return user
 
