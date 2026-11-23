@@ -51,7 +51,8 @@ def check_verified_profiles(browser, base, output, failures, dsn):
             assert page.evaluate('''() =>
                 document.querySelector('.dashboard-verify > summary').getBoundingClientRect().bottom
                 <= document.querySelector('.mobile-bottom-nav').getBoundingClientRect().top''')
-            summary.click()
+            if not page.locator('.dashboard-verify').evaluate('(node) => node.open'):
+                summary.click()
             card = page.locator('#dashboard-verification')
             expect(card.get_by_role('button', name='Верификация', exact=True)).to_be_visible()
             for width in (320, 390):
