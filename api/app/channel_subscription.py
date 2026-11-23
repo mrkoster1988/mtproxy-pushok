@@ -26,8 +26,11 @@ def read_settings():
     saved = control.read('channel-subscription.json', {})
     if not isinstance(saved, dict):
         saved = {}
-    channel_url = saved.get('channel_url') or os.getenv('OFFICIAL_AD_CHANNEL_URL', DEFAULT_CHANNEL_URL).strip()
-    if not isinstance(channel_url, str) or not re.fullmatch(CHANNEL_URL_PATTERN, channel_url):
+    channel_url = saved.get('channel_url')
+    if not isinstance(channel_url, str) or not channel_url.strip():
+        channel_url = os.getenv('OFFICIAL_AD_CHANNEL_URL', DEFAULT_CHANNEL_URL)
+    channel_url = channel_url.strip()
+    if not re.fullmatch(CHANNEL_URL_PATTERN, channel_url):
         channel_url = DEFAULT_CHANNEL_URL
     enabled = saved.get('enabled', True)
     if type(enabled) is not bool:
@@ -40,7 +43,7 @@ def router_for(get_current_user, require_admin):
 
     def telegram(method, payload):
         token = os.getenv('TELEGRAM_BOT_TOKEN', '')
-        if not re.fullmatch(r'\\d+:[A-Za-z0-9_-]+', token):
+        if not re.fullmatch(r'\d+:[A-Za-z0-9_-]+', token):
             raise HTTPException(503, 'channel_subscription_unavailable')
         request = Request(bot_api_url(token, method), data=json.dumps(payload).encode(),
                           headers={'Content-Type': 'application/json'}, method='POST')
