@@ -32,7 +32,7 @@ function clearCabinetSession({preserveUnboundFlow=false,expired=false,clearWorks
  window.pushokFlowAccount?.reset({preserveUnbound:preserveUnboundFlow});
  $('workspace').hidden=true;$('login').hidden=miniAppMode;$('logout').hidden=true;
  if(clearWorkspace){
-  window.pushokSBP?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();
+  window.pushokSBP?.reset();window.pushokChannelSubscriptionSettings?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();
   window.cabinet?.logout({preserveUnboundFlow});
  }
  if(expired&&miniAppMode)window.pushokMiniApp.expired({preserveUnboundFlow});
