@@ -25,9 +25,11 @@ from starlette.concurrency import run_in_threadpool
 from .telegram_environment import environment_name
 from .user_visibility import hide_username
 from .flow_shop_ticket import bridge_key, issue_ticket
+from .flow_id_ticket import issue_id_ticket
 
 PREFIX = '/api/v1/flow'
 SCOPES = ['profile:read', 'wallet:read']
+ID_SCOPES = ['identity:read']
 DEVICE_TTL = 300
 SESSION_TTL = 43200
 POLL_INTERVAL = 5
@@ -45,10 +47,10 @@ MAX_SESSIONS_PER_USER = 10
 # Per principal, global; every bucket uses a fixed one-minute window.
 # Anonymous issuance has no reliable individual identity behind the shared proxy.
 RATE_LIMITS = {'device': (None, 120), 'token': (120, 1200),
-               'consent': (60, 600), 'profile': (120, 1200), 'logout': (30, 300), 'shop': (5, 300)}
+               'consent': (60, 600), 'profile': (120, 1200), 'logout': (30, 300), 'shop': (5, 300), 'id': (5, 300)}
 RATE_BUCKETS = {'/device': 'device', '/device/token': 'token',
                 '/device/review': 'consent', '/device/decision': 'consent',
-                '/me': 'profile', '/logout': 'logout', '/shop-ticket': 'shop'}
+                '/me': 'profile', '/logout': 'logout', '/shop-ticket': 'shop', '/id-ticket': 'id'}
 
 
 class FlowError(Exception):
@@ -234,7 +236,7 @@ def _request_rate_principal(request, bucket):
         secret = data.get('device_code')
         if set(data) == {'device_code'} and isinstance(secret, str) and DEVICE_CODE.fullmatch(secret):
             return _rate_key('device-code', secret)
-    elif bucket in ('profile', 'logout', 'shop'):
+    elif bucket in ('profile', 'logout', 'shop', 'id'):
         try:
             return _rate_key('flow-access-token', _flow_token(request))
         except FlowError:
@@ -311,7 +313,17 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
 
     @router.post('/device', status_code=201)
     def create_device(request: Request):
-        _payload(request, ())
+        payload = request.state.flow_payload
+        if payload == {}:
+            client = 'flow'
+        elif payload == {'client': 'pushok_id'}:
+            client = 'pushok_id'
+            try:
+                bridge_key(os.getenv('FLOW_ID_BRIDGE_SECRET', ''))
+            except ValueError:
+                raise FlowError(503, 'service_unavailable') from None
+        else:
+            raise FlowError(400, 'invalid_request')
         get_signing_key()  # Fail closed before handing out a grant that cannot be exchanged.
         with connect(get_dsn()) as conn:
             conn.execute('SELECT pg_advisory_xact_lock(%s)', (CAPACITY_LOCK,))
@@ -322,9 +334,9 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
             for _ in range(3):
                 secret = 'pfd_' + secrets.token_urlsafe(32)
                 code = ''.join(secrets.choice(CODE_ALPHABET) for _ in range(12))
-                created = conn.execute('''INSERT INTO flow_device_requests(id,device_code_hash,user_code,created_at,expires_at)
-                    VALUES(%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING id''',
-                    (uuid4(), digest(secret), code, now, now + timedelta(seconds=DEVICE_TTL))).fetchone()
+                created = conn.execute('''INSERT INTO flow_device_requests(id,device_code_hash,user_code,created_at,expires_at,client)
+                    VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING RETURNING id''',
+                    (uuid4(), digest(secret), code, now, now + timedelta(seconds=DEVICE_TTL), client)).fetchone()
                 if created:
                     return {'device_code': secret, 'user_code': code, 'expires_in': DEVICE_TTL, 'interval': POLL_INTERVAL}
             raise FlowError(503, 'service_unavailable')
@@ -335,8 +347,9 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
         with connect(get_dsn()) as conn:
             _active_user(conn, user['id'])
             row, now = _request_for_user(conn, data['user_code'], user['id'])
-            return {'client_name': 'Pushok Flow', 'user_code': row['user_code'],
-                    'scopes': SCOPES, 'expires_in': _remaining(row['expires_at'], now), 'status': row['state']}
+            return {'client_name': 'Pushok ID' if row['client'] == 'pushok_id' else 'Pushok Flow',
+                    'user_code': row['user_code'],
+                    'scopes': ID_SCOPES if row['client'] == 'pushok_id' else SCOPES, 'expires_in': _remaining(row['expires_at'], now), 'status': row['state']}
 
     @router.post('/device/decision')
     def decision(request: Request, user=Depends(consent_user)):
@@ -395,9 +408,10 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
                     count(*) FILTER (WHERE user_id=%s) AS own FROM flow_sessions''', (row['decided_by'],)).fetchone()
                 if counts['total'] >= MAX_SESSIONS or counts['own'] >= MAX_SESSIONS_PER_USER:
                     raise FlowError(429, 'slow_down', interval=60)
-                session = conn.execute('''INSERT INTO flow_sessions(id,user_id,token_hash,created_at,expires_at)
-                    VALUES(%s,%s,%s,%s,%s) RETURNING *''',
-                    (uuid4(), row['decided_by'], digest(credential), now, now + timedelta(seconds=SESSION_TTL))).fetchone()
+                session = conn.execute('''INSERT INTO flow_sessions(id,user_id,token_hash,created_at,expires_at,scopes)
+                    VALUES(%s,%s,%s,%s,%s,%s) RETURNING *''',
+                    (uuid4(), row['decided_by'], digest(credential), now, now + timedelta(seconds=SESSION_TTL),
+                     ID_SCOPES if row['client'] == 'pushok_id' else SCOPES)).fetchone()
                 conn.execute('UPDATE flow_device_requests SET session_id=%s WHERE id=%s', (session['id'], row['id']))
             else:
                 session = conn.execute('SELECT * FROM flow_sessions WHERE id=%s FOR SHARE', (row['session_id'],)).fetchone()
@@ -408,7 +422,8 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
                         or not hmac.compare_digest(session['token_hash'], digest(credential))):
                     raise FlowError(410, 'expired_token')
             return {'status': 'authorized', 'access_token': credential, 'token_type': 'Bearer',
-                    'expires_in': _remaining(session['expires_at'], now), 'scope': SCOPES}
+                    'expires_in': _remaining(session['expires_at'], now),
+                    'scope': ID_SCOPES if row['client'] == 'pushok_id' else SCOPES}
 
     @router.get('/me')
     def profile(request: Request):
@@ -419,7 +434,7 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
                     AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
                 FROM flow_sessions s JOIN users u ON u.id=s.user_id
                 WHERE s.token_hash=%s AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
-                    AND u.blocked_at IS NULL FOR SHARE OF u,s''',
+                    AND u.blocked_at IS NULL AND s.scopes=ARRAY['profile:read','wallet:read']::TEXT[] FOR SHARE OF u,s''',
                 (environment_name(), digest(credential))).fetchone()
             if user is None:
                 raise FlowError(401, 'unauthorized')
@@ -445,12 +460,39 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
                 JOIN users u ON u.id=s.user_id
                 WHERE s.token_hash=%s AND s.revoked_at IS NULL
                     AND s.expires_at>clock_timestamp()
-                    AND u.blocked_at IS NULL FOR SHARE OF s,u""",
+                    AND u.blocked_at IS NULL AND s.scopes=ARRAY['profile:read','wallet:read']::TEXT[] FOR SHARE OF s,u""",
                 (digest(credential),)).fetchone()
             if row is None:
                 raise FlowError(401, 'unauthorized')
             stamp = int(_now(conn).timestamp())
             ticket = issue_ticket(row['id'], row['telegram_user_id'], key, now=stamp)
+        return {'ticket': ticket, 'expires_in': 60}
+
+    @router.post('/id-ticket')
+    def id_ticket(request: Request):
+        # A Flow profile/wallet session cannot silently become an ID login.
+        # This endpoint requires a separately approved Pushok ID device grant.
+        data = _payload(request, ('consent',))
+        if data['consent'] is not True:
+            raise FlowError(403, 'access_denied')
+        try:
+            key = bridge_key(os.getenv('FLOW_ID_BRIDGE_SECRET', ''))
+        except ValueError:
+            raise FlowError(503, 'service_unavailable') from None
+        credential = _flow_token(request)
+        with connect(get_dsn()) as conn:
+            row = conn.execute("""SELECT u.id,u.telegram_user_id FROM flow_sessions s
+                JOIN flow_device_requests d ON d.session_id=s.id
+                JOIN users u ON u.id=s.user_id
+                WHERE s.token_hash=%s AND s.revoked_at IS NULL
+                    AND s.expires_at>clock_timestamp() AND d.client='pushok_id'
+                    AND s.scopes=ARRAY['identity:read']::TEXT[]
+                    AND u.blocked_at IS NULL FOR SHARE OF s,u""",
+                (digest(credential),)).fetchone()
+            if row is None:
+                raise FlowError(401, 'unauthorized')
+            stamp = int(_now(conn).timestamp())
+            ticket = issue_id_ticket(row['id'], row['telegram_user_id'], key, now=stamp)
         return {'ticket': ticket, 'expires_in': 60}
 
     @router.post('/logout', status_code=204)
