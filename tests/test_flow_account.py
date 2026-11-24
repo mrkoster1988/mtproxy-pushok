@@ -230,8 +230,9 @@ class FlowAccountIntegration(unittest.TestCase):
         with flow.connect(self.dsn) as conn:
             conn.execute(migration)
         self.assertEqual(self.rate_rows('shop'), before)
-        self.request('POST', '/flow/shop-ticket', 401,
-                     json={'consent': True}, headers=self.cabinet[self.owner])
+        with patch.dict(fixture.os.environ, {'FLOW_SHOP_BRIDGE_SECRET': signing}):
+            self.request('POST', '/flow/shop-ticket', 401,
+                         json={'consent': True}, headers=self.cabinet[self.owner])
 
     def test_explicit_consent_read_only_wallet_and_bearer_separation(self):
         with flow.connect(self.dsn) as conn:
