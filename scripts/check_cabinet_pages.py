@@ -435,7 +435,14 @@ def main():
                 expect(first_tile.locator('.tile-period')).to_contain_text('Желаемое начало:')
                 expect(first_tile.locator('.badge--active')).to_have_count(0)
                 advertiser.set_viewport_size({'width':390,'height':844})
-                assert first_tile.bounding_box()['height'] < 270, first_tile.bounding_box()
+                # Wait for the responsive re-render, then sample dimensions in
+                # one browser round-trip. A detached element must fail clearly.
+                advertiser.wait_for_function(
+                    "() => {const e=document.querySelector('#campaigns .campaign-tile');"
+                    "return e && e.getBoundingClientRect().height > 0;}", timeout=5000)
+                tile_height = advertiser.evaluate(
+                    "() => document.querySelector('#campaigns .campaign-tile').getBoundingClientRect().height")
+                assert tile_height < 270, tile_height
                 assert float(first_tile.locator('.tile-title').evaluate('(e)=>getComputedStyle(e).fontSize').replace('px','')) <= 16
                 expect(advertiser.locator('[data-page=campaigns] .campaign-tabs a[href="#/archive"]')).to_be_visible()
                 expect(advertiser.locator('[data-page=campaigns] .campaign-tabs a[href="#/channels"]')).to_be_visible()
