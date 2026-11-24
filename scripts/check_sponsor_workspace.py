@@ -67,15 +67,37 @@ def check_sponsor_workspace(browser, base, output, failures, dsn):
         for width in (320, 390, 768, 1280):
             page.set_viewport_size({'width': width, 'height': 844})
             assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'), (name, width)
-            for container in page.locator('.diagnostic-stack:visible,.sponsor-placement-list:visible,#nodes-list:visible').all():
-                boxes = [item.bounding_box() for item in container.locator(':scope>.card:visible').all()]
+            # The sponsored tabs refresh asynchronously when viewport changes.
+            # Collect geometry atomically in the browser rather than resolving
+            # each Playwright locator across separate DOM revisions.
+            geometry = page.evaluate("""() => {
+                const visible = el => {
+                    const b = el.getBoundingClientRect();
+                    const style = getComputedStyle(el);
+                    return b.width > 0 && b.height > 0 &&
+                        style.display !== 'none' && style.visibility !== 'hidden';
+                };
+                const rect = el => {
+                    const b = el.getBoundingClientRect();
+                    return {x:b.x, y:b.y, width:b.width, height:b.height};
+                };
+                const groups = (selectors, children) =>
+                    Array.from(document.querySelectorAll(selectors))
+                        .filter(visible)
+                        .map(el => Array.from(el.querySelectorAll(children))
+                            .filter(visible).map(rect));
+                return {
+                    cards: groups('.diagnostic-stack,.sponsor-placement-list,#nodes-list', ':scope>.card'),
+                    actions: groups('.sponsor-form-actions,.node-action-buttons', ':scope>button')
+                };
+            }""")
+            for boxes in geometry['cards']:
                 for index, box in enumerate(boxes):
                     for other in boxes[:index]:
                         vertical = max(box['y'] - other['y'] - other['height'], other['y'] - box['y'] - box['height'])
                         horizontal = max(box['x'] - other['x'] - other['width'], other['x'] - box['x'] - box['width'])
                         assert max(vertical, horizontal) >= 11, (name, width, box, other)
-            for group in page.locator('.sponsor-form-actions:visible,.node-action-buttons:visible').all():
-                boxes = [item.bounding_box() for item in group.locator(':scope>button:visible').all()]
+            for boxes in geometry['actions']:
                 for index, box in enumerate(boxes):
                     if index:
                         assert abs(box['y'] - boxes[0]['y']) < 1, (name, width, boxes)

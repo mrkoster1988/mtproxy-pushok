@@ -212,6 +212,28 @@ class FlowAccountIntegration(unittest.TestCase):
             rows = conn.execute('SELECT client_key,requests FROM flow_rate_windows WHERE bucket=%s', (bucket,))
             return {row['client_key']: row['requests'] for row in rows}
 
+    def test_shop_ticket_uses_real_database_rate_bucket_after_migration(self):
+        # The real database limiter must permit the scoped Shop proof bucket.
+        _, token = self.authorize()
+        signing = '6d' * 32
+        with patch.dict(fixture.os.environ, {'FLOW_SHOP_BRIDGE_SECRET': signing}):
+            result = self.client.post('/api/v1/flow/shop-ticket',
+                json={'consent': True}, headers=self.bearer(token))
+        self.assertEqual(result.status_code, 200, result.text)
+        ticket = result.json()['ticket']
+        self.assertEqual(ticket.split('.')[0], 'psb1')
+        self.assertEqual(len(ticket.split('.')), 3)
+        self.assertEqual(result.json()['expires_in'], 60)
+        self.assertTrue(self.rate_rows('shop'))
+        before = self.rate_rows('shop')
+        migration = (fixture.ROOT / 'database/076_flow_shop_rate_window.sql').read_text()
+        with flow.connect(self.dsn) as conn:
+            conn.execute(migration)
+        self.assertEqual(self.rate_rows('shop'), before)
+        with patch.dict(fixture.os.environ, {'FLOW_SHOP_BRIDGE_SECRET': signing}):
+            self.request('POST', '/flow/shop-ticket', 401,
+                         json={'consent': True}, headers=self.cabinet[self.owner])
+
     def test_explicit_consent_read_only_wallet_and_bearer_separation(self):
         with flow.connect(self.dsn) as conn:
             before = conn.execute('SELECT count(*) AS n FROM users').fetchone()['n']
