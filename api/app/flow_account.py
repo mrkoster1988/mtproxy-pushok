@@ -10,6 +10,7 @@ import json
 import math
 import re
 import secrets
+import os
 from datetime import timedelta
 from uuid import uuid4
 
@@ -23,6 +24,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .telegram_environment import environment_name
 from .user_visibility import hide_username
+from .flow_shop_ticket import bridge_key, issue_ticket
 
 PREFIX = '/api/v1/flow'
 SCOPES = ['profile:read', 'wallet:read']
@@ -43,10 +45,10 @@ MAX_SESSIONS_PER_USER = 10
 # Per principal, global; every bucket uses a fixed one-minute window.
 # Anonymous issuance has no reliable individual identity behind the shared proxy.
 RATE_LIMITS = {'device': (None, 120), 'token': (120, 1200),
-               'consent': (60, 600), 'profile': (120, 1200), 'logout': (30, 300)}
+               'consent': (60, 600), 'profile': (120, 1200), 'logout': (30, 300), 'shop': (5, 300)}
 RATE_BUCKETS = {'/device': 'device', '/device/token': 'token',
                 '/device/review': 'consent', '/device/decision': 'consent',
-                '/me': 'profile', '/logout': 'logout'}
+                '/me': 'profile', '/logout': 'logout', '/shop-ticket': 'shop'}
 
 
 class FlowError(Exception):
@@ -232,7 +234,7 @@ def _request_rate_principal(request, bucket):
         secret = data.get('device_code')
         if set(data) == {'device_code'} and isinstance(secret, str) and DEVICE_CODE.fullmatch(secret):
             return _rate_key('device-code', secret)
-    elif bucket in ('profile', 'logout'):
+    elif bucket in ('profile', 'logout', 'shop'):
         try:
             return _rate_key('flow-access-token', _flow_token(request))
         except FlowError:
@@ -427,6 +429,29 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
                 balances[row['currency']] = row['balance']
             return {'id': str(user['id']), 'display_name': _display_name(user), 'role': user['role'],
                     'phone_verified': user['phone_verified'], 'wallet': balances}
+
+    @router.post('/shop-ticket')
+    def shop_ticket(request: Request):
+        data = _payload(request, ('consent',))
+        if data['consent'] is not True:
+            raise FlowError(403, 'access_denied')
+        try:
+            key = bridge_key(os.getenv('FLOW_SHOP_BRIDGE_SECRET', ''))
+        except ValueError:
+            raise FlowError(503, 'service_unavailable') from None
+        credential = _flow_token(request)
+        with connect(get_dsn()) as conn:
+            row = conn.execute("""SELECT u.id,u.telegram_user_id FROM flow_sessions s
+                JOIN users u ON u.id=s.user_id
+                WHERE s.token_hash=%s AND s.revoked_at IS NULL
+                    AND s.expires_at>clock_timestamp()
+                    AND u.blocked_at IS NULL FOR SHARE OF s,u""",
+                (digest(credential),)).fetchone()
+            if row is None:
+                raise FlowError(401, 'unauthorized')
+            stamp = int(_now(conn).timestamp())
+            ticket = issue_ticket(row['id'], row['telegram_user_id'], key, now=stamp)
+        return {'ticket': ticket, 'expires_in': 60}
 
     @router.post('/logout', status_code=204)
     def logout(request: Request):

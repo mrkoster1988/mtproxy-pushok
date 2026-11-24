@@ -45,6 +45,16 @@ class FlowProtocol(unittest.TestCase):
             self.assertEqual(response.headers['cache-control'], 'private, no-store')
             self.assertEqual(response.headers['referrer-policy'], 'no-referrer')
 
+    def test_shop_bridge_requires_consent_and_configured_key_before_database(self):
+        with patch.dict(fixture.os.environ, {'FLOW_SHOP_BRIDGE_SECRET': ''}):
+            for body, status in (({}, 400), ({'consent': False}, 403),
+                                 ({'consent': True}, 503),
+                                 ({'consent': True, 'user_id': 'forged'}, 400)):
+                result = self.client.post('/api/v1/flow/shop-ticket', json=body,
+                                          headers={'Authorization':'Bearer pfa_'+'0'*64})
+                self.assertEqual(result.status_code, status)
+                self.assertEqual(result.headers['cache-control'], 'private, no-store')
+
     def test_deterministic_opaque_token_uses_distinct_domain(self):
         device = 'pfd_' + 'a' * 43
         token = flow.access_token(device, TEST_KEY)
