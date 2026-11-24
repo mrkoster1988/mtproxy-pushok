@@ -459,6 +459,7 @@ EOF
     database/073_operator_decision_review.sql
     database/074_developer_grants.sql
     database/075_flow_account.sql
+    database/076_flow_shop_rate_window.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"
