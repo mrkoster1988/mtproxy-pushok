@@ -1,0 +1,96 @@
+name: Publish tested MTProxy stable release
+
+# Mini Apps discover release/stable. Never publish an untested main commit.
+on:
+  workflow_run:
+    workflows: ["API and PostgreSQL checks"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: mtproxy-published-stable
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: >-
+      github.repository == 'mrkoster1988/mtproxy-pushok' &&
+      (github.event_name == 'workflow_dispatch' ||
+        (github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.event == 'push' &&
+         github.event.workflow_run.head_branch == 'main'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify exact CI-approved SHA and stable ancestry
+        id: proof
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_SHA: ${{ github.event.workflow_run.head_sha }}
+          CI_RUN_ID: ${{ github.event.workflow_run.id }}
+          TRIGGER: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+          git fetch --no-tags origin refs/heads/release/stable:refs/remotes/origin/release/stable
+          current="$(git rev-parse refs/remotes/origin/main)"
+          stable="$(git rev-parse refs/remotes/origin/release/stable)"
+          if [[ "$TRIGGER" == workflow_dispatch ]]; then
+            # Manual reruns must have a successful exact push CI on the current SHA.
+            ci="$(
+              gh api "repos/$GITHUB_REPOSITORY/actions/workflows/check.yml/runs?branch=main&event=push&per_page=25" \
+                --jq ".workflow_runs[] | select(.head_sha == \"$current\" and .status == \"completed\" and .conclusion == \"success\") | .id" | head -n1
+            )"
+            test -n "$ci" || { echo "No green exact CI for current main"; exit 1; }
+          else
+            if [[ "$CI_SHA" != "$current" ]]; then
+              echo "Main changed since CI; ignoring stale success"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            test -n "$CI_RUN_ID"
+            ci="$CI_RUN_ID"
+          fi
+          if [[ "$stable" == "$current" ]]; then
+            echo "Stable already current"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git merge-base --is-ancestor "$stable" "$current" || {
+            echo "Stable diverged; manual review required"
+            exit 1
+          }
+          echo "target=$current" >> "$GITHUB_OUTPUT"
+          echo "previous=$stable" >> "$GITHUB_OUTPUT"
+          echo "ci_run=$ci" >> "$GITHUB_OUTPUT"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+      - name: Promote by fast-forward to the tested main commit
+        if: steps.proof.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ steps.proof.outputs.target }}
+          PREVIOUS: ${{ steps.proof.outputs.previous }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          observed="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/release/stable" --jq '.object.sha')"
+          test "$observed" = "$PREVIOUS" || {
+            echo "Stable moved since proof; no overwrite"
+            exit 1
+          }
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/release/stable" \
+            -f sha="$TARGET" -F force=false > /dev/null
+          published="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/release/stable" --jq '.object.sha')"
+          test "$published" = "$TARGET"
+          echo "MTProxy stable promoted: $TARGET; VPS installation is separate." >> "$GITHUB_STEP_SUMMARY"
