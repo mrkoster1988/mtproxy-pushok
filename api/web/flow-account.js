@@ -62,7 +62,8 @@ window.pushokFlowAccount = (() => {
     if (botName) {
       const link = node('a', 'Открыть подтверждение в Telegram', 'flow-auth-telegram');
       link.id = 'flow-account-telegram';
-      const destination = new URL('https://t.me/' + botName);
+      const destination = new URL('tg://resolve');
+      destination.searchParams.set('domain', botName);
       destination.searchParams.set('start', 'flow_' + code);
       link.href = destination.href;
       link.rel = 'noopener noreferrer';
@@ -72,7 +73,7 @@ window.pushokFlowAccount = (() => {
           unavailable('Срок запроса истёк. Начните вход заново в Pushok Flow.');
         }
       });
-      intro.append(link, info('Если кнопка входа на сайте не работает, откройте бота и нажмите «Подтвердить в кабинете». Сверьте тот же код с Pushok Flow.'));
+      intro.append(link, info('В чате бота нажмите «Подтвердить в кабинете» и сверьте код. Если Telegram не открылся, воспользуйтесь формой входа ниже.'));
     }
     intro.append(info('Запрос действует не больше пяти минут. Подключение требует вашего подтверждения.'));
     document.querySelector('main').prepend(intro);

@@ -530,7 +530,7 @@ def check_flow_account(browser, base, output, failures, dsn):
             fallback_page, fallback_events = visit(fallback_item, anonymous=True, width=320)
             fallback = fallback_page.locator("#flow-account-telegram")
             expect(fallback).to_be_visible()
-            destination = "https://t.me/mtproxy_pushok_bot?start=flow_" + fallback_item["user_code"]
+            destination = "tg://resolve?domain=mtproxy_pushok_bot&start=flow_" + fallback_item["user_code"]
             expect(fallback).to_have_attribute("href", destination)
             assert fallback.evaluate("e => {const r=e.getBoundingClientRect();return r.x>=0 && r.right<=innerWidth+1}")
             assert not any(event[2].startswith("https://t.me/") for event in fallback_events)
