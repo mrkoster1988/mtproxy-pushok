@@ -26,7 +26,7 @@ from uuid import uuid4
 from staging_preflight import command_environment, compose_command, read_env
 from installer_runtime import sync_directory
 
-WRITERS = {'api', 'bot', 'sbp-worker'}
+WRITERS = {'api', 'bot', 'sbp-worker', 'flow-push'}
 CONFIG = {'.control/github-access-private.json':'github-access-private.json', '.control/channel-ai-private.json':'channel-ai-private.json', '.control/license-seller-key.json':'license-seller-key.json', '.control/license-installation-key.json':'license-installation-key.json', '.env': 'config.env', 'compose.yaml': 'compose.yaml',
           'compose.override.yaml': 'compose.override.yaml', 'Caddyfile': 'Caddyfile',
           '.control/sbp-private.json':'sbp-private.json', '.control/payments.json':'payments.json', '.control/emoji-map.json':'emoji-map.json'}
@@ -58,7 +58,7 @@ def docker(*args, **kwargs):
 
 
 def compose(root, *args, **kwargs):
-    return execute(compose_command(root, read_env(root / '.env')) + ['--profile', 'bot', *args], **kwargs)
+    return execute(compose_command(root, read_env(root / '.env')) + ['--profile', 'bot', '--profile', 'flow-push', *args], **kwargs)
 
 
 def private_directory(path, *, create=False):

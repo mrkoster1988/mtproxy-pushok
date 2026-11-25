@@ -127,7 +127,7 @@ def queue_automatic_update():
         write_control('auto-check.json', check)
 
 
-def main():
+def main(recovery_target=None):
     CONTROL.mkdir(mode=0o700, exist_ok=True)
     with lock_file('host-lock') as lock:
         if '--finalize' in sys.argv:
@@ -152,10 +152,10 @@ def main():
             return
         request = CONTROL / 'request.json'
         automatic_target = None
-        if '--bootstrap' not in sys.argv and not request.exists():
+        if not recovery_target and '--bootstrap' not in sys.argv and not request.exists():
             queue_automatic_update()
         with queue_lock():
-            if '--bootstrap' not in sys.argv:
+            if not recovery_target and '--bootstrap' not in sys.argv:
                 if not request.exists():
                     previous = read_control('status.json')
                     if previous.get('state') == 'running':
@@ -187,18 +187,26 @@ def main():
             if '--bootstrap' not in sys.argv:
                 run('git', 'fetch', '--no-tags', REMOTE, 'refs/heads/release/stable')
                 target = run('git', 'rev-parse', 'FETCH_HEAD', capture=True).strip()
+                if recovery_target and target != recovery_target:
+                    raise RuntimeError('Stable release changed during recovery. Retry with the current release.')
                 if automatic_target and target != automatic_target:
                     status('idle', code='published_release_changed')
                     return
                 run('git', 'merge-base', '--is-ancestor', old, target)
             else:
                 target = old
-            running = run('python3', 'scripts/installer_runtime.py', 'compose', '--profile', 'bot', 'ps', '--services', '--status', 'running', capture=True).splitlines()
+            running = run('python3', 'scripts/installer_runtime.py', 'compose', '--profile', 'bot', '--profile', 'flow-push', 'ps', '--services', '--status', 'running', capture=True).splitlines()
             profile = ['--profile', 'bot'] if 'bot' in running else []
+            if 'flow-push' in running:
+                profile.extend(['--profile', 'flow-push'])
             # Full private archive includes DB, uploads, .env and deployment configuration.
             stage = "backup"
             status('running', stage=stage)
-            run('python3', 'scripts/cabinet_backup.py', 'create', '--allow-downtime')
+            if recovery_target:
+                run('python3', str(Path(__file__).with_name('cabinet_backup.py')), 'create',
+                    '--allow-downtime', '--root', str(ROOT))
+            else:
+                run('python3', 'scripts/cabinet_backup.py', 'create', '--allow-downtime')
             stage = "source"
             status('running', stage=stage)
             if target != old:
@@ -230,6 +238,13 @@ def main():
             raise
 
 if __name__ == '__main__':
+    recovery_target = None
+    if sys.argv[1:2] == ['--recover-flow-push']:
+        if len(sys.argv) != 3 or not re.fullmatch('[0-9a-f]{40}', sys.argv[2]):
+            raise SystemExit('Expected the stable Git commit')
+        ROOT = Path('/opt/mtproxy-pushok')
+        CONTROL = ROOT / '.control'
+        recovery_target = sys.argv[2]
     sys.path.insert(0, str(ROOT / 'api'))
     os.environ['PUSHOK_CONTROL_DIR'] = str(CONTROL)
-    main()
+    main(recovery_target)

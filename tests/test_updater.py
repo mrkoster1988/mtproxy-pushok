@@ -57,6 +57,13 @@ class UpdaterTests(unittest.TestCase):
         self.assertEqual(flock.call_args_list[0].args[1], updater.fcntl.LOCK_EX)
         self.assertEqual(updater.read_control('status.json')['state'], 'succeeded')
 
+    def test_recovery_uses_new_backup_on_installed_root_before_fast_forward(self):
+        with patch.object(updater, 'run', side_effect=self.fake_run):
+            updater.main(recovery_target='new')
+        backup = ('python3', str(Path(updater.__file__).with_name('cabinet_backup.py')),
+                  'create', '--allow-downtime', '--root', str(self.root))
+        self.assertLess(self.commands.index(backup), self.commands.index(('git', 'merge', '--ff-only', 'new')))
+
     def test_recovery_marks_abandoned_running_status_failed(self):
         updater.status('running', stage='build')
         with patch.object(updater, 'run') as run:

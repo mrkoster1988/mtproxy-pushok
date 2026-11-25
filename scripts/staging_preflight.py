@@ -170,6 +170,8 @@ def compose_command(root, values):
                "--project-name", values.get("COMPOSE_PROJECT_NAME", "mtproxy-pushok"), "-f", str(root / "compose.yaml")]
     if (root / "compose.override.yaml").exists():
         command.extend(["-f", str(root / "compose.override.yaml")])
+    if values.get("FLOW_FCM_CREDENTIAL_FILE"):
+        command.extend(["-f", str(root / "compose.flow-push.yaml")])
     return command
 
 

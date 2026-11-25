@@ -173,6 +173,16 @@ class CabinetBackupTests(unittest.TestCase):
                 self.fail('must not enter')
         self.assertEqual(compose.call_args_list[-1].args[1:], ('start', 'api'))
 
+    def test_flow_push_is_stopped_and_restored_with_other_active_writers(self):
+        active = {'api', 'bot', 'db', 'caddy', 'flow-push', 'sbp-worker'}
+        with patch.object(backup, 'running', side_effect=[active, {'db', 'caddy'}, {'db', 'caddy'}, active]), \
+             patch.object(backup, 'compose') as compose:
+            with backup.quiesced(self.root, True):
+                pass
+        writers = ('api', 'bot', 'flow-push', 'sbp-worker')
+        self.assertEqual(compose.call_args_list[0].args[1:], ('stop', '--timeout', '30', *writers))
+        self.assertEqual(compose.call_args_list[1].args[1:], ('start', *writers))
+
     def test_unknown_service_and_missing_database_refused(self):
         for active in ({'api'}, {'db', 'unknown-writer'}):
             with patch.object(backup, 'running', return_value=active), patch.object(backup, 'compose') as compose:

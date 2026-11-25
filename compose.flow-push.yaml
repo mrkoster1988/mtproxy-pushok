@@ -1,5 +1,6 @@
 services:
   flow-push:
+    profiles: [flow-push]
     build: ./api
     command: ["python", "-m", "app.flow_push_worker"]
     env_file: .env
