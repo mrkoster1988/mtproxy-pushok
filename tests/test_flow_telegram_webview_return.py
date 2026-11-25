@@ -23,7 +23,7 @@ class TelegramConsentReturnTests(unittest.TestCase):
         main = (root / "api/app/main.py").read_text(encoding="utf-8")
         readme = (root / "README.md").read_text(encoding="utf-8")
         notes = (root / "api/web/release-notes.js").read_text(encoding="utf-8")
-        versions = re.findall(r"(?m)^Версия проекта: v(\\d+\\.\\d+)\\.$", readme)
+        versions = re.findall(r"(?m)^Версия проекта: v(\d+\.\d+)\.$", readme)
         self.assertEqual(len(versions), 1)
         version = versions[0]
         self.assertIn("/assets/flow-account.js?v=" + version, html)
