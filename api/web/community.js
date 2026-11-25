@@ -26,7 +26,7 @@ window.pushokCommunity=(()=>{
  async function show(target,id){const s=token;target.replaceChildren(el('p','Загрузка…','muted'));try{const u=await person(id);if(s!==token||!target.isConnected)return;
    const card=el('section',undefined,'profile-identity user-identity public-person'),row=el('div',undefined,'person-line'),copy=window.pushokProfiles.names(u,true);
    if(u.online!==null)copy.append(el('small',u.online?'Онлайн в приложении':'Не в сети','muted'));
-   row.append(v().userAvatar(id,names(u)),copy);card.append(row);const role=el('span',window.pushokTeam.displayRole(u),'profile-role');role.dataset.role=hasDeveloperAccess(u)?'owner':u.role;card.append(role);target.replaceChildren(card);
+   row.append(v().userAvatar(id,names(u)),copy);card.append(row);const role=el('span',window.pushokTeam.displayRole(u),'profile-role');role.dataset.role=hasDeveloperAccess(u)?'owner':u.role;card.append(role);target.replaceChildren(card);window.pushokVpn.profile(target,id);
   }catch(e){if(s===token)target.replaceChildren(el('p',e.message,'empty'));}}
  function invited(id,count){
   const box=el('details',undefined,'panel profile-invited-block'),head=el('summary'),list=el('div',undefined,'invitees'),feedback=el('p',undefined,'invite-feedback'),actions=el('div',undefined,'invite-actions');

@@ -72,6 +72,7 @@ window.pushokProfiles=(()=>{
   try{const data=await api('/users/'+uid+'/profile');if(session!==token||uid!==me?.id||!target.isConnected)return;
    target.replaceChildren(stats(data.counts,key=>window.cabinet.go({current:'campaigns/mine',channels:'channels',archived:'archive'}[key])),window.pushokCommunity.invited(uid,data.counts.invited));
    window.pushokHall.medals(target,data);
+   window.pushokVpn.profile(target,uid);
 
    const personal=target.parentElement.querySelector('.profile-personal');if(personal){const details=personal.querySelector('.profile-details');if(details)details.replaceWith(accountDetails(data.user));else personal.append(accountDetails(data.user));}
   }catch(e){if(session===token&&target.isConnected)target.replaceChildren(el('p','Обзор не обновлён. '+e.message,'muted'),button('Повторить',()=>ownOverview(target)));}
@@ -122,6 +123,7 @@ window.pushokProfiles=(()=>{
    const personal=window.pushokVerification.readOnly(data.verification||{});personal.querySelector('.personal-body').append(accountDetails(data.user));window.pushokCommunity.ownerTools(personal.querySelector('.personal-body'),uid,data.verification||{},load);
    target.replaceChildren(identity(data.user),window.pushokCommunity.invited(uid,data.counts.invited),personal,...(me.role==='admin'&&data.wallet?[balance(data.wallet,data.user)]:[]),overview,channelSection,campaignSection);
 
+   const vpnSlot=el('div'); overview.before(vpnSlot); window.pushokVpn.profile(vpnSlot,uid);
    window.pushokHall.medals(target.querySelector('.profile-identity'),data);
    channelSection.append(el('h2','Каналы'));
    const channelList=el('div',undefined,'profile-list');channelSection.append(channelList);
