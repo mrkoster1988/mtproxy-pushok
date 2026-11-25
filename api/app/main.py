@@ -56,7 +56,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="2.0",
+    version="2.01",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -3404,3 +3404,8 @@ app.include_router(flow_account_router(
     lambda: _required_secret(SESSION_SIGNING_KEY, 'SESSION_SIGNING_KEY'),
     get_current_user,
 ))
+
+from .passkeys import router as passkeys_router
+app.include_router(passkeys_router(lambda: DATABASE_URL, get_current_user,
+    lambda: _required_secret(SESSION_SIGNING_KEY, 'SESSION_SIGNING_KEY'),
+    _create_session_token, remember_browser_session, SESSION_TTL_SECONDS))

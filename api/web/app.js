@@ -906,6 +906,37 @@ window.onTelegramAuth=data=>run(async()=>{
 });
 $('channel-form').addEventListener('submit',e=>{e.preventDefault();run(async()=>{await e.target.elements.telegram_url.pushokChannelCheck?.check();const data=Object.fromEntries(new FormData(e.target)),match=data.telegram_url.trim().match(/^(?:@|https:\/\/(?:t\.me|telegram\.me)\/)?([a-z][a-z0-9_]{3,31})\/?$/i);if(!match)throw Error('Укажите публичный @username или ссылку https://t.me/channel.');data.telegram_url='https://t.me/'+match[1].toLowerCase();await api('/channels',{method:'POST',body:data});e.target.reset();await enter();if(location.hash==='#/channels/new')window.cabinet?.go('channels');notice('Канал добавлен.',true);},e.submitter);});
 
+const passkeysAvailable = window.isSecureContext &&
+ typeof window.PublicKeyCredential?.parseCreationOptionsFromJSON === 'function' &&
+ typeof window.PublicKeyCredential?.parseRequestOptionsFromJSON === 'function' &&
+ typeof window.PublicKeyCredential?.prototype?.toJSON === 'function';
+$('passkey-sign-in').hidden=!passkeysAvailable;
+$('passkey-settings').hidden=!passkeysAvailable;
+async function usePasskey(register) {
+ const method=register?'register':'login', session=register?token:'', generation=authGeneration;
+ const options=await api('/auth/passkeys/'+method+'/options',{method:'POST',session});
+ if(generation!==authGeneration)return;
+ let credential;
+ try {
+  credential=register?await navigator.credentials.create({publicKey:PublicKeyCredential.parseCreationOptionsFromJSON(options)}):
+   await navigator.credentials.get({publicKey:PublicKeyCredential.parseRequestOptionsFromJSON(options)});
+ } catch(e){
+  if(e.name==='NotAllowedError')throw Error('Подтверждение отменено или подходящий ключ входа не найден.');
+  throw Error('Не удалось открыть ключ входа на этом устройстве.');
+ }
+ if(!credential || generation!==authGeneration)return;
+ const result=await api('/auth/passkeys/'+method+'/finish',
+  {method:'POST',session,body:{credential:JSON.stringify(credential.toJSON())}});
+ if(generation!==authGeneration)return;
+ if(register){notice('Ключ добавлен. Теперь можно входить без Telegram.',true);return;}
+ token=result.access_token;sessionStorage.setItem(sessionKey,token);await enter();
+}
+$('passkey-sign-in').addEventListener('click',e=>run(()=>usePasskey(false),e.currentTarget));
+$('passkey-register').addEventListener('click',e=>run(()=>usePasskey(true),e.currentTarget));
+$('passkey-remove').addEventListener('click',e=>run(async()=>{
+ if(!confirm('Удалить все ключи входа этого аккаунта? Вход через Telegram останется доступен.'))return;
+ await api('/auth/passkeys/remove',{method:'POST'});notice('Ключи входа удалены.',true);
+},e.currentTarget));
 $('logout').addEventListener('click',()=>run(async()=>{
  const session=token,generation=clearCabinetSession();
  if(miniAppMode)window.pushokMiniApp.signedOut();

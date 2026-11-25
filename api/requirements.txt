@@ -7,3 +7,4 @@ Pillow>=11,<13
 cryptography>=46,<51
 qrcode>=8,<9
 google-auth[requests]>=2.40,<3
+webauthn==2.8.0
