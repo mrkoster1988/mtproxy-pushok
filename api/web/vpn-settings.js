@@ -20,11 +20,7 @@ window.pushokVpnSettings=(()=>{
    box.replaceChildren(el('strong',group.icon+' '+heads[group.key]));
    const p=el('p'),date=new Date();date.setDate(date.getDate()+(group.key==='expiry'?days:-days));
    const text=template.replaceAll('{дней}',String(days)).replaceAll('{имя}','Александр').replaceAll('{дата}',date.toLocaleDateString('ru-RU'));
-   for(const part of text.split(/(\*\*[^*\n]+\*\*|__[^_\n]+__)/g)){
-     if(part.startsWith('**')&&part.endsWith('**'))p.append(el('b',part.slice(2,-2)));
-     else if(part.startsWith('__')&&part.endsWith('__'))p.append(el('i',part.slice(2,-2)));
-     else p.append(document.createTextNode(part));
-   }
+   appendFormattedText(p,text);
    box.append(p,el('small','Pushok ИИ','muted'));
  }
  function notifications(host,record){

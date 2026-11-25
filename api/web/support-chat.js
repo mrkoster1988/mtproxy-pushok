@@ -20,7 +20,9 @@ window.pushokSupport=(()=>{
   async function open(id){const turn=++rev;try{const data=await api('/support/cases/'+id);if(!live()||turn!==rev)return;
    current=id;asStaff=team&&data.can_reply_as_staff;entry.hidden=team&&!asStaff;kind.hidden=true;humanLabel.hidden=asStaff;closeLabel.hidden=!asStaff;
    thread.replaceChildren(el('h3','Обращение №'+id));for(const row of data.messages){
-    const line=el('div',undefined,'vpn-notice-preview');line.append(el('strong',({user:team?'Пользователь':'Вы','ai-agent':'Pushok ИИ',staff:'Сотрудник'})[row.sender]),el('p',row.body));thread.append(line);}
+    const line=el('div',undefined,'vpn-notice-preview'),body=el('p');
+    if(row.sender==='user')body.textContent=row.body;else appendFormattedText(body,row.body);
+    line.append(el('strong',({user:team?'Пользователь':'Вы','ai-agent':'Pushok ИИ',staff:'Сотрудник'})[row.sender]),body);thread.append(line);}
   }catch(e){if(live())feedback.textContent=e.message;}}
   async function load(){const scope=team;try{const data=await api('/support/cases?team='+scope);if(!live()||scope!==team)return;
    list.replaceChildren();for(const row of data.items)list.append(button('№'+row.id+' · '+labels[row.category]+' · '+state[row.state],()=>open(row.id)));

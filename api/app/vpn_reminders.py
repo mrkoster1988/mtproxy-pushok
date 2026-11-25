@@ -18,13 +18,14 @@ DAY=86400
 router=APIRouter(prefix='/api/v1/internal/bot/vpn-reminders',include_in_schema=False)
 
 
-def format_body(template,fields):
+def format_body(template,fields=None):
     # Parse only template formatting. Insert account data as literal Telegram text.
     parts=re.split(r'(\*\*[^*\n]+\*\*|__[^_\n]+__)',template)
     output=[]
     for i,part in enumerate(parts):
         tag=('b' if part.startswith('**') else 'i') if i%2 else None
-        value=html.escape((part[2:-2] if tag else part).format_map(fields))
+        source=part[2:-2] if tag else part
+        value=html.escape(source.format_map(fields) if fields is not None else source)
         output.append(f'<{tag}>{value}</{tag}>' if tag else value)
     return ''.join(output)
 

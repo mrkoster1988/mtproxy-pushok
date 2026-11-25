@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from . import channel_ai_connection as ai, channel_topic_suggestions as topics, control
 from .telegram_environment import is_test_environment
 from .vpn_settings import private
+from .vpn_reminders import format_body
 
 BOT = 'server_pushok_bot'
 HANDLE = 'https://t.me/'+BOT
@@ -89,7 +90,7 @@ def answer(category,question,history,requested):
             topics.reserve_ai_call()
             messages=[{'role':'system','content':'Ты Pushok ИИ, поддержка Pushok. Отвечай кратко по-русски. '
                        'Ты не выполняешь действий, не видишь платежей и ключей. Не запрашивай секреты. '
-                       'Верни JSON с полями text и human (boolean). Если данных мало, попроси уточнение или поставь human=true. '+facts}]
+                       'Используй короткие абзацы, **жирное**, __курсив__ и уместные эмодзи. Верни JSON с полями text и human (boolean). Если данных мало, попроси уточнение или поставь human=true. '+facts}]
             messages += [{'role':'assistant' if m['sender']!='user' else 'user','content':m['body'][:1200]} for m in history[-6:]]
             messages.append({'role':'user','content':question})
             payload=dict(model=cfg[1],messages=messages,response_format={'type':'json_object'},max_completion_tokens=320)
@@ -102,8 +103,8 @@ def answer(category,question,history,requested):
         except Exception:pass
     text=question.casefold()
     if 'отозван' in text:return 'Отозванная подписка отключает прежний профиль. Передаю вопрос сотруднику, который может проверить доступ и выдать новый профиль.',True
-    if any(word in text for word in ('оплат','звёзд','stars','списал')):return 'Для продления откройте VPN → Продлить. Если Stars уже списались, пришлите номер заказа. Передаю обращение сотруднику для проверки.',True
-    if 'трафик' in text:return 'В Mini App расход подписки виден во вкладке VPN. Расход по приложениям телефона можно посмотреть в Pushok Flow → Настройки → IP и трафик.',False
+    if any(word in text for word in ('оплат','звёзд','stars','списал')):return 'Для продления откройте **VPN → Продлить**. Если Stars уже списались, пришлите номер заказа. Передаю обращение сотруднику для проверки.',True
+    if 'трафик' in text:return 'В Mini App расход подписки виден во вкладке VPN. Расход по приложениям телефона можно посмотреть в **Pushok Flow → Настройки → IP и трафик**.',False
     return 'Обращение принято. Уточните, пожалуйста, что вы делали и что увидели на экране. Сотрудник сможет ответить в этой переписке.',True
 
 
@@ -222,9 +223,9 @@ def handle_update(db, dsn, key, update):
             response = 'Получил много сообщений подряд. Попробуйте написать через пять минут.'
         else:
             db.execute('UPDATE support_bot_contacts SET current_case=%s WHERE telegram_id=%s', (record['id'], uid))
-            response = 'Обращение №' + str(record['id']) + '\n\n' + record['reply']
+            response = '**Обращение №' + str(record['id']) + '**\n\n' + record['reply']
     try:
-        bot_call(key, 'sendMessage', {'chat_id': uid, 'text': response})
+        bot_call(key, 'sendMessage', {'chat_id': uid, 'text': format_body(response), 'parse_mode': 'HTML'})
     except RecipientUnavailable:
         pass
 
@@ -262,7 +263,7 @@ def run_bot(dsn, stop):
                 for item in pending:
                     try:
                         bot_call(key, 'sendMessage', {'chat_id': item['telegram_id'],
-                                                     'text': 'Ответ поддержки Pushok\n\n' + item['body']})
+                                                     'text': format_body('**Ответ поддержки Pushok**\n\n' + item['body']), 'parse_mode': 'HTML'})
                     except RecipientUnavailable:
                         db.execute('DELETE FROM support_bot_outbox WHERE message_id=%s', (item['message_id'],))
                     except RuntimeError:

@@ -25,6 +25,12 @@ function notice(message,ok=false,{actions=[],persistent=false}={}){
 }
 function hasDeveloperAccess(user){return Boolean(user?.is_developer||user?.is_owner);}
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x;}
+function appendFormattedText(node,text){
+  text.split(/(\*\*[^*\n]+\*\*|__[^_\n]+__)/g).forEach((part,index)=>{
+    if(index%2)node.append(el(part.startsWith('**')?'strong':'em',part.slice(2,-2)));
+    else node.append(document.createTextNode(part));
+  });
+}
 function button(text,fn){const b=el('button',text);b.type='button';b.addEventListener('click',()=>run(fn,b));return b;}
 function clearCabinetSession({preserveUnboundFlow=false,expired=false,clearWorkspace=true}={}){
  const generation=++authGeneration;++enterGeneration;++calendarRequest;

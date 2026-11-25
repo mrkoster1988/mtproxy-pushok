@@ -43,6 +43,8 @@ class SupportChat(unittest.TestCase):
             msg['chat']['type']='private'
             support.handle_update(db,self.dsn,'fixture',{'message':msg})
             send.assert_called_once()
+            self.assertEqual(send.call_args.args[2]['parse_mode'], 'HTML')
+            self.assertEqual(support.format_body('**Тариф** {x} <a> __руб.__'), '<b>Тариф</b> {x} &lt;a&gt; <i>руб.</i>')
             msg.update(message_id=16,text='/idea Быстрый доступ')
             support.handle_update(db,self.dsn,'fixture',{'message':msg})
             support.handle_update(db,self.dsn,'fixture',{'message':msg})
