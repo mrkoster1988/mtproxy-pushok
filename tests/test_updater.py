@@ -44,17 +44,17 @@ class UpdaterTests(unittest.TestCase):
 
     def test_auto_release_check_uses_running_api_not_updated_readme(self):
         from app import releases
-        (self.root / 'README.md').write_text('Версия проекта: v2.06.\\n')
+        (self.root / 'README.md').write_text('Версия проекта: v2.06.\n')
         container = 'a' * 64
         commands = []
         def fake_process(command, **kwargs):
             commands.append(command)
             assert kwargs['stderr'] is subprocess.DEVNULL
             if command[:2] == [sys.executable, 'scripts/installer_runtime.py']:
-                return subprocess.CompletedProcess(command, 0, stdout=container + '\\n')
+                return subprocess.CompletedProcess(command, 0, stdout=container + '\n')
             assert command[:3] == ['docker', 'exec', container]
             assert '/srv/mtproxy-pushok/app/main.py' in command[-1]
-            return subprocess.CompletedProcess(command, 0, stdout='2.05\\n')
+            return subprocess.CompletedProcess(command, 0, stdout='2.05\n')
 
         with patch.object(updater.subprocess, 'run', side_effect=fake_process), \
              patch.object(releases, 'check', return_value={'state':'available'}) as check:
