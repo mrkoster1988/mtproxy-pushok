@@ -16,17 +16,20 @@ class TelegramConsentReturnTests(unittest.TestCase):
         self.assertNotIn("window.location = 'tg://", code)
 
 
-    def test_v127_cabinet_asset_and_server_version_in_sync(self):
+    def test_cabinet_asset_and_server_version_in_sync(self):
+        import re
         root = Path(__file__).resolve().parents[1]
         html = (root / "api/web/index.html").read_text(encoding="utf-8")
         main = (root / "api/app/main.py").read_text(encoding="utf-8")
         readme = (root / "README.md").read_text(encoding="utf-8")
         notes = (root / "api/web/release-notes.js").read_text(encoding="utf-8")
-        self.assertIn("/assets/flow-account.js?v=1.127", html)
-        self.assertIn('version="1.127"', main)
-        self.assertIn("Версия проекта: v1.127.", readme)
-        self.assertIn('"version": "1.127"', notes)
-        self.assertIn("docs/RELEASE_v1.127.md", readme)
+        versions = re.findall(r"(?m)^Версия проекта: v(\\d+\\.\\d+)\\.$", readme)
+        self.assertEqual(len(versions), 1)
+        version = versions[0]
+        self.assertIn("/assets/flow-account.js?v=" + version, html)
+        self.assertIn('version="' + version + '"', main)
+        self.assertIn('"version": "' + version + '"', notes)
+        self.assertTrue((root / ("docs/RELEASE_v" + version + ".md")).is_file())
 
 
 if __name__ == "__main__":
