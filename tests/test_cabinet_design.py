@@ -63,7 +63,7 @@ class CabinetDesignTests(unittest.TestCase):
 
     def test_no_external_styles_scripts_or_tracking(self):
         self.assertEqual({url.split('?')[0] for url in self.parser.links}, {
-            "/assets/flow-account.css", "/assets/flow-account.js", "/assets/vpn.js",
+            "/assets/flow-account.css", "/assets/flow-account.js", "/assets/vpn.js", "/assets/vpn-renew.js",
             "/assets/moderator-queue.js", "/assets/refunds.js", "/assets/hall-of-fame.js", "/assets/campaign-analytics.js", "/assets/campaign-pricing.js", "/assets/bonus-links.js",
             "/assets/developer-profile.js", "/assets/verified-profile.js", "/assets/user-profiles.js", "/assets/community.js", "/assets/interface.js", "/assets/interface.css", "/assets/moderation.css", "/assets/controls.css", "/assets/payment-settings.css", "/assets/controls.js", "/assets/release-notes.js", "/assets/users.js", "/assets/application-licenses.js",
             "/assets/merchant-settings.js", "/assets/channel-ai-settings.js", "/assets/channel-subscription-settings.js", "/assets/proxy-provisioning.js", "/assets/proxy-gateway.js", "/assets/growth.js", "/assets/wallet.js", "/assets/default-sponsor.js", "/assets/team.js", "/assets/styles.css", "/assets/cabinet-reference.css", "/assets/app.js", "/assets/order.js", "/assets/channel-topics.js", "/assets/approval.js", "/assets/campaign-assistant.js", "/assets/management.js", "/assets/pages.js", "/assets/mobile-views.js", "/assets/pushok-pencil.png"
