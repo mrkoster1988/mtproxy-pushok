@@ -1,4 +1,4 @@
-"""Pushok v0.027: patch реально изменяет Rust-исходник и безопасен до запуска."""
+"""Pushok v2.0: patch реально изменяет Rust-исходник и безопасен до запуска."""
 import json
 import shutil
 import subprocess
@@ -96,7 +96,7 @@ class RustForkPatchTests(unittest.TestCase):
             end = new_module.index('"#;', start)
             identity = json.loads(new_module[start:end])
             self.assertEqual(identity["product"], "Pushok Source Core")
-            self.assertEqual(identity["version"], "0.027")
+            self.assertEqual(identity["version"], "2.0")
             self.assertFalse(identity["proxy_started"])
             result = subprocess.run(["git", "apply", "-R", "--check", "test.patch"],
                                     cwd=root, capture_output=True, text=True)
@@ -139,7 +139,7 @@ class RustForkPatchTests(unittest.TestCase):
         notice = (ROOT / "third_party/telemt/NOTICE.md").read_text()
         changes = (ROOT / "third_party/telemt/PATCHES.md").read_text()
         license_text = (ROOT / "third_party/telemt/LICENSE").read_text()
-        self.assertIn("v0.027", changes)
+        self.assertIn("v2.0", changes)
         self.assertIn("patches/0001-pushok-build-info.patch", changes)
         self.assertIn("TELEMT LICENSE 3.3", license_text)
         self.assertIn("modified", notice.lower())

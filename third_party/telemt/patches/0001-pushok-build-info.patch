@@ -40,7 +40,7 @@ new file mode 100644
 +//! Base: Telemt 3.5.17, commit 66708d2866f3f3a4541c4fa67984d408e71a8af4.
 +//! Pushok patch: cli-build-info-001. No request processing, proxy or network changes.
 +
-+pub const BUILD_INFO_JSON: &str = r#"{"product":"Pushok Source Core","version":"0.027","based_on":"Telemt 3.5.17","upstream_commit":"66708d2866f3f3a4541c4fa67984d408e71a8af4","patch":"cli-build-info-001","proxy_started":false}"#;
++pub const BUILD_INFO_JSON: &str = r#"{"product":"Pushok Source Core","version":"2.0","based_on":"Telemt 3.5.17","upstream_commit":"66708d2866f3f3a4541c4fa67984d408e71a8af4","patch":"cli-build-info-001","proxy_started":false}"#;
 +
 +#[cfg(test)]
 +mod tests {

@@ -515,6 +515,17 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
     actor = (callback or message).get('from') or {}
     command = str(message.get('text') or '').split(maxsplit=1)
     command = command[0].lower() if command else ''
+    if command in ('/subscriptions', '/subscriptions@' + configured_bot_username().lower()):
+        if (chat.get('type') != 'private' or type(actor.get('id')) is not int
+                or actor.get('is_bot') or actor['id'] != chat.get('id')):
+            return None
+        if not launch:
+            return ({'chat_id': chat['id'], 'text': 'Кабинет магазина пока не настроен.'}, None)
+        root = 'https://' + urlsplit(launch).netloc
+        buttons = [[{'text':'Моя подписка', 'web_app':{'url':launch + '?shop_subscriptions=1'}}],
+                   [{'text':'Управление для владельца', 'web_app':{'url':root + '/shop/admin?section=users'}}]]
+        return ({'chat_id':chat['id'], 'text':'Срок действия и продление WireGuard. Для управления клиентами войдите в магазин с правами владельца.',
+                 'reply_markup':{'inline_keyboard':buttons}}, None)
     stars = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+stars', str(message.get('text') or ''), re.IGNORECASE)
     if stars and chat.get('type') == 'private' and type(actor.get('id')) is int and actor['id'] == chat.get('id'):
         return ({'chat_id':chat['id'], 'text':'⭐ <a href="tg://settings/stars">Открыть мои Stars</a>\n\nЕсли Telegram не открывает ссылку: Настройки → Мои звёзды. Это личный баланс Telegram.', 'parse_mode':'HTML', 'reply_markup':keyboard()}, None)

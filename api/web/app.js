@@ -806,7 +806,9 @@ async function refresh({background=false}={}){
  if(window.cabinet)window.cabinet.sync(own,{background});
 }
 function confirmShopLogin(profile, session) {
- if (new URLSearchParams(location.search).get('shop_login') !== '1') return false;
+ const query = new URLSearchParams(location.search);
+ const fromBot = query.get('shop_subscriptions') === '1';
+ if (!fromBot && query.get('shop_login') !== '1') return false;
  const dialog = $('shop-login-consent');
  $('shop-login-person').textContent = profile.first_name+' · Telegram ID '+profile.telegram_user_id;
  const cancel = () => location.replace('/shop/');
@@ -817,6 +819,12 @@ function confirmShopLogin(profile, session) {
   submit.disabled = true;
   try {
    if (token !== session || me?.id !== profile.id) throw Error();
+   if (fromBot) {
+    const begin = await fetch('/shop/api/auth/mtproxy/start', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body:'{}'});
+    if (begin.status === 409) { location.assign('/shop/?view=account'); return; }
+    if (!begin.ok) throw Error();
+   }
    const start = await fetch('/shop/api/auth/mtproxy/challenge', {credentials:'same-origin',cache:'no-store'});
    if (!start.ok) throw Error();
    const {challenge} = await start.json();

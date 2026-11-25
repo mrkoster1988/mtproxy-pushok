@@ -14,7 +14,7 @@ if [[ "$*" == "--repository-access" ]]; then
 fi
 if [[ "$*" == "--core-plan" ]]; then
   ROOT="$(cd -- "$(dirname -- "$0")" && pwd)"
-  echo "Pushok Source Core v0.027 — без изменений VPS"
+  echo "Pushok Source Core v2.0 — без изменений VPS"
   bash "$ROOT/scripts/fetch_pushok_core.sh" --plan
   bash "$ROOT/scripts/apply_pushok_core_patch.sh" --plan
   bash "$ROOT/scripts/build_pushok_core.sh" --plan
@@ -122,7 +122,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v1.129 — мастер настройки" >&2
+echo "MTProxy Pushok v2.0 — мастер настройки" >&2
 echo "Чистый трафик · ИИ-модерация · спонсорские кампании" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.

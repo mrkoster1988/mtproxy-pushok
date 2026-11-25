@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 CORE_SHA = "66708d2866f3f3a4541c4fa67984d408e71a8af4"
-VERSION = "0.027"  # The Rust binary's version; the control-plane release is v0.029.
+VERSION = "2.0"
 NAME = f"pushok-core-{VERSION}-{CORE_SHA}"
 STAGE = ROOT / ".build" / "pushok-core"
 OUTPUT = STAGE / "output"

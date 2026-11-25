@@ -28,7 +28,7 @@ command -v rustc >/dev/null || { echo "Не найден rustc." >&2; exit 1; }
 command -v python3 >/dev/null || { echo "Нужен python3 для проверки сборки." >&2; exit 1; }
 cargo --version
 rustc --version
-OUTPUT_NAME="pushok-core-0.027-$SHA"
+OUTPUT_NAME="pushok-core-2.0-$SHA"
 [[ ! -L "$OUT" ]] || { echo "Папка артефактов не должна быть symlink." >&2; exit 1; }
 [[ ! -e "$OUT/$OUTPUT_NAME" ]] || {
   echo "Артефакт уже существует, перезапись запрещена." >&2; exit 1;
@@ -48,7 +48,7 @@ BIN="$SRC/target/release/telemt"
 import json, sys
 x = json.load(sys.stdin)
 assert x["product"] == "Pushok Source Core"
-assert x["version"] == "0.027"
+assert x["version"] == "2.0"
 assert x["upstream_commit"] == "66708d2866f3f3a4541c4fa67984d408e71a8af4"
 assert x["patch"] == "cli-build-info-001"
 assert x["proxy_started"] is False
@@ -61,5 +61,5 @@ cp -- "$ROOT/third_party/telemt/PATCHES.md" "$OUT/PATCHES.md"
 (cd "$OUT" && sha256sum "$OUTPUT_NAME" > "$OUTPUT_NAME.sha256")
 trap - EXIT
 rm -f "$RUST_TEST_TMP"
-echo "СБОРКА ГОТОВА: Pushok v0.027 с патчем cli-build-info-001, лицензией и sha256."
+echo "СБОРКА ГОТОВА: Pushok v2.0 с патчем cli-build-info-001, лицензией и sha256."
 echo "На VPS ничего не установлено; MTProxy и работающие сервисы не изменены."
