@@ -210,7 +210,7 @@ window.pushokViews=(()=>{
   if(c.ai_checked_at){
    const description=el('p',c.ai_description||'Описание канала пока отсутствует.','campaign-ai-description');
    const stamp=el('time','Проверено: '+date(c.ai_checked_at),'muted');stamp.dateTime=c.ai_checked_at;
-   item.append(el('strong','Агент ИИ:'),description,stamp);
+   item.append(el('strong','Pushok ИИ:'),description,stamp);
   }
   if(mode==='moderation'||c.ai_rejected)window.pushokApproval?.addDecisionButtons(item,c);
   const meta=el('dl',undefined,'tile-meta campaign-tile-facts');for(const [label,value] of [['Тариф',c.tariff_name_snapshot||'—'],['Срок',duration(c)],['Стоимость',price(c)]]){const cell=el('div');cell.append(el('dt',label),el('dd',value));meta.append(cell);}item.append(meta);

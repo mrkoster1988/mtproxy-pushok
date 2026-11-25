@@ -17,7 +17,7 @@ from . import control
 
 FILE = 'channel-ai-private.json'
 DEFAULT_MODEL = 'gpt-4.1-mini'
-CAPABILITIES = ('topics', 'campaign_review', 'launch_diagnostics', 'proxy_provisioning')
+CAPABILITIES = ('topics', 'campaign_review', 'launch_diagnostics', 'proxy_provisioning', 'user_support')
 _checks = deque()
 _check_lock = threading.Lock()
 _check_slot = threading.BoundedSemaphore(1)
@@ -69,7 +69,7 @@ class Configuration(BaseModel):
     key: SecretStr | None = None
     clear_key: bool = Field(default=False, strict=True)
     revision: str = Field(min_length=1, max_length=80)
-    capabilities: list[Literal['topics', 'campaign_review', 'launch_diagnostics', 'proxy_provisioning']] | None = Field(default=None, max_length=4)
+    capabilities: list[Literal['topics', 'campaign_review', 'launch_diagnostics', 'proxy_provisioning','user_support']] | None = Field(default=None, max_length=5)
 
 
 class PrivateRoute(APIRoute):

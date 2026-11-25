@@ -33,6 +33,7 @@ def check_management_navigation(browser, base, output, failures, dsn):
         return page
 
     sections = {
+        'vpn': ('Настройки VPN', ['#vpn-settings-center']),
         'payments': ('Платежи', ['#payment-switches', '#sbp-connection', '#wallet-settings', '#sbp-review-list']),
         'tariffs': ('Тарифы', ['#tariff-admin-form']),
         'design': ('Оформление', ['#home-banner-form', '#loading-title-form', '#icons-form']),

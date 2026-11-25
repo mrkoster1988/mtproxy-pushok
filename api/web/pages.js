@@ -384,6 +384,7 @@
   ['Что значит «Активно»?','Агент подтвердил применение тега и работу прокси. После окончания агент снимает или сменяет тег и завершает кампанию. Это не счётчик показов Telegram.'],
   ['Не удаётся выполнить действие','Обновите данные, проверьте комментарий и текущий статус. При завершении сессии войдите снова. Не повторяйте оплату вслепую.']
  ];
+ const supportHost=el("div");content.help.prepend(supportHost);
  faqs.forEach(([q,a])=>{const d=hint(a);d.querySelector('summary').textContent=q;content.help.append(d);});
  content.help.append(button('Показать стартовую инструкцию',async()=>{onboarding.open=true;onboarding.scrollIntoView({block:'center'});}),safeChannel('https://t.me/pushok_proxy','Канал проекта'));
  const botPanel=section('Работа с Telegram-ботом');content.bot.append(botPanel);
@@ -584,6 +585,7 @@
   const openPanels=background&&selected?[...pages[name].querySelectorAll('.campaign-report,.automation-panel')]:[];
   state.selectedKey=key;
   if(name==='license'&&!background)void window.pushokAppLicense.load(content.license);
+  if(name==='help'&&!background)void window.pushokSupport.show(supportHost);
   if(name==='wallet')void window.pushokWallet?.load(content.wallet);
   if(name==='vpn'&&!background)void window.pushokVpn.load(content.vpn,id);
   if(name==='hall'&&!background)void window.pushokHall.load(content.hall);

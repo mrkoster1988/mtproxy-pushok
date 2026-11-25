@@ -353,7 +353,7 @@ function showCampaignReport(c, box,{refresh=false,embedded=false}={}){
   observations.append(el('p','Это необязательные наблюдения оператора. Автоматический запуск и завершение не требуют заполнения этого отчёта.','muted'));
   if(checks.total||checks.private_screenshot_count)panel.append(observations);
   panel.append(el('h4','История действий'));
-  const eventNames={campaign_approved_by_ai:'Одобрено: Агент ИИ',campaign_rejected_by_ai:'Отклонено: Агент ИИ',campaign_submitted:'Заявка отправлена',campaign_moderated:'Модерация',campaign_pricing_changed:'Тариф или скидка изменены администратором',
+  const eventNames={campaign_approved_by_ai:'Одобрено: Pushok ИИ',campaign_rejected_by_ai:'Отклонено: Pushok ИИ',campaign_submitted:'Заявка отправлена',campaign_moderated:'Модерация',campaign_pricing_changed:'Тариф или скидка изменены администратором',
    sbp_invoice_created:'Выставлен счёт СБП',sbp_payment_verified:'СБП подтверждена сервером',sbp_payment_canceled:'СБП отменена',
    payment_proof_submitted:'Чек отправлен',payment_reviewed:'Проверка оплаты',
    placement_auto_scheduled:'Автоматическое расписание',placement_activated_by_agent:'Агент подтвердил запуск',placement_completed_by_agent:'Агент подтвердил завершение',placement_scheduled:'Время назначено',placement_activated_manually:'Оператор активировал',

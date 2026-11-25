@@ -73,7 +73,7 @@ window.pushokAssistant=(()=>{
      if(check.evidence?.length){const proof=el('details'),title=el('summary','На чём основано решение');proof.append(title);check.evidence.forEach(item=>proof.append(el('blockquote',item.quote)));saved.append(proof);}
     }
     else saved.append(el('p',c.moderation_status==='pending'?'Заявка ожидает проверки. Сохранённого разбора пока нет.':'Сохранённого разбора ИИ для этой заявки нет.'));
-    if((check?.approved_by_agent||check?.rejected_by_agent)&&decisionNode){const link=el('a','Агент ИИ');link.href='#/user/ai-agent';link.addEventListener('click',()=>window.pushokProfiles.setBackRoute('moderation/'+c.id));decisionNode.replaceChildren(document.createTextNode(check.rejected_by_agent?'Отклонено: ':'Одобрено: '),link);decisionNode.classList.add('ai-decision');}
+    if((check?.approved_by_agent||check?.rejected_by_agent)&&decisionNode){const link=el('a','Pushok ИИ');link.href='#/user/ai-agent';link.addEventListener('click',()=>window.pushokProfiles.setBackRoute('moderation/'+c.id));decisionNode.replaceChildren(document.createTextNode(check.rejected_by_agent?'Отклонено: ':'Одобрено: '),link);decisionNode.classList.add('ai-decision');}
     for(const [id,kind,title] of [['campaign_review','review','Разобрать заявку'],['launch_diagnostics','launch','Проверить запуск']]){
      if(data.capabilities.includes(id)){const b=button(title,()=>analyze(kind));b.dataset.analysisKind=kind;actions.append(b);}
     }

@@ -79,7 +79,7 @@ window.pushokProfiles=(()=>{
  }
  function agentCard(back='users',linked=true){
   const card=el('article',undefined,'card directory-user ai-agent-card'),row=el(linked?'a':'div',undefined,'user-summary person-line'),avatar=el('span',undefined,'user-avatar agent-avatar'),copy=el('div',undefined,'person-copy');
-  avatar.append(views().icon('moderation'));copy.append(el('strong','Агент ИИ','person-name'),el('small','Решения и статистика','muted'));row.append(avatar,copy);if(linked){row.href='#/user/ai-agent';row.addEventListener('click',()=>{returnRoute=back;});}card.append(row,el('span','Служебный аккаунт','person-role'));return card;
+  avatar.append(views().icon('moderation'));copy.append(el('strong','Pushok ИИ','person-name'),el('small','Решения и статистика','muted'));row.append(avatar,copy);if(linked){row.href='#/user/ai-agent';row.addEventListener('click',()=>{returnRoute=back;});}card.append(row,el('span','Служебный аккаунт','person-role'));return card;
  }
  async function showAgent(target){
   const session=token,valid=()=>session===token&&target.isConnected&&location.hash==='#/user/ai-agent'&&['admin','operator'].includes(me?.role);target.replaceChildren(el('p','Загрузка статистики…','muted'));target.classList.add('ai-agent-profile');

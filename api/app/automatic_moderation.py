@@ -16,7 +16,7 @@ from .community import require_verified
 
 POLICY_REVISION = 'channel-policy-v5'
 ADULT_POLICY_SUFFIX = ':declared-adult-v1'
-SIGNATURE = 'С уважением, Агент ИИ'
+SIGNATURE = 'С уважением, Pushok ИИ'
 SENSITIVE_REJECTIONS = {
     'child_sexual_exploitation': 'Сексуальная эксплуатация несовершеннолетних',
     'human_trafficking': 'Торговля людьми',

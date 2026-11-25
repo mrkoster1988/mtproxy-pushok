@@ -28,7 +28,7 @@ def render_advertiser_notice(notice):
     ai_rejection = decision == 'rejected' and ai_comment
     lines = [
         "🐱 MTProxy Pushok",
-        'Ваша рекламная заявка отклонена Агентом ИИ.' if ai_rejection else _DECISIONS[decision],
+        'Ваша рекламная заявка отклонена Pushok ИИ.' if ai_rejection else _DECISIONS[decision],
         "Заявка: " + str(campaign)[:8],
     ]
     if decision != "approved" or notice.get("operator_decision_reviewed"):
@@ -37,12 +37,13 @@ def render_advertiser_notice(notice):
             cleaned = "".join(c for c in comment if c.isprintable() or c == "\n").strip()
             if cleaned:
                 if ai_comment:
-                    signature = 'С уважением, Агент ИИ'
-                    if cleaned.endswith(signature):cleaned = cleaned[:-len(signature)].rstrip()
+                    signature = 'С уважением, Pushok ИИ'
+                    for ending in (signature, 'С уважением, Агент ИИ'):
+                        if cleaned.endswith(ending):cleaned = cleaned[:-len(ending)].rstrip()
                     lines.append(cleaned[:1900])
                 else:lines.append("Комментарий модератора:\n" + cleaned[:1100])
     lines.append("Посмотрите подробности в разделе «Мои кампании» (/campaigns).")
-    if ai_comment:lines.append('С уважением, Агент ИИ')
+    if ai_comment:lines.append('С уважением, Pushok ИИ')
     return "\n\n".join(lines)
 
 

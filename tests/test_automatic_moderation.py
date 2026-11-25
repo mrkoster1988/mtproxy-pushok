@@ -40,7 +40,7 @@ class ModerationDecisionTests(unittest.TestCase):
     def test_generated_notice_fits_outbox_and_preserves_exact_signature(self):
         text = ai.rejection_comment('п' * 500, 'д' * 500)
         self.assertLess(len(text), 1100)
-        self.assertTrue(text.endswith('С уважением, Агент ИИ'))
+        self.assertTrue(text.endswith('С уважением, Pushok ИИ'))
 
     def test_structured_ai_transport_accepts_reject_but_refusal_is_not_a_decision(self):
         channel = {'title': TITLE, 'description': '', 'posts': []}
