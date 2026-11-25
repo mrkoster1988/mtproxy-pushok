@@ -28,6 +28,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from psycopg.errors import CheckViolation, ExclusionViolation, InsufficientPrivilege, UniqueViolation
 from psycopg.rows import dict_row
 from .vpn_notices import router as vpn_notices_router
+from .vpn_stars import router as vpn_stars_router
 from .bot_routes import router as bot_router
 from .bot_stars import router as bot_stars_router
 from .bot_operator import router as operator_bot_router
@@ -57,11 +58,12 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="2.07",
+    version="2.08",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
 app.include_router(vpn_notices_router)
+app.include_router(vpn_stars_router)
 app.include_router(bot_stars_router)
 app.include_router(operator_bot_router)
 app.include_router(advertiser_notices_router)

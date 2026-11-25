@@ -381,6 +381,13 @@ def command_reply(command, actor, chat_id, campaign_loader=None, tariff_loader=N
             "reply_markup": keyboard()}
 
 
+def stars_route(payload, action):
+    for prefix, group in (('shop-vpn:', 'vpn-stars'), ('license:', 'license'), ('wallet:', 'wallet')):
+        if str(payload).startswith(prefix):
+            return group + '/' + action
+    return ('wallet' if action == 'refund' else 'stars') + '/' + action
+
+
 def process_stars_update(update, token, internal_api=None, send=None):
     """Обработка trusted update от Telegram Bot API. Вернуть True если обработан.
 
@@ -395,7 +402,7 @@ def process_stars_update(update, token, internal_api=None, send=None):
         try:
             if not query_id or type(sender) is not int or sender <= 0:
                 raise ValueError("bad_precheckout")
-            approval = internal_api("license/precheckout" if str(pre.get("invoice_payload", "")).startswith("license:") else "wallet/precheckout" if str(pre.get("invoice_payload", "")).startswith("wallet:") else "stars/precheckout", {
+            approval = internal_api(stars_route(pre.get("invoice_payload"), "precheckout"), {
                 "query_id": query_id, "telegram_user_id": sender,
                 "invoice_payload": pre.get("invoice_payload"),
                 "currency": pre.get("currency"),
@@ -421,7 +428,7 @@ def process_stars_update(update, token, internal_api=None, send=None):
             raise RuntimeError("payment_sender_invalid")
         is_wallet = str(paid.get("invoice_payload", "")).startswith("wallet:")
         is_license = str(paid.get("invoice_payload", "")).startswith("license:")
-        confirmation = internal_api("license/settle" if is_license else "wallet/settle" if is_wallet else "stars/settle", {
+        confirmation = internal_api(stars_route(paid.get("invoice_payload"), "settle"), {
             "telegram_user_id": sender,
             "invoice_payload": paid.get("invoice_payload"),
             "currency": paid.get("currency"),
@@ -431,6 +438,9 @@ def process_stars_update(update, token, internal_api=None, send=None):
         state = confirmation.get("status")
         if state not in ("applied", "already_processed", "requires_review"):
             raise RuntimeError("receipt_not_persisted")
+        if str(paid.get("invoice_payload", "")).startswith("shop-vpn:"):
+            # Shop enqueues its payment/subscription messages in the same transaction.
+            return True
         text = (
             "✅ Оплата Stars подтверждена. Ожидайте назначения рекламного размещения."
             if state in ("applied", "already_processed")
@@ -450,7 +460,11 @@ def process_stars_update(update, token, internal_api=None, send=None):
         sender = chat.get("id")
         if type(sender) is not int or sender <= 0 or chat.get("type") != "private":
             raise RuntimeError("refund_sender_invalid")
-        result = internal_api("license/refund" if str(refunded.get("invoice_payload", "")).startswith("license:") else "wallet/refund", {
+        route = stars_route(refunded.get("invoice_payload"), "refund")
+        extra = ({"invoice_payload": refunded["invoice_payload"], "occurred_at": message.get("date")}
+                 if route == "vpn-stars/refund" else {})
+        result = internal_api(route, {
+            **extra,
             "telegram_user_id": sender, "currency": refunded.get("currency"),
             "total_amount": refunded.get("total_amount"),
             "telegram_payment_charge_id": refunded.get("telegram_payment_charge_id"),
