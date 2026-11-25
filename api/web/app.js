@@ -41,10 +41,15 @@ function clearCabinetSession({preserveUnboundFlow=false,expired=false,clearWorks
 async function api(path,{method='GET',body,signal,session=token}={}){
  const headers={},requestToken=session,requestGeneration=authGeneration;if(requestToken)headers.Authorization='Bearer '+requestToken;
  if(body&&!(body instanceof FormData))headers['Content-Type']='application/json';
- let r;try{r=await fetch('/api/v1'+path,{method,headers,signal,cache:'no-store',body:body instanceof FormData?body:body?JSON.stringify(body):undefined});}catch{throw Error('Нет связи с сервером. Проверьте соединение и повторите действие.');}
- if(!r.ok){let d;try{const data=await r.json();d=data?.detail??data?.error;}catch{d='';}if(r.status===401&&requestToken&&token===requestToken&&requestGeneration===authGeneration){clearCabinetSession({preserveUnboundFlow:window.pushokFlowAccount?.unbound()===true,expired:true});}
- const error=Error(errors[d]||(r.status===422?'Проверьте заполненные поля.':typeof d==='string'&&d.endsWith('_not_configured')?'Вход ещё не настроен администратором.':'Не удалось выполнить действие. Попробуйте снова.'));error.status=r.status;error.code=typeof d==='string'?d:'';throw error;}
- return r.status===204?null:r.json();
+ const loginRead=method==='GET' && ['/me','/miniapp/config','/public-config','/channels','/me/tariffs','/operator/proxy-nodes','/campaigns','/operator/campaigns','/operator/campaigns?archived=true'].includes(path);
+ const controller=!signal && (loginRead || path.startsWith('/auth/telegram')) ? new AbortController() : null;
+ const timer=controller && setTimeout(()=>controller.abort(),15000);
+ try {
+  let r;try{r=await fetch('/api/v1'+path,{method,headers,signal:signal||controller?.signal,cache:'no-store',body:body instanceof FormData?body:body?JSON.stringify(body):undefined});}catch{throw Error('Нет связи с сервером. Проверьте соединение и повторите действие.');}
+  if(!r.ok){let d;try{const data=await r.json();d=data?.detail??data?.error;}catch{d='';}if(r.status===401&&requestToken&&token===requestToken&&requestGeneration===authGeneration){clearCabinetSession({preserveUnboundFlow:window.pushokFlowAccount?.unbound()===true,expired:true});}
+   const error=Error(errors[d]||(r.status===422?'Проверьте заполненные поля.':typeof d==='string'&&d.endsWith('_not_configured')?'Вход ещё не настроен администратором.':'Не удалось выполнить действие. Попробуйте снова.'));error.status=r.status;error.code=typeof d==='string'?d:'';throw error;}
+  return r.status===204?null:await r.json();
+ } finally { if(controller)clearTimeout(timer); }
 }
 async function run(fn,b){if(b)b.disabled=true;try{await fn();}catch(e){notice(e.message);}finally{if(b)b.disabled=false;}}
 function option(select,value,text){const o=el('option',text);o.value=value;select.append(o);}
@@ -810,32 +815,42 @@ function confirmShopLogin(profile, session) {
  const fromBot = query.get('shop_subscriptions') === '1';
  if (!fromBot && query.get('shop_login') !== '1') return false;
  const dialog = $('shop-login-consent');
+ const feedback = $('shop-login-result');
+ feedback.textContent='';
  $('shop-login-person').textContent = profile.first_name+' · Telegram ID '+profile.telegram_user_id;
  const cancel = () => location.replace('/shop/');
  dialog.oncancel = cancel;
  $('shop-login-cancel').onclick = cancel;
  $('shop-login-confirm').onclick = async () => {
   const submit = $('shop-login-confirm');
+  if(submit.disabled)return;
   submit.disabled = true;
+  feedback.textContent='Подтверждаем вход…';
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),15000);
+  const signal=controller.signal;
   try {
    if (token !== session || me?.id !== profile.id) throw Error();
    if (fromBot) {
-    const begin = await fetch('/shop/api/auth/mtproxy/start', {method:'POST', credentials:'same-origin',
+    const begin = await fetch('/shop/api/auth/mtproxy/start', {method:'POST', signal,credentials:'same-origin',
       headers:{'Content-Type':'application/json'}, body:'{}'});
     if (begin.status === 409) { location.assign('/shop/?view=account'); return; }
     if (!begin.ok) throw Error();
    }
-   const start = await fetch('/shop/api/auth/mtproxy/challenge', {credentials:'same-origin',cache:'no-store'});
+   const start = await fetch('/shop/api/auth/mtproxy/challenge', {signal,credentials:'same-origin',cache:'no-store'});
+   if(start.status===409){feedback.textContent='Запрос истёк. Вернитесь в магазин и начните вход заново.';return;}
    if (!start.ok) throw Error();
    const {challenge} = await start.json();
-   const {ticket} = await api('/flow/shop-browser-ticket',{method:'POST',session,body:{challenge,consent:true}});
+   const {ticket} = await api('/flow/shop-browser-ticket',{method:'POST',session,signal,body:{challenge,consent:true}});
    if (token !== session || me?.id !== profile.id) throw Error();
-   const result = await fetch('/shop/api/auth/mtproxy/finish',{method:'POST',credentials:'same-origin',
+   const result = await fetch('/shop/api/auth/mtproxy/finish',{method:'POST',signal,credentials:'same-origin',
     headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket})});
    if (!result.ok) throw Error();
    location.replace('/shop/?view=account');
   } catch {
-   $('shop-login-result').textContent='Вход не завершён. Вернитесь в магазин и начните вход снова.';
+   feedback.textContent=signal.aborted?'Сервер долго отвечает. Вернитесь в магазин, чтобы проверить вход.':'Вход не завершён. Попробуйте ещё раз или вернитесь в магазин.';
+  } finally {
+   clearTimeout(timeout);
    submit.disabled=false;
   }
  };
@@ -956,26 +971,30 @@ $('settings-tab').addEventListener('click',()=>run(async()=>{
 }));
 run(async()=>{
  if(miniAppMode){await window.pushokMiniApp.start();return;}
- try{const publicTariffs=await api('/tariffs');if(!me)tariffs=publicTariffs;updatePublicPrice();}catch(e){$('hero-tariff-price').textContent='Цена временно недоступна';}
+ const shopRequest=new URLSearchParams(location.search).get('shop_login')==='1';
+ $('shop-login-email').hidden=!shopRequest;
+ api('/tariffs').then(items=>{if(!me){tariffs=items;updatePublicPrice();}}).catch(()=>{if(!me)$('hero-tariff-price').textContent='Цена временно недоступна';});
  const config=await api('/public-config');window.cabinetBotConfig=config;if(window.cabinet)window.cabinet.config(config);window.pushokFlowAccount?.configure(config);
  const botShortcut=document.querySelector('.hero-link-primary');
  const validBot=/^[A-Za-z0-9_]{5,32}$/.test(config.telegram_bot_username||'');
  if(validBot){botShortcut.href='https://t.me/'+config.telegram_bot_username;botShortcut.removeAttribute('aria-disabled');}
  else{botShortcut.removeAttribute('href');botShortcut.setAttribute('aria-disabled','true');botShortcut.textContent='Telegram-бот не настроен';}
  if(validBot){
- const script=document.createElement('script');script.src='https://telegram.org/js/telegram-widget.js?22';script.async=true;script.dataset.telegramLogin=config.telegram_bot_username;script.dataset.size='large';script.dataset.onauth='onTelegramAuth(user)';$('telegram-login').append(script);$('login-note').textContent='Вход подтверждается в Telegram.';
+ const script=document.createElement('script');script.src='https://telegram.org/js/telegram-widget.js?22';script.async=true;script.onerror=()=>{$('login-note').textContent='Не удалось загрузить вход через Telegram. Проверьте соединение или используйте другой доступный способ входа.';};script.dataset.telegramLogin=config.telegram_bot_username;script.dataset.size='large';script.dataset.onauth='onTelegramAuth(user)';$('telegram-login').append(script);$('login-note').textContent=shopRequest?'Подтвердите вход в Telegram или используйте ранее добавленный ключ доступа. Для входа в магазин по email откройте ссылку ниже.':'Вход подтверждается в Telegram.';
 }else $('login-note').textContent='Администратору нужно настроить Telegram-бота для входа.';
  const generation=authGeneration;
  if(!token){
+  const controller=new AbortController();
+  const deadline=setTimeout(()=>controller.abort(),12000);
   try {
-   const resume=await fetch('/api/v1/auth/browser/resume',{method:'POST',headers:{'X-Pushok-Cabinet':'resume'},credentials:'same-origin',cache:'no-store'});
+   const resume=await fetch('/api/v1/auth/browser/resume',{signal:controller.signal,method:'POST',headers:{'X-Pushok-Cabinet':'resume'},credentials:'same-origin',cache:'no-store'});
    if(resume.ok && generation===authGeneration && !token){
     const saved=await resume.json();
     if(generation===authGeneration && !token && typeof saved.access_token==='string'){
      token=saved.access_token;sessionStorage.setItem(sessionKey,token);
     }
    }
-  }catch{} // The normal sign-in controls remain available offline.
+  }catch{} finally { clearTimeout(deadline); } // The normal sign-in controls remain available offline.
  }
  if(token && generation===authGeneration){
   if(await enter() && generation===authGeneration){
