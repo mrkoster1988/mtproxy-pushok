@@ -153,7 +153,7 @@ def main():
                                if node.tag.endswith('symbol')}
                     expect(page.locator('#cabinet-sidebar')).to_have_count(0)
                     expect(page.locator('.menu-toggle')).to_have_count(0)
-                    for route, icon in [('dashboard','home'),('campaigns','campaign'),('wallet','wallet'),('profile','user')]:
+                    for route, icon in [('dashboard','home'),('vpn','server'),('campaigns','campaign'),('wallet','wallet'),('profile','user')]:
                         link = page.locator('.mobile-bottom-nav a[data-route="'+route+'"]')
                         expect(link).to_be_visible()
                         expect(link).to_have_attribute('href','#/'+route)
@@ -161,7 +161,7 @@ def main():
                         expect(link.locator('use')).to_have_attribute('href','/assets/pushok-icons.svg#pi-'+icon)
                     privileged=page.evaluate("['admin','operator'].includes(me.role)")
                     routes=page.locator('.mobile-bottom-nav a:visible').evaluate_all('(items)=>items.map(a=>a.dataset.route)')
-                    assert routes==(['dashboard','moderation','campaigns','wallet','hall','profile'] if privileged else ['dashboard','campaigns','wallet','hall','profile'])
+                    assert routes==(['dashboard','vpn','moderation','campaigns','wallet','hall','profile'] if privileged else ['dashboard','vpn','campaigns','wallet','hall','profile'])
                     if privileged:
                         previous=page.evaluate('location.hash.slice(2)') or 'dashboard'
                         page.locator('.mobile-bottom-nav [data-route=moderation]').click()
