@@ -22,6 +22,37 @@ window.pushokMiniApp=(()=>{
   $('workspace').hidden=true;$('login').hidden=true;$('logout').hidden=true;
   message(text);syncNavigation();
  }
+ let phoneControls=null;
+ function phoneSettings(target){
+  if(!app)return;
+  if(phoneControls){target.append(phoneControls);return;}
+  const section=document.createElement('section');section.className='panel';
+  const heading=document.createElement('h3');heading.textContent='На телефоне';section.append(heading);
+  function action(label,callback){
+   const button=document.createElement('button');button.type='button';button.textContent=label;
+   button.addEventListener('click',()=>callback(button));section.append(button);return button;
+  }
+  if(app.isVersionAtLeast?.('8.0')){
+   const shortcut=action('Добавить ярлык кабинета',()=>app.addToHomeScreen());
+   function added(){shortcut.textContent='Ярлык добавлен';shortcut.disabled=true;}
+   app.onEvent('homeScreenAdded',added);
+   app.checkHomeScreenStatus(state=>{
+    if(state==='added')added();
+    if(state==='unsupported')shortcut.hidden=true;
+   });
+  }
+  if(app.isVersionAtLeast?.('6.9')){
+   const notify=action('Разрешить уведомления бота',button=>{
+    button.disabled=true;
+    app.requestWriteAccess(allowed=>{
+     button.disabled=allowed;
+     button.textContent=allowed?'Боту разрешено писать':'Разрешить уведомления бота';
+    });
+   });
+   if(app.initDataUnsafe?.user?.allows_write_to_pm){notify.disabled=true;notify.textContent='Боту разрешено писать';}
+  }
+  if(section.childElementCount>1){phoneControls=section;target.append(section);}
+ }
  function syncNavigation(){
   if(!app?.BackButton)return;
   const root=!me||!window.cabinetBootReady||!location.hash||location.hash==='#/dashboard';
@@ -99,7 +130,7 @@ window.pushokMiniApp=(()=>{
  });
  retry.addEventListener('click',start);
  message('Подключение к Telegram…');
- return {start,syncNavigation,canPay(){return typeof app?.openInvoice==='function';},
+ return {start,syncNavigation,phoneSettings,canPay(){return typeof app?.openInvoice==='function';},
   payInvoice(url){return new Promise((resolve,reject)=>{
    if(!/^https:\/\/t\.me\/\$[A-Za-z0-9_-]{1,256}$/.test(url)||typeof app?.openInvoice!=='function'){reject(Error('Обновите Telegram для оплаты Stars.'));return;}
    try{app.openInvoice(url,resolve);}catch{reject(Error('Не удалось открыть счёт. Обновите статус перед повтором.'));}
