@@ -96,6 +96,20 @@ def main():
     raise SystemExit("Проверка /push-config не прошла.")
 
 
+def bind_sender(cloud, project, account):
+    for delay in (3, 6, 12, 24, 30, 30, 30, 0):
+        result = cloud("projects", "add-iam-policy-binding", project,
+                       "--member=serviceAccount:" + account, "--role=roles/firebasecloudmessaging.admin",
+                       "--condition=None", "--format=none", check=False)
+        if result.returncode == 0:
+            return
+        error = result.stderr.decode(errors="replace").strip()
+        if not delay or f"service account {account} does not exist" not in error.lower():
+            raise SystemExit(error or "Google IAM: не удалось назначить роль отправителя.")
+        print(f"Google IAM ещё не видит отправителя. Повтор через {delay} с.", flush=True)
+        time.sleep(delay)
+
+
 def provision():
     """Obtain both configs on the VPS using a temporary Cloud CLI session."""
     root = Path("/opt/mtproxy-pushok")
@@ -110,12 +124,12 @@ def provision():
     credential = directory / "fcm-sender.json"
     with (directory / ".setup.lock").open("a") as lock, tempfile.TemporaryDirectory() as tmp:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        def cloud(*args, interactive=False, capture=False):
+        def cloud(*args, interactive=False, capture=False, check=True):
             cmd = ["docker", "run", "--rm", "-v", tmp + ":/config",
                    "-e", "CLOUDSDK_CONFIG=/config", "-e", "CLOUDSDK_CORE_PROJECT=" + project]
             if interactive:
                 cmd.append("-it")
-            return subprocess.run([*cmd, image, "gcloud", *args], check=True,
+            return subprocess.run([*cmd, image, "gcloud", *args], check=check, stderr=None if check else subprocess.PIPE,
                                   stdout=subprocess.PIPE if capture else None)
         cloud("auth", "login", "--no-launch-browser", interactive=True)
         token = cloud("auth", "print-access-token", capture=True).stdout.decode().strip()
@@ -148,8 +162,7 @@ def provision():
         accounts = cloud("iam", "service-accounts", "list", "--format=value(email)", capture=True)
         if account not in accounts.stdout.decode().splitlines():
             cloud("iam", "service-accounts", "create", "flow-vps-sender", "--display-name=Pushok Flow VPS")
-        cloud("projects", "add-iam-policy-binding", project, "--member=serviceAccount:" + account,
-              "--role=roles/firebasecloudmessaging.admin", "--condition=None", "--format=none")
+        bind_sender(cloud, project, account)
         if not credential.exists():
             cloud("iam", "service-accounts", "keys", "create", "/config/sender.json",
                   "--iam-account=" + account)
