@@ -45,6 +45,20 @@ class FlowProtocol(unittest.TestCase):
             self.assertEqual(response.headers['cache-control'], 'private, no-store')
             self.assertEqual(response.headers['referrer-policy'], 'no-referrer')
 
+    def test_cabinet_issues_web_login_bound_to_the_browser_and_telegram_account(self):
+        self.user['telegram_user_id'] = 12345
+        root = '11' * 32
+        challenge = 'ab' * 32
+        path = '/api/v1/flow/shop-browser-ticket'
+        with patch.dict(fixture.os.environ, {'FLOW_SHOP_BRIDGE_SECRET': root}):
+            self.assertEqual(self.client.post(path, json={'challenge': challenge, 'consent': False}).status_code, 403)
+            self.assertEqual(self.client.post(path, json={'challenge': '', 'consent': True}).status_code, 400)
+            key = hmac.digest(bytes.fromhex(root), b'pushok-shop-web-login-v1\0' + challenge.encode(), 'sha256')
+            with patch.object(flow, 'issue_ticket', return_value='proof') as issue:
+                response = self.client.post(path, json={'challenge': challenge, 'consent': True})
+                self.assertEqual(response.json(), {'ticket': 'proof'})
+                issue.assert_called_once_with(self.user['id'], 12345, key)
+
     def test_shop_bridge_requires_consent_and_configured_key_before_database(self):
         with patch.dict(fixture.os.environ, {'FLOW_SHOP_BRIDGE_SECRET': ''}):
             for body, status in (({}, 400), ({'consent': False}, 403),

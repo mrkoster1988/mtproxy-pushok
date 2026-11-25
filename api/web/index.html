@@ -15,7 +15,7 @@
   <link rel="stylesheet" href="/assets/payment-settings.css?v=197">
   <link rel="stylesheet" href="/assets/flow-account.css?v=1.122">
   <script src="/assets/flow-account.js?v=1.128" defer></script>
-  <script src="/assets/app.js?v=1.128" defer></script>
+  <script src="/assets/app.js?v=1.128.2" defer></script>
   <script src="/assets/campaign-analytics.js?v=198" defer></script>
   <script src="/assets/merchant-settings.js?v=1.112" defer></script>
   <script src="/assets/channel-ai-settings.js?v=1.112" defer></script>
@@ -103,6 +103,14 @@
 
     <div id="notice" role="status" aria-live="polite" hidden></div>
 
+    <dialog id="shop-login-consent" aria-labelledby="shop-login-heading">
+      <h2 id="shop-login-heading">Войти в Pushok Shop?</h2>
+      <p id="shop-login-person"></p>
+      <p>Магазин получит идентификатор аккаунта и Telegram ID для входа в личный кабинет.</p>
+      <p id="shop-login-result" role="status"></p>
+      <button type="button" id="shop-login-confirm">Продолжить в магазин</button>
+      <button type="button" id="shop-login-cancel">Вернуться без входа</button>
+    </dialog>
     <section id="login" class="panel login-panel">
       <div class="login-icon" aria-hidden="true">↗</div>
       <div class="login-content">

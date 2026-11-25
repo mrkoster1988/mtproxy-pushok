@@ -805,13 +805,44 @@ async function refresh({background=false}={}){
  window.pushokOrder?.sync();
  if(window.cabinet)window.cabinet.sync(own,{background});
 }
+function confirmShopLogin(profile, session) {
+ if (new URLSearchParams(location.search).get('shop_login') !== '1') return false;
+ const dialog = $('shop-login-consent');
+ $('shop-login-person').textContent = profile.first_name+' · Telegram ID '+profile.telegram_user_id;
+ const cancel = () => location.replace('/shop/');
+ dialog.oncancel = cancel;
+ $('shop-login-cancel').onclick = cancel;
+ $('shop-login-confirm').onclick = async () => {
+  const submit = $('shop-login-confirm');
+  submit.disabled = true;
+  try {
+   if (token !== session || me?.id !== profile.id) throw Error();
+   const start = await fetch('/shop/api/auth/mtproxy/challenge', {credentials:'same-origin',cache:'no-store'});
+   if (!start.ok) throw Error();
+   const {challenge} = await start.json();
+   const {ticket} = await api('/flow/shop-browser-ticket',{method:'POST',session,body:{challenge,consent:true}});
+   if (token !== session || me?.id !== profile.id) throw Error();
+   const result = await fetch('/shop/api/auth/mtproxy/finish',{method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/json'},body:JSON.stringify({ticket})});
+   if (!result.ok) throw Error();
+   location.replace('/shop/?view=account');
+  } catch {
+   $('shop-login-result').textContent='Вход не завершён. Вернитесь в магазин и начните вход снова.';
+   submit.disabled=false;
+  }
+ };
+ if (!dialog.open) dialog.showModal();
+ return true;
+}
 async function enter(){
  const session=token,generation=authGeneration,entry=++enterGeneration;
  const current=()=>Boolean(session&&token===session&&generation===authGeneration&&entry===enterGeneration);
  if(!current())return false;
  try{
   const profile=await api('/me');if(!current())return false;
-  me=profile;window.pushokFlowAccount?.authenticated();
+  me=profile;
+  if(confirmShopLogin(profile,session))return true;
+  window.pushokFlowAccount?.authenticated();
   await window.pushokGrowth.claimProxyInvite();if(!current())return false;
   const loadedChannels=await api('/channels');if(!current())return false;channels=loadedChannels;
   const loadedTariffs=await api('/me/tariffs');if(!current())return false;tariffs=loadedTariffs;updatePublicPrice();

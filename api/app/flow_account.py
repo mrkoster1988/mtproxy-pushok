@@ -47,7 +47,7 @@ MAX_SESSIONS_PER_USER = 10
 RATE_LIMITS = {'device': (None, 120), 'token': (120, 1200),
                'consent': (60, 600), 'profile': (120, 1200), 'logout': (30, 300), 'shop': (5, 300)}
 RATE_BUCKETS = {'/device': 'device', '/device/token': 'token',
-                '/device/review': 'consent', '/device/decision': 'consent',
+                '/shop-browser-ticket': 'consent', '/device/review': 'consent', '/device/decision': 'consent',
                 '/me': 'profile', '/logout': 'logout', '/shop-ticket': 'shop', '/push-device': 'profile'}
 
 
@@ -462,6 +462,22 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
                     ON CONFLICT(session_id) DO UPDATE SET registration_token=EXCLUDED.registration_token""",
                              (session['id'], token))
         return {'enabled': token is not None}
+
+    @router.post('/shop-browser-ticket')
+    def shop_browser_ticket(request: Request, user=Depends(consent_user)):
+        data = _payload(request, ('challenge', 'consent'))
+        challenge = data['challenge']
+        if not isinstance(challenge, str) or not re.fullmatch(r'[0-9a-f]{64}', challenge):
+            raise FlowError(400, 'invalid_request')
+        if data['consent'] is not True:
+            raise FlowError(403, 'access_denied')
+        try:
+            key = bridge_key(os.getenv('FLOW_SHOP_BRIDGE_SECRET', ''))
+        except ValueError:
+            raise FlowError(503, 'service_unavailable') from None
+        browser_key = hmac.digest(key, b'pushok-shop-web-login-v1\0' + challenge.encode('ascii'), 'sha256')
+        ticket = issue_ticket(user['id'], user['telegram_user_id'], browser_key)
+        return {'ticket': ticket}
 
     @router.post('/shop-ticket')
     def shop_ticket(request: Request):
