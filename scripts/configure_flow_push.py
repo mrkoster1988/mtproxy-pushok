@@ -3,6 +3,7 @@ import argparse
 import base64
 import fcntl
 import sys
+from urllib.error import HTTPError
 from urllib.request import Request
 import json
 import os
@@ -120,10 +121,28 @@ def provision():
         token = cloud("auth", "print-access-token", capture=True).stdout.decode().strip()
         app = "1:779628696156:android:ab2388d962101088328c99"
         request = Request("https://firebase.googleapis.com/v1beta1/projects/" + project +
-                          "/androidApps/" + app + "/config", headers={"Authorization": "Bearer " + token})
+                          "/androidApps/" + app + "/config", headers={"Authorization": "Bearer " + token,
+                                                             "X-Goog-User-Project": project})
         android = Path(tmp) / "android.json"
-        with urlopen(request, timeout=30) as response:
-            android.write_bytes(base64.b64decode(json.load(response)["configFileContents"], validate=True))
+        for attempt in range(5):
+            try:
+                with urlopen(request, timeout=30) as response:
+                    android.write_bytes(base64.b64decode(json.load(response)["configFileContents"], validate=True))
+                break
+            except HTTPError as exc:
+                try:
+                    error = json.loads(exc.read()).get("error", {})
+                except ValueError:
+                    error = {}
+                disabled = any(d.get("reason") == "SERVICE_DISABLED" and
+                               d.get("metadata", {}).get("service") == "firebase.googleapis.com"
+                               for d in error.get("details", []) if isinstance(d, dict))
+                if disabled and exc.code == 403 and attempt < 4:
+                    if attempt == 0:
+                        cloud("services", "enable", "firebase.googleapis.com")
+                    time.sleep(3 * (attempt + 1))
+                    continue
+                raise SystemExit(f"Firebase HTTP {exc.code}: {error.get('message') or exc.reason}") from None
         if credential.exists() and json.loads(credential.read_bytes()).get("client_email") != account:
             raise SystemExit("Уже установлен другой отправитель. Существующий ключ сохранён.")
         accounts = cloud("iam", "service-accounts", "list", "--format=value(email)", capture=True)
