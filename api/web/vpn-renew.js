@@ -31,11 +31,11 @@ window.pushokVpnRenew = (() => {
       }
       if (paid) box.append(el('p','Магазин обновляет срок подписки.'));
       const previous=saved();
-      if(order.status==='pending' && previous?.order===id && previous.url && window.pushokMiniApp?.canPay()) {
+      if(order.status==='pending' && (order.payment_url || previous?.order===id && previous.url) && window.pushokMiniApp?.canPay()) {
         box.append(button('Открыть счёт',async()=>{
           if(turn!==revision)return;
           ++revision;
-          try { await window.pushokMiniApp.payInvoice(previous.url); }
+          try { await window.pushokMiniApp.payInvoice(order.payment_url||previous.url); }
           catch(e) { if(visible())box.append(el('p',e.message)); }
           if(visible())await receipt(id);
         }));
@@ -55,7 +55,8 @@ window.pushokVpnRenew = (() => {
     terms.append(el('summary','Условия оплаты'),el('p',catalog.terms||''));
     const consent=el('label',undefined,'vpn-consent'),check=el('input');check.type='checkbox';
     consent.append(check,document.createTextNode('Принимаю условия оплаты'));
-    let selected=catalog.plans[0],busy=false,requestId=crypto.randomUUID();
+    let selected=catalog.plans[0],busy=false,requestId=prior?.request_id||crypto.randomUUID();
+    if (prior?.plan) selected=catalog.plans.find(p=>p.id===prior.plan)||selected;
     const pay=el('button',undefined,'campaign-pay-action');pay.type='button';note.textContent='';
     function update(){pay.textContent=selected?'Оплатить '+selected.amount+' ⭐':'Оплатить';pay.disabled=busy||!selected||!check.checked||!catalog.available;}
     for(const plan of catalog.plans){
@@ -69,6 +70,7 @@ window.pushokVpnRenew = (() => {
       if(busy||!selected||!check.checked||!visible())return;
       if(!window.pushokMiniApp?.canPay()) { note.textContent='Для оплаты откройте эту вкладку в Mini App Telegram.';return; }
       busy=true;choices.disabled=check.disabled=true;update();note.textContent='Готовим счёт…';
+      save({plan:selected.id,request_id:requestId});
       try {
         const order=await api('/vpn/checkout',{method:'POST',body:{plan:selected.id,plan_version:selected.version,amount:selected.amount,
           policy_version:catalog.policy_version,accept_terms:true,request_id:requestId}});
@@ -78,13 +80,13 @@ window.pushokVpnRenew = (() => {
         save({order:order.id,url:order.payment_url});
         const result=await window.pushokMiniApp.payInvoice(order.payment_url);
         if(!visible())return;
-        if(result==='cancelled'||result==='failed'){clear();note.textContent=result==='cancelled'?'Оплата отменена.':'Оплата не прошла. Можно повторить.';return;}
+        if(result==='cancelled'||result==='failed'){await receipt(order.id);return;}
         await receipt(order.id);
-      } catch(e) { if(visible()){note.textContent=e.message;if(e.code==='vpn_offer_changed')box.append(button('Обновить тарифы',()=>show(target)));} }
+      } catch(e) { if(visible()){note.textContent=e.message;if(e.code==='vpn_offer_changed')box.append(button('Обновить тарифы',()=>{clear();return show(target);}));} }
       finally {busy=false;choices.disabled=check.disabled=false;update();}
     };
     box.replaceChildren(choices);
-    if(!catalog.plans.length || !catalog.available) { box.append(el('p','Платное продление сейчас недоступно.','muted'));return; }
+    if(!catalog.plans.length || !catalog.available) { box.append(el('p',catalog.unavailable_reason||'Платное продление сейчас недоступно.','muted'));return; }
     box.append(terms,consent,pay,note);
   }
   return {show};

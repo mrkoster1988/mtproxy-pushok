@@ -5,6 +5,7 @@ window.pushokInterface=(()=>{
  // Эти разделы открываются прямо из блока «Управление» в профиле.
  const managementSections=[
   {key:'payments',title:'Платежи',icon:'wallet',pane:'payments'},
+  {key:'vpn',title:'Настройки VPN',icon:'server',pane:'system'},
   {key:'tariffs',title:'Тарифы',icon:'calendar',pane:'tariffs'},
   {key:'design',title:'Оформление',icon:'edit',pane:'system'},
   {key:'people',title:'Пользователи и награды',icon:'gift',pane:'system'},

@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 from .flow_shop_ticket import bridge_key
+from .vpn_settings import accepts_stars
+from .stars_checkout import credentials
 from .telegram_environment import is_test_environment
 
 DOMAIN = b'pushok-miniapp-vpn-checkout-v1:'
@@ -41,12 +43,34 @@ def exchange(action,user,**fields):
             reply=client.post('https://pushok.shop/shop/api/flow/miniapp-vpn/'+action,data=raw,
                 headers={'Content-Type':'application/json','X-Pushok-Management':stamp+':'+signature},
                 timeout=(3,20),allow_redirects=False)
-            if reply.status_code==409:
-                raise HTTPException(409,'vpn_offer_changed')
+            if reply.status_code>=400:
+                try:
+                    detail=reply.json().get('detail')
+                except ValueError:
+                    detail=None
+                if isinstance(detail,dict) and detail.get('code')=='FLOW_IDENTITY_CONFLICT':
+                    raise HTTPException(409,'vpn_account_conflict')
+                if isinstance(detail,str) and detail in ('cabinet_stars_disabled','telegram_bot_token_not_configured','invoice_unavailable'):
+                    raise HTTPException(reply.status_code,detail)
+                if reply.status_code==409:
+                    raise HTTPException(409,'vpn_offer_changed')
+                if reply.status_code==502 and action=='checkout':
+                    raise HTTPException(502,'invoice_unavailable')
+                if reply.status_code in (401,403,422):
+                    raise HTTPException(503,'vpn_shop_integration')
             if action=='status' and reply.status_code==404:
                 raise HTTPException(404,'vpn_order_missing')
             reply.raise_for_status()
-            return JSONResponse(reply.json(),headers={'Cache-Control':'private, no-store'})
+            result=reply.json()
+            if action=='plans' and result.get('available') and result.get('issuer')=='cabinet':
+                reason=None
+                if not accepts_stars():
+                    reason='Оплата Stars для VPN отключена в настройках.'
+                else:
+                    try: credentials()
+                    except HTTPException: reason='Бот для приёма Stars пока не настроен.'
+                if reason:result.update(available=False,unavailable_reason=reason)
+            return JSONResponse(result,headers={'Cache-Control':'private, no-store'})
     except (ValueError,requests.RequestException):
         raise HTTPException(503,'vpn_shop_unavailable') from None
 

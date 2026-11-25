@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .bot_routes import _verify_bot_secret
 from .flow_shop_ticket import bridge_key
-from .payment_gate import stars_invoices_enabled
+from .vpn_settings import accepts_stars as stars_invoices_enabled
 from .stars_checkout import credentials, create_invoice_link, StarsLinkError
 from .telegram_environment import is_test_environment
 

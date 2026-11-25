@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -415,7 +416,15 @@ def process_stars_update(update, token, internal_api=None, send=None):
         answer = {"pre_checkout_query_id": query_id, "ok": ok}
         if not ok:
             answer["error_message"] = "Не удалось подтвердить заказ. Создайте новый счёт."
-        send(token, "answerPreCheckoutQuery", answer, timeout=4)
+        try:
+            send(token, "answerPreCheckoutQuery", answer, timeout=4)
+        except HTTPError as exc:
+            if exc.code != 400:
+                raise
+            description = json.loads(exc.read(8192)).get("description", "").lower()
+            if not any(text in description for text in ("query is too old","query_id_invalid","query id is invalid")):
+                raise
+            LOG.info("Telegram закрыл запрос подтверждения оплаты до ответа")
         return True
 
     message = update.get("message") or {}
@@ -667,6 +676,21 @@ def validate_bot(token):
         raise RuntimeError("Webhook включён: polling не запускается")
 
 
+def deliver_notifications(token):
+    try:
+        deliver_operator_outbox(token)
+        deliver_advertiser_notices(
+            _internal_api,
+            lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4),
+        )
+        deliver_lifecycle_notices(_internal_api,lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4),miniapp_url())
+        deliver_vpn_notices(_internal_api, lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4), miniapp_url() or "https://pushok.shop/miniapp")
+        deliver_vpn_notices(_internal_api, lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4), miniapp_url() or "https://pushok.shop/miniapp", queue="vpn-reminders")
+        deliver_birthdays(_internal_api, lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4), miniapp_url())
+    except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+        LOG.warning("Не удалось обработать рассылку: %s", type(exc).__name__)
+
+
 def run():
     global _navigation
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -685,7 +709,13 @@ def run():
     delivery_inbox = DeliveryInbox(admin_delivery_report, admin_retry_advertiser_notice)
     navigation = Navigation(raw_telegram_call, path=os.getenv('PUSHOK_BOT_NAV_DB'))
     _navigation = navigation
-    next_notification_poll = time.monotonic()
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix='telegram-notices') as notifications:
+        poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigation, notifications)
+
+
+def poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigation, notifications):
+    pending = []
+    next_cleanup = time.monotonic()
     offset = None
     while True:
         try:
@@ -693,7 +723,13 @@ def run():
                 "offset": offset, "timeout": 25,
                 "allowed_updates": ["message", "callback_query", "pre_checkout_query", "chat_member"]})
             for update in updates:
+                if "pre_checkout_query" in update:
+                    process_stars_update(update,token)
+            for update in updates:
                 next_offset = update["update_id"] + 1
+                if "pre_checkout_query" in update:
+                    offset = next_offset
+                    continue
                 join=member_payload(update)
                 if join and ready:
                     _internal_api("analytics/join",join)
@@ -724,16 +760,11 @@ def run():
                     navigation.deliver(token, update, payload)
                 # Не подтверждать update до завершения обработки.
                 offset = next_offset
-            if ready and time.monotonic() >= next_notification_poll:
-                next_notification_poll = time.monotonic() + 30
-                deliver_operator_outbox(token)
-                deliver_advertiser_notices(
-                    _internal_api,
-                    lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4),
-                )
-                deliver_lifecycle_notices(_internal_api,lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4),miniapp_url())
-                deliver_vpn_notices(_internal_api, lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4), miniapp_url() or "https://pushok.shop/miniapp")
-                deliver_birthdays(_internal_api, lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4), miniapp_url())
+            if ready and time.monotonic() >= next_cleanup:
+                next_cleanup = time.monotonic() + 30
+                pending = [job for job in pending if not job.done()]
+                if len(pending) < 2:
+                    pending.append(notifications.submit(deliver_notifications,token))
                 navigation.cleanup_pending(token)
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
             # Не включать str(exc): HTTPError содержит URL с секретным токеном.

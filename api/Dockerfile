@@ -9,6 +9,13 @@ WORKDIR /srv/mtproxy-pushok
 RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
+# DB-IP Country Lite (CC BY 4.0). Pin the archive and retain its attribution.
+ADD https://registry.npmjs.org/@ip-location-db/dbip-country-mmdb/-/dbip-country-mmdb-2.3.2026060120.tgz /tmp/dbip-country.tgz
+RUN echo '5340f28d08f4e666473e0c5dc1c40d9db457ad00603d1f725fb4d8621c624239  /tmp/dbip-country.tgz' | sha256sum -c - \
+    && mkdir -p /usr/share/pushok \
+    && tar xzf /tmp/dbip-country.tgz --strip-components=1 -C /usr/share/pushok package/dbip-country.mmdb package/DBIP-LICENSE \
+    && chmod 644 /usr/share/pushok/* && rm /tmp/dbip-country.tgz
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
     && mkdir -p /var/lib/mtproxy-pushok/payment-proofs \

@@ -647,7 +647,7 @@
   if(name==='campaigns')state.scope=section==='mine'?'mine':'all';
   if(name!=='sponsors')automationFocusRoute='';
   if(name==='create'&&!me?.phone_verified){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Подтвердите номер перед созданием кампании.');}
-  if(!permitted(name)){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}
+  if(!permitted(name)&&!(name==='management'&&section==='vpn'&&hasDeveloperAccess(me))){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}
   if($('notice').dataset.route!==location.hash)$('notice').hidden=true;
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
@@ -664,7 +664,7 @@
   searchForm.hidden=name!=='campaigns';
   updatePanel.hidden=me.role!=='admin';
   if(me.role==='admin'&&['profile','dashboard'].includes(name))refreshSoftware();
-  if(name==='management'){window.pushokInterface.settings();window.pushokInterface.showManagement(section);if(previousRoute!=='management')run(loadAdminSettings);else if(section==='payments')run(()=>renderSBPReview());}
+  if(name==='management'){window.pushokInterface.settings();window.pushokInterface.showManagement(section);if(section==='vpn')void window.pushokVpnSettings.show($('vpn-settings-center'));else if(previousRoute!=='management')run(loadAdminSettings);else if(section==='payments')run(()=>renderSBPReview());}
   if(name==='profile')window.pushokDeveloper.open(aboutDeveloper);
   if(name==='profile'&&section==='management')$('profile-management')?.scrollIntoView({block:'start',behavior:'instant'});
   if(miniAppMode)window.pushokMiniApp.syncNavigation();

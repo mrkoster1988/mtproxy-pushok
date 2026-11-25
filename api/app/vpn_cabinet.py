@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from .flow_shop_ticket import bridge_key
+from .vpn_geo import country
 
 _lock = Lock()
 _expires = 0.0
@@ -56,7 +57,7 @@ def is_staff(user):
 
 class Change(BaseModel):
     model_config = {'extra': 'forbid'}
-    action: Literal['extend', 'shorten', 'limit', 'retry']
+    action: Literal['extend', 'shorten', 'limit', 'retry', 'revoke', 'restore']
     subscription_id: str = Field(min_length=1, max_length=100)
     request_id: UUID
     before: int = Field(ge=0, strict=True)
@@ -104,7 +105,7 @@ def router_for(get_dsn, cabinet_user):
         accounts = data['accounts']
         own = accounts.get(str(user['id']))
         staff = is_staff(user)
-        public_fields = ('state', 'expires_at', 'online', 'last_seen', 'received', 'sent', 'device_limit', 'tunnel_ips', 'endpoint_ip')
+        public_fields = ('state', 'expires_at', 'online', 'last_seen', 'received', 'sent', 'device_limit', 'periods','revoked_at')
         result = {'sampled_at': data['sampled_at'], 'can_manage': staff,
                   'personal': {k: own.get(k) for k in public_fields} if own else None}
         if staff:
@@ -112,15 +113,15 @@ def router_for(get_dsn, cabinet_user):
             people = []
             if ids:
                 with psycopg.connect(get_dsn(), row_factory=dict_row) as conn:
-                    people = conn.execute("""SELECT id,first_name,last_name,is_developer FROM users
+                    people = conn.execute("""SELECT id,first_name,last_name,username,telegram_user_id,is_developer FROM users
                         WHERE id=ANY(%s) AND blocked_at IS NULL""", (ids,)).fetchall()
             members = [{'id': str(p['id']), 'name': ' '.join(filter(None, (p['first_name'], p['last_name']))) or 'Участник',
-                        **accounts[str(p['id'])]} for p in people]
+                        'username':p.get('username'),'telegram_id':p.get('telegram_user_id'),
+                        **{k:accounts[str(p['id'])].get(k) for k in (*public_fields,'tunnel_ips','endpoint_ip','subscription_id','pending_change')} } for p in people]
+            for member in members:
+                member['country_code']=country(member.get('endpoint_ip'))
             members.sort(key=lambda p: (-(p.get('last_seen') or 0), p['id']))
             result['members'] = members
-            developers = {str(p['id']) for p in people if p['is_developer']}
-            result['leaders'] = [{'id': p['id'], 'name': p['name']} for p in members
-                                if p['id'] not in developers and p.get('last_seen')][:50]
         return JSONResponse(result, headers={'Cache-Control': 'private, no-store'})
 
     return router

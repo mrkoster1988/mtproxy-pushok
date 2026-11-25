@@ -27,10 +27,18 @@ class VpnVisibility(unittest.TestCase):
             self.assertFalse(data['can_manage'])
             mock.assert_not_called()
             user['id'] = other
-            self.assertEqual(client.get('/api/v1/vpn/dashboard').json()['personal']['endpoint_ip'], '192.0.2.4')
+            for role in ('advertiser','operator','moderator'):
+                user['role']=role
+                personal=client.get('/api/v1/vpn/dashboard').json()['personal']
+                self.assertEqual(personal['received'],12345)
+                for key in ('endpoint_ip','tunnel_ips','country_code'):
+                    self.assertNotIn(key,personal)
             user['id'] = uid
             user['role']='admin'
-            self.assertEqual(client.get('/api/v1/vpn/dashboard').json()['members'][0]['received'],12345)
+            staff=client.get('/api/v1/vpn/dashboard').json()['members'][0]
+            self.assertEqual(staff['received'],12345)
+            self.assertEqual(staff['endpoint_ip'],'192.0.2.4')
+            self.assertIn('country_code',staff)
 
     def test_management_checks_current_role_before_forwarding(self):
         user = {'id': UUID(int=1), 'role':'operator'}

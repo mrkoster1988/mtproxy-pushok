@@ -44,7 +44,7 @@ def relay(operation, payload):
 @router.post('/claim')
 def claim(x_pushok_bot_secret: str | None = Header(default=None)):
     _verify_bot_secret(x_pushok_bot_secret)
-    return relay('claim',{})
+    return relay('claim',{'scheduled_by_cabinet':True})
 
 
 @router.post('/finish')

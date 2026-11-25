@@ -45,9 +45,9 @@ def create_invoice_link(token, prepared):
             raise ValueError()
         data = json.loads(raw)
         url = data.get('result')
-        if data.get('ok') is not True or not isinstance(url, str) or not re.fullmatch(r'https://t\.me/\$[A-Za-z0-9_-]{1,256}', url):
+        if data.get('ok') is not True or not isinstance(url, str) or not re.fullmatch(r'https://t\.me/(?:\$|invoice/)[A-Za-z0-9_-]{1,256}', url):
             raise ValueError()
-        return url
+        return url.replace('https://t.me/invoice/', 'https://t.me/$')
     except (OSError, ValueError, TypeError, AttributeError):
         # Исключения urllib могут содержать URL с токеном: наружу только фиксированный код.
         raise StarsLinkError('stars_link_unavailable') from None

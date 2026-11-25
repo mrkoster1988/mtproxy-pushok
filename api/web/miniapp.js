@@ -138,6 +138,7 @@ window.pushokMiniApp=(()=>{
  message('Подключение к Telegram…');
  return {start,syncNavigation,phoneSettings,canPay(){return typeof app?.openInvoice==='function';},
   payInvoice(url){return new Promise((resolve,reject)=>{
+   if(typeof url==='string')url=url.replace('https://t.me/invoice/','https://t.me/$');
    if(!/^https:\/\/t\.me\/\$[A-Za-z0-9_-]{1,256}$/.test(url)||typeof app?.openInvoice!=='function'){reject(Error('Обновите Telegram для оплаты Stars.'));return;}
    try{app.openInvoice(url,resolve);}catch{reject(Error('Не удалось открыть счёт. Обновите статус перед повтором.'));}
   });},expired(options){end('Сессия завершена. Закройте Mini App и откройте заново.',options);},
