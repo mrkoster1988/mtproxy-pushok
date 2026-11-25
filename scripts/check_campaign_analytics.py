@@ -47,12 +47,24 @@ def check_campaign_analytics(browser,base,output,failures,dsn):
             expect(footer.get_by_role('button',name='Подключить подсчёт')).to_have_text('Подключить подсчёт')
             area.screenshot(path=str(output/'campaign-link-actions-390.png'),
                             style='.cabinet-topbar,.mobile-bottom-nav{visibility:hidden!important}')
-            replies=[{'id':-10084701,'type':'channel','username':'analytics_fixture'},
-                     {'status':'administrator','can_invite_users':True},{'invite_link':'https://t.me/+analyticsFixture123'}]
-            with patch.object(channel_logos,'_call',side_effect=replies):
+            # Always return the answer for the requested Telegram method.
+            # A shared sequential side_effect list is brittle when unrelated
+            # background logo refreshes overlap with this browser operation.
+            observed=[]
+            def telegram_fixture(token, method, params):
+                observed.append(method)
+                if method=='getChat' and params.get('chat_id')=='@analytics_fixture':
+                    return {'id':-10084701,'type':'channel','username':'analytics_fixture'}
+                if method=='getChatMember' and params.get('chat_id')==-10084701:
+                    return {'status':'administrator','can_invite_users':True}
+                if method=='createChatInviteLink' and params.get('chat_id')==-10084701:
+                    return {'invite_link':'https://t.me/+analyticsFixture123'}
+                raise ValueError('unexpected_telegram_fixture_request')
+            with patch.object(channel_logos,'_call',side_effect=telegram_fixture):
                 with page.expect_response(lambda r:r.url.endswith('/analytics/enable')) as enabled:
                     area.get_by_role('button',name='Подключить подсчёт',exact=True).click()
                 assert enabled.value.ok,enabled.value.text()
+                assert {'getChat','getChatMember','createChatInviteLink'} <= set(observed)
             link=area.get_by_role('link',name='Ссылка кампании',exact=True);expect(link).to_be_visible();url=link.get_attribute('href')
             expect(area.locator('dd')).to_have_text(['0','0','0','—'])
             landing.goto(url);expect(landing.get_by_role('button',name='Открыть канал',exact=True)).to_be_visible()
