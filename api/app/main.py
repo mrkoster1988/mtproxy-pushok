@@ -58,7 +58,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="2.08",
+    version="2.09",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2911,7 +2911,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=1.128.1" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=2.09" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
@@ -3414,5 +3414,8 @@ app.include_router(passkeys_router(lambda: DATABASE_URL, get_current_user,
     lambda: _required_secret(SESSION_SIGNING_KEY, 'SESSION_SIGNING_KEY'),
     _create_session_token, remember_browser_session, SESSION_TTL_SECONDS))
 
+from . import vpn_download, vpn_shop
+app.include_router(vpn_download.router)
+app.include_router(vpn_shop.router_for(get_current_user))
 from .vpn_cabinet import router_for as vpn_cabinet_router
 app.include_router(vpn_cabinet_router(lambda: DATABASE_URL, get_current_user))

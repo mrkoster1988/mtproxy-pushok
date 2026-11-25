@@ -536,10 +536,8 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
             return None
         if not launch:
             return ({'chat_id': chat['id'], 'text': 'Кабинет магазина пока не настроен.'}, None)
-        root = 'https://' + urlsplit(launch).netloc
-        buttons = [[{'text':'Моя подписка', 'web_app':{'url':launch + '?shop_subscriptions=1'}}],
-                   [{'text':'Управление для владельца', 'web_app':{'url':root + '/shop/admin?section=users'}}]]
-        return ({'chat_id':chat['id'], 'text':'Срок действия и продление WireGuard. Для управления клиентами войдите в магазин с правами владельца.',
+        buttons = [[{'text':'Открыть VPN', 'web_app':{'url':launch+'?vpn=home'}}]]
+        return ({'chat_id':chat['id'], 'text':'Подписка Pushok Flow и срок доступа.',
                  'reply_markup':{'inline_keyboard':buttons}}, None)
     stars = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+stars', str(message.get('text') or ''), re.IGNORECASE)
     if stars and chat.get('type') == 'private' and type(actor.get('id')) is int and actor['id'] == chat.get('id'):
@@ -734,7 +732,7 @@ def run():
                     lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4),
                 )
                 deliver_lifecycle_notices(_internal_api,lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4),miniapp_url())
-                deliver_vpn_notices(_internal_api, lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4))
+                deliver_vpn_notices(_internal_api, lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4), miniapp_url() or "https://pushok.shop/miniapp")
                 deliver_birthdays(_internal_api, lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4), miniapp_url())
                 navigation.cleanup_pending(token)
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:

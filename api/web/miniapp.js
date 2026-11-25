@@ -99,12 +99,18 @@ window.pushokMiniApp=(()=>{
     app.onEvent?.('themeChanged',theme);app.onEvent?.('safeAreaChanged',theme);app.onEvent?.('contentSafeAreaChanged',theme);app.onEvent?.('fullscreenChanged',theme);
     app.BackButton?.onClick(back);
    }
-   const launch=window.pushokLinks.capture(new URLSearchParams(app.initData).get('start_param'));
-   const fingerprint=new URLSearchParams(app.initData).get('hash');
+   const signedParams=new URLSearchParams(app.initData),startParam=signedParams.get('start_param');
+   const launch=window.pushokLinks.capture(startParam);
+   const fingerprint=signedParams.get('hash');
    const newLaunch=sessionStorage.getItem(cacheKey)!==fingerprint;
    const clean=new URL(location.href);
    for(const key of [...clean.searchParams.keys()])if(key.startsWith('tgWebApp')||key==='sbp_campaign')clean.searchParams.delete(key);
    if((newLaunch&&launch.startsWith('r_'))||!clean.hash.startsWith('#/'))clean.hash='/dashboard';
+   const vpnLaunch=clean.searchParams.get('vpn')||(newLaunch&&({vpn:'home',vpn_renew:'renew'})[startParam]);
+   if(['renew','home'].includes(vpnLaunch)||clean.searchParams.get('shop_subscriptions')==='1'){
+    clean.hash=vpnLaunch==='renew'?'/vpn/renew':'/vpn';
+    clean.searchParams.delete('vpn');clean.searchParams.delete('shop_subscriptions');
+   }
    history.replaceState(null,'',clean);
    if(!fingerprint){clear();message('Не удалось проверить вход. Закройте Mini App и откройте заново.');return;}
    if(sessionStorage.getItem(exitKey)===fingerprint){end('Вы вышли. Закройте Mini App и откройте заново для нового входа.');return;}

@@ -13,7 +13,7 @@ class VpnNotices(TestCase):
             deliver(api,send)
         payload=send.call_args.args[0]
         self.assertEqual(payload['chat_id'],123)
-        self.assertEqual(payload['reply_markup']['inline_keyboard'][0][0]['url'],'https://pushok.shop/shop/?renew=wg#plans')
+        self.assertEqual(payload['reply_markup']['inline_keyboard'][0][0]['web_app']['url'],'https://pushok.shop/miniapp?vpn=renew')
         self.assertEqual(api.call_args.args,('vpn-notices/finish',{'id':7,'lease':row['lease'],'status':'sent'}))
 
     def test_delivery_errors_and_test_environment(self):

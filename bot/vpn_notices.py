@@ -7,7 +7,7 @@ from .telegram_environment import is_test_environment
 log = logging.getLogger('pushok.bot.vpn')
 
 
-def deliver(api, send):
+def deliver(api, send, launch='https://pushok.shop/miniapp'):
     if is_test_environment():
         return
     try:
@@ -18,9 +18,9 @@ def deliver(api, send):
     for item in items[:5]:
         try:
             if item['renew']:
-                button = {'text':'Продлить подписку','url':'https://pushok.shop/shop/?renew=wg#plans'}
+                button = {'text':'Продлить подписку','web_app':{'url':launch+'?vpn=renew'}}
             else:
-                button = {'text':'Моя подписка','web_app':{'url':'https://pushok.shop/#/vpn'}}
+                button = {'text':'Моя подписка','web_app':{'url':launch+'?vpn=home'}}
             send({'chat_id':item['telegram_id'],'text':item['text'],
                   'reply_markup':{'inline_keyboard':[[button]]}})
             status = 'sent'

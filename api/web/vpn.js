@@ -25,41 +25,43 @@ window.pushokVpn = (() => {
     }
     return cache.read;
   }
+  function signal(row) {
+    if(!row)return null;
+    const offline=['expired','revoked'].includes(row.state) || row.online===false;
+    const state=offline?'offline':row.online===true?'online':'unknown';
+    const mark=el('small',state==='online'?'онлайн':state==='offline'?'офлайн':'нет данных','vpn-signal');
+    mark.dataset.signal=state;mark.title='Соединение VPN';return mark;
+  }
   function badge(node,id) {
     if (!node || !id || !token || !staff()) return;
-    const session = token;
-    snapshot().then(data => {
-      if (session !== token || !staff() || !data.can_manage || node.querySelector('.vpn-badge')) return;
-      if (data.members?.some(member => member.id === id && member.online === true)) {
-        const mark = el('small','VPN','vpn-badge'); mark.title = 'Сейчас онлайн в VPN'; node.append(mark);
-      }
-    }).catch(() => {});
-  }
-  function checkout(active) {
-    const link = el('a',undefined,'ui-button primary');
-    link.href = 'https://pushok.shop/shop/?renew=wg#plans';
-    link.append(window.pushokViews.icon('wallet'),document.createTextNode(active?'Продлить за деньги':'Выбрать платный тариф'));
-    return link;
+    const session=token;
+    snapshot().then(data=>{
+      if(session!==token||!staff()||!data.can_manage||node.querySelector('.vpn-signal'))return;
+      const mark=signal(data.members?.find(r=>r.id===id));
+      if(mark && mark.dataset.signal!=='unknown')node.append(mark);
+    }).catch(()=>{});
   }
   function metric(label,value) {
-    const cell = el('div'); cell.append(el('dt',label),el('dd',value)); return cell;
+    const cell=el('div');cell.append(el('dt',label),el('dd',value));return cell;
   }
-  function details(row) {
-    const group = el('div',undefined,'vpn-summary');
-    if (!row) { group.append(el('p','Подключений пока нет.','muted')); return group; }
-    const line = el('div',undefined,'vpn-state-line'), status = el('strong',states[row.state] || 'Статус уточняется','vpn-state');
-    status.dataset.state = row.state;
-    line.append(status);
-    if (row.state === 'active') line.append(el('span',row.online === true?'● Онлайн':row.online === false?'Офлайн':'Нет данных о связи','vpn-signal'));
-    const values = el('dl',undefined,'vpn-metrics');
-    values.append(metric('Срок подписки',date(row.expires_at)));
-    if (Number.isInteger(row.device_limit)) values.append(metric('Доп. профили',String(row.device_limit)));
-    if (row.received != null || row.sent != null) values.append(metric('Получено',traffic(row.received)),metric('Отправлено',traffic(row.sent)));
-    group.append(line,values);
-    if (row.last_seen) group.append(el('small','Последний отклик · '+new Date(row.last_seen*1000).toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}),'muted'));
-    return group;
+  let renewFrom='vpn';
+  function renewLink() {
+    const link=el('a',undefined,'ui-button primary');link.href='#/vpn/renew';
+    link.append(window.pushokViews.icon('wallet'),document.createTextNode('Продлить'));
+    link.onclick=()=>{renewFrom=location.hash==='#/profile'?'profile':'vpn';};
+    return link;
+  }
+  function download() {
+    const url=new URL('/api/v1/vpn/flow.apk',location.origin).href;
+    const app=window.Telegram?.WebApp;
+    if(app?.isVersionAtLeast?.('8.0') && typeof app.downloadFile==='function') {
+      app.downloadFile({url,file_name:'Pushok-Flow.apk'});return;
+    }
+    const link=el('a');link.href=url;link.download='Pushok-Flow.apk';document.body.append(link);link.click();link.remove();
   }
   Object.assign(errors,{
+    vpn_offer_changed:'Условия оплаты изменились. Обновите тарифы.',vpn_order_missing:'Заказ не найден.',
+    vpn_test_store:'Платные заказы доступны в рабочем боте.',vpn_shop_unavailable:'Магазин не ответил. Попробуйте ещё раз.',
     vpn_changed:'Подписка изменилась. Обновите карточку.',
     vpn_profiles_in_use:'Лимит меньше числа действующих дополнительных профилей.',
     vpn_subscription_missing:'Эта подписка больше недоступна.',
@@ -67,9 +69,10 @@ window.pushokVpn = (() => {
     vpn_change_conflict:'Операция недоступна для текущего состояния подписки. Проверьте срок и незавершённые операции.',
     vpn_days_range:'Выберите от 1 до 365 дней.',vpn_limit_range:'Выберите от 0 до 20 дополнительных профилей.'
   });
-  function controls(row,subject,reload) {
+  function controls(row,subject,reload,expanded) {
     const panel = el('details',undefined,'vpn-controls');
-    panel.append(el('summary','Управление подпиской'));
+    panel.open=expanded;
+    const title=el('summary');title.append(window.pushokViews.icon('edit'),document.createTextNode('Изменить срок и лимит'));panel.append(title);
     const form = el('form',undefined,'vpn-edit'), op = el('select'), qty = el('input');
     const actionLabel = el('label','Действие'), valueLabel = el('label');
     const caption = el('span'), feedback = el('small',undefined,'muted');
@@ -114,48 +117,63 @@ window.pushokVpn = (() => {
     };
     form.append(actionLabel,valueLabel,submit,feedback); panel.append(form); return panel;
   }
-  function heading(text) {
-    const h = el('h2',undefined,'vpn-heading'); h.append(window.pushokViews.icon('server'),document.createTextNode(text)); return h;
-  }
-  function member(row) {
-    const link = el('a',undefined,'vpn-member');
-    link.href = '#/user/'+encodeURIComponent(row.id);
-    link.addEventListener('click',()=>window.pushokProfiles.setBackRoute('vpn'));
-    const copy = el('span'); copy.append(el('strong',row.name),el('small',(states[row.state] || 'Статус уточняется')+' · '+date(row.expires_at)));
-    link.append(copy);
-    if (row.online === true) link.append(el('span','Онлайн','vpn-live'));
-    link.append(window.pushokViews.icon('chevron')); return link;
+  function card(row,subject,name,own,admin,reload,expanded,profileLink=false) {
+    const tile=el('article',undefined,'campaign-tile vpn-card'),head=el('div',undefined,'tile-heading');
+    const avatar=profileLink?window.pushokViews.userAvatar(subject,name):el('span',undefined,'ui-avatar vpn-avatar');
+    if(!profileLink)avatar.append(window.pushokViews.icon('server'));
+    const copy=el('div'),title=el(profileLink?'a':'h2',name,'tile-title');
+    if(profileLink){title.href='#/user/'+encodeURIComponent(subject);title.onclick=()=>window.pushokProfiles.setBackRoute('vpn');}
+    copy.append(title);
+    if(row)copy.append(signal(row));
+    head.append(avatar,copy);
+    if(row) {
+      const state=el('span',states[row.state]||'Уточняется','badge campaign-current');
+      state.dataset.subscription=row.state; head.append(state);
+    }
+    tile.append(head);
+    if(row) {
+      tile.append(el('p',row.expires_at?'Доступ до '+date(row.expires_at):'Срок уточняется','tile-period'));
+      const facts=el('dl',undefined,'tile-meta campaign-tile-facts vpn-facts');
+      facts.append(metric('Получено',traffic(row.received)),metric('Отправлено',traffic(row.sent)),metric('Доп. профили',String(row.device_limit??'—')));
+      tile.append(facts);
+      if(row.last_seen)tile.append(el('p','Последний отклик · '+new Date(row.last_seen*1000).toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}),'vpn-seen'));
+    } else tile.append(el('p','У аккаунта пока нет VPN-подписки.','tile-period'));
+    if(own){
+      const actions=el('div',undefined,'vpn-links'),get=button('Скачать Flow',download);get.className='ui-button';
+      actions.append(renewLink(),get);tile.append(actions);
+    }
+    if(admin){
+      if(row?.subscription_id)tile.append(controls(row,subject,reload,expanded));
+      else tile.append(el('small',row?'Параметры управления пока недоступны. Обновите сведения.':'Изменение срока и лимита станет доступно после выдачи подписки.','muted'));
+    }
+    return tile;
   }
   async function show(target,subject,directory) {
-    const own = subject === me?.id, session = token;
-    if (!own && !staff()) return;
-    const box = el('section',undefined,'panel vpn-card');
-    const content = el('div'), actions = el('div',undefined,'vpn-links');
-    const reload = () => { reset(); return show(target,subject,directory); };
-    box.append(heading(own && directory?'Моя подписка':'VPN'),content,actions);
-    if (own) {
-      const download = el('a','Скачать Flow','ui-button'); download.href = 'https://github.com/mrkoster1988/Pushok-Flow/releases/latest';
-      actions.append(checkout(true),download);
-    }
-    content.textContent = 'Загрузка подписки…'; target.replaceChildren(box);
-    try {
-      const data = await snapshot();
-      if (!box.isConnected || session !== token || (!own && !staff())) return;
-      const admin = staff() && data.can_manage === true;
-      const selected = admin ? data.members?.find(r=>r.id === subject) : null;
-      const row = selected || (own ? data.personal : null);
-      content.replaceChildren(details(row));
-      if (own && !row) actions.firstChild.replaceWith(checkout(false));
-      if (admin && selected?.subscription_id) box.append(controls(selected,subject,reload));
-      if (directory && admin) {
-        const list = el('section',undefined,'panel vpn-directory');
-        list.append(heading('Подключения пользователей'));
-        for (const row of data.members || []) list.append(member(row));
-        if (!data.members?.length) list.append(el('p','Подключений пока нет.','muted'));
-        target.append(list);
+    const own=subject===me?.id,session=token;
+    if(!own&&!staff())return;
+    const host=el('div',undefined,'vpn-stack'),busy=el('p','Загрузка подписки…','muted');
+    host.append(busy);target.replaceChildren(host);
+    const reload=()=>{reset();return show(target,subject,directory);};
+    try{
+      const data=await snapshot();
+      if(!host.isConnected||session!==token)return;
+      const admin=data.can_manage===true, selected=admin?data.members?.find(r=>r.id===subject):null;
+      const row=selected||(own?data.personal:null);
+      host.replaceChildren(card(row,subject,own&&directory?'Моя подписка':'VPN · Pushok Flow',own,admin,reload,true));
+      if(admin&&directory){
+        const list=el('section',undefined,'vpn-directory'),heading=el('h2','Управление VPN');
+        const members=(data.members||[]).filter(r=>r.id!==subject);
+        heading.append(el('small',String(members.length),'vpn-count'));list.append(heading);
+        for(const r of members)list.append(card(r,r.id,r.name,false,true,reload,false,true));
+        if(!members.length)list.append(el('p','Других подписок пока нет.','muted'));
+        host.append(list);
       }
-    } catch (error) {
-      if (session === token && box.isConnected) content.replaceChildren(el('p','Не удалось загрузить сведения о подписке.'),button('Повторить',reload));
+    }catch(e){
+      if(host.isConnected&&session===token){
+        const retry=button('Обновить сведения',reload);
+        host.replaceChildren(el('p','Не удалось загрузить сведения о подписке.','muted'),retry);
+        if(own)host.append(renewLink());
+      }
     }
   }
   function profile(target,id) {
@@ -167,11 +185,11 @@ window.pushokVpn = (() => {
     const session = token, list = el('section',undefined,'panel vpn-directory'); target.append(list);
     snapshot().then(data=>{
       if (!list.isConnected || token !== session || !staff() || !data.can_manage || !data.leaders?.length) { list.remove(); return; }
-      list.append(heading('Недавно подключались к VPN'));
+      list.append(el('h2','Недавно подключались к VPN'));
       for (const user of data.leaders) {
         const link = el('a',user.name,'vpn-member');link.href='#/user/'+encodeURIComponent(user.id);list.append(link);
       }
     }).catch(()=>list.remove());
   }
-  return {load:target=>{reset();return show(target,me?.id,true);},badge,profile,leaderboard,reset};
+  return {load:(target,section)=>{if(section==='renew')return window.pushokVpnRenew.show(target);reset();return show(target,me?.id,true);},renewBack:()=>renewFrom,badge,profile,leaderboard,reset};
 })();
