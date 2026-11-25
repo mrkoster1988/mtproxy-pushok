@@ -70,7 +70,8 @@ class ReleaseTests(unittest.TestCase):
 
     def test_admin_only_and_running_version_is_authoritative(self):
         client = TestClient(main.app)
-        with patch.object(releases, '_json', side_effect=self.replies('2.00')) as http:
+        next_major = int(main.app.version.split('.')[0]) + 1
+        with patch.object(releases, '_json', side_effect=self.replies(f'{next_major}.00')) as http:
             self.assertEqual(client.get('/api/v1/admin/control/release').status_code, 401)
             main.app.dependency_overrides[main.get_current_user] = lambda: dict(id='u', role='advertiser')
             self.assertEqual(client.get('/api/v1/admin/control/release').status_code, 403)
