@@ -873,3 +873,6 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 @media(max-width:360px){
   .cabinet-mode .dashboard-subscription-actions{grid-template-columns:1fr}
 }
+
+.vpn-badge{display:inline-block;margin-inline-start:.4em;color:#047952;font-weight:750;font-size:.75em}
+.vpn-details,.vpn-actions{display:grid;gap:.5rem;margin-block:.8rem}

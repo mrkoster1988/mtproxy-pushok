@@ -13,13 +13,13 @@ window.pushokHall=(()=>{
   const controls=el('div',undefined,'hall-controls'),tabs=el('nav',undefined,'hall-tabs'),history=el('select'),body=el('section',undefined,'hall-board'),admin=el('section');
   history.setAttribute('aria-label','Период рейтинга');
   for(const [key,title] of Object.entries(kinds)){const b=button(title,()=>{kind=key;period='';void refresh();});b.dataset.kind=key;tabs.append(b);}
-  history.onchange=()=>{period=history.value;void refresh();};controls.append(tabs,history);target.replaceChildren(controls,body,admin);
+  history.onchange=()=>{period=history.value;void refresh();};controls.append(tabs,history);target.replaceChildren(controls,body,admin);window.pushokVpn.leaderboard(target);
   const help=el('details',undefined,'context-help');help.append(el('summary','ⓘ Как считаем и награждаем'),el('p','Учёт с регистрации первого пользователя. Участвуют пользователи и сотрудники, кроме разработчика и заблокированных аккаунтов. Расходы Stars учитываются по рублёвой цене заявки, рублёвые — по фактически оплаченной сумме без бонусов. Тестовые, ручные и возвращённые оплаты не учитываются. Периоды по Москве. До окончания периода места могут меняться. Итоги и бонусы фиксируются после завершения; повторных начислений нет. Исторические периоды до запуска доски восстанавливаются без бонусов. При равенстве выше первая учитываемая активность, затем ID.'));target.append(help);
   function valid(){return session===token&&target.isConnected&&location.hash.startsWith('#/hall');}
   function periodTitle(d){return new Date(d.starts_at).toLocaleDateString('ru-RU',{year:'numeric',...(kind==='month'?{month:'long'}:{}),timeZone:'Europe/Moscow'});}
   function person(row,metric,podium=false){
    const line=el('article',undefined,podium?'hall-podium-person hall-place-'+row.rank:'hall-row'),avatar=window.pushokViews.userAvatar(row.user_id,row.first_name||row.username||'',true),copy=el('div',undefined,'hall-person');frame(avatar,row.rank<=10?row.rank:null);avatar.dataset.hallRank=String(row.rank);
-   const name=[row.first_name,row.last_name].filter(Boolean).join(' ')||row.username||'Участник';copy.append(el('strong',name));if(!podium){
+   const name=[row.first_name,row.last_name].filter(Boolean).join(' ')||row.username||'Участник';copy.append(el('strong',name));window.pushokVpn.badge(copy.firstChild,row.user_id);if(!podium){
     const handle=window.pushokProfiles.telegramHandle(row);
     if(handle)copy.append(handle);
    }

@@ -30,6 +30,7 @@ window.pushokProfiles=(()=>{
    copy.append(handle);
   }else if(!name)copy.append(el('strong','Пользователь','person-name'));
   if(user.phone_verified)copy.querySelector('.person-name')?.append(window.pushokVerification.badge());
+  window.pushokVpn.badge(copy.querySelector('.person-name'),user.id);
   return copy;
  }
  function advertiser(c){

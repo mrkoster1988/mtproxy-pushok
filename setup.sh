@@ -122,7 +122,7 @@ configure_payments() {
   PAYMENT_CHANGED=true
 }
 
-echo "MTProxy Pushok v2.01 — мастер настройки" >&2
+echo "MTProxy Pushok v2.02 — мастер настройки" >&2
 echo "Чистый трафик · ИИ-модерация · спонсорские кампании" >&2
 choose COMPONENTS "Что установить?" 3 "Только MTProxy" "Только спонсорский кабинет" "MTProxy и кабинет"
 # Выбор движка не меняет существующий прокси автоматически.

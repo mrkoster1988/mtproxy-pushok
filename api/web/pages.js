@@ -13,6 +13,7 @@
   pages[state.route]?.querySelectorAll('[data-promotion-campaign]').forEach(panel=>void updatePromotionPanel(panel));
  }
  const routes={
+  vpn:['VPN','Ваше личное подключение'],
   wallet:['Баланс','Пополнения, списания и история операций'],
   hall:['Доска почёта','Лидеры сообщества puShok'],
   growth:['Бонусы и приглашения','Реферальная программа, промокоды, подарки и скидки'],
@@ -37,6 +38,7 @@
   bot:['Telegram-бот','Продолжите работу в Telegram']
  };
  const hints={
+  vpn:'Онлайн означает, что устройство обменивалось данными с узлом за последние три минуты.',
   license:'Лицензия покупается владельцем установки и действует на всё приложение.',
   wallet:'Баланс оплачивает размещения puShok. Автосписание включается отдельно с пределом суммы за заявку.',
   growth:'Подарок и промокод вводятся при создании заявки. Скидки не суммируются: применяется самое выгодное предложение.',
@@ -199,7 +201,7 @@
  const verificationPanel=el('details',undefined,'dashboard-verify');
  verificationPanel.append(el('summary','Подтвердите номер телефона · нужно для кампаний'),dashboardVerification);
  const bottomNav=el('nav',undefined,'mobile-bottom-nav');bottomNav.setAttribute('aria-label','Основные разделы');
- [['dashboard','home','Главная'],['moderation','moderation','Модерация'],['campaigns','campaign','Кампании'],['wallet','wallet','Баланс'],['hall','star','Лидеры'],['profile','user','Профиль']].forEach(([route,icon,title])=>{
+ [['dashboard','home','Главная'],['vpn','server','VPN'],['moderation','moderation','Модерация'],['campaigns','campaign','Кампании'],['wallet','wallet','Баланс'],['hall','star','Лидеры'],['profile','user','Профиль']].forEach(([route,icon,title])=>{
   const a=link(title,route);a.dataset.route=route;a.hidden=route==='moderation';
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
   const use=document.createElementNS('http://www.w3.org/2000/svg','use');use.setAttribute('href','/assets/pushok-icons.svg#pi-'+icon);svg.append(use);a.prepend(svg);bottomNav.append(a);
@@ -583,6 +585,7 @@
   state.selectedKey=key;
   if(name==='license'&&!background)void window.pushokAppLicense.load(content.license);
   if(name==='wallet')void window.pushokWallet?.load(content.wallet);
+  if(name==='vpn'&&!background)void window.pushokVpn.load(content.vpn);
   if(name==='hall'&&!background)void window.pushokHall.load(content.hall);
   if(name==='growth')void window.pushokGrowth?.load(content.growth);
   if(name==='archive')void window.pushokManagement.renderArchive(archiveRows,id);
@@ -648,8 +651,8 @@
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
-  const canModerate=['admin','operator','moderator'].includes(me.role);bottomNav.style.setProperty('--nav-count',canModerate?6:5);
-  bottomNav.querySelectorAll('a').forEach(a=>{a.hidden=a.dataset.route==='moderation'&&!canModerate;const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':name==='user'?'moderation':['dashboard','moderation','campaigns','wallet','hall'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
+  const canModerate=['admin','operator','moderator'].includes(me.role);bottomNav.style.setProperty('--nav-count',canModerate?7:6);
+  bottomNav.querySelectorAll('a').forEach(a=>{a.hidden=a.dataset.route==='moderation'&&!canModerate;const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':name==='user'?'moderation':['dashboard','vpn','moderation','campaigns','wallet','hall'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
   backButton.hidden=['dashboard','campaigns','wallet','profile'].includes(name)||(name==='moderation'&&!section);profileShortcut.hidden=name!=='dashboard';
   const pageTitle=name==='payments'&&section?'Оплата размещения':name==='management'?window.pushokInterface.managementSection(section).title:routes[name][0];
   pages[name].querySelector('h1').textContent=pageTitle;
@@ -675,7 +678,7 @@
   if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+window.pushokTeam.displayRole(me);activate();
  },logout({preserveUnboundFlow=false}={}){subscriptionEpoch++;subscriptionJoined=!miniAppMode;subscription.hidden=true;dashboardProxyUrl='';updateDashboardConnect();resetPaymentSettings();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();window.pushokVerification.reset();automationSession='';nodeEditorSession='';nodeCreate.open=false;window.pushokAppLicense?.reset();window.pushokLinks?.reset();window.pushokFlowAccount?.reset({preserveUnbound:preserveUnboundFlow});window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
-  bottomNav.querySelector('[data-route=moderation]').hidden=true;bottomNav.style.setProperty('--nav-count',5);
+  bottomNav.querySelector('[data-route=moderation]').hidden=true;bottomNav.style.setProperty('--nav-count',6);
   channelSearch.value='';selectSponsorView('placements');automationRevision++;automationFocusRoute='';automationBody.replaceChildren();automationRuntime.replaceChildren();diagnosticsSummary.replaceChildren();
   [$('order-result'),detail,dashboardReferral,profileShortcut,paymentRows,profileMain,aboutDeveloper,content.user,content.users,content.hall,sponsorQueue,reportRows,archiveRows,channelRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
