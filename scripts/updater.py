@@ -87,11 +87,44 @@ def read_control(name):
 
 
 
-def published_release():
-    # Модуль проверки использует только стандартную библиотеку, в том числе на хосте.
+def running_api_version():
+    """Read version from the *running API container*, never the fetched README.
+
+    A git pull updates README before Docker recreates its container. Using the
+    source version here silently suppresses the required production update.
+    """
     from app import releases
-    installed = releases.readme_version((ROOT / 'README.md').read_text(encoding='utf-8'))
-    return releases.check(installed)
+    env = dict(os.environ)
+    env['GIT_TERMINAL_PROMPT'] = '0'
+    def checked(command, timeout):
+        try:
+            result = subprocess.run(command, cwd=ROOT, env=env,
+                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                    text=True, timeout=timeout, check=False)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError('running_api_version_unavailable') from exc
+        if result.returncode:
+            raise ValueError('running_api_version_unavailable')
+        return result.stdout.strip()
+    container = checked([sys.executable, 'scripts/installer_runtime.py',
+                         'compose', 'ps', '-q', 'api'], 15)
+    if not re.fullmatch(r'[a-f0-9]{12,64}', container):
+        raise ValueError('running_api_version_unavailable')
+    code = (
+        "import re,sys;from pathlib import Path;"
+        "p=Path('/srv/mtproxy-pushok/app/main.py');"
+        "m=re.findall(r'(?m)^\\s*version\\s*=\\s*\\\"(\\d+\\.\\d+)\\\"',p.read_text());"
+        "sys.stdout.write(m[0] if len(m)==1 else '')"
+    )
+    installed = checked(['docker', 'exec', container, 'python3', '-c', code], 15)
+    releases.version_key(installed)
+    return installed
+
+
+def published_release():
+    # Never confuse a Git repository update with a successful container swap.
+    from app import releases
+    return releases.check(running_api_version())
 
 
 def queue_automatic_update():
