@@ -460,6 +460,7 @@ EOF
     database/074_developer_grants.sql
     database/075_flow_account.sql
     database/076_flow_shop_rate_window.sql
+    database/077_flow_phone_notifications.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"

@@ -48,7 +48,7 @@ RATE_LIMITS = {'device': (None, 120), 'token': (120, 1200),
                'consent': (60, 600), 'profile': (120, 1200), 'logout': (30, 300), 'shop': (5, 300)}
 RATE_BUCKETS = {'/device': 'device', '/device/token': 'token',
                 '/device/review': 'consent', '/device/decision': 'consent',
-                '/me': 'profile', '/logout': 'logout', '/shop-ticket': 'shop'}
+                '/me': 'profile', '/logout': 'logout', '/shop-ticket': 'shop', '/push-device': 'profile'}
 
 
 class FlowError(Exception):
@@ -429,6 +429,39 @@ def router_for(get_dsn, get_signing_key, cabinet_user):
                 balances[row['currency']] = row['balance']
             return {'id': str(user['id']), 'display_name': _display_name(user), 'role': user['role'],
                     'phone_verified': user['phone_verified'], 'wallet': balances}
+
+    @router.get('/push-config')
+    def push_config():
+        fields = {'project': 'FLOW_FCM_PROJECT_ID', 'sender': 'FLOW_FCM_SENDER_ID',
+                  'app': 'FLOW_FCM_ANDROID_APP_ID', 'key': 'FLOW_FCM_ANDROID_API_KEY'}
+        result = {name: os.environ.get(variable) for name, variable in fields.items()}
+        if not all(result.values()):
+            raise FlowError(503, 'push_unavailable')
+        return result
+
+    @router.post('/push-device')
+    def push_device(request: Request):
+        token = _payload(request, ('registration_token',))['registration_token']
+        if token is not None and (not isinstance(token, str) or not re.fullmatch(r'[A-Za-z0-9_:.%-]{16,2048}', token)):
+            raise FlowError(400, 'invalid_request')
+        if token is not None and not os.environ.get('FLOW_FCM_PROJECT_ID'):
+            raise FlowError(503, 'push_unavailable')
+        credential = _flow_token(request)
+        with connect(get_dsn()) as conn:
+            session = conn.execute("""SELECT s.id FROM flow_sessions s JOIN users u ON u.id=s.user_id
+                WHERE s.token_hash=%s AND s.revoked_at IS NULL AND s.expires_at>clock_timestamp()
+                    AND u.blocked_at IS NULL FOR UPDATE OF s""", (digest(credential),)).fetchone()
+            if session is None:
+                raise FlowError(401, 'unauthorized')
+            if token is None:
+                conn.execute('DELETE FROM flow_push_devices WHERE session_id=%s', (session['id'],))
+            else:
+                conn.execute('DELETE FROM flow_push_devices WHERE registration_token=%s AND session_id<>%s',
+                             (token, session['id']))
+                conn.execute("""INSERT INTO flow_push_devices(session_id,registration_token) VALUES (%s,%s)
+                    ON CONFLICT(session_id) DO UPDATE SET registration_token=EXCLUDED.registration_token""",
+                             (session['id'], token))
+        return {'enabled': token is not None}
 
     @router.post('/shop-ticket')
     def shop_ticket(request: Request):

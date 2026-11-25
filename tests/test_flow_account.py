@@ -152,7 +152,7 @@ class FlowAccountIntegration(unittest.TestCase):
         self.owner, self.other = uuid4(), uuid4()
         self.cabinet = {}
         with flow.connect(self.dsn) as conn:
-            conn.execute('TRUNCATE flow_device_requests,flow_sessions,flow_rate_windows')
+            conn.execute('TRUNCATE flow_push_events,flow_push_devices,flow_device_requests,flow_sessions,flow_rate_windows')
             for uid, role in ((self.owner, 'admin'), (self.other, 'advertiser')):
                 conn.execute('''INSERT INTO users(id,telegram_user_id,role,first_name,last_name,username)
                     VALUES(%s,%s,%s,'Тест','Аккаунт','synthetic_private_username')''',
@@ -211,6 +211,18 @@ class FlowAccountIntegration(unittest.TestCase):
         with flow.connect(self.dsn) as conn:
             rows = conn.execute('SELECT client_key,requests FROM flow_rate_windows WHERE bucket=%s', (bucket,))
             return {row['client_key']: row['requests'] for row in rows}
+
+    def test_phone_notifications_require_a_live_session_and_can_be_disabled(self):
+        _, token = self.authorize()
+        endpoint = '/api/v1/flow/push-device'
+        body = {'registration_token': 'synthetic-device-registration'}
+        with patch.dict(fixture.os.environ, {'FLOW_FCM_PROJECT_ID': 'synthetic'}):
+            self.assertEqual(self.client.post(endpoint, json=body).status_code, 401)
+            self.assertEqual(self.client.post(endpoint, headers=self.bearer(token), json=body).json(), {'enabled': True})
+            self.assertEqual(self.client.post(endpoint, headers=self.bearer(token),
+                                             json={'registration_token': None}).json(), {'enabled': False})
+            with flow.connect(self.dsn) as conn:
+                self.assertIsNone(conn.execute('SELECT session_id FROM flow_push_devices').fetchone())
 
     def test_shop_ticket_uses_real_database_rate_bucket_after_migration(self):
         # The real database limiter must permit the scoped Shop proof bucket.
@@ -499,7 +511,7 @@ class FlowAccountIntegration(unittest.TestCase):
             self.device()
             self.request('POST', '/flow/device', 429, json={})
         with flow.connect(self.dsn) as conn:
-            conn.execute('TRUNCATE flow_device_requests,flow_sessions,flow_rate_windows')
+            conn.execute('TRUNCATE flow_push_events,flow_push_devices,flow_device_requests,flow_sessions,flow_rate_windows')
         with patch.object(flow, 'MAX_SESSIONS_PER_USER', 1):
             self.authorize()
             device = self.device()
