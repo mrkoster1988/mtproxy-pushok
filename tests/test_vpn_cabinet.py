@@ -14,7 +14,8 @@ class VpnVisibility(unittest.TestCase):
         app.include_router(vpn_cabinet.router_for(lambda: 'test', lambda: user))
         client = TestClient(app)
         account = {'state':'active', 'online':True, 'received':12345, 'sent':99,
-                   'expires_at':1900000000, 'last_seen':1800000000}
+                   'expires_at':1900000000, 'last_seen':1800000000, 'endpoint_ip':'192.0.2.4',
+                   'tunnel_ips':['10.0.0.4']}
         mock = MagicMock()
         mock.__enter__.return_value.execute.return_value.fetchall.return_value = [
             {'id': other,'first_name':'Участник','last_name':None,'is_developer':False}]
@@ -25,6 +26,9 @@ class VpnVisibility(unittest.TestCase):
             self.assertNotIn('leaders',data)
             self.assertFalse(data['can_manage'])
             mock.assert_not_called()
+            user['id'] = other
+            self.assertEqual(client.get('/api/v1/vpn/dashboard').json()['personal']['endpoint_ip'], '192.0.2.4')
+            user['id'] = uid
             user['role']='admin'
             self.assertEqual(client.get('/api/v1/vpn/dashboard').json()['members'][0]['received'],12345)
 

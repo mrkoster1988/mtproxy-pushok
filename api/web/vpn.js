@@ -29,8 +29,12 @@ window.pushokVpn = (() => {
     if(!row)return null;
     const offline=['expired','revoked'].includes(row.state) || row.online===false;
     const state=offline?'offline':row.online===true?'online':'unknown';
-    const mark=el('small',state==='online'?'онлайн':state==='offline'?'офлайн':'нет данных','vpn-signal');
-    mark.dataset.signal=state;mark.title='Соединение VPN';return mark;
+    const description={online:'VPN подключён',offline:'VPN отключён',unknown:'Состояние VPN неизвестно'}[state];
+    const mark=el('small',state==='unknown'?'нет данных':'VPN','vpn-signal');
+    mark.dataset.signal=state;
+    mark.title=description;
+    mark.setAttribute('aria-label',description);
+    return mark;
   }
   function badge(node,id) {
     if (!node || !id || !token || !staff()) return;
@@ -136,6 +140,10 @@ window.pushokVpn = (() => {
       const facts=el('dl',undefined,'tile-meta campaign-tile-facts vpn-facts');
       facts.append(metric('Получено',traffic(row.received)),metric('Отправлено',traffic(row.sent)),metric('Доп. профили',String(row.device_limit??'—')));
       tile.append(facts);
+      const addresses=el('dl',undefined,'vpn-addresses');
+      const ips=Array.isArray(row.tunnel_ips)?row.tunnel_ips:[];
+      addresses.append(metric('IP в туннеле',ips.join(', ')||'—'),metric('Последний IP подключения',row.endpoint_ip||'—'));
+      tile.append(addresses);
       if(row.last_seen)tile.append(el('p','Последний отклик · '+new Date(row.last_seen*1000).toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}),'vpn-seen'));
     } else tile.append(el('p','У аккаунта пока нет VPN-подписки.','tile-period'));
     if(own){

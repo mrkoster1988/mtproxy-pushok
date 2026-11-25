@@ -910,3 +910,8 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .vpn-terms,.vpn-consent{margin:12px 0}.vpn-terms p{white-space:pre-wrap;overflow-wrap:anywhere}
 .vpn-directory>.vpn-member{display:block;color:var(--text);padding:7px 0}
 @media(min-width:640px){.cabinet-mode .vpn-edit{grid-template-columns:2fr 1fr auto;align-items:end}.vpn-edit small{grid-column:1/-1}.cabinet-mode .vpn-links .ui-button{flex:none}}
+
+.cabinet-mode .vpn-addresses{display:grid;gap:6px;margin:8px 0;font-size:12px}
+.vpn-addresses>div{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.vpn-addresses dt{color:var(--muted)}
+.vpn-addresses dd{margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
