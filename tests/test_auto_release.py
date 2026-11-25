@@ -26,6 +26,19 @@ class ReleasePromotionTests(unittest.TestCase):
         self.assertIn('No green exact CI for current main', content)
         self.assertNotIn('--force-with-lease=false', content)
 
+    def test_v128_version_and_auto_release_docs_agree(self):
+        readme = (ROOT / 'README.md').read_text()
+        api = (ROOT / 'api/app/main.py').read_text()
+        core = (ROOT / 'api/app/core_readiness.py').read_text()
+        installer = (ROOT / 'setup.sh').read_text()
+        web = (ROOT / 'api/web/index.html').read_text()
+        self.assertIn('Версия проекта: v1.128.', readme)
+        self.assertIn('version="1.128",', api)
+        self.assertEqual(core.count('"project_version": "1.128"'), 2)
+        self.assertIn('MTProxy Pushok v1.128', installer)
+        self.assertIn('v1.128</span>', web)
+        self.assertIn('docs/RELEASE_v1.128.md', readme)
+
     def test_plan_is_read_only_and_requires_protected_directory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
