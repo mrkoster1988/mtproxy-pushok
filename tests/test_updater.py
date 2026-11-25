@@ -1,6 +1,7 @@
 """Последовательность выпуска: копия до миграции, отказ без изменений, очередь."""
 import json
 import sys
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -40,6 +41,36 @@ class UpdaterTests(unittest.TestCase):
         if args == ('git', 'rev-parse', 'FETCH_HEAD'):
             return 'new\n'
         return ''
+
+    def test_auto_release_check_uses_running_api_not_updated_readme(self):
+        from app import releases
+        (self.root / 'README.md').write_text('Версия проекта: v2.06.\\n')
+        container = 'a' * 64
+        commands = []
+        def fake_process(command, **kwargs):
+            commands.append(command)
+            assert kwargs['stderr'] is subprocess.DEVNULL
+            if command[:2] == [sys.executable, 'scripts/installer_runtime.py']:
+                return subprocess.CompletedProcess(command, 0, stdout=container + '\\n')
+            assert command[:3] == ['docker', 'exec', container]
+            assert '/srv/mtproxy-pushok/app/main.py' in command[-1]
+            return subprocess.CompletedProcess(command, 0, stdout='2.05\\n')
+
+        with patch.object(updater.subprocess, 'run', side_effect=fake_process), \
+             patch.object(releases, 'check', return_value={'state':'available'}) as check:
+            self.assertEqual(updater.published_release(), {'state':'available'})
+        check.assert_called_once_with('2.05')
+        self.assertEqual(len(commands), 2)
+
+    def test_unknown_or_stopped_api_blocks_automatic_upgrade(self):
+        with patch.object(updater.subprocess, 'run', return_value=subprocess.CompletedProcess(
+                ['compose', 'ps'], 0, stdout='')):
+            with self.assertRaisesRegex(ValueError, 'running_api_container_unavailable'):
+                updater.running_api_version()
+        with patch.object(updater.subprocess, 'run', side_effect=subprocess.TimeoutExpired(
+                ['compose', 'ps'], 20)):
+            with self.assertRaisesRegex(ValueError, 'running_api_version_unavailable'):
+                updater.running_api_version()
 
     def test_busy_finalizer_preserves_active_worker_status(self):
         self.request()
