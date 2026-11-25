@@ -415,6 +415,7 @@
   renderChannels();
   renderList();
   window.pushokViews.profile(profileMain,updatePanel);
+  window.pushokMiniApp?.phoneSettings?.(profileMain);
   if(['admin','operator'].includes(me.role))window.pushokViews.sponsors(sponsorQueue,operatorCampaigns);
   onboarding.hidden=false;
   createNotice.hidden=Boolean(tariffs.length);createNotice.textContent='Нет доступных тарифов. Обратитесь к администратору.';
