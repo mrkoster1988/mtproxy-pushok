@@ -158,6 +158,21 @@ window.pushokFlowAccount = (() => {
     return node('p', text, className);
   }
 
+  function closeApprovedTelegramMiniApp() {
+    // Only close the Telegram *webview*, never navigate elsewhere, leave the
+    // browser session, or close Telegram itself. No tokens are sent to Flow.
+    // An ordinary browser cannot and should not be closed programmatically.
+    try {
+      const app = window.Telegram?.WebApp;
+      if (typeof app?.initData !== 'string' || !app.initData ||
+          typeof app.close !== 'function') return;
+      setTimeout(() => {
+        if (dialog?.dataset.state !== 'approved') return;
+        try { app.close(); } catch (_) {}
+      }, 900);
+    } catch (_) {}
+  }
+
   function terminal(status) {
     stopRequest();
     forgetIntent();
@@ -166,9 +181,10 @@ window.pushokFlowAccount = (() => {
     const panel = frame(approved ? 'Подключение разрешено' : 'Запрос отклонён');
     panel.dataset.state = status;
     panel.append(info(approved
-      ? 'Разрешение сохранено. Вернитесь в Pushok Flow. Если там уже другой код или запрос истёк, начните вход заново.'
+      ? 'Разрешение сохранено. Окно Telegram закроется автоматически. Если Flow не открылся, вернитесь в него вручную.'
       : 'Доступ к аккаунту не предоставлен. Вернитесь в Pushok Flow.'),
       action('Закрыть', 'flow-account-close', reset));
+    if (approved) closeApprovedTelegramMiniApp();
   }
 
   function unavailable(message) {
