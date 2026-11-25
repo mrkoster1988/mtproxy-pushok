@@ -1,0 +1,19 @@
+services:
+  flow-push:
+    build: ./api
+    command: ["python", "-m", "app.flow_push_worker"]
+    env_file: .env
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/flow_fcm
+    secrets: [flow_fcm]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    networks: [internal, payment-egress]
+secrets:
+  flow_fcm:
+    file: ${FLOW_FCM_CREDENTIAL_FILE:?Set the private server credential path}
