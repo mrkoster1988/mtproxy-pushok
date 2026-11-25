@@ -1,5 +1,7 @@
 """Source safety checks for Telegram webview return after Flow consent."""
+import json
 from pathlib import Path
+import re
 import unittest
 
 JS = Path(__file__).resolve().parents[1] / "api/web/flow-account.js"
@@ -15,18 +17,20 @@ class TelegramConsentReturnTests(unittest.TestCase):
         self.assertNotIn("window.close()", code)
         self.assertNotIn("window.location = 'tg://", code)
 
-
-    def test_v127_cabinet_asset_and_server_version_in_sync(self):
+    def test_cabinet_asset_and_server_version_in_sync(self):
         root = Path(__file__).resolve().parents[1]
         html = (root / "api/web/index.html").read_text(encoding="utf-8")
         main = (root / "api/app/main.py").read_text(encoding="utf-8")
         readme = (root / "README.md").read_text(encoding="utf-8")
         notes = (root / "api/web/release-notes.js").read_text(encoding="utf-8")
-        self.assertIn("/assets/flow-account.js?v=1.127", html)
-        self.assertIn('version="1.127"', main)
-        self.assertIn("Версия проекта: v1.127.", readme)
-        self.assertIn('"version": "1.127"', notes)
-        self.assertIn("docs/RELEASE_v1.127.md", readme)
+        match = re.search(r'^\s*version="(\d+(?:\.\d+)+)",$', main, re.MULTILINE)
+        self.assertIsNotNone(match, "Expected the server application version")
+        version = match.group(1)
+        self.assertIn(f'"/assets/flow-account.js?v={version}"', html)
+        self.assertIn(f"Версия проекта: v{version}.", readme)
+        self.assertIn(f"docs/RELEASE_v{version}.md", readme)
+        releases, _ = json.JSONDecoder().raw_decode(notes.split("window.pushokReleaseNotes=", 1)[1].lstrip())
+        self.assertEqual(releases[0]["version"], version)
 
 
 if __name__ == "__main__":
