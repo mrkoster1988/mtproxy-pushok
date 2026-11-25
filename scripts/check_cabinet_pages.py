@@ -10,6 +10,7 @@ import base64
 import io
 import json
 import os
+import re
 import socket
 import sys
 import threading
@@ -948,7 +949,10 @@ def main():
                     expect(mini.locator('[data-page=dashboard]')).to_be_visible()
                     expect(mini.locator('.mobile-bottom-nav a:visible')).to_have_count(6)
                     mini.locator('.mobile-bottom-nav a[data-route=vpn]').click()
-                    expect(mini.get_by_role('link',name='Подключить или продлить')).to_be_visible()
+                    paid_link=mini.locator('[data-page=vpn] a[href="https://pushok.shop/shop/?renew=wg#plans"]')
+                    expect(paid_link).to_be_visible()
+                    expect(paid_link).to_have_text(re.compile('Продлить за деньги|Выбрать платный тариф'))
+                    expect(mini.locator('[data-page=vpn] .vpn-directory')).to_have_count(0)
                     expect(mini.locator('.mobile-bottom-nav [data-route=moderation]')).to_be_hidden()
                     mini.locator('.mobile-bottom-nav a[data-route=profile]').click()
                     expect(mini.locator('[data-page=profile]')).to_be_visible()
