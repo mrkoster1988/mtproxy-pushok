@@ -934,7 +934,23 @@ run(async()=>{
  if(validBot){
  const script=document.createElement('script');script.src='https://telegram.org/js/telegram-widget.js?22';script.async=true;script.dataset.telegramLogin=config.telegram_bot_username;script.dataset.size='large';script.dataset.onauth='onTelegramAuth(user)';$('telegram-login').append(script);$('login-note').textContent='Вход подтверждается в Telegram.';
 }else $('login-note').textContent='Администратору нужно настроить Telegram-бота для входа.';
- if(token)await enter();
+ const generation=authGeneration;
+ if(!token){
+  try {
+   const resume=await fetch('/api/v1/auth/browser/resume',{method:'POST',headers:{'X-Pushok-Cabinet':'resume'},credentials:'same-origin',cache:'no-store'});
+   if(resume.ok && generation===authGeneration && !token){
+    const saved=await resume.json();
+    if(generation===authGeneration && !token && typeof saved.access_token==='string'){
+     token=saved.access_token;sessionStorage.setItem(sessionKey,token);
+    }
+   }
+  }catch{} // The normal sign-in controls remain available offline.
+ }
+ if(token && generation===authGeneration){
+  if(await enter() && generation===authGeneration){
+   await api('/auth/browser/remember',{method:'POST'}).catch(()=>{});
+  }
+ }
 });
 
 let displayedVersion=null,softwareControl=null,softwareRelease=null,softwareSession=null;

@@ -20,7 +20,7 @@ from uuid import UUID, uuid4
 
 import psycopg
 from .license_errors import explain as explain_license_error
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import Request, Depends, FastAPI, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -497,10 +497,47 @@ def ready() -> dict[str, str]:
     return {"status": "ready", "database": "ok"}
 
 
+BROWSER_SESSION_COOKIE = '__Secure-pushok-cabinet'
+BROWSER_SESSION_PATH = '/api/v1/auth/browser'
+
+
+def remember_browser_session(response, token, lifetime):
+    response.headers['Cache-Control'] = 'private, no-store'
+    response.set_cookie(BROWSER_SESSION_COOKIE, token, max_age=lifetime, path=BROWSER_SESSION_PATH,
+                        secure=True, httponly=True, samesite='strict')
+
+
 @app.post("/api/v1/auth/telegram", response_model=SessionResponse, tags=["authentication"])
-def telegram_login(payload: TelegramLoginPayload) -> SessionResponse:
+def telegram_login(payload: TelegramLoginPayload, response: Response) -> SessionResponse:
     _verify_telegram_login(payload)
-    return _start_telegram_session(payload)
+    session = _start_telegram_session(payload)
+    remember_browser_session(response, session.access_token, session.expires_in)
+    return session
+
+
+@app.post('/api/v1/auth/browser/remember', status_code=204, tags=['authentication'])
+def remember_existing_browser(response: Response, user=Depends(get_current_user),
+                              credentials: HTTPAuthorizationCredentials = Depends(bearer)):
+    if user['login_surface'] != 'web':
+        raise HTTPException(403, 'browser_session_required')
+    _, _, expiry = _decode_session_token(credentials.credentials)
+    remember_browser_session(response, credentials.credentials, max(0, expiry - int(time.time())))
+
+
+@app.post('/api/v1/auth/browser/resume', response_model=SessionResponse, tags=['authentication'])
+def resume_browser_session(request: Request, response: Response):
+    response.headers['Cache-Control'] = 'private, no-store'
+    # A cross-origin HTML form cannot send this header. The cabinet has no cross-origin grants.
+    if request.headers.get('x-pushok-cabinet') != 'resume' or request.headers.get('sec-fetch-site', 'same-origin') != 'same-origin':
+        raise HTTPException(403, 'same_origin_required')
+    value = request.cookies.get(BROWSER_SESSION_COOKIE)
+    if not value:
+        raise HTTPException(401, 'authentication_required')
+    user = get_current_user(HTTPAuthorizationCredentials(scheme='Bearer', credentials=value))
+    if user['login_surface'] != 'web':
+        raise HTTPException(403, 'browser_session_required')
+    _, _, expiry = _decode_session_token(value)
+    return SessionResponse(access_token=value, expires_in=max(0, expiry - int(time.time())))
 
 
 class MiniAppLoginPayload(BaseModel):
@@ -582,7 +619,9 @@ def get_me(user: dict[str, Any] = Depends(get_current_user)) -> UserResponse:
 
 
 @app.post("/api/v1/auth/logout", status_code=204, tags=["authentication"])
-def logout(user: dict[str, Any] = Depends(get_current_user)) -> None:
+def logout(response: Response, user: dict[str, Any] = Depends(get_current_user)) -> None:
+    if user['login_surface'] == 'web':
+        response.delete_cookie(BROWSER_SESSION_COOKIE, path=BROWSER_SESSION_PATH, secure=True, httponly=True, samesite='strict')
     try:
         with psycopg.connect(DATABASE_URL, connect_timeout=3) as connection:
             connection.execute(
