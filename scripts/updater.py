@@ -87,11 +87,52 @@ def read_control(name):
 
 
 
-def published_release():
-    # Модуль проверки использует только стандартную библиотеку, в том числе на хосте.
+def running_api_version():
+    """Use the version *inside the running API image*, not README from Git.
+
+    A previous git pull can update the checkout while the service continues
+    running an older Docker image. Updating the source is not deployment.
+    """
     from app import releases
-    installed = releases.readme_version((ROOT / 'README.md').read_text(encoding='utf-8'))
-    return releases.check(installed)
+
+    def private_run(command):
+        try:
+            proc = subprocess.run(
+                command, cwd=ROOT, timeout=20, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ValueError('running_api_version_unavailable') from exc
+        if proc.returncode:
+            raise ValueError('running_api_version_unavailable')
+        return proc.stdout.strip()
+
+    container = private_run([
+        sys.executable, 'scripts/installer_runtime.py', 'compose', 'ps', '-q', 'api'
+    ])
+    if not re.fullmatch(r'[0-9a-f]{12,64}', container):
+        raise ValueError('running_api_container_unavailable')
+
+    # The API Dockerfile installs app/main.py under this fixed WORKDIR.
+    # Parse the *installed source file*, without importing app.main, running
+    # its startup code, or making HTTP requests using secret-bearing config.
+    probe = """from pathlib import Path
+import re
+source = Path('/srv/mtproxy-pushok/app/main.py').read_text(encoding='utf-8')
+versions = re.findall(r'(?m)^\\s*version\\s*=\\s*"([0-9]{1,4}\\.[0-9]{1,4})"\\s*,\\s*$', source)
+if len(versions) != 1:
+    raise SystemExit(2)
+print(versions[0])
+"""
+    installed = private_run(['docker', 'exec', container, 'python3', '-c', probe])
+    releases.version_key(installed)
+    return installed
+
+
+def published_release():
+    # The installed release is the running container, not the repository.
+    from app import releases
+    return releases.check(running_api_version())
 
 
 def queue_automatic_update():
