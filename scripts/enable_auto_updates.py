@@ -83,7 +83,16 @@ def install():
         raise Rejected("Нужны права root")
     doc = existing()
     normal(ROOT / "scripts" / "install_updater.sh")
-    if not unit_exists():
+    units = [Path("/etc/systemd/system") / name for name in (SERVICE, TIMER, PATH_UNIT)]
+    present = [u.exists() or u.is_symlink() for u in units]
+    if any(present) and not all(present):
+        raise Rejected("Частичная установка systemd: сначала проверьте unit-файлы вручную")
+    if all(present):
+        for unit in units:
+            normal(unit)
+        if "scripts/updater.py" not in units[0].read_text():
+            raise Rejected("Действующий updater не совпадает с Pushok")
+    else:
         subprocess.run(["bash", "scripts/install_updater.sh", "--install-only"],
                        cwd=ROOT, check=True, timeout=180)
     doc = dict(doc)
