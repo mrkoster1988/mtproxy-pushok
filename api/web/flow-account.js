@@ -57,7 +57,7 @@ window.pushokFlowAccount = (() => {
     intro = node('section', undefined, 'panel flow-auth-intro');
     intro.id = 'flow-account-intro';
     intro.append(node('h2', 'Вход в Pushok Flow'),
-      info('Войдите в существующий аккаунт через Telegram. Затем кабинет попросит подтвердить подключение.'),
+      info('Войдите в свой кабинет MTProxy и подтвердите подключение. Если у вас есть ключ доступа, им можно воспользоваться в форме входа ниже.'),
       node('p', formatted(code), 'flow-auth-code'));
     if (botName) {
       const link = node('a', 'Открыть подтверждение в Telegram', 'flow-auth-telegram');
@@ -76,6 +76,8 @@ window.pushokFlowAccount = (() => {
     }
     intro.append(info('Запрос действует не больше пяти минут. Подключение требует вашего подтверждения.'));
     document.querySelector('main').prepend(intro);
+    const login = document.getElementById('login');
+    if (document.body.dataset.miniapp !== 'true' && login) intro.after(login);
     clearInterval(timer);
     timer = setInterval(() => {
       if (!liveIntent()) unavailable('Срок запроса истёк. Начните вход заново в Pushok Flow.');
@@ -351,8 +353,16 @@ window.pushokFlowAccount = (() => {
   // This module loads before app.js. Capture only the public code, before the
   // ordinary Telegram Login Widget can create third-party requests.
   try {
-    const saved = storedIntent();
     const url = new URL(location.href);
+    const shopLogin = url.searchParams.get('shop_login') === '1' || url.searchParams.get('shop_subscriptions') === '1';
+    if (shopLogin) {
+      forgetIntent();
+      if (url.searchParams.has('flow')) {
+        url.searchParams.delete('flow');
+        history.replaceState(null, '', url);
+      }
+    }
+    const saved = shopLogin ? null : storedIntent();
     const values = url.searchParams.getAll('flow');
     if (values.length) {
       code = values.length === 1 && codePattern.test(values[0]) ? values[0] : '';

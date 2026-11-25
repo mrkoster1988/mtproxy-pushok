@@ -214,10 +214,16 @@ def check_flow_account(browser, base, output, failures, dsn):
             unsigned = challenge()
             guest, guest_events = visit(unsigned, anonymous=True)
             expect(guest.locator("#flow-account-intro")).to_be_visible()
+            expect(guest.locator("#flow-account-intro + #login")).to_be_visible()
             # External Telegram resources are deliberately blocked by local_only.
             expect(guest.locator("#login-note")).to_contain_text("Не удалось загрузить вход через Telegram")
             expect(guest.locator("#shop-login-email")).to_be_hidden()
-            shop_guest, _ = visit(None, query="shop_login=1", anonymous=True)
+            pending_flow = json.dumps({"code": unsigned["user_code"], "receivedAt": int(time.time()*1000)})
+            shop_guest, shop_events = visit(None, query="shop_login=1", anonymous=True, stored_intent=pending_flow)
+            expect(shop_guest.locator("main > :first-child")).to_have_id("login")
+            expect(shop_guest.locator("#flow-account-intro")).to_have_count(0)
+            assert shop_guest.evaluate("sessionStorage.getItem('pushok-flow-intent-v1')") is None
+            assert not any(event[2].endswith("/flow/device/review") for event in shop_events)
             expect(shop_guest.locator("#shop-login-email")).to_be_visible()
             expect(shop_guest.locator("#shop-login-email")).to_have_attribute("href", "/shop/?view=account")
             expect(shop_guest.locator("#shop-login-consent")).to_be_hidden()

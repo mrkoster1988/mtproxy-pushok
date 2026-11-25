@@ -973,6 +973,12 @@ run(async()=>{
  if(miniAppMode){await window.pushokMiniApp.start();return;}
  const shopRequest=new URLSearchParams(location.search).get('shop_login')==='1';
  $('shop-login-email').hidden=!shopRequest;
+ if(shopRequest){
+  const login=$('login');
+  login.querySelector('h2').textContent='Войти в Pushok Shop';
+  login.querySelector('.login-intro').textContent='Войдите в кабинет MTProxy. Затем подтвердите вход в магазин.';
+  document.querySelector('main').prepend(login);
+ }
  api('/tariffs').then(items=>{if(!me){tariffs=items;updatePublicPrice();}}).catch(()=>{if(!me)$('hero-tariff-price').textContent='Цена временно недоступна';});
  const config=await api('/public-config');window.cabinetBotConfig=config;if(window.cabinet)window.cabinet.config(config);window.pushokFlowAccount?.configure(config);
  const botShortcut=document.querySelector('.hero-link-primary');
