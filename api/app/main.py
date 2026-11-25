@@ -27,6 +27,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from psycopg.errors import CheckViolation, ExclusionViolation, InsufficientPrivilege, UniqueViolation
 from psycopg.rows import dict_row
+from .vpn_notices import router as vpn_notices_router
 from .bot_routes import router as bot_router
 from .bot_stars import router as bot_stars_router
 from .bot_operator import router as operator_bot_router
@@ -60,6 +61,7 @@ app = FastAPI(
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
+app.include_router(vpn_notices_router)
 app.include_router(bot_stars_router)
 app.include_router(operator_bot_router)
 app.include_router(advertiser_notices_router)

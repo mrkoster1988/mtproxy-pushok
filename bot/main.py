@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from .telegram_environment import bot_api_url, environment_name
 from .wizard import DraftWizard, format_tariff
 from .navigation import Navigation
+from .vpn_notices import deliver as deliver_vpn_notices
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
 from .lifecycle_notices import deliver_lifecycle_notices
@@ -719,6 +720,7 @@ def run():
                     lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4),
                 )
                 deliver_lifecycle_notices(_internal_api,lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4),miniapp_url())
+                deliver_vpn_notices(_internal_api, lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4))
                 deliver_birthdays(_internal_api, lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4), miniapp_url())
                 navigation.cleanup_pending(token)
         except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:

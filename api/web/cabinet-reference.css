@@ -899,3 +899,8 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .vpn-member:last-child{border-bottom:0}.vpn-member>span:first-child{display:grid;gap:3px;flex:1;min-width:0;overflow-wrap:anywhere}
 .vpn-member svg{width:16px;height:16px;color:var(--mint)}.vpn-badge{color:var(--mint)}
 @media(min-width:640px){.cabinet-mode .vpn-metrics{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}.vpn-links a{flex:none}.cabinet-mode .vpn-edit{grid-template-columns:2fr 1fr auto;align-items:end}.vpn-edit small{grid-column:1/-1}}
+.cabinet-mode .vpn-card,.cabinet-mode .vpn-directory{grid-template-columns:minmax(0,1fr)}
+.vpn-card>*{min-width:0}.cabinet-mode .vpn-links a{white-space:normal;text-align:center}
+
+.cabinet-mode .vpn-links .ui-button svg{width:18px;height:18px;flex:0 0 18px}
+.cabinet-mode .vpn-card+.vpn-directory{margin-top:12px}
