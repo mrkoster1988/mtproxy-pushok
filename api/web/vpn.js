@@ -397,12 +397,12 @@ window.pushokVpn = (() => {
       const row=selected||(own?data.personal:null);
       host.replaceChildren();
       if(!admin||!directory)host.append(card(row,subject,own&&directory?'Моя подписка':'VPN · Pushok Flow',own,admin,reload));
-      if(own&&!admin)host.append(androidDownloadLink());
+      if(own&&directory&&!admin)host.append(androidDownloadLink());
       if(directory&&admin){
         const settings=el('a','Настройки VPN','ui-button');settings.href='#/management/vpn';
         host.prepend(settings,usageSummary((data.members||[]).filter(r=>r.id!==subject)));
       }else if(admin&&row)host.append(usageSummary([row],true));
-      else if(own&&!admin&&!row?.is_premium)offers();
+      else if(own&&directory&&!admin&&!row?.is_premium)offers();
       if(admin&&(directory||row)){
         const credit=el('a','Геолокация по IP · DB-IP','muted');credit.href='https://db-ip.com';credit.target='_blank';credit.rel='noopener noreferrer';host.append(credit);
       }
@@ -417,8 +417,8 @@ window.pushokVpn = (() => {
       if(host.isConnected&&session===token){
         const retry=button('Обновить сведения',reload);
         host.replaceChildren(el('p','Не удалось загрузить сведения о подписке.','muted'),retry);
-        if(own&&!staff()){host.append(androidDownloadLink());offers();}
-        else if(own&&!directory)host.append(renewLink());
+        if(own&&directory&&!staff()){host.append(androidDownloadLink());offers();}
+        else if(own&&!directory&&staff())host.append(renewLink());
       }
     }
   }

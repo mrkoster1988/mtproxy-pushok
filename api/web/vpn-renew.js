@@ -79,7 +79,7 @@ window.pushokVpnRenew = (() => {
     const terms=el('details',undefined,'vpn-terms');
     terms.append(el('summary','Условия оплаты'),el('p',catalog.terms||''));
     const consent=el('label',undefined,'vpn-consent'),check=el('input');check.type='checkbox';
-    consent.append(check,document.createTextNode('Принимаю условия оплаты'));terms.append(consent);
+    consent.append(check,document.createTextNode('Принимаю условия оплаты'));
     let selected=catalog.plans.find(p=>p.id===catalog.preferred_plan)||catalog.plans[0],busy=false,requestId=prior?.request_id||crypto.randomUUID();
     if (prior?.plan) selected=catalog.plans.find(p=>p.id===prior.plan)||selected;
     const pay=el('button',undefined,'campaign-pay-action labeled-action');pay.type='button';note.textContent='';
@@ -114,7 +114,7 @@ window.pushokVpnRenew = (() => {
     };
     box.replaceChildren(choices);
     if(!catalog.plans.length || !catalog.available) { box.append(el('p',catalog.unavailable_reason||'Платное продление сейчас недоступно.','muted'));return; }
-    box.append(pay,terms,note);
+    box.append(pay,consent,terms,note);
   }
   return {show};
 })();

@@ -821,12 +821,11 @@ def main():
                     headers={"Authorization": "Bearer " + sessions['outsider']})
                 assert response.status == 404
 
-                # Search is intentionally limited to campaign screens.
+                # Personal campaign lists have no search or status filter.
                 go(advertiser, 'campaigns')
-                advertiser.get_by_label('Поиск кампаний', exact=True).fill('несуществующий канал')
-                advertiser.get_by_label('Поиск кампаний', exact=True).press('Enter')
-                expect(advertiser.locator('#campaigns')).to_contain_text('Поиск не дал результатов')
-                advertiser.get_by_role('button', name='Сбросить поиск и фильтр', exact=True).click()
+                expect(advertiser.get_by_label('Поиск кампаний', exact=True)).to_be_hidden()
+                expect(advertiser.get_by_label('Статус кампаний', exact=True)).to_be_hidden()
+                expect(advertiser.locator('#campaigns + .dashboard-promote-channel')).to_be_visible()
                 expect(advertiser.locator('#campaigns')).to_contain_text('У вас нет текущих личных кампаний')
                 expect(advertiser.locator('#campaigns')).not_to_contain_text('Исправленный канал')
                 go(advertiser, 'help')
@@ -1014,16 +1013,17 @@ def main():
                     vpn_page.get_by_role('radio',name='На месяц',exact=False).check()
                     pay_vpn=mini.get_by_role('button',name='Оплатить 199 ⭐')
                     expect(pay_vpn).to_have_text('Оплатить 199 ⭐')
-                    terms=vpn_page.locator('.vpn-renew .campaign-pay-action + details')
+                    consent=vpn_page.locator('.vpn-renew .campaign-pay-action + .vpn-consent')
+                    terms=vpn_page.locator('.vpn-renew .vpn-consent + details')
                     expect(terms).to_have_js_property('open',False)
-                    expect(terms.get_by_role('checkbox',include_hidden=True)).to_be_hidden()
+                    expect(consent.get_by_role('checkbox')).to_be_visible()
                     for width in (320,390):
                         mini.set_viewport_size({'width':width,'height':844})
                         assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
                     vpn_page.locator('.vpn-stack').screenshot(path=str(output/'vpn-personal-offers.png'))
                     pay_vpn.click()
                     expect(terms).to_have_js_property('open',True)
-                    expect(terms.get_by_role('checkbox')).to_be_focused()
+                    expect(consent.get_by_role('checkbox')).to_be_focused()
                     assert not any(method=='POST' and url.endswith('/api/v1/vpn/checkout') for method,url in mini_requests)
                     mini.get_by_label('Принимаю условия оплаты').check()
                     pay_vpn.click()
@@ -1049,7 +1049,8 @@ def main():
                     expect(mini).to_have_url(base+'/miniapp#/vpn/renew')
                     mini.locator('.mobile-bottom-nav a[data-route=profile]').click()
                     expect(mini.locator('[data-page=profile]')).to_be_visible()
-                    expect(mini.locator('[data-page=profile] .vpn-inline-offers .vpn-plan')).to_have_count(3)
+                    expect(mini.locator('[data-page=profile] .vpn-card')).to_be_visible()
+                    expect(mini.locator('[data-page=profile] .vpn-inline-offers, [data-page=profile] .dashboard-flow-download')).to_have_count(0)
                     expect(mini.locator('[data-page=profile] .vpn-usage')).to_have_count(0)
                     personal['is_premium']=True
                     go(mini,'vpn')
@@ -1944,11 +1945,16 @@ def main():
                 admin.screenshot(path=str(output/'42-wallet-gifts-admin-mobile.png'),full_page=True)
                 go(advertiser,'wallet')
                 open_wallet_tools(advertiser)
-                expect(advertiser.get_by_text('В Telegram откройте',exact=False)).to_be_visible()
+                expect(advertiser.locator('[data-wallet-section=telegram]')).to_have_count(0)
+                expect(advertiser.locator('.wallet-group > h2 + [data-wallet-section=gift] summary')).to_have_text('Активировать код')
+                assert advertiser.locator('.wallet-actions').evaluate("""node => {
+                    const [a, b] = Array.from(node.children, x => x.getBoundingClientRect());
+                    return Math.abs(a.width-b.width) < 1 && a.height === b.height;
+                }""")
                 expect(advertiser.get_by_label('Валюта пополнения',exact=True)).to_have_count(0)
                 expect(advertiser.get_by_role('link',name='Пополнить',exact=True)).to_be_visible()
                 for _ in range(2):
-                    advertiser.get_by_label('Подарочный код на баланс',exact=True).fill(gift_code)
+                    advertiser.get_by_label('Код для активации',exact=True).fill(gift_code)
                     advertiser.evaluate("window.previousGiftPage=document.querySelector('[data-page=wallet] .wallet-page')")
                     advertiser.get_by_role('button',name='Получить подарок',exact=True).click()
                     advertiser.wait_for_function("document.querySelector('[data-page=wallet] .wallet-page') && document.querySelector('[data-page=wallet] .wallet-page') !== window.previousGiftPage")
@@ -2011,7 +2017,7 @@ def main():
                 expect(personal_row.locator('.wallet-gift-report')).to_contain_text('Этот код ещё никто не активировал.')
                 go(outsider,'wallet')
                 open_wallet_tools(outsider)
-                outsider.get_by_label('Подарочный код на баланс',exact=True).fill(personal_code)
+                outsider.get_by_label('Код для активации',exact=True).fill(personal_code)
                 outsider.evaluate("window.previousGiftPage=document.querySelector('[data-page=wallet] .wallet-page')")
                 outsider.get_by_role('button',name='Получить подарок',exact=True).click()
                 outsider.wait_for_function("document.querySelector('[data-page=wallet] .wallet-page') && document.querySelector('[data-page=wallet] .wallet-page') !== window.previousGiftPage")

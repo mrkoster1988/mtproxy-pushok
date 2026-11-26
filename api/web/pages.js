@@ -90,6 +90,7 @@
   date(c.scheduled_start_at),link('Открыть','create/'+c.id)
  ]);}
  const campaignHeaders=['Канал','Статусы','Цена заявки','Начало','Действие'];
+ function canFilterCampaigns(){return hasDeveloperAccess(me)||['admin','moderator','operator'].includes(me?.role);}
  function staffCampaigns(){return ['developer','admin','moderator','operator'].includes(me?.role)&&state.scope==='all';}
  function campaignSource(){return staffCampaigns()?operatorCampaigns.filter(c=>!c.archived_at):state.campaigns;}
  function filtered(){return campaignSource().filter(c=>
@@ -194,7 +195,7 @@
   finally{if(version===subscriptionEpoch)verifySubscription.disabled=false;}
  }
  const promoteChannel=link('Продвигать канал','create');promoteChannel.classList.add('dashboard-promote-channel');heroActions.append(connectProxy,subscription);
- heroActions.append(window.pushokVpn.androidDownloadLink());listTools.before(promoteChannel);
+ heroActions.append(window.pushokVpn.androidDownloadLink());content.campaigns.append(promoteChannel);
  const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
  dashboardHero.append(heroCopy,dashboardMascot,heroActions);
  const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardReferral=el('div');dashboardReferral.id='dashboard-referral';dashboardIntro.append(dashboardReferral,dashboardHero);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);
@@ -394,6 +395,8 @@
   return safeChannel('https://t.me/'+state.bot,'Открыть @'+state.bot);
  }
  function renderList(){
+  listTools.hidden=!canFilterCampaigns();
+  if(listTools.hidden){state.search=search.value='';state.filter=filter.value='';}
   search.placeholder='Поиск кампаний';
   const list=filtered();reset.hidden=!state.search&&!state.filter;window.pushokViews.campaigns($('campaigns'),list,staffCampaigns()?'sponsors':'campaign');
   $('campaign-count').textContent=list.length+' заявок';

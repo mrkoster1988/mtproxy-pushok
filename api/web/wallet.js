@@ -37,13 +37,13 @@ window.pushokWallet=(()=>{
  function value(n,c){return c==='XTR'?String(n):(n/100).toFixed(2);}
  function panel(title){const p=el('section',undefined,'panel');p.append(el('h2',title));return p;}
  function foldPanels(root,data){
-  const folds={'История операций':['history','История операций','chart'],'Активировать подарочный код':['gift','Подарочный код','gift'],'Автоматическая оплата':['autopay','Автооплата · '+(data.preferences.auto_pay?'включена':'выключена'),'refresh'],'Мои Stars в Telegram':['telegram','Личные Stars в Telegram','star'],'Мои пополнения':['topups','Счета на пополнение','wallet'],'Управление балансами':['admin','Управление балансами','users'],'Сверка пополнений':['review','Сверка пополнений','check'],'Подарочные коды на баланс':['gifts','Выдать подарок','gift']};
+  const folds={'История операций':['history','История операций','chart'],'Активировать код':['gift','Активировать код','gift'],'Автоматическая оплата':['autopay','Автооплата · '+(data.preferences.auto_pay?'включена':'выключена'),'refresh'],'Мои пополнения':['topups','Счета на пополнение','wallet'],'Управление балансами':['admin','Управление балансами','users'],'Сверка пополнений':['review','Сверка пополнений','check'],'Подарочные коды на баланс':['gifts','Выдать подарок','gift']};
   for(const p of [...root.children]){const h=p.querySelector(':scope > h2'),entry=folds[h?.textContent];if(!entry)continue;
    const [key,title,name]=entry,d=el('details',undefined,'disclosure-panel wallet-disclosure'),summary=el('summary',title);summary.prepend(window.pushokViews.icon(name));d.dataset.walletSection=key;
    d.open=Boolean(expanded[key]||(key==='topups'&&data.topups.some(t=>['created','pending','review'].includes(t.status))));
    d.addEventListener('toggle',()=>{if(d.isConnected)expanded[key]=d.open;if(d.open&&p.loadReview&&!p.reviewLoaded){p.reviewLoaded=true;void p.loadReview().catch(()=>{p.reviewLoaded=false;p.replaceChildren(el('p','Не удалось загрузить платежи.'),button('Повторить',()=>p.loadReview()));});}});p.before(d);h.remove();d.append(summary,p);
   }
-  for(const [title,keys] of [['Мой кошелёк',['topups','autopay','telegram','history']],['Подарки',['gift']],['Администрирование',['admin','review','gifts']]]){
+  for(const [title,keys] of [['Мой кошелёк',['gift','topups','autopay','history']],['Администрирование',['admin','review','gifts']]]){
    const sections=keys.map(key=>root.querySelector('[data-wallet-section="'+key+'"]')).filter(Boolean);
    if(!sections.length)continue;
    const group=el('section',undefined,'wallet-group');group.append(el('h2',title),...sections);root.append(group);
@@ -262,7 +262,7 @@ window.pushokWallet=(()=>{
     node.replaceChildren(root);return;
    }
    if(data.enabled)redeemGift(root);else root.append(el('p','Внутренний баланс выключен. Остатки и история сохранены, новые пополнения и списания остановлены. Ранее выставленные счета продолжают проверяться. Заявки можно оплачивать напрямую.','wallet-warning'));
-   topupList(root,data);autopay(root,data);telegramStars(root);
+   topupList(root,data);autopay(root,data);
    if(me.role==='admin'){
     const admin=panel('Управление балансами'),f=el('form'),tg=field(f,'Пользователь: @никнейм или ID','text',adminTelegram);tg.required=true;tg.placeholder='Telegram ID, @username или имя';tg.maxLength=100;f.prepend(Object.assign(el('p','Поиск по Telegram ID, @username или имени. Пользователь появляется после входа в puShok.','muted'),{className:'muted block-note'}));
     submit(f,'Найти пользователя',async()=>{adminTelegram=tg.value.trim();adminPage=0;await adminLookup();});f.append(button('К моему балансу',()=>{adminSeq++;adminTelegram='';adminPage=0;tg.value='';adminTarget?.replaceChildren();const section=f.closest('details');if(section)section.open=false;expanded.admin=false;node.scrollIntoView({block:'start'});}));admin.append(f);adminTarget=el('div',undefined,'wallet-admin-result');admin.append(adminTarget);root.append(admin);
@@ -276,20 +276,11 @@ window.pushokWallet=(()=>{
    foldPanels(root,data);root.querySelectorAll('.block-note').forEach(n=>n.setAttribute('data-note',''));node.replaceChildren(root);if(adminTelegram&&adminTarget)await adminLookup();
   }catch(e){if(version===epoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить',()=>load(node)));}
  }
- function telegramStars(root){
-  const p=panel('Мои Stars в Telegram');
-  p.append(el('p','В Telegram откройте «Настройки → Мои звёзды». Там видны личный баланс и история Stars.'));
-  const bot=window.cabinetBotConfig?.telegram_bot_username;
-  if(/^[A-Za-z0-9_]{5,32}$/.test(bot||'')){
-   const link=el('a','Открыть чат со ссылкой на мои звёзды','ui-button');
-   link.href='https://t.me/'+bot+'?start=stars';link.target='_blank';link.rel='noopener noreferrer';
-   p.append(link);
-  }
-  root.append(p);
- }
  function redeemGift(root){
-  const p=panel('Активировать подарочный код'),f=el('form'),code=field(f,'Подарочный код на баланс','text');code.required=true;code.maxLength=64;code.placeholder='GIFT-…';code.autocomplete='off';
-  p.append(Object.assign(el('p','Код начисляет бонусные рубли один раз на пользователя. Ими можно оплатить рублёвую заявку в веб-кабинете; в Mini App оплата проходит Stars. Обмена бонусов на Stars или деньги нет.','muted block-note'),{className:'muted block-note'}));
+  const p=panel('Активировать код'),f=el('form'),code=el('input');
+  code.type='text';code.required=true;code.maxLength=64;code.placeholder='Введите код';code.autocomplete='off';
+  code.setAttribute('aria-label','Код для активации');f.append(code);
+  p.append(el('p','После активации бонусы поступят на баланс. Их можно потратить на рекламу в веб-кабинете.','muted'));
   submit(f,'Получить подарок',async()=>{const result=await api('/wallet/gifts/redeem',{method:'POST',body:{code:code.value.trim().toUpperCase()}});notice(result.already_redeemed?'Этот подарок уже зачислен. Повторного начисления нет.':'Начислено '+amount(result.amount,'BONUS'),true);await load(target);});p.append(f);root.append(p);
  }
  function giftStatus(g){return 'До '+date(g.expires_at)+' · '+(g.deleted_at?'Удалён':!g.active?'Выключен':g.expired?'Срок истёк':g.used>=g.max_uses?'Лимит исчерпан':'Действует');}
