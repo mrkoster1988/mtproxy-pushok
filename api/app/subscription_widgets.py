@@ -19,6 +19,7 @@ body{font:var(--tg-text-font-size,15px)/1.35 system-ui;margin:12px;color:var(--t
 .label{font-size:.75em;color:var(--tg-theme-hint-color)}
 h3{font-size:1.16em;margin:3px 0 5px;overflow-wrap:anywhere}
 p{margin:0}small{display:block;margin-top:8px;padding:6px 9px;border-radius:8px;background:var(--tg-theme-secondary-bg-color)}
+[hidden]{display:none}
 </style><div class=label>МОЯ ПОДПИСКА</div><h3></h3><p></p><small></small><script>
 const w=window.TelegramWidget;
 function draw(){const [plan,term,usage]=JSON.parse(w.chatData||'["","",""]');
