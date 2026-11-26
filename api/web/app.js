@@ -545,6 +545,10 @@ function card(c,op,{compact=false,showPayment=false}={}){
  }
  if(overview){
   box.firstElementChild.after(actions);
+  const live=el('p',undefined,'campaign-live-line');
+  live.dataset.promotionSummary='inline';live.dataset.promotionCampaign=c.id;
+  actions.after(live);
+  setTimeout(()=>{if(live.isConnected)void updatePromotionPanel(live);},0);
   box.querySelector('.campaign-analytics')?.after(timing);
  }
  return box;
@@ -1231,6 +1235,8 @@ const automationMessages={
  awaiting_moderation:['Ожидается модерация',()=> 'Автоматическое размещение станет доступно после одобрения канала и оплаты.']
 };
 async function updatePromotionPanel(panel){
+ const inline=panel.dataset.promotionSummary==='inline';
+ if(inline&&panel.parentElement?.querySelector('.automation-panel'))return;
  const session=token,request=(panel.promotionRequest||0)+1;panel.promotionRequest=request;
  if(!panel.hasChildNodes()){
   if(panel.dataset.promotionSummary)panel.textContent='Получаем статус автоматики…';
@@ -1241,11 +1247,14 @@ async function updatePromotionPanel(panel){
   if(!panel.isConnected||session!==token||request!==panel.promotionRequest)return;
   const message=automationMessages[state.automation_status]||['Состояние уточняется',()=> 'Обновите данные. Подтверждения запуска пока нет.'];
   panel.dataset.automationStatus=state.automation_status||'unknown';
+  if(inline){panel.textContent=message[0];return;}
   if(panel.dataset.promotionSummary){
    let heading=panel.querySelector('h3'),note=panel.querySelector('.automation-explanation');
    if(!heading){heading=el('h3');note=el('p',undefined,'automation-explanation');panel.replaceChildren(heading);window.pushokControls.help(panel,[note],'О текущем этапе');}
    heading.textContent=message[0];note.textContent=message[1](state);return;
   }
+  const summary=panel.parentElement?.querySelector('.campaign-live-line');
+  if(summary){summary.textContent=message[0];summary.dataset.automationStatus=panel.dataset.automationStatus;}
   panel.querySelector('h4').textContent=message[0];panel.querySelector('.automation-message').textContent=message[1](state);
   panel.querySelector('.automation-agent').textContent=state.checked_at?'Последний ответ агента: '+date(state.checked_at):'Ответ агента ещё не получен.';
   panel.querySelector('.automation-error').textContent='';

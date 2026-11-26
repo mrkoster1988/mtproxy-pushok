@@ -200,3 +200,9 @@
 .campaign-window progress::-webkit-progress-value {background:linear-gradient(90deg,#329aab,#7be8d2);border-radius:4px}
 .campaign-window progress::-moz-progress-bar {background:#71dbc9}
 .campaign-page .campaign-facts:empty {display:none}
+
+.campaign-page>.campaign-live-line {margin:-4px 3px 4px;display:flex;align-items:baseline;gap:7px;color:var(--muted);font-size:12px;line-height:1.4}
+.campaign-page>.campaign-live-line::before {content:'';width:6px;height:6px;flex:none;border-radius:50%;background:currentColor}
+.campaign-live-line[data-automation-status=active]::before {color:#75d5b1}
+.campaign-live-line[data-automation-status=agent_unavailable]::before {color:#dda861}
+.campaign-page:has(>.automation-panel)>.campaign-live-line {display:none}
