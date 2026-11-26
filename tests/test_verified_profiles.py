@@ -160,7 +160,14 @@ class VerificationIntegration(unittest.TestCase):
                 return {'message_id': len(messages)}
             self.fail('Unexpected Telegram method: '+method)
 
-        with patch.dict(os.environ, {'TELEGRAM_BOT_TOKEN': 'local-fixture',
+        self.db('INSERT INTO support_bot_contacts(telegram_id,bot_id) VALUES(%s,123)',(self.tg,))
+        def support_send(key,method,payload):
+            self.assertEqual(key,'123:fixture')
+            return telegram(key,method,payload)
+        with patch('app.service_messages.support.credential',return_value={'token':'123:fixture','username':'server_pushok_bot'}), \
+             patch('app.service_messages.verified_identity',return_value=123), \
+             patch('app.service_messages.support.bot_call',side_effect=support_send), \
+             patch.dict(os.environ, {'DATABASE_URL':self.dsn,'TELEGRAM_BOT_TOKEN': 'local-fixture',
                                     'TELEGRAM_BOT_USERNAME': 'mtproxy_pushok_bot'}), \
              patch.object(bot, 'urlopen', side_effect=bridge), \
              patch.object(bot, 'raw_telegram_call', side_effect=telegram), \

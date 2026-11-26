@@ -51,9 +51,9 @@ window.pushokVpnSettings=(()=>{
      }
      const msg=el('textarea');msg.value=p[k+'_text'];msg.required=true;msg.maxLength=700;msg.rows=3;
      inner.append(field('Текст сообщения',msg));
-     const tools=el('div',null,'vpn-format');
+     const tools=el('div',null,'vpn-format');tools.setAttribute('role','group');tools.setAttribute('aria-label','Форматирование и подстановки');
      for(const [name,mark] of [['Жирный','**'],['Курсив','__'],['Имя','{имя}'],['Дни','{дней}'],['Дни словами','{срок}'],['Дата','{дата}']]){
-       const b=el('button',name,'labeled-action');b.type='button';b.onclick=()=>{const a=msg.selectionStart,z=msg.selectionEnd;
+       const b=el('button',mark==='**'?'Ж':mark==='__'?'К':name);b.title=name;b.setAttribute('aria-label',name);b.type='button';b.onclick=()=>{const a=msg.selectionStart,z=msg.selectionEnd;
          const replacement=mark.startsWith('{')?mark:mark+(msg.value.slice(a,z)||'текст')+mark;
          msg.setRangeText(replacement,a,z,'end');msg.focus();paint();};tools.append(b);
      }
@@ -82,11 +82,11 @@ window.pushokVpnSettings=(()=>{
  }
  async function show(host){
    if(!host||!(me?.role==='admin'||hasDeveloperAccess(me)))return;
-   const session=token,notices=el('div','Загрузка уведомлений…'),issuance=el('div','Загрузка условий…'),links=el('nav',null,'vpn-policy-links');
+   const session=token,notices=el('div','Загрузка уведомлений…'),issuance=el('div','Загрузка условий…'),plans=el('div','Загрузка тарифов…'),links=el('nav',null,'vpn-policy-links');
    for(const [title,url] of [['Подписки и расход','#/vpn'],['Настройки платежей','#/management/payments']]){
      const a=el('a',title,'ui-button');a.href=url;links.append(a);}
-   host.replaceChildren(links,notices,issuance);
-   await Promise.all([[notices,'/vpn/settings',notifications],[issuance,'/vpn/settings/access',access]].map(async([node,path,render])=>{
+   host.replaceChildren(links,plans,notices,issuance);
+   await Promise.all([[notices,'/vpn/settings',notifications],[issuance,'/vpn/settings/access',access],[plans,'/vpn/settings/plans',window.pushokVpnPlans.catalog]].map(async([node,path,render])=>{
      try{const data=await api(path);if(session===token&&node.isConnected)render(node,data);}
      catch(e){if(session===token&&node.isConnected)node.replaceChildren(el('p',e.message),button('Обновить',()=>show(host)));}
    }));

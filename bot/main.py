@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from .telegram_environment import bot_api_url, environment_name
 from .wizard import DraftWizard, format_tariff
 from .navigation import Navigation
-from .vpn_notices import deliver as deliver_vpn_notices, resume_on_start
+from .vpn_notices import deliver as deliver_vpn_notices
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
 from .lifecycle_notices import deliver_lifecycle_notices
@@ -104,7 +104,7 @@ def _internal_api(route, payload):
         method="POST",
     )
     # Reminder claims may wait on Shop presence before reserving recipients in PostgreSQL.
-    timeout = 25 if route == 'vpn-reminders/claim' else 5
+    timeout = 25 if route in ('vpn-reminders/claim','service-message') else 5
     with urlopen(request, timeout=timeout) as stream:
         return json.load(stream)
 
@@ -185,6 +185,12 @@ def operator_decide(user_id, campaign_id, decision, comment=None):
     return result
 
 
+def send_service_notice(payload):
+    result = _internal_api('service-message',payload)
+    if result != {'sent':True}:
+        raise RuntimeError('Уведомление ещё не отправлено')
+
+
 def deliver_operator_outbox(token):
     """At-least-once отправка. ACK выполняется только после sendMessage."""
     try:
@@ -219,10 +225,10 @@ def deliver_operator_outbox(token):
             url = miniapp_url()
             button = ({"text": "📋 Открыть заявку", "web_app": {"url": url + "#/moderation/" + str(campaign_id)}}
                       if url else {"text": "📋 Открыть очередь", "callback_data": "moderation"})
-            raw_telegram_call(token, "sendMessage", {
+            send_service_notice({
                 "chat_id": recipient, "text": text, "parse_mode": "HTML",
                 "reply_markup": {"inline_keyboard": [[button]]},
-            }, timeout=4)
+            })
         except (HTTPError, URLError, OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
             # Сбой доставки: запись останется в PostgreSQL, повтор через 2 мин.
             LOG.warning("Уведомление Telegram не доставлено: %s", type(exc).__name__)
@@ -683,12 +689,12 @@ def deliver_notifications(token):
         deliver_operator_outbox(token)
         deliver_advertiser_notices(
             _internal_api,
-            lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4),
+            send_service_notice,
         )
-        deliver_lifecycle_notices(_internal_api,lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4),miniapp_url())
-        deliver_vpn_notices(_internal_api, lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4), miniapp_url() or "https://pushok.shop/miniapp")
-        deliver_vpn_notices(_internal_api, lambda payload: raw_telegram_call(token,"sendMessage",payload,timeout=4), miniapp_url() or "https://pushok.shop/miniapp", queue="vpn-reminders")
-        deliver_birthdays(_internal_api, lambda payload: raw_telegram_call(token, "sendMessage", payload, timeout=4), miniapp_url())
+        deliver_lifecycle_notices(_internal_api,send_service_notice,miniapp_url())
+        deliver_vpn_notices(_internal_api, send_service_notice, miniapp_url() or "https://pushok.shop/miniapp")
+        deliver_vpn_notices(_internal_api, send_service_notice, miniapp_url() or "https://pushok.shop/miniapp", queue="vpn-reminders")
+        deliver_birthdays(_internal_api, send_service_notice, miniapp_url())
     except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
         LOG.warning("Не удалось обработать рассылку: %s", type(exc).__name__)
 
@@ -715,6 +721,31 @@ def run():
         poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigation, notifications)
 
 
+def legacy_entry(update):
+    """Keep private login and payment flows here and send other conversations to support."""
+    callback = update.get('callback_query') or {}
+    message = callback.get('message') or update.get('message') or {}
+    actor = callback.get('from') or message.get('from') or {}
+    chat = message.get('chat') or {}
+    if chat.get('type')!='private' or actor.get('id')!=chat.get('id') or actor.get('is_bot'):
+        return None
+    words = (message.get('text') or '').split(maxsplit=1) if not callback else []
+    command = words[0].lower().split('@')[0] if words else ''
+    parameter=words[1] if len(words)>1 else ''
+    if command in ('/paysupport','/verify') or (command=='/start' and (
+            parameter in ('stars','verify') or parameter.startswith(('flow_','ref_','r_')))):
+        return None
+    if command=='/start':
+        launch=miniapp_url()
+        keys=[[{'text':'Войти в кабинет','web_app':{'url':launch}}]] if launch else []
+        text='Добро пожаловать! В этом чате можно войти в кабинет и оплатить заказ.'
+    else:
+        keys=[]
+        text='🐾 Поддержка, вопросы и предложения теперь в личном чате Pushok ИИ.'
+    keys.append([{'text':'Открыть Pushok ИИ','url':'https://pushok.shop/ai-support'}])
+    return ({'chat_id':chat['id'],'text':text,'reply_markup':{'inline_keyboard':keys}},callback.get('id'))
+
+
 def poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigation, notifications):
     pending = []
     next_cleanup = time.monotonic()
@@ -738,7 +769,6 @@ def poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigatio
                     offset=next_offset
                     continue
                 if ready:
-                    resume_on_start(update, _internal_api, configured_bot_username())
                     verified = verification_response(update, _internal_api,
                         lambda method, payload: raw_telegram_call(token, method, payload, timeout=3))
                     if verified is not None:
@@ -749,7 +779,7 @@ def poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigatio
                     navigation.incoming(token, update)
                     offset = next_offset
                     continue
-                response = response_for(update, campaign_loader=fetch_campaigns, wizard=wizard,
+                response = legacy_entry(update) or response_for(update, campaign_loader=fetch_campaigns, wizard=wizard,
                                         tariff_loader=fetch_current_tariff,
                                         submitter=submit_campaign_draft,
                                         operator_inbox=operator_inbox,

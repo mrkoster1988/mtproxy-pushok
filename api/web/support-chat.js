@@ -5,11 +5,11 @@ window.pushokSupport=(()=>{
   const session=token, owner=!!(me?.is_owner||me?.is_developer),staff=owner||['admin','operator','moderator'].includes(me?.role);
   const box=el('section',undefined,'panel vpn-policy-card'),thread=el('div'),list=el('div'),feedback=el('p',undefined,'muted');
   host.replaceChildren(box);const live=()=>token===session&&box.isConnected;
-  const tg=el('a','Личный чат в Telegram ↗','ui-button labeled-action');tg.href='/ai-support';tg.target='_blank';tg.rel='noopener noreferrer';
+  const tg=el('a','Чат и уведомления в Telegram ↗','ui-button labeled-action');tg.href='/ai-support';tg.target='_blank';tg.rel='noopener noreferrer';
   box.append(el('h2','Pushok ИИ'),tg);
   if(owner){const link=el('a','Настроить бота Pushok ИИ','ui-button labeled-action');link.href='#/management/ai-bot';box.append(link);}
-  let team=false,current=null,asStaff=false,rev=0;
-  const toggle=el('input');toggle.type='checkbox';
+  let team=staff&&location.hash==='#/help/team',current=null,asStaff=false,rev=0;
+  const toggle=el('input');toggle.type='checkbox';toggle.checked=team;
   if(staff){const l=el('label','Обращения пользователей');l.append(toggle);box.append(l);toggle.onchange=()=>{team=toggle.checked;clear();void load();};}
   const entry=el('form',undefined,'vpn-rule-body'),kind=el('select'),msg=el('textarea'),human=el('input'),close=el('input');
   for(const [k,v] of Object.entries(labels)){const o=el('option',v);o.value=k;kind.append(o);}
@@ -39,6 +39,7 @@ window.pushokSupport=(()=>{
  async function showBotSettings(host){
   host.replaceChildren();
   if(!hasDeveloperAccess(me))return;
+  const inbox=el('a','Переписка с пользователями','ui-button labeled-action');inbox.href='#/help/team';host.append(inbox);
   const session=token;
   const form=el('form',undefined,'panel vpn-policy-card');
   const live=()=>token===session&&host.contains(form);

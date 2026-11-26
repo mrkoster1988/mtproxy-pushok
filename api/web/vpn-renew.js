@@ -55,7 +55,7 @@ window.pushokVpnRenew = (() => {
     terms.append(el('summary','Условия оплаты'),el('p',catalog.terms||''));
     const consent=el('label',undefined,'vpn-consent'),check=el('input');check.type='checkbox';
     consent.append(check,document.createTextNode('Принимаю условия оплаты'));
-    let selected=catalog.plans[0],busy=false,requestId=prior?.request_id||crypto.randomUUID();
+    let selected=catalog.plans.find(p=>p.id===catalog.preferred_plan)||catalog.plans[0],busy=false,requestId=prior?.request_id||crypto.randomUUID();
     if (prior?.plan) selected=catalog.plans.find(p=>p.id===prior.plan)||selected;
     const pay=el('button',undefined,'campaign-pay-action');pay.type='button';note.textContent='';
     function update(){pay.textContent=selected?'Оплатить '+selected.amount+' ⭐':'Оплатить';pay.disabled=busy||!selected||!check.checked||!catalog.available;}

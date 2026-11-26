@@ -206,3 +206,9 @@
 .campaign-live-line[data-automation-status=active]::before {color:#75d5b1}
 .campaign-live-line[data-automation-status=agent_unavailable]::before {color:#dda861}
 .campaign-page:has(>.automation-panel)>.campaign-live-line {display:none}
+
+/* Keep the notification editor tools at their intrinsic width on narrow screens. */
+body.cabinet-mode .vpn-policy-card .vpn-format{display:flex;flex-flow:row wrap;gap:5px;align-items:center}
+body.cabinet-mode .vpn-policy-card .vpn-format button{width:auto;min-width:32px;min-height:32px;height:auto;flex:0 0 auto;padding:4px 9px;border-radius:9px;font-size:12px;line-height:1.2}
+.vpn-format button:first-child{font-weight:800}.vpn-format button:nth-child(2){font-style:italic}
+.vpn-peer-os{width:1em;height:1em;display:inline-block;vertical-align:-.13em;margin-inline-end:4px;color:var(--accent,#48cfc5);fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}

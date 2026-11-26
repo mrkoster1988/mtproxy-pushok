@@ -131,11 +131,15 @@ class ResumedChat(BaseModel):
 def resume(chat: ResumedChat, x_pushok_bot_secret: str | None = Header(default=None)):
     _verify_bot_secret(x_pushok_bot_secret)
     with psycopg.connect(os.environ['DATABASE_URL']) as conn:
-        # Preserve a live lease. A 403 from a send started before /start can arrive late.
-        conn.execute("""UPDATE vpn_scheduled_notices n
+        resume_recipient(conn,chat.telegram_user_id)
+    return {'ok':True}
+
+
+def resume_recipient(conn,uid):
+    # Preserve a live lease. A 403 from a send started before /start can arrive late.
+    conn.execute("""UPDATE vpn_scheduled_notices n
             SET blocked=false, chat_reopened=(n.lease IS NOT NULL),
                 next_attempt=CASE WHEN n.blocked THEN 0 ELSE n.next_attempt END
             FROM users u WHERE n.user_id=u.id AND u.telegram_user_id=%s
             AND u.blocked_at IS NULL AND (n.blocked OR n.lease IS NOT NULL)""",
-            (chat.telegram_user_id,))
-    return {'ok':True}
+            (uid,))

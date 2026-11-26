@@ -95,7 +95,12 @@ def shop(action,data):
             r=c.post('https://pushok.shop/shop/api/flow/vpn-settings/'+action,data=body,
                 headers={'X-Pushok-Management':stamp+':'+signed(action,stamp,body),'Content-Type':'application/json'},
                 timeout=(3,10),allow_redirects=False)
-            if r.status_code in (409,422): raise HTTPException(r.status_code,'vpn_policy_rejected')
+            if r.status_code in (404,409,422):
+                detail=r.json().get('detail')
+                known=('vpn_policy_changed','vpn_offer_changed','vpn_profiles_in_use','vpn_subscription_missing','vpn_pending_operation')
+                if isinstance(detail,str) and detail in known:raise HTTPException(r.status_code,detail)
+                if isinstance(detail,dict) and detail.get('code')=='vpn_order_issuing':raise HTTPException(409,'vpn_pending_operation')
+                raise HTTPException(r.status_code,'vpn_policy_changed' if r.status_code==409 else 'vpn_policy_rejected')
             r.raise_for_status()
             return private(r.json())
     except (ValueError,requests.RequestException): raise HTTPException(503,'vpn_shop_unavailable') from None
@@ -129,6 +134,17 @@ def router_for(get_dsn,current_user):
                                 (data.policy.model_dump_json(),data.version)).rowcount:
                 raise HTTPException(409,'vpn_policy_changed')
             return private(read(conn))
+
+    @router.get('/settings/plans')
+    def plans(user=Depends(current_user)):
+        admin(user)
+        return shop('plans',{})
+
+    @router.post('/settings/plans/{action}')
+    def change_plan(action:Literal['create','update','choice'],data:dict,user=Depends(current_user)):
+        admin(user)
+        if action=='choice':data['actor']=str(user['id'])
+        return shop('plan-'+action,data)
 
     @router.get('/settings/access')
     def access(user=Depends(current_user)):

@@ -55,6 +55,44 @@ window.pushokVpn = (() => {
     link.onclick=()=>{renewFrom=location.hash==='#/profile'?'profile':'vpn';};
     return link;
   }
+  const systems={android:'Android',ios:'iPhone / iPad',windows:'Windows',macos:'macOS',linux:'Linux'};
+  function localSystem(){
+    const tg=window.Telegram?.WebApp?.platform, ua=navigator.userAgent;
+    if(tg==='android'||/Android/i.test(ua))return 'android';
+    if(tg==='ios'||/iPhone|iPad|iPod/i.test(ua)||(/Mac/i.test(ua)&&navigator.maxTouchPoints>1))return 'ios';
+    if(tg==='macos'||/Macintosh|Mac OS/i.test(ua))return 'macos';
+    if(/Windows/i.test(ua))return 'windows';
+    return /Linux/i.test(ua)?'linux':'';
+  }
+  const installers = {
+    ios:'https://apps.apple.com/app/wireguard/id1441195209',
+    macos:'https://apps.apple.com/app/wireguard/id1451685025',
+    windows:'https://www.wireguard.com/install/#windows-10-11-2016-2019-2022-2025',
+    linux:'https://www.wireguard.com/install/'
+  };
+  function platformIcon(platform){
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    const shapes={
+      android:'M4 15a8 8 0 0 1 16 0ZM7 5l2 3m8-3-2 3M8 17v2m8-2v2',
+      ios:'M8 2h8q2 0 2 2v16q0 2-2 2H8q-2 0-2-2V4q0-2 2-2ZM10 5h4m-3 14h2',
+      windows:'M3 5l8-1v7H3Zm10-1 8-1v8h-8ZM3 13h8v7l-8-1Zm10 0h8v8l-8-1Z',
+      macos:'M5 4h14v12H5ZM2 19h20l-2 1H4Z',
+      linux:'M3 4h18v15H3ZM6 8l3 3-3 3m6 0h4',
+      unknown:'M2 4h16v12H2Zm6 15h5m3-7h6v9h-6Z'
+    };
+    svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('class','vpn-peer-os');
+    svg.setAttribute('role','img');const title=systems[platform]?'Платформа по загрузке профиля и адресу подключения · '+systems[platform]:'Устройство подключения неизвестно';
+    svg.setAttribute('aria-label',title);const tip=document.createElementNS(svg.namespaceURI,'title');tip.textContent=title;
+    const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',shapes[platform]||shapes.unknown);svg.append(tip,path);return svg;
+  }
+  function installer(platform){
+    if(platform==='android'){
+      const get=button('Скачать Flow',download);get.className='ui-button labeled-action vpn-link';get.prepend(window.pushokViews.icon('download'));return get;
+    }
+    const link=el('a',platform?'Скачать WireGuard':'Выбрать приложение','ui-button labeled-action vpn-link');
+    link.href=installers[platform]||'https://www.wireguard.com/install/';link.target='_blank';link.rel='noopener noreferrer';
+    link.prepend(window.pushokViews.icon('download'));return link;
+  }
   function download() {
     const url=new URL('/api/v1/vpn/flow.apk',location.origin).href;
     const app=window.Telegram?.WebApp;
@@ -174,7 +212,7 @@ window.pushokVpn = (() => {
         : error.message;refresh.hidden=false;} }
       finally { sending=submit.disabled=toggle.disabled=statusButton.disabled=statusSelect.disabled=false; op.disabled = qty.disabled = !!pending; }
     };
-    form.append(statusLabel,actionLabel,valueLabel,consentLabel,submit,feedback,refresh);panel.append(form);return {toggle,panel,statusButton};
+    form.append(statusLabel,actionLabel,valueLabel,consentLabel,submit,feedback,refresh);panel.append(form,window.pushokVpnPlans.assignment(row,subject,reload));return {toggle,panel,statusButton};
   }
   function card(row,subject,name,own,admin,reload,expanded,profileLink=false) {
     const tile=el('article',undefined,'campaign-tile vpn-card'),head=el('div',undefined,'tile-heading');
@@ -219,7 +257,9 @@ window.pushokVpn = (() => {
         const addresses=el('dl',undefined,'vpn-addresses'),ips=Array.isArray(row.tunnel_ips)?row.tunnel_ips:[];
         let place=row.country_code;
         if(place){try{place=new Intl.DisplayNames(['ru'],{type:'region'}).of(place);}catch{}}
-        addresses.append(metric('Последний IP подключения',row.endpoint_ip||'—'),
+        const endpoint=metric('Последний IP подключения',row.endpoint_ip||'—');
+        if(row.endpoint_ip)endpoint.querySelector('dd').prepend(platformIcon(row.endpoint_platform));
+        addresses.append(endpoint,
           metric('Геолокация по IP',row.country_code==='RU'?(row.city||'—'):([place,row.city].filter(Boolean).join(', ')||'—')),metric('IP в туннеле',ips.join(', ')||'—'));
         tile.append(addresses);
       }
@@ -227,7 +267,7 @@ window.pushokVpn = (() => {
         '. Прежний ключ отключён. Для повторного подключения нужен новый профиль.','vpn-revoked-note'));
     } else tile.append(el('p','У аккаунта пока нет VPN-подписки.','tile-period'));
     if(own){
-      const actions=el('div',undefined,'vpn-links'),get=button('Скачать Flow',download);get.className='ui-button labeled-action vpn-link';get.prepend(window.pushokViews.icon('download'));
+      const actions=el('div',undefined,'vpn-links'),get=installer(localSystem());
       actions.append(renewLink(),get);tile.append(actions);
     }
     if(admin){

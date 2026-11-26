@@ -122,7 +122,9 @@ def bot_call(key, method, fields):
         if method == 'answerCallbackQuery' and error.code == 400:
             raise CallbackExpired() from None
         if method in ('sendPhoto', 'sendMessage') and error.code in (400, 403):
-            raise RecipientUnavailable('support_recipient_unavailable') from None
+            refusal=RecipientUnavailable('support_recipient_unavailable')
+            refusal.telegram_status=error.code
+            raise refusal from None
     except (OSError, ValueError):
         pass
     else:
@@ -324,11 +326,22 @@ def handle_update(db, dsn, key, update, legacy=True):
     categories = {'/idea': 'idea', '/problem': 'problem', '/question': 'question', '/human': 'problem'}
     command, _, remaining = body.partition(' ')
     remaining = remaining.strip()
+    sections={'/subscriptions':('vpn','Моя подписка'),'/campaigns':('campaigns','Мои кампании'),
+              '/tariffs':('vpn_renew','Тарифы VPN'),'/advertise':('create','Создать кампанию'),
+              '/channels':('channels','Каналы'),'/moderation':('moderation','Модерация')}
+    if command in sections:
+        route,title=sections[command]
+        from .service_messages import cabinet_link
+        bot_call(key,'sendMessage',{'chat_id':uid,'text':title,
+            'reply_markup':{'inline_keyboard':[[cabinet_link({'text':title,'callback_data':route})]]}})
+        return
     state = design.read()
     style = design.Appearance(**state.get('settings', {}))
     if command in ('/start', '/help') or not body:
         fields, path = design.welcome_payload(state, uid, command == '/help')
         if command == '/start':
+            from .vpn_reminders import resume_recipient
+            resume_recipient(db,uid)
             db.execute('UPDATE support_bot_contacts SET pending_action=NULL WHERE telegram_id=%s', (uid,))
         try:
             if path:
