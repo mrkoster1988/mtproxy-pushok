@@ -121,7 +121,7 @@ cat > /etc/systemd/system/mtproxy-pushok-update-config.timer <<'EOF'
 [Unit]
 Description=Daily refresh of Telegram MTProxy core configuration
 [Timer]
-OnCalendar=daily
+OnCalendar=*-*-* 00:00:00 Europe/Moscow
 RandomizedDelaySec=1h
 Persistent=true
 [Install]

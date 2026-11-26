@@ -67,7 +67,19 @@ async function api(path,{method='GET',body,signal,session=token}={}){
 async function run(fn,b){if(b)b.disabled=true;try{await fn();}catch(e){notice(e.message);}finally{if(b)b.disabled=false;}}
 function option(select,value,text){const o=el('option',text);o.value=value;select.append(o);}
 function money(n){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',minimumFractionDigits:0,maximumFractionDigits:2}).format(n/100);}
-function date(v){return v?new Date(v).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'Не назначено';}
+// Use Moscow civil time for service events. Wire formats stay absolute.
+function moscowInput(instant) {
+ if (!instant) return '';
+ const date = new Date(instant);
+ const parts = new Intl.DateTimeFormat('en-GB', {
+  timeZone:'Europe/Moscow', year:'numeric', month:'2-digit', day:'2-digit',
+  hour:'2-digit', minute:'2-digit', hourCycle:'h23'
+ }).formatToParts(date);
+ const fields = Object.fromEntries(parts.map(part => [part.type, part.value]));
+ return fields.year+'-'+fields.month+'-'+fields.day+'T'+fields.hour+':'+fields.minute;
+}
+function parseMoscowInput(value) { return new Date(value+'+03:00'); }
+function date(v){return v?new Date(v).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'})+' МСК':'Не назначено';}
 function showWorkspace(view){
  if(window.cabinet){window.cabinet.go(view==='settings'?'settings':view==='operator'?'moderation':'campaigns');return;}
  const admin=me?.role==='admin';
@@ -270,7 +282,7 @@ async function renderHoldPanel(c,panel){
  const start=el('input');start.type='datetime-local';start.required=true;start.setAttribute('aria-label','Начало брони');
  const candidate=c.requested_start_at?new Date(c.requested_start_at):new Date(Date.now()+24*3600*1000);
  const proposed=candidate.getTime()>Date.now()?candidate:new Date(Date.now()+24*3600*1000);
- start.value=localDay(proposed)+'T'+String(proposed.getHours()).padStart(2,'0')+':'+String(proposed.getMinutes()).padStart(2,'0');
+ start.value=moscowInput(proposed);
  const select=el('select');select.setAttribute('aria-label','Свободный прокси');
  option(select,'','Сначала найдите свободные прокси');
  select.disabled=true;
@@ -278,7 +290,7 @@ async function renderHoldPanel(c,panel){
  const hint=el('p','Выберите время, затем проверьте наличие свободного прокси.','muted');
  const find=button('Найти свободные прокси',async()=>{
   if(!start.value)throw Error('Укажите начало размещения.');
-  const requested=new Date(start.value);
+  const requested=parseMoscowInput(start.value);
   if(Number.isNaN(requested.getTime()))throw Error('Неверные дата или время.');
   const data=await api('/campaigns/'+c.id+'/slot-options?'+new URLSearchParams({start_at:requested.toISOString()}));
   select.replaceChildren();option(select,'','Выберите прокси');
@@ -289,7 +301,7 @@ async function renderHoldPanel(c,panel){
  const book=button('Забронировать на 15 минут',async()=>{
   if(!select.value||!start.value)throw Error('Сначала выберите свободный прокси и время.');
   await api('/campaigns/'+c.id+'/slot-hold',{method:'POST',body:{
-   proxy_node_id:select.value,start_at:new Date(start.value).toISOString()
+   proxy_node_id:select.value,start_at:parseMoscowInput(start.value).toISOString()
   }});
   await renderHoldPanel(c,panel);await loadAvailability();notice('Слот временно забронирован. Оплата ещё не подтверждена.',true);
  });
@@ -479,8 +491,8 @@ function card(c,op,{compact=false,showPayment=false}={}){
   }
   if(c.moderation_status==='approved'&&c.payment_status==='verified'&&c.placement_status==='not_scheduled'){
    const select=el('select');select.setAttribute('aria-label','Прокси-узел');option(select,'','Выберите узел');nodes.filter(n=>n.status==='active').forEach(n=>option(select,n.id,n.name));
-   const start=el('input');start.type='datetime-local';if(c.requested_start_at){const d=new Date(c.requested_start_at);start.value=localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}start.setAttribute('aria-label','Начало размещения');
-   actions.append(select,start,button('Назначить слот',async()=>{if(!select.value||!start.value)throw Error('Выберите узел и время начала.');await change('schedule',{proxy_node_id:select.value,start_at:new Date(start.value).toISOString()});}));
+   const start=el('input');start.type='datetime-local';if(c.requested_start_at){const d=new Date(c.requested_start_at);start.value=moscowInput(d);}start.setAttribute('aria-label','Начало размещения');
+   actions.append(select,start,button('Назначить слот',async()=>{if(!select.value||!start.value)throw Error('Выберите узел и время начала.');await change('schedule',{proxy_node_id:select.value,start_at:parseMoscowInput(start.value).toISOString()});}));
   }
   if(c.placement_status==='scheduled'){
    const screenshot=el('input');screenshot.type='file';
@@ -585,7 +597,7 @@ $('launch-check-form').addEventListener('submit',event=>{
  event.preventDefault();const form=event.currentTarget;if(!form.reportValidity())return;
  void run(async()=>{
   const session=token;
-  const at=new Date($('launch-check-at').value);if(!Number.isFinite(at.getTime())||at.getTime()>Date.now())throw Error('Укажите время уже выполненной проверки.');
+  const at=parseMoscowInput($('launch-check-at').value);if(!Number.isFinite(at.getTime())||at.getTime()>Date.now())throw Error('Укажите время уже выполненной проверки.');
   const payload={check_id:$('launch-check-type').value,result:$('launch-check-result').value,checked_at:at.toISOString(),note:$('launch-check-note').value.trim(),steps_confirmed:$('launch-check-steps').checked,performed_on_vps:$('launch-check-vps').checked};
   if(payload.note.length<24)throw Error('Опишите проверку и результат: минимум 24 символа.');
   const signature=JSON.stringify(payload);if(!launchCheckAttempt||launchCheckAttempt.signature!==signature)launchCheckAttempt={signature,id:crypto.randomUUID()};
@@ -916,8 +928,8 @@ async function enter(){
  }catch(error){if(!current())return false;throw error;}
 }
 
-function localDay(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-const calendarZone=Intl.DateTimeFormat().resolvedOptions().timeZone||'Europe/Moscow';
+function localDay(d){return moscowInput(d).slice(0,10);}
+const calendarZone='Europe/Moscow';
 let calendarRequest=0;
 function clearRequestedDate(){$('requested-start').value='';$('calendar-selection').textContent='Дата пока не выбрана.';for(const b of $('availability-days').children)b.setAttribute('aria-pressed','false');window.pushokOrder?.summary();}
 async function loadAvailability(){
@@ -931,17 +943,17 @@ async function loadAvailability(){
   if(request!==calendarRequest)return;
   $('availability-days').replaceChildren(...data.days.map(day=>{
    const calendarLabels={available:'Свободно: '+day.available_nodes,unconfigured:'Автоподбор',occupied:'Занято → позже',past:'Время прошло',invalid_local_time:'Нет такого времени',ambiguous_local_time:'Неоднозначное время'};
-   const b=button(new Date(day.start_at).toLocaleDateString('ru-RU',{day:'numeric',month:'short'})+' · '+(calendarLabels[day.status]||'Недоступно'),async()=>{
+   const b=button(new Date(day.start_at).toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'short'})+' · '+(calendarLabels[day.status]||'Недоступно'),async()=>{
     clearRequestedDate();b.setAttribute('aria-pressed','true');$('requested-start').value=day.start_at;$('calendar-selection').textContent='Желаемое начало: '+date(day.start_at)+(['occupied','unconfigured'].includes(day.status)?' · после оплаты подберём ближайшее свободное время':'');window.pushokOrder?.summary();
    });
    const display=new Date(day.start_at);b.setAttribute('aria-label',b.textContent);b.dataset.availability=day.status;
-   b.replaceChildren(el('small',display.toLocaleDateString('ru-RU',{weekday:'short',month:'short'})),el('strong',String(display.getDate())),el('span',calendarLabels[day.status]||'Недоступно'));
+   b.replaceChildren(el('small',display.toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow',weekday:'short',month:'short'})),el('strong',String(Number(localDay(display).slice(-2)))),el('span',calendarLabels[day.status]||'Недоступно'));
    b.disabled=!['available','unconfigured','occupied'].includes(day.status);b.setAttribute('aria-pressed','false');return b;
   }));
  }catch(e){if(request===calendarRequest){$('availability-days').replaceChildren(el('p','Не удалось получить доступные даты.','muted'));throw e;}}
 }
-$('calendar-zone').textContent='Часовой пояс: '+calendarZone+'. Длительность — по выбранному тарифу.';
-$('calendar-from').value=localDay(new Date());$('calendar-from').min=localDay(new Date());const calendarLastDay=new Date();calendarLastDay.setDate(calendarLastDay.getDate()+77);$('calendar-from').max=localDay(calendarLastDay);
+$('calendar-zone').textContent='Часовой пояс: МСК'+'. Длительность — по выбранному тарифу.';
+$('calendar-from').value=localDay(new Date());$('calendar-from').min=localDay(new Date());const calendarLastDay=new Date(Date.now()+77*86400000);$('calendar-from').max=localDay(calendarLastDay);
 $('calendar-clear').addEventListener('click',clearRequestedDate);
 for(const id of ['calendar-from','calendar-time','tariff-select'])$(id).addEventListener('change',()=>run(loadAvailability));
 

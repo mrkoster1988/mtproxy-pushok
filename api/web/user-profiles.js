@@ -48,7 +48,7 @@ window.pushokProfiles=(()=>{
  function accountDetails(user){
   const details=el('div',undefined,'profile-details'),id=el('div',undefined,'profile-id');id.append(el('span','Telegram ID: '+user.telegram_user_id));
   id.append(views().iconAction(button('',async()=>{try{await navigator.clipboard.writeText(String(user.telegram_user_id));notice('ID скопирован.',true);}catch{notice('Не удалось скопировать.');}}),'copy','Скопировать ID'));details.append(id);
-  if(user.created_at)details.append(el('small','В кабинете с '+new Date(user.created_at).toLocaleDateString('ru-RU'),'muted'));return details;
+  if(user.created_at)details.append(el('small','В кабинете с '+new Date(user.created_at).toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow'}),'muted'));return details;
  }
  function identity(user){
   const section=el('section',undefined,'profile-identity user-identity'),row=el('div',undefined,'person-line'),copy=names(user,true);

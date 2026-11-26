@@ -2,7 +2,7 @@
 window.pushokVpn = (() => {
   const states = {active:'Активна', expired:'Истекла', revoked:'Отозвана', pending:'Готовится'};
   const staff = () => me?.role === 'admin' || hasDeveloperAccess(me);
-  const date = n => n ? new Date(n * 1000).toLocaleDateString('ru-RU',{day:'numeric',month:'short',year:'numeric'}) : '—';
+  const date = n => n ? new Date(n * 1000).toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'short',year:'numeric'}) : '—';
   const traffic = n => {
     if (n == null) return '—';
     const units = ['Б','КБ','МБ','ГБ','ТБ'];
@@ -284,7 +284,7 @@ window.pushokVpn = (() => {
       dates.append(terms);
       if(row.last_seen){
         const stamp=new Date(row.last_seen*1000);
-        const seen=el('time',stamp.toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}),'vpn-seen');
+        const seen=el('time',stamp.toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' МСК','vpn-seen');
         seen.dateTime=stamp.toISOString();seen.title='Последний отклик';seen.setAttribute('aria-label','Последний отклик '+seen.textContent);
         dates.append(seen);
       }

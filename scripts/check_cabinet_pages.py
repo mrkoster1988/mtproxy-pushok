@@ -113,7 +113,7 @@ def main():
             try:
                 def new_page(role, width=1440):
                     context = browser.new_context(viewport={"width": width, "height": 1000},
-                                                  accept_downloads=True)
+                                                  timezone_id="Asia/Tokyo", accept_downloads=True)
                     context.add_init_script(
                         "sessionStorage.setItem('pushok-session', " + repr(sessions[role]) + ")")
                     page = context.new_page()
@@ -1575,7 +1575,7 @@ def main():
                 admin.locator('#launch-check-details>summary').click()
                 admin.locator('#launch-check-type').select_option('backup_restore')
                 admin.locator('#launch-check-result').select_option('passed')
-                local_check=admin.evaluate("new Date(Date.now()-120000-new Date().getTimezoneOffset()*60000).toISOString().slice(0,16)")
+                local_check=admin.evaluate("moscowInput(new Date(Date.now()-120000))")
                 admin.locator('#launch-check-at').fill(local_check)
                 report_note='Тестовая база и файлы восстановлены, количества записей и вход проверены. <b>Текст, не HTML</b>'
                 admin.locator('#launch-check-note').fill(report_note)
@@ -1869,7 +1869,7 @@ def main():
                 admin.get_by_label('Название подарка',exact=True).fill('Подарок для проверки')
                 admin.get_by_label('Подарок, бонусных ₽',exact=True).fill('25.50')
                 admin.get_by_label('Количество получателей',exact=True).fill('1')
-                admin.get_by_label('Действует до (ваше время)',exact=True).fill((datetime.now(timezone.utc)+timedelta(days=30)).strftime('%Y-%m-%dT%H:%M'))
+                admin.get_by_label('Действует до (МСК)',exact=True).fill((datetime.now(timezone.utc)+timedelta(days=30)).strftime('%Y-%m-%dT%H:%M'))
                 admin.get_by_role('button',name='Создать подарочный код',exact=True).click()
                 gift_row=admin.locator('.wallet-gift').filter(has_text='Подарок для проверки')
                 expect(gift_row).to_be_visible()
@@ -1935,7 +1935,7 @@ def main():
                 admin.get_by_label('Получатель подарка: @никнейм или ID',exact=True).fill('99116003')
                 expect(admin.get_by_label('Количество получателей',exact=True)).to_be_disabled()
                 expect(admin.get_by_label('Количество получателей',exact=True)).to_have_value('1')
-                admin.get_by_label('Действует до (ваше время)',exact=True).fill((datetime.now(timezone.utc)+timedelta(days=30)).strftime('%Y-%m-%dT%H:%M'))
+                admin.get_by_label('Действует до (МСК)',exact=True).fill((datetime.now(timezone.utc)+timedelta(days=30)).strftime('%Y-%m-%dT%H:%M'))
                 admin.get_by_role('button',name='Создать подарочный код',exact=True).click()
                 personal_row=admin.locator('.wallet-gift').filter(has=admin.get_by_role('heading',name='Персональный подарок',exact=True))
                 expect(personal_row).to_contain_text('Получатель: Telegram ID 99116003')

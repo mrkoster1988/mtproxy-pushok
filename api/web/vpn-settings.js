@@ -18,8 +18,8 @@ window.pushokVpnSettings=(()=>{
  }
  function preview(box,template,group,days){
    box.replaceChildren(el('strong',group.icon+' '+heads[group.key]));
-   const p=el('p'),date=new Date();date.setDate(date.getDate()+(group.key==='expiry'?days:-days));
-   const text=template.replaceAll('{срок}',days+' '+({one:'день',few:'дня',many:'дней',other:'дней'})[new Intl.PluralRules('ru').select(days)]).replaceAll('{дней}',String(days)).replaceAll('{имя}','Александр').replaceAll('{дата}',date.toLocaleDateString('ru-RU'));
+   const p=el('p'),date=new Date(Date.now()+(group.key==='expiry'?days:-days)*86400000);
+   const text=template.replaceAll('{срок}',days+' '+({one:'день',few:'дня',many:'дней',other:'дней'})[new Intl.PluralRules('ru').select(days)]).replaceAll('{дней}',String(days)).replaceAll('{имя}','Александр').replaceAll('{дата}',date.toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow'}));
    appendFormattedText(p,text);
    box.append(p,el('small','Pushok ИИ','muted'));
  }

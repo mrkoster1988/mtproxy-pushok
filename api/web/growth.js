@@ -68,9 +68,9 @@ window.pushokGrowth=(()=>{
   const pct=field(f,'Скидка, %','number',o?.percent||10,true);pct.min=1;pct.max=100;
   const tariff=field(f,'Тариф','select');
   const hours=field(f,'Минимальная длительность размещения, часов','number',o?o.min_duration_seconds/3600:0,true);hours.min=0;hours.max=8760;
-  const local=value=>value?new Date(new Date(value)-new Date(value).getTimezoneOffset()*60000).toISOString().slice(0,16):'';
-  const start=field(f,'Начало (ваше местное время; пусто — сейчас)','datetime-local',local(o?.starts_at));
-  const end=field(f,'Окончание (ваше местное время; пусто — без срока)','datetime-local',local(o?.ends_at));
+  const local=value=>value?moscowInput(value):'';
+  const start=field(f,'Начало (МСК; пусто — сейчас)','datetime-local',local(o?.starts_at));
+  const end=field(f,'Окончание (МСК; пусто — без срока)','datetime-local',local(o?.ends_at));
   const limit=field(f,'Всего заявок (пусто — без ограничения)','number',o?.total_limit||'');limit.min=Math.max(1,o?.uses||0);limit.max=1000000;
   const own=field(f,'Заявок на одного пользователя','number',o?.per_user_limit||1,true);own.min=1;own.max=1000000;
   const personal=field(f,'Персональное предложение','checkbox');personal.checked=Boolean(o?.recipient_user_id);personal.disabled=used||referral;
@@ -81,7 +81,7 @@ window.pushokGrowth=(()=>{
   f.append(el('p',referral?'Условия заработанного купона зафиксированы. Можно изменить название и срок либо выключить купон.':o?'Изменения действуют на новые заявки. Уже созданные заявки сохранят свою цену; использованный код и получатель зафиксированы.':'Применяется одна, самая выгодная скидка. Лимит расходуется при отправке заявки. Персональное предложение доступно только выбранному пользователю.','muted'));
   save(f,o?'Сохранить предложение':'Создать предложение');bind(f,async()=>{
    const user=personal.checked&&!used&&!referral?await recipient.resolve():null;
-   const body={kind:kind.value,name:name.value,code:kind.value==='promo'?code.value:o?.code||null,percent:Number(pct.value),tariff_id:tariff.value||null,min_duration_seconds:Math.round(Number(hours.value)*3600),starts_at:o&&start.value===local(o.starts_at)?o.starts_at:start.value?new Date(start.value).toISOString():null,ends_at:o&&end.value===local(o.ends_at)?o.ends_at:end.value?new Date(end.value).toISOString():null,total_limit:limit.value?Number(limit.value):null,per_user_limit:Number(own.value),recipient_user_id:used||referral?o.recipient_user_id:personal.checked?user?.id:null};
+   const body={kind:kind.value,name:name.value,code:kind.value==='promo'?code.value:o?.code||null,percent:Number(pct.value),tariff_id:tariff.value||null,min_duration_seconds:Math.round(Number(hours.value)*3600),starts_at:o&&start.value===local(o.starts_at)?o.starts_at:start.value?parseMoscowInput(start.value).toISOString():null,ends_at:o&&end.value===local(o.ends_at)?o.ends_at:end.value?parseMoscowInput(end.value).toISOString():null,total_limit:limit.value?Number(limit.value):null,per_user_limit:Number(own.value),recipient_user_id:used||referral?o.recipient_user_id:personal.checked?user?.id:null};
    if(personal.checked&&!body.recipient_user_id)throw Error('Выберите получателя предложения.');
    return api('/admin/growth/offers'+(o?'/'+o.id:''),{method:o?'PUT':'POST',body});
   });if(o)f.append(button('Отмена',()=>f.remove()));parent.append(f);return f;

@@ -58,7 +58,7 @@ window.pushokSupport=(()=>{
      for(const row of data.messages){
       const line=el('article',undefined,'vpn-notice-preview support-chat-message'),body=el('p');line.dataset.sender=row.sender;body.dir='auto';
       if(row.sender==='user')body.textContent=row.body;else appendFormattedText(body,row.body);
-      const when=el('time',new Date(row.created_at).toLocaleString(locale,{dateStyle:'short',timeStyle:'short'}),'muted');when.dateTime=row.created_at;
+      const when=el('time',new Date(row.created_at).toLocaleString(locale,{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+(locale.startsWith('ru')?' МСК':' MSK'),'muted');when.dateTime=row.created_at;
       line.append(el('strong',({user:team?t.user:t.me,'ai-agent':'Pushok ИИ',staff:t.staff})[row.sender]),when,body);thread.append(line);}
      if(!team&&data.state==='open')thread.append(button(t.human,()=>submit(msg.value.trim()||t.human,true)));
     }catch(e){if(mounted()&&turn===rev)feedback.textContent=e.message;}

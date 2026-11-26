@@ -233,11 +233,11 @@ window.pushokWallet=(()=>{
   function recipientMode(){picker.disable(!personal.checked||used);recipientHint.hidden=!personal.checked;limit.disabled=personal.checked;if(personal.checked)limit.value='1';}
   personal.addEventListener('change',recipientMode);recipientMode();
   if(used)f.append(el('p','Подарок уже получали. Сумма и получатель зафиксированы; название, срок и общий лимит можно изменить.','muted'));
-  const originalDate=g?new Date(new Date(g.expires_at)-new Date(g.expires_at).getTimezoneOffset()*60000).toISOString().slice(0,16):'';
-  const expires=field(f,'Действует до (ваше время)','datetime-local',originalDate);expires.required=true;
+  const originalDate=g?moscowInput(g.expires_at):'';
+  const expires=field(f,'Действует до (МСК)','datetime-local',originalDate);expires.required=true;
   submit(f,g?'Сохранить подарок':'Создать подарочный код',async()=>{
    const user=personal.checked&&!used?await picker.resolve():null;
-   const body={name:name.value,amount:minor(a.value,'BONUS'),max_uses:Number(limit.value),expires_at:g&&expires.value===originalDate?g.expires_at:new Date(expires.value).toISOString(),recipient_telegram_id:used?g.recipient_telegram_id:personal.checked?user?.telegram_user_id:null};
+   const body={name:name.value,amount:minor(a.value,'BONUS'),max_uses:Number(limit.value),expires_at:g&&expires.value===originalDate?g.expires_at:parseMoscowInput(expires.value).toISOString(),recipient_telegram_id:used?g.recipient_telegram_id:personal.checked?user?.telegram_user_id:null};
    if(personal.checked&&!body.recipient_telegram_id)throw Error('Выберите получателя подарка.');
    if(g){await api('/admin/wallet/gifts/'+g.id,{method:'PATCH',body});await load(target);}else await remembered('/admin/wallet/gifts',body);
    notice(g?'Подарок изменён. Уже начисленные бонусы сохранены.':'Код создан. Нажмите «Поделиться» в карточке подарка.',true);

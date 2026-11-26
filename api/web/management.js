@@ -60,14 +60,14 @@ window.pushokManagement=(()=>{
   function action(label,icon,fn){tools.append(window.pushokViews.iconAction(button('',fn),icon,label));}
   if(!operator&&c.moderation_status==='pending')action('Отозвать для изменения','back',async()=>{await api('/campaigns/'+c.id+'/recall',{method:'POST'});await refresh();notice('Заявка отозвана. Измените её и отправьте на проверку повторно.',true);});
   if(!operator&&['draft','changes_requested'].includes(c.moderation_status))action('Изменить тариф и дату','edit',()=>{
-   const f=editor(body,'Тариф и желаемая дата',[{name:'start',label:'Желаемое начало',value:local(c.requested_start_at),type:'datetime-local',required:false}],v=>api('/campaigns/'+c.id,{method:'PATCH',body:{...(c.growth_offer_name?{}:{tariff_id:select.value}),requested_start_at:v.start.value?new Date(v.start.value).toISOString():null}}));
+   const f=editor(body,'Тариф и желаемая дата',[{name:'start',label:'Желаемое начало',value:local(c.requested_start_at),type:'datetime-local',required:false}],v=>api('/campaigns/'+c.id,{method:'PATCH',body:{...(c.growth_offer_name?{}:{tariff_id:select.value}),requested_start_at:v.start.value?parseMoscowInput(v.start.value).toISOString():null}}));
    const select=el('select');select.required=true;tariffs.forEach(t=>option(select,t.id,tariffLabel(t)));select.value=c.tariff_id;if(c.growth_offer_name){select.disabled=true;if(!select.value){option(select,c.tariff_id,c.tariff_name_snapshot);select.value=c.tariff_id;}f.append(el('p','Тариф и скидка этой заявки зафиксированы. Можно исправить желаемую дату.','muted'));}label(f,'Новый тариф заявки',select);f.prepend(select.closest('label'));
   });
   if(operator&&c.placement_status==='scheduled'){
    action('Изменить слот','edit',()=>{
-    const f=editor(body,'Перенести будущий слот',[{name:'start',label:'Новое начало слота',value:local(c.scheduled_start_at),type:'datetime-local'}],v=>api('/operator/campaigns/'+c.id+'/slot',{method:'PATCH',body:{proxy_node_id:select.value,start_at:new Date(v.start.value).toISOString()}}));
+    const f=editor(body,'Перенести будущий слот',[{name:'start',label:'Новое начало слота',value:local(c.scheduled_start_at),type:'datetime-local'}],v=>api('/operator/campaigns/'+c.id+'/slot',{method:'PATCH',body:{proxy_node_id:select.value,start_at:parseMoscowInput(v.start.value).toISOString()}}));
     const select=el('select');select.required=true;option(select,'','Выберите узел');const active=nodes.filter(n=>n.status==='active');active.forEach(n=>option(select,n.id,n.name));if(active.length===1)select.value=active[0].id;label(f,'Новый узел слота',select);f.prepend(select.closest('label'));
-    f.append(el('p','Часовой пояс: '+calendarZone+'. Перенос доступен до начала слота и до проверки показа.','muted'));
+    f.append(el('p','Часовой пояс: МСК'+'. Перенос доступен до начала слота и до проверки показа.','muted'));
    });
    action('Снять будущий слот','close',async()=>{
     if(!confirm('Снять будущий слот? Оплата останется у заявки, затем можно назначить новое время.'))return;
@@ -92,7 +92,7 @@ window.pushokManagement=(()=>{
   });window.pushokViews.iconAction(edit,'edit','Изменить узел');controls.append(edit);
   const remove=archive(controls,'/admin/proxy-nodes/'+n.id,'Удалить узел из реестра? Будущие размещения вернутся на подбор. Активные показы сохранятся у оператора; прокси на VPS продолжит работать.','sponsors');window.pushokViews.iconAction(remove,'close','Удалить узел');remove.classList.add('danger-text');return box;
  }
- function local(value){if(!value)return '';const d=new Date(value);return localDay(d)+'T'+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}
+ function local(value){if(!value)return '';const d=new Date(value);return moscowInput(d);}
  async function renderArchive(target,selectedId=''){
   const session=token;target.replaceChildren(el('p','Загрузка архива…'));
   try{const data=await api('/management/archive');if(session!==token||!me||!target.isConnected)return;target.replaceChildren();target.classList.add('archive-list');

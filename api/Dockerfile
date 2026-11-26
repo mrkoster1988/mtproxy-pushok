@@ -8,6 +8,7 @@ RUN echo '9132063b8ee6030cc1652a05f9523b940076f7f44bfd254ca6e47fb2a3953475  /tmp
     && chmod 644 /usr/share/pushok/* && rm /tmp/dbip-city.tgz
 
 FROM python:3.12-slim
+ENV TZ=Europe/Moscow
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
