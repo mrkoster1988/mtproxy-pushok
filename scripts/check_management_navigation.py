@@ -180,6 +180,39 @@ def check_management_navigation(browser, base, output, failures, dsn):
         admin.evaluate("window.cabinet.go('profile/management')")
         admin.set_viewport_size({'width': 390, 'height': 844})
         admin.locator('#profile-management').screenshot(path=str(output/'management-menu.png'), animations='disabled')
+
+        # Exercise the cabinet's automatic button styling as well as the VPN renderer.
+        states={'active':'Активна','expired':'Истекла','revoked':'Отозвана','pending':'Готовится'}
+        members=[dict(id=str(uuid4()), name=label, state=state, subscription_id=str(uuid4()),
+                      country_code='RU' if state=='active' else 'CH',city='Москва' if state=='active' else 'Берн',
+                      endpoint_ip='192.0.2.1',tunnel_ips=['10.0.0.7'],tariff_name='Тестовый тариф')
+                 for state,label in states.items()]
+        admin.route('**/api/v1/vpn/dashboard', lambda route: route.fulfill(json={'can_manage':True,'members':members,'personal':None}))
+        admin.evaluate("window.cabinet.go('vpn')")
+        directory=admin.locator('.vpn-directory')
+        expect(directory.locator('.vpn-card')).to_have_count(len(states))
+        admin.evaluate('window.pushokInterface.actions()')
+        for state,label in states.items():
+            badge=directory.locator(f'button[data-subscription="{state}"]')
+            expect(badge).to_have_text(label)
+            expect(badge).to_be_visible()
+            badge.click()
+            panel=admin.locator('#'+badge.get_attribute('aria-controls'))
+            expect(panel.get_by_label('Новый статус')).to_be_visible()
+            badge.click()
+            expect(panel).to_be_hidden()
+        for width in (320,390,768):
+            admin.set_viewport_size({'width':width,'height':844})
+            for badge in directory.locator('button[data-subscription]').all():
+                assert badge.evaluate('b=>b.scrollWidth<=b.clientWidth+1 && b.getBoundingClientRect().right<=innerWidth')
+        first=directory.locator('.vpn-card').filter(has=admin.locator('[data-subscription=active]'))
+        address=first.locator('.vpn-addresses dd')
+        expect(address.nth(1)).to_have_text('Москва')
+        expect(address.nth(1)).to_have_css('font-style','italic')
+        expect(address.first).to_have_css('font-style','normal')
+        expect(address.last).to_have_css('font-style','normal')
+        other=directory.locator('.vpn-card').filter(has=admin.locator('[data-subscription=expired]'))
+        expect(other.locator('.vpn-addresses dd').nth(1)).to_have_text('Швейцария, Берн')
     finally:
         for context in contexts:
             context.close()

@@ -926,6 +926,7 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 
 .cabinet-mode .vpn-addresses{display:grid;grid-template-columns:minmax(0,1fr) fit-content(28%) minmax(0,1fr);gap:4px;align-items:start;margin:6px 0 0;font-size:12px;line-height:1.25}
 .vpn-addresses>div:nth-child(2){text-align:center}
+.vpn-addresses>div:nth-child(2) dd{font-style:italic;color:#cdbde2}
 .vpn-addresses>div:last-child{text-align:right}
 .vpn-addresses dt{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 .vpn-addresses dd{margin:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
@@ -973,12 +974,11 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .support-bubble-text{padding:.8rem .95rem;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4}
 .support-preview-button{display:block;padding:.5rem;text-align:center;background:#254a5a;border-top:2px solid #102534;color:#a8eff0;overflow-wrap:anywhere}
 
-.vpn-card .vpn-status-stack{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;justify-items:end;align-self:center;max-width:39%;min-width:0;column-gap:3px}
+.vpn-card .vpn-status-stack{display:grid;grid-template-columns:minmax(min-content,1fr) auto;align-items:center;justify-items:end;align-self:center;max-width:39%;min-width:0;column-gap:3px}
 .vpn-card .vpn-status-stack .campaign-current{grid-area:1/1}
 .cabinet-mode .vpn-card .vpn-status-stack .vpn-pencil{grid-area:1/2;width:32px;height:32px;margin:0 -4px 0 0}
 .vpn-card .vpn-status-stack .vpn-tariff{grid-area:2/1}
-.cabinet-mode .vpn-card .vpn-status-stack .campaign-current{display:inline-flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:4px 7px;font-size:10px;line-height:1.4}
-.cabinet-mode .vpn-card .vpn-status-stack button{cursor:pointer;border:1px solid currentColor}
+.cabinet-mode .vpn-card .vpn-status-stack .campaign-current{display:inline-flex;align-items:center;justify-content:center;min-width:0;min-height:0;padding:4px 6px;border:1px solid transparent;border-radius:6px;font-size:10px;line-height:1.35;white-space:nowrap;overflow-wrap:normal}
 .cabinet-mode .vpn-card .vpn-tariff{margin:0;font-size:10px;line-height:1.2;text-align:right;overflow-wrap:anywhere}
 .cabinet-mode .vpn-card .vpn-edit .vpn-status-consent{display:flex;align-items:center;gap:6px;grid-column:1/-1}
 .cabinet-mode .vpn-card .vpn-status-consent input{width:18px;height:18px;flex:none}
