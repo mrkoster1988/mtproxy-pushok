@@ -985,14 +985,33 @@ def main():
                         'terms':'Условия тестового тарифа','policy_version':1}))
                     mini.route('**/api/v1/vpn/checkout',lambda route:route.fulfill(json={
                         'id':oid,'status':'pending','payment_url':'https://t.me/$vpn_test_invoice'}))
-                    mini.route('**/api/v1/vpn/orders/'+oid,lambda route:route.fulfill(json={'status':'active','amount':199}))
+                    receipt_state={'status':'pending','amount':199,'payment_url':'https://t.me/$vpn_test_invoice'}
+                    mini.route('**/api/v1/vpn/orders/'+oid,lambda route:route.fulfill(json=receipt_state))
                     paid_link.click()
                     pay_vpn=mini.get_by_role('button',name='Оплатить 199 ⭐')
                     expect(pay_vpn).to_be_disabled()
                     mini.get_by_label('Принимаю условия оплаты').check()
                     pay_vpn.click()
                     mini.wait_for_function("window.__miniInvoiceUrl==='https://t.me/$vpn_test_invoice'")
+                    mini.evaluate("window.__miniInvoiceCallback('failed')")
+                    expect(mini.get_by_text('Telegram не завершил оплату.',exact=False)).to_be_visible()
+                    top_up=mini.get_by_role('link',name='Пополнить через @PremiumBot')
+                    expect(top_up).to_have_attribute('href','https://t.me/PremiumBot')
+                    top_up.click()
+                    assert mini.evaluate('window.__miniLink')=='https://t.me/PremiumBot'
+                    # Reopen the Mini App without its old checkout session. Only the order ID survives.
+                    mini.evaluate("Object.keys(sessionStorage).filter(k=>k.startsWith('pushok-vpn-order:')).forEach(k=>sessionStorage.removeItem(k))")
+                    mini.reload()
+                    reopen=mini.get_by_role('button',name='Открыть счёт')
+                    expect(reopen).to_be_visible()
+                    reopen.click()
+                    mini.wait_for_function("window.__miniInvoiceUrl==='https://t.me/$vpn_test_invoice'")
+                    mini.evaluate("window.__miniInvoiceCallback('cancelled')")
+                    expect(mini.get_by_text('Вы закрыли форму. Счёт сохранён.')).to_be_visible()
+                    reopen.click()
+                    receipt_state['status']='active'
                     mini.evaluate("window.__miniInvoiceCallback('paid')")
+                    assert sum(method=='POST' and url.endswith('/api/v1/vpn/checkout') for method,url in mini_requests)==1
                     expect(mini.get_by_role('heading',name='Подписка продлена')).to_be_visible()
                     expect(mini).to_have_url(base+'/miniapp#/vpn/renew')
                     mini.locator('.mobile-bottom-nav a[data-route=profile]').click()

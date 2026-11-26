@@ -1,15 +1,43 @@
 'use strict';
 window.pushokVpnRenew = (() => {
   const orderKey = () => 'pushok-vpn-order:'+me.id;
-  function save(order) { try { sessionStorage.setItem(orderKey(),JSON.stringify(order)); } catch {} }
-  function saved() { try { return JSON.parse(sessionStorage.getItem(orderKey())); } catch { return null; } }
-  function clear() { try { sessionStorage.removeItem(orderKey()); } catch {} }
+  function save(order) {
+    try { sessionStorage.setItem(orderKey(),JSON.stringify(order)); } catch {}
+    if(order.order)try { localStorage.setItem(orderKey(),order.order); } catch {}
+  }
+  function saved() {
+    let current,id;
+    try { current=JSON.parse(sessionStorage.getItem(orderKey())); } catch {}
+    try { id=localStorage.getItem(orderKey()); } catch {}
+    return id && current?.order!==id ? {order:id} : current;
+  }
+  function clear() {
+    try { sessionStorage.removeItem(orderKey()); } catch {}
+    try { localStorage.removeItem(orderKey()); } catch {}
+  }
+  function starsHelp(open=false) {
+    const help=el('details',undefined,'vpn-terms');help.open=open;
+    const bot=el('a','Пополнить через @PremiumBot');bot.href='https://t.me/PremiumBot';
+    bot.target='_blank';bot.rel='noopener noreferrer';
+    help.append(el('summary','Не хватает Stars?'),el('p','Откройте официальный бот Telegram на компьютере, в Telegram Web или в Android-версии с сайта Telegram. После пополнения вернитесь к счёту Pushok.'),bot);
+    return help;
+  }
   async function show(target) {
     const session=token, box=el('article',undefined,'campaign-tile vpn-renew');
     target.replaceChildren(box);
     const visible=()=>token===session && box.isConnected && location.hash==='#/vpn/renew';
     const note=el('p','Загружаем тарифы…','muted'); note.setAttribute('role','status'); box.append(note);
     let revision=0;
+    async function openOrder(id,url) {
+      ++revision;
+      save({order:id,url});
+      let result;
+      try { result=await window.pushokMiniApp.payInvoice(url); }
+      catch { result='failed'; }
+      if(!visible())return;
+      save({order:id,url,result});
+      return receipt(id);
+    }
     async function receipt(id,attempt=0) {
       const turn=++revision;
       if (!visible()||turn!==revision) return;
@@ -22,7 +50,9 @@ window.pushokVpnRenew = (() => {
       }
       if (!visible()||turn!==revision) return;
       const done=order.status==='active',paid=order.status==='paid',canceled=order.status==='canceled';
-      const message=done?'Подписка продлена':paid?'Оплата получена':canceled?'Заказ отменён':'Ожидаем подтверждение оплаты';
+      const previous=saved(),result=previous?.order===id?previous.result:null;
+      const confirming=order.status==='checkout'||result==='pending'||result==='paid';
+      const message=done?'Подписка продлена':paid?'Оплата получена':canceled?'Заказ отменён':confirming?'Проверяем оплату':'Счёт готов к оплате';
       box.replaceChildren(el('h2',message),el('p',order.amount+' ⭐ · Заказ № '+id.slice(0,8),'muted'));
       if (done || canceled) {
         clear();window.pushokVpn.reset();
@@ -30,19 +60,17 @@ window.pushokVpnRenew = (() => {
         return;
       }
       if (paid) box.append(el('p','Магазин обновляет срок подписки.'));
-      const previous=saved();
-      if(order.status==='pending' && (order.payment_url || previous?.order===id && previous.url) && window.pushokMiniApp?.canPay()) {
-        box.append(button('Открыть счёт',async()=>{
-          if(turn!==revision)return;
-          ++revision;
-          try { await window.pushokMiniApp.payInvoice(order.payment_url||previous.url); }
-          catch(e) { if(visible())box.append(el('p',e.message)); }
-          if(visible())await receipt(id);
-        }));
+      const url=order.payment_url||(previous?.order===id && previous.url);
+      if(order.status==='pending' && !confirming) {
+        if(result==='failed')box.append(el('p','Telegram не завершил оплату. Этот счёт можно открыть повторно.'));
+        if(result==='cancelled')box.append(el('p','Вы закрыли форму. Счёт сохранён.'));
+        if(url && window.pushokMiniApp?.canPay())box.append(button('Открыть счёт',()=>turn===revision && openOrder(id,url)));
+        box.append(starsHelp(result==='failed'||result==='cancelled'));
       }
       box.append(button('Проверить оплату',()=>receipt(id)));
-      if (!paid) box.append(button('К тарифам',()=>{clear();return show(target);}));
-      if (attempt<8) setTimeout(()=>{if(visible()&&turn===revision)void receipt(id,attempt+1);},3000);
+      if(confirming && !paid && attempt>=8)box.append(el('p','Подтверждение задерживается. Проверьте этот заказ позже.','muted'));
+      if (!paid && !confirming) box.append(button('К тарифам',()=>{clear();return show(target);}));
+      if ((paid||confirming) && attempt<8) setTimeout(()=>{if(visible()&&turn===revision)void receipt(id,attempt+1);},3000);
     }
     const prior=saved();
     if (prior?.order && /^[a-f0-9-]{36}$/.test(prior.order)) return receipt(prior.order);
@@ -78,17 +106,13 @@ window.pushokVpnRenew = (() => {
         if(!visible())return;
         if(['active','paid','checkout'].includes(order.status)){save({order:order.id});return receipt(order.id);}
         if(order.status==='canceled'){requestId=crypto.randomUUID();throw Error('Этот заказ отменён. Выберите тариф ещё раз.');}
-        save({order:order.id,url:order.payment_url});
-        const result=await window.pushokMiniApp.payInvoice(order.payment_url);
-        if(!visible())return;
-        if(result==='cancelled'||result==='failed'){await receipt(order.id);return;}
-        await receipt(order.id);
+        await openOrder(order.id,order.payment_url);
       } catch(e) { if(visible()){note.textContent=e.message;if(e.code==='vpn_offer_changed')box.append(button('Обновить тарифы',()=>{clear();return show(target);}));} }
       finally {busy=false;choices.disabled=check.disabled=false;update();}
     };
     box.replaceChildren(choices);
     if(!catalog.plans.length || !catalog.available) { box.append(el('p',catalog.unavailable_reason||'Платное продление сейчас недоступно.','muted'));return; }
-    box.append(terms,consent,pay,note);
+    box.append(terms,consent,pay,note,starsHelp());
   }
   return {show};
 })();
