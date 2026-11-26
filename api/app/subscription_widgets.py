@@ -71,6 +71,7 @@ def refresh(dsn, uid=None):
         telegram.verify_sender(token)
         mode,mid=row['format'],row['message_id']
         fields={'chat_id':chat}
+        keyboard={'inline_keyboard':[[telegram.cabinet_link({'text':'Открыть подписку в кабинете','callback_data':'vpn'})]]}
         try:
             if mid and (uid or row['snapshot']!=value):
                 edit='editMessageWidgetData' if mode=='widget' else 'editMessageText'
@@ -86,11 +87,11 @@ def refresh(dsn, uid=None):
             if not mid:
                 try:
                     result=telegram.telegram_call(token,'sendWidget',dict(fields,html=HTML,height=108,
-                        chat_data=value,caption='Моя подписка · Pushok Flow',protect_content=True))
+                        chat_data=value,caption='Моя подписка · Pushok Flow',protect_content=True,reply_markup=keyboard))
                     mode='widget'
                 except HTTPException as exc:
                     if exc.detail!='widget_unsupported':raise
-                    result=telegram.telegram_call(token,'sendMessage',dict(fields,text='\n'.join(data),protect_content=True))
+                    result=telegram.telegram_call(token,'sendMessage',dict(fields,text='\n'.join(data),protect_content=True,reply_markup=keyboard))
                     mode='text'
                 mid=result['message_id']
         except HTTPException as exc:

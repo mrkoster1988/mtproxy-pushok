@@ -24,8 +24,10 @@ window.pushokEditorial=function(host){
  let busy=false,selected=null,locale='ru',dirty=false,creating=null;
  const live=()=>root.isConnected&&token===session;
  async function run(job){if(busy)return;busy=true;status.textContent='';root.setAttribute('aria-busy','true');
+  const inputs=Array.from(root.querySelectorAll('input,textarea,select')).filter(node=>!node.disabled);
+  for(const input of inputs)input.disabled=true;
   try{await job();}catch(e){if(live())status.textContent=errors[e.code]||errors[e.message]||e.message;}
-  finally{busy=false;root.removeAttribute('aria-busy');}}
+  finally{for(const input of inputs)if(root.contains(input))input.disabled=false;busy=false;root.removeAttribute('aria-busy');}}
  const acceptDiscard=()=>!dirty||window.confirm('Закрыть несохранённые изменения?');
  async function loadList(){
   const data=await request('');if(!live())return;list.replaceChildren();
@@ -55,8 +57,12 @@ window.pushokEditorial=function(host){
   function draw(){preview.replaceChildren();if(art.value!=='none'){
     const img=el('img');img.src=art.value==='mascot'?'/assets/pushok-pencil.png':row.image;img.alt='Иллюстрация публикации';preview.append(img);}
    const copy=el('div',undefined,'support-bubble-text');appendFormattedText(copy,text.value);preview.append(copy);}
-  async function save(){if(!dirty)return;const result=await request(path,'PUT',{locale,text:text.value,art:art.value,revision:row.revision});
-   row.variants[locale]=text.value;row.art=art.value;row.revision=result.revision;dirty=false;}
+  async function save(){
+   if(!dirty)return;
+   const changes={locale,text:text.value,art:art.value,revision:row.revision};
+   const result=await request(path,'PUT',changes);
+   row.variants[changes.locale]=changes.text;row.art=changes.art;row.revision=result.revision;dirty=false;
+  }
   lang.onchange=()=>{const next=lang.value;lang.value=locale;void run(async()=>{await save();locale=next;render();});};
   text.oninput=art.onchange=()=>{dirty=true;draw();};draw();
   const editable=row.state==='draft';art.disabled=text.disabled=!editable;
@@ -69,7 +75,7 @@ window.pushokEditorial=function(host){
   const publish=button('Утвердить и опубликовать',()=>run(async()=>{
    const target=channel.value.trim();
    if(!/^@[A-Za-z][A-Za-z0-9_]{4,31}$/.test(target)){channel.focus();status.textContent='Укажите @имя канала';return;}
-   await save();if(!window.confirm('Опубликовать этот вариант ('+languages[locale]+') в '+target+'?'))return;
+   await save();if(!live()||!window.confirm('Опубликовать этот вариант ('+languages[locale]+') в '+target+'?'))return;
    await request(path+'/publish','POST',{channel:target,locale,revision:row.revision});await open(row.id);await loadList();status.textContent='Пост опубликован';
   }));
   edit.append(controls,channel,publish);
