@@ -60,6 +60,19 @@ class VpnVisibility(unittest.TestCase):
             self.assertEqual(send.call_args.args[:2], (user['id'], UUID(int=2)))
 
 
+    def test_shop_issuing_order_is_identified_in_admin_response(self):
+        actor, subject = UUID(int=1), UUID(int=2)
+        change = vpn_cabinet.Change(action='restore', subscription_id='wg', request_id=UUID(int=3), before=1, value=1)
+        with patch.object(vpn_cabinet, 'bridge_key', return_value=b'x'*32), patch.object(vpn_cabinet.requests, 'Session') as session:
+            response = session.return_value.__enter__.return_value.post.return_value
+            response.status_code = 409
+            detail = {'code':'vpn_order_issuing','order_id':'test-order-35'}
+            response.json.return_value = {'detail': {**detail, 'extra': 'omitted'}}
+            with self.assertRaises(vpn_cabinet.HTTPException) as conflict:
+                vpn_cabinet.change_subscription(actor, subject, change)
+            self.assertEqual(conflict.exception.detail, detail)
+
+
 class VpnGeolocation(unittest.TestCase):
     def test_local_city_lookup_and_private_addresses(self):
         from app import vpn_geo

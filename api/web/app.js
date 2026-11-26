@@ -60,7 +60,7 @@ async function api(path,{method='GET',body,signal,session=token}={}){
  try {
   let r;try{r=await fetch('/api/v1'+path,{method,headers,signal:signal||controller?.signal,cache:'no-store',body:body instanceof FormData?body:body?JSON.stringify(body):undefined});}catch{throw Error('Нет связи с сервером. Проверьте соединение и повторите действие.');}
   if(!r.ok){let d;try{const data=await r.json();d=data?.detail??data?.error;}catch{d='';}if(r.status===401&&requestToken&&token===requestToken&&requestGeneration===authGeneration){clearCabinetSession({preserveUnboundFlow:window.pushokFlowAccount?.unbound()===true,expired:true});}
-   const error=Error(errors[d]||(r.status===422?'Проверьте заполненные поля.':typeof d==='string'&&d.endsWith('_not_configured')?'Вход ещё не настроен администратором.':'Не удалось выполнить действие. Попробуйте снова.'));error.status=r.status;error.code=typeof d==='string'?d:'';throw error;}
+   const error=Error(errors[d]||(r.status===422?'Проверьте заполненные поля.':typeof d==='string'&&d.endsWith('_not_configured')?'Вход ещё не настроен администратором.':'Не удалось выполнить действие. Попробуйте снова.'));error.status=r.status;error.code=typeof d==='string'?d:'';if(d?.code==='vpn_order_issuing')error.orderId=d.order_id;throw error;}
   return r.status===204?null:await r.json();
  } finally { if(controller)clearTimeout(timer); }
 }

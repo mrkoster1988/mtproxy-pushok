@@ -201,6 +201,15 @@ def check_management_navigation(browser, base, output, failures, dsn):
             expect(panel.get_by_label('Новый статус')).to_be_visible()
             badge.click()
             expect(panel).to_be_hidden()
+        admin.route('**/api/v1/vpn/users/*/management', lambda route: route.fulfill(status=409,
+                    json={'detail':{'code':'vpn_order_issuing','order_id':'test-order-35'}}))
+        badge=directory.locator('button[data-subscription="revoked"]')
+        badge.click()
+        panel=admin.locator('#'+badge.get_attribute('aria-controls'))
+        panel.get_by_label('Новый статус').select_option('restore')
+        panel.locator('button[type=submit]').click()
+        expect(panel.get_by_role('status')).to_contain_text('№ test-order-35')
+        badge.click()
         for width in (320,390,768):
             admin.set_viewport_size({'width':width,'height':844})
             for badge in directory.locator('button[data-subscription]').all():

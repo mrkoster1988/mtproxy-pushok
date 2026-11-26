@@ -64,7 +64,7 @@ window.pushokVpn = (() => {
     const link=el('a');link.href=url;link.download='Pushok-Flow.apk';document.body.append(link);link.click();link.remove();
   }
   Object.assign(errors,{
-    vpn_order_in_progress:'В Shop есть незавершённый заказ WireGuard. Проверьте его в разделе «Заказы», затем повторите изменение.',
+    vpn_order_in_progress:'Магазин предыдущей версии заблокировал изменение из-за заказа. Обновите Shop и повторите.',
     vpn_key_rotation:'Идёт перевыпуск ключа или дополнительного профиля. Дождитесь завершения и обновите карточку.',
     vpn_node_unavailable:'Исходный сервер WireGuard недоступен. Проверьте подключение WGDashboard в Shop.',
     vpn_expiry_schedule_required:'В Shop откройте настройки узла WGDashboard и проверьте управление сроком пиров и часовой пояс.',
@@ -168,7 +168,9 @@ window.pushokVpn = (() => {
         if (session !== token) return;
         reset(); notice(action === 'retry'?'Заявка повторно поставлена в очередь.':'Изменения сохранены.',true);
         await reload();
-      } catch (error) { if (session === token){feedback.textContent=error.message;refresh.hidden=false;} }
+      } catch (error) { if (session === token){feedback.textContent=error.orderId
+        ? 'Магазин выдаёт доступ по заказу № '+error.orderId+'. Когда выдача завершится, обновите карточку.'
+        : error.message;refresh.hidden=false;} }
       finally { sending=submit.disabled=toggle.disabled=statusButton.disabled=statusSelect.disabled=false; op.disabled = qty.disabled = !!pending; }
     };
     form.append(statusLabel,actionLabel,valueLabel,consentLabel,submit,feedback,refresh);panel.append(form);return {toggle,panel,statusButton};

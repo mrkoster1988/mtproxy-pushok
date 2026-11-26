@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 from threading import Lock
 import time
 from uuid import UUID
@@ -79,6 +80,10 @@ def change_subscription(actor, subject, change):
                 timeout=(3, 45), allow_redirects=False)
         if response.status_code in (404, 409, 422, 502, 503):
             detail = response.json().get('detail')
+            if response.status_code == 409 and isinstance(detail, dict) and detail.get('code') == 'vpn_order_issuing':
+                order_id = detail.get('order_id')
+                if isinstance(order_id, str) and re.fullmatch(r'[a-zA-Z0-9_-]{1,100}', order_id):
+                    raise HTTPException(409, {'code': 'vpn_order_issuing', 'order_id': order_id})
             known = {'vpn_subscription_missing','vpn_changed','vpn_profiles_in_use','vpn_limit_range','vpn_days_range',
                      'vpn_order_in_progress','vpn_key_rotation','vpn_node_unavailable','vpn_expiry_schedule_required',
                      'vpn_pending_operation','vpn_node_unconfirmed','vpn_change_unconfirmed'}
