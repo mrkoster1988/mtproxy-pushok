@@ -54,6 +54,10 @@ window.pushokMiniApp=(()=>{
   if(section.childElementCount>1){phoneControls=section;target.append(section);}
  }
  function syncNavigation(){
+  if(app?.SettingsButton&&app.isVersionAtLeast?.('7.0')){
+   if(token&&me&&window.cabinetBootReady&&hasDeveloperAccess(me))app.SettingsButton.show();
+   else app.SettingsButton.hide();
+  }
   if(!app?.BackButton)return;
   const root=!me||!window.cabinetBootReady||!location.hash||location.hash==='#/dashboard';
   if(root)app.BackButton.hide();else app.BackButton.show();
@@ -98,6 +102,9 @@ window.pushokMiniApp=(()=>{
     loaded=true;app.ready?.();app.expand?.();theme();
     app.onEvent?.('themeChanged',theme);app.onEvent?.('safeAreaChanged',theme);app.onEvent?.('contentSafeAreaChanged',theme);app.onEvent?.('fullscreenChanged',theme);
     app.BackButton?.onClick(back);
+    if(app.isVersionAtLeast?.('7.0'))app.SettingsButton?.onClick(()=>{
+     if(token&&hasDeveloperAccess(me))window.cabinet?.go('profile/settings');
+    });
    }
    const signedParams=new URLSearchParams(app.initData),startParam=signedParams.get('start_param');
    const launch=window.pushokLinks.capture(startParam);
@@ -106,6 +113,7 @@ window.pushokMiniApp=(()=>{
    const clean=new URL(location.href);
    for(const key of [...clean.searchParams.keys()])if(key.startsWith('tgWebApp')||key==='sbp_campaign')clean.searchParams.delete(key);
    if((newLaunch&&launch.startsWith('r_'))||!clean.hash.startsWith('#/'))clean.hash='/dashboard';
+   if(newLaunch&&startParam==='ai_bot_settings')clean.hash='/management/ai-bot';
    const vpnLaunch=clean.searchParams.get('vpn')||(newLaunch&&({vpn:'home',vpn_renew:'renew'})[startParam]);
    if(['renew','home'].includes(vpnLaunch)||clean.searchParams.get('shop_subscriptions')==='1'){
     clean.hash=vpnLaunch==='renew'?'/vpn/renew':'/vpn';

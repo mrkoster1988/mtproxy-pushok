@@ -9,6 +9,7 @@ window.pushokInterface=(()=>{
   {key:'tariffs',title:'Тарифы',icon:'calendar',pane:'tariffs'},
   {key:'design',title:'Оформление',icon:'edit',pane:'system'},
   {key:'people',title:'Пользователи и награды',icon:'gift',pane:'system'},
+  {key:'ai-bot',title:'Бот Pushok ИИ',icon:'support',pane:'system',developerOnly:true},
   {key:'automation',title:'ИИ и прокси',icon:'server',pane:'system'},
   {key:'technical',title:'Диагностика',icon:'status',pane:'system'}
  ];
@@ -20,6 +21,7 @@ window.pushokInterface=(()=>{
    group.hidden=group.dataset.settingsGroup!==selected.key;
    if(!group.hidden&&group.tagName==='DETAILS')group.open=true;
   }
+  $('ai-bot-shortcut').hidden=!hasDeveloperAccess(me);
   return selected;
  }
  function actions(root=document){

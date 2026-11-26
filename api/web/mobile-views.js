@@ -262,14 +262,19 @@ window.pushokViews=(()=>{
   if(['admin','operator'].includes(me.role)){
    const admin=[['moderation','moderation','Модерация'],['sponsors','server','Узлы и спонсоры']];
    admin.unshift(['users','users','Пользователи']);
-   if(me.role==='admin')admin.push(['license','moderation','Лицензия приложения'],...window.pushokInterface.managementSections.map(item=>['management/'+item.key,item.icon,item.title]),['growth','gift','Бонусы и акции'],['profile/updates','refresh','Версия и обновления']);
+   if(me.role==='admin')admin.push(['license','moderation','Лицензия приложения'],...window.pushokInterface.managementSections.filter(item=>!item.developerOnly).map(item=>['management/'+item.key,item.icon,item.title]),['growth','gift','Бонусы и акции'],['profile/updates','refresh','Версия и обновления']);
    groups.push(['Управление',admin]);
   }
-  if(hasDeveloperAccess(me)&&me.role!=='admin')groups.push(['Настройки',[['management/vpn','server','Настройки VPN']]]);
+  if(hasDeveloperAccess(me)){
+   const bot=window.pushokInterface.managementSection('ai-bot');
+   const links=[['management/'+bot.key,bot.icon,bot.title]];
+   if(me.role!=='admin')links.push(['management/vpn','server','Настройки VPN']);
+   groups.unshift(['Настройки',links]);
+  }
   if(me.role==='moderator')groups.push(['Управление',[['moderation','moderation','Модерация']]]);
   groups.push(['Поддержка',[['help','support','Помощь'],['bot','channel','Telegram-бот']]]);
   const sections=el('div',undefined,'profile-groups');
-  groups.forEach(([title,items])=>{const group=el('section',undefined,'profile-group'),menu=el('nav',undefined,'profile-menu');if(title==='Управление')group.id='profile-management';menu.setAttribute('aria-label',title);group.append(el('h2',title));
+  groups.forEach(([title,items])=>{const group=el('section',undefined,'profile-group'),menu=el('nav',undefined,'profile-menu');if(title==='Управление')group.id='profile-management';if(title==='Настройки')group.id='profile-settings';menu.setAttribute('aria-label',title);group.append(el('h2',title));
    items.forEach(([route,name,text])=>{const a=link(text,route);a.prepend(icon(name));const arrow=icon('chevron');arrow.classList.add('menu-chevron');a.append(arrow);menu.append(a);});group.append(menu);sections.append(group);});target.append(sections);
   if(updatePanel)target.append(updatePanel);
  }

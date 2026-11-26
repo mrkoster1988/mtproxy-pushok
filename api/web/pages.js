@@ -634,7 +634,7 @@
  function back(){
   const [name,id]=routeParts();
   if(name==='vpn'&&id==='renew'){go(window.pushokVpn.renewBack());return;}
-  if(name==='management'){go('profile/management');return;}
+  if(name==='management'){go(id==='ai-bot'?'profile/settings':'profile/management');return;}
   if(name==='member'){go(window.pushokCommunity.backRoute());return;}
   if(name==='user'){go(window.pushokProfiles.backRoute());return;}
   if(name==='moderation'&&id)window.pushokApproval?.resetSelection();
@@ -649,8 +649,11 @@
   if(name==='campaigns')state.scope=section==='mine'?'mine':'all';
   if(name!=='sponsors')automationFocusRoute='';
   if(name==='create'&&!me?.phone_verified){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Подтвердите номер перед созданием кампании.');}
-  if(!permitted(name)&&!(name==='management'&&section==='vpn'&&hasDeveloperAccess(me))){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}
+  const allowed=name==='management'&&section==='ai-bot'?hasDeveloperAccess(me):
+   permitted(name)||(name==='management'&&section==='vpn'&&hasDeveloperAccess(me));
+  if(!allowed){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}
   if($('notice').dataset.route!==location.hash)$('notice').hidden=true;
+  if(name!=='management'||section!=='ai-bot')$('support-bot-settings').replaceChildren();
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
@@ -666,9 +669,9 @@
   searchForm.hidden=name!=='campaigns';
   updatePanel.hidden=me.role!=='admin';
   if(me.role==='admin'&&['profile','dashboard'].includes(name))refreshSoftware();
-  if(name==='management'){window.pushokInterface.settings();window.pushokInterface.showManagement(section);if(section==='vpn')void window.pushokVpnSettings.show($('vpn-settings-center'));else if(previousRoute!=='management')run(loadAdminSettings);else if(section==='payments')run(()=>renderSBPReview());}
+  if(name==='management'){window.pushokInterface.settings();window.pushokInterface.showManagement(section);if(section==='ai-bot')void window.pushokSupport.showBotSettings($('support-bot-settings'));else if(section==='vpn')void window.pushokVpnSettings.show($('vpn-settings-center'));else if(previousRoute!=='management')run(loadAdminSettings);else if(section==='payments')run(()=>renderSBPReview());}
   if(name==='profile')window.pushokDeveloper.open(aboutDeveloper);
-  if(name==='profile'&&section==='management')$('profile-management')?.scrollIntoView({block:'start',behavior:'instant'});
+  if(name==='profile'&&['management','settings'].includes(section))$('profile-'+section)?.scrollIntoView({block:'start',behavior:'instant'});
   if(miniAppMode)window.pushokMiniApp.syncNavigation();
   if(name==='profile'&&section==='updates'&&me.role==='admin'){
    window.scrollTo({top:window.scrollY+updatePanel.getBoundingClientRect().top-bar.getBoundingClientRect().height-16,behavior:'instant'});
@@ -680,7 +683,7 @@
   if(url.searchParams.has('wallet_topup')){url.searchParams.delete('wallet_topup');url.hash='/wallet';history.replaceState(null,'',url);}
   if(!miniAppMode&&returned&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(returned)){state.returnCampaign=returned;url.searchParams.delete('sbp_campaign');url.hash='/payments/'+returned;history.replaceState(null,'',url);}
   state.ready=true;document.body.classList.add('cabinet-mode');document.documentElement.style.scrollBehavior='auto';account.textContent=(me.first_name||'Пользователь')+' · '+window.pushokTeam.displayRole(me);activate();
- },logout({preserveUnboundFlow=false}={}){subscriptionEpoch++;subscriptionJoined=!miniAppMode;subscription.hidden=true;dashboardProxyUrl='';updateDashboardConnect();resetPaymentSettings();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();window.pushokVerification.reset();automationSession='';nodeEditorSession='';nodeCreate.open=false;window.pushokAppLicense?.reset();window.pushokLinks?.reset();window.pushokFlowAccount?.reset({preserveUnbound:preserveUnboundFlow});window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
+ },logout({preserveUnboundFlow=false}={}){$('support-bot-settings').replaceChildren();subscriptionEpoch++;subscriptionJoined=!miniAppMode;subscription.hidden=true;dashboardProxyUrl='';updateDashboardConnect();resetPaymentSettings();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();window.pushokVerification.reset();automationSession='';nodeEditorSession='';nodeCreate.open=false;window.pushokAppLicense?.reset();window.pushokLinks?.reset();window.pushokFlowAccount?.reset({preserveUnbound:preserveUnboundFlow});window.pushokViews.clearLogos();window.pushokWallet?.reset();window.pushokGrowth?.reset();launchReadinessEpoch++;clearLaunchCheck();$('launch-check-fields').disabled=false;tariffDraftId=null;tariffEditorDirty=false;adminTariffs=[];previousTariffId='';clearSoftware();$('settings-system').prepend(updatePanel);$('sbp-review-list').replaceChildren();window.pushokApproval?.clear();state.ready=false;state.loaded=false;state.renderKey='';state.selectedKey='';state.campaigns=[];state.search='';state.filter='';ownCampaigns=[];operatorCampaigns=[];channels=[];tariffs=[];nodes=[];me=null;window.cabinetBootReady=false;window.pushokOrder.reset();$('identity').textContent='Гость';document.body.classList.remove('cabinet-mode');delete document.body.dataset.cabinetLoaded;
   bottomNav.querySelector('[data-route=moderation]').hidden=true;bottomNav.style.setProperty('--nav-count',6);
   channelSearch.value='';selectSponsorView('placements');automationRevision++;automationFocusRoute='';automationBody.replaceChildren();automationRuntime.replaceChildren();diagnosticsSummary.replaceChildren();
   [$('order-result'),detail,dashboardReferral,profileShortcut,paymentRows,profileMain,aboutDeveloper,content.vpn,content.member,content.user,content.users,content.hall,sponsorQueue,reportRows,archiveRows,channelRows,$('campaigns'),$('queue'),$('nodes-list'),diagnosticsBody].forEach(n=>n.replaceChildren());Object.values(stats).forEach(n=>n.replaceChildren());diagnosticsPanel.hidden=true;diagnosticsRevision++;

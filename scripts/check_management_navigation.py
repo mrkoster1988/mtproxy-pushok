@@ -11,13 +11,14 @@ def check_management_navigation(browser, base, output, failures, dsn):
     from app import main
     tokens, contexts = {}, []
     with psycopg.connect(dsn) as conn:
-        for role in ('admin', 'operator', 'advertiser'):
+        for role in ('admin', 'operator', 'advertiser', 'developer', 'plain_admin'):
             uid, sid = uuid4(), uuid4()
             if role == 'admin':
                 uid = conn.execute('SELECT id FROM users WHERE is_owner').fetchone()[0]
             else:
-                conn.execute('INSERT INTO users(id,telegram_user_id,role) VALUES(%s,%s,%s)',
-                             (uid, int(uid.hex[:12], 16), role))
+                stored_role = {'developer':'admin','plain_admin':'admin'}.get(role,role)
+                conn.execute('INSERT INTO users(id,telegram_user_id,role,developer_granted) VALUES(%s,%s,%s,%s)',
+                             (uid, int(uid.hex[:12], 16), stored_role, role=='developer'))
             conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')", (sid, uid))
             tokens[role] = main._create_session_token(uid, sid)
 
@@ -43,6 +44,28 @@ def check_management_navigation(browser, base, output, failures, dsn):
     }
     try:
         admin = launch('admin')
+        settings = admin.get_by_role('navigation', name='Настройки', exact=True)
+        settings.get_by_role('link', name='Бот Pushok ИИ', exact=True).click()
+        form = admin.locator('#support-bot-settings')
+        secret = form.get_by_label('Токен бота из BotFather')
+        expect(secret).to_have_attribute('type','password')
+        expect(form.get_by_role('link',name='@server_pushok_bot')).to_have_attribute('href','https://t.me/server_pushok_bot')
+        secret.fill('synthetic-invalid')
+        form.get_by_role('button', name='Подключить бота').click()
+        expect(form.get_by_role('status')).to_have_text('Проверьте формат токена из BotFather.')
+        admin.locator('.screen-back').click()
+        expect(admin).to_have_url(base + '/#/profile/settings')
+        settings.get_by_role('link',name='Бот Pushok ИИ').click()
+        expect(secret).to_have_value('')
+        admin.evaluate("window.cabinet.go('help')")
+        admin.get_by_role('link',name='Настроить бота Pushok ИИ').click()
+        expect(secret).to_be_visible()
+        admin.locator('.screen-back').click()
+        developer = launch('developer','management/ai-bot')
+        expect(developer.locator('#support-bot-settings input[type=password]')).to_be_visible()
+        ordinary = launch('plain_admin','management/ai-bot')
+        expect(ordinary.locator('[data-page=dashboard]')).to_be_visible()
+        expect(ordinary.locator('#support-bot-settings input')).to_have_count(0)
         menu = admin.get_by_role('navigation', name='Управление', exact=True)
         expect(menu.get_by_role('link', name='Настройки', exact=True)).to_have_count(0)
         expect(menu.locator('a[href^="#/management/"]')).to_have_count(len(sections))
@@ -124,7 +147,7 @@ def check_management_navigation(browser, base, output, failures, dsn):
         for role in ('operator', 'advertiser'):
             page = launch(role)
             expect(page.locator('.profile-menu a[href^="#/management/"]')).to_have_count(0)
-            for key in sections:
+            for key in (*sections, 'ai-bot'):
                 page.evaluate('key => window.cabinet.go("management/"+key)', key)
                 expect(page.locator('[data-page=dashboard]')).to_be_visible()
                 expect(page.locator('[data-page=management]')).to_be_hidden()

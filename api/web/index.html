@@ -14,11 +14,11 @@
   <link rel="stylesheet" href="/assets/controls.css?v=1.102">
   <link rel="stylesheet" href="/assets/payment-settings.css?v=197">
   <link rel="stylesheet" href="/assets/flow-account.css?v=1.122">
-  <script src="/assets/flow-account.js?v=2.12" defer></script>
-  <script src="/assets/app.js?v=2.12" defer></script>
+  <script src="/assets/flow-account.js?v=2.13" defer></script>
+  <script src="/assets/app.js?v=2.13" defer></script>
   <script src="/assets/campaign-analytics.js?v=198" defer></script>
   <script src="/assets/merchant-settings.js?v=1.112" defer></script>
-  <script src="/assets/channel-ai-settings.js?v=2.12" defer></script>
+  <script src="/assets/channel-ai-settings.js?v=2.13" defer></script>
   <script src="/assets/proxy-provisioning.js?v=1.112" defer></script>
   <script src="/assets/proxy-gateway.js?v=1.112" defer></script>
   <script src="/assets/bonus-links.js?v=1.118" defer></script>
@@ -28,28 +28,28 @@
   <script src="/assets/order.js?v=172" defer></script>
   <script src="/assets/management.js?v=1.108" defer></script>
   <script src="/assets/campaign-pricing.js?v=172" defer></script>
-  <script src="/assets/campaign-assistant.js?v=2.12" defer></script>
+  <script src="/assets/campaign-assistant.js?v=2.13" defer></script>
   <script src="/assets/refunds.js?v=1.102" defer></script>
   <script src="/assets/moderator-queue.js?v=1.110" defer></script>
   <script src="/assets/approval.js?v=1.108" defer></script>
   <script src="/assets/verified-profile.js?v=1.113" defer></script>
-  <script src="/assets/vpn-renew.js?v=2.12" defer></script>
-  <script src="/assets/support-chat.js?v=2.12" defer></script>
-  <script src="/assets/vpn-settings.js?v=2.12" defer></script>
+  <script src="/assets/vpn-renew.js?v=2.13" defer></script>
+  <script src="/assets/support-chat.js?v=2.13" defer></script>
+  <script src="/assets/vpn-settings.js?v=2.13" defer></script>
   <script src="/assets/vpn.js?v=2.13" defer></script>
-  <script src="/assets/hall-of-fame.js?v=2.12" defer></script>
+  <script src="/assets/hall-of-fame.js?v=2.13" defer></script>
   <script src="/assets/developer-profile.js?v=1.112" defer></script>
-  <script src="/assets/user-profiles.js?v=2.12" defer></script>
+  <script src="/assets/user-profiles.js?v=2.13" defer></script>
   <script src="/assets/community.js?v=2.07" defer></script>
-  <script src="/assets/mobile-views.js?v=2.12" defer></script>
+  <script src="/assets/mobile-views.js?v=2.13" defer></script>
   <script src="/assets/default-sponsor.js?v=172" defer></script>
   <script src="/assets/users.js?v=1.113" defer></script>
   <script src="/assets/team.js?v=1.112" defer></script>
   <script src="/assets/application-licenses.js?v=172" defer></script>
   <script src="/assets/release-notes.js?v=2.13" defer></script>
-  <script src="/assets/interface.js?v=2.12" defer></script>
+  <script src="/assets/interface.js?v=2.13" defer></script>
   <script src="/assets/controls.js?v=197" defer></script>
-  <script src="/assets/pages.js?v=2.12" defer></script>
+  <script src="/assets/pages.js?v=2.13" defer></script>
   <script src="/assets/channel-subscription-settings.js?v=1.128" defer></script>
 </head>
 <body>
@@ -318,8 +318,10 @@
           </section>
         </div>
         <div id="settings-system" class="settings-panel" hidden>
+          <section id="support-bot-settings" data-settings-group="ai-bot" hidden></section>
           <section id="vpn-settings-center" data-settings-group="vpn" hidden></section>
           <div class="automation-settings-list" data-settings-group="automation" hidden>
+            <a id="ai-bot-shortcut" class="ui-button" href="#/management/ai-bot" hidden>Бот Pushok ИИ</a>
             <section id="channel-ai-settings" aria-label="Настройки ИИ"></section>
             <section id="proxy-provisioning-settings" aria-label="Автосоздание прокси"></section>
             <section id="proxy-gateway-settings" aria-label="Единый вход и интересы"></section>

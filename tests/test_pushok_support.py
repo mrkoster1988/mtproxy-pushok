@@ -59,3 +59,28 @@ class SupportChat(unittest.TestCase):
         self.assertEqual((result['state'],result['messages'][-1]['sender']), ('closed','staff'))
         with support.connection(self.dsn) as db:
             self.assertEqual(len(db.execute('SELECT message_id FROM support_bot_outbox WHERE telegram_id=%s',(uid,)).fetchall()),1)
+
+
+class BotSettings(unittest.TestCase):
+    def test_only_developers_can_verify_and_save_the_dedicated_bot(self):
+        import os
+        from tempfile import TemporaryDirectory
+        actor = {'role': 'admin'}
+        app = FastAPI()
+        app.include_router(support.router_for(lambda: 'unused', lambda: actor))
+        client = TestClient(app)
+        url = '/api/v1/support/bot'
+        fake = '123:' + 'fixture' * 6
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {'PUSHOK_CONTROL_DIR':directory, 'PUSHOK_SUPPORT_BOT_TOKEN':''}), patch.object(support, 'bot_call') as telegram:
+            self.assertEqual(client.get(url).status_code, 403)
+            self.assertEqual(client.put(url, json={'token':fake}).status_code, 403)
+            telegram.assert_not_called()
+            actor['is_developer'] = True
+            self.assertFalse(client.get(url).json()['configured'])
+            telegram.return_value = {'username':'unrelated_fixture_bot'}
+            self.assertEqual(client.put(url, json={'token':fake}).status_code, 409)
+            telegram.side_effect = [{'username':support.BOT},{'url':''}]
+            saved = client.put(url, json={'token':fake})
+            self.assertEqual(saved.json(), {'username':support.BOT, 'configured':True})
+            self.assertEqual(client.get(url).json(), saved.json())
+            self.assertNotIn(fake, saved.text)

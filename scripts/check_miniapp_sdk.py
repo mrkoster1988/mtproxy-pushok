@@ -54,6 +54,7 @@ def check_miniapp_sdk(browser, base, output, failures):
         expect(page.locator('[data-page=dashboard]')).to_be_visible()
         expect(page.locator('.cabinet-account')).to_contain_text('Новый клиент')
         assert len(attempts) == 1 and not blocked, (attempts, blocked)
+        assert not page.evaluate('Telegram.WebApp.SettingsButton.isVisible')
         assert page.evaluate('Telegram.WebApp.initData') == raw
         assert page.evaluate("__nativeEvents.some(e=>e.name==='web_app_ready')")
         assert page.evaluate("__nativeEvents.some(e=>e.name==='web_app_expand')")
@@ -84,6 +85,21 @@ def check_miniapp_sdk(browser, base, output, failures):
         assert len([url for method, url in requests if method == 'POST' and
                     url.endswith('/auth/telegram/miniapp')]) == 1
         assert not blocked, blocked
+    finally:
+        page.context.close()
+
+    raw = signed_data(user=json.dumps({'id':99116002,'first_name':'Тест admin'}),
+                      query_id='bot-settings-shortcut', start_param='ai_bot_settings')
+    page, _, blocked, _, _ = launch(raw)
+    try:
+        form = page.locator('#support-bot-settings')
+        expect(form.get_by_label('Токен бота из BotFather')).to_be_visible()
+        assert page.evaluate('Telegram.WebApp.SettingsButton.isVisible')
+        page.evaluate("Telegram.WebView.receiveEvent('settings_button_pressed')")
+        expect(page.get_by_role('navigation',name='Настройки')).to_be_visible()
+        page.get_by_role('navigation',name='Настройки').get_by_role('link',name='Бот Pushok ИИ',exact=True).click()
+        expect(form.get_by_label('Токен бота из BotFather')).to_be_visible()
+        assert not blocked,blocked
     finally:
         page.context.close()
 

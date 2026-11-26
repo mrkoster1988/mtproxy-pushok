@@ -7,6 +7,7 @@ window.pushokSupport=(()=>{
   host.replaceChildren(box);const live=()=>token===session&&box.isConnected;
   const tg=el('a','Личный чат в Telegram ↗','ui-button labeled-action');tg.href='https://t.me/server_pushok_bot';tg.target='_blank';tg.rel='noopener noreferrer';
   box.append(el('h2','Pushok ИИ'),tg);
+  if(owner){const link=el('a','Настроить бота Pushok ИИ','ui-button labeled-action');link.href='#/management/ai-bot';box.append(link);}
   let team=false,current=null,asStaff=false,rev=0;
   const toggle=el('input');toggle.type='checkbox';
   if(staff){const l=el('label','Обращения пользователей');l.append(toggle);box.append(l);toggle.onchange=()=>{team=toggle.checked;clear();void load();};}
@@ -34,10 +35,40 @@ window.pushokSupport=(()=>{
     if(!live())return;msg.value='';key=null;close.checked=human.checked=false;await open(row.id||current);await load();}
    catch(err){if(live())feedback.textContent=err.message;}finally{send.disabled=false;}};
   clear();await load();
-  if(owner&&live()){const d=el('details'),summary=el('summary','Подключение Telegram-бота'),f=el('form'),n=el('input'),save=el('button','Подключить','labeled-action'),notice=el('small');
-    n.type='password';n.autocomplete='new-password';n.placeholder='Токен @server_pushok_bot';n.required=true;save.type='submit';f.append(n,save,notice);d.append(summary,f);box.append(d);
-    try{const info=await api('/support/bot');notice.textContent=info.configured?'Токен настроен':'Ожидает токен BotFather';}catch(e){notice.textContent=e.message;}
-    f.onsubmit=async e=>{e.preventDefault();save.disabled=true;try{await api('/support/bot',{method:'PUT',body:{token:n.value.trim()}});n.value='';notice.textContent='Бот подключён';}catch(err){notice.textContent=err.message;}finally{save.disabled=false;}};}
  }
- return {show};
+ async function showBotSettings(host){
+  host.replaceChildren();
+  if(!hasDeveloperAccess(me))return;
+  const session=token;
+  const form=el('form',undefined,'panel vpn-policy-card');
+  const live=()=>token===session&&host.contains(form);
+  const handle=el('a','@server_pushok_bot');
+  handle.href='https://t.me/server_pushok_bot';handle.target='_blank';handle.rel='noopener noreferrer';
+  const desc=el('p','Личный чат поддержки и предложений · ');desc.append(handle);
+  const label=el('label','Токен бота из BotFather','vpn-field'),input=el('input');
+  input.type='password';input.autocomplete='new-password';input.spellcheck=false;input.required=true;
+  label.append(input);
+  const note=el('p','Проверяем настройки…','muted');note.setAttribute('role','status');
+  const save=el('button','Подключить бота','ui-button labeled-action');save.type='submit';
+  form.append(desc,note,label,save);host.append(form);
+  let submitted=false;
+  function display(configured){
+   note.textContent=configured?'Бот подключён':'Бот ожидает подключения';
+   save.textContent=configured?'Заменить токен':'Подключить бота';
+  }
+  form.onsubmit=async event=>{
+   event.preventDefault();if(save.disabled||!input.value.trim())return;
+   submitted=true;save.disabled=true;input.disabled=true;note.textContent='Проверяем токен в Telegram…';
+   try{
+    await api('/support/bot',{method:'PUT',body:{token:input.value.trim()},session});
+    if(live()){input.value='';display(true);}
+   }catch(err){if(live())note.textContent=err.message;}
+   finally{if(live()){save.disabled=false;input.disabled=false;}}
+  };
+  try{
+   const info=await api('/support/bot',{session});
+   if(live()&&!submitted)display(info.configured);
+  }catch(err){if(live()&&!submitted)note.textContent=err.message;}
+ }
+ return {show,showBotSettings};
 })();
