@@ -47,9 +47,10 @@ def due(p,row,now):
             stage=min(thresholds)
             if not (sub.get('legacy_reminder') and stage==1):
                 yield 'expiry',f"{sub['subscription_id']}:{end}:{stage}",0,days,end
-    if sub and (sub.get('state')!='active' or not sub.get('activity_known')):return
+    unissued = sub and sub.get('first_profile_unissued') and sub.get('state') in ('pending','expired')
+    if sub and not unissued and (sub.get('state')!='active' or not sub.get('activity_known')):return
     seen=row['last_seen']
-    if seen and sub and p['idle_enabled']:
+    if seen and sub and sub.get('state')=='active' and p['idle_enabled']:
         days=(now-seen)//DAY
         if days>=p['idle_days']:
             yield 'idle',str(seen),p['idle_repeat'],days,seen

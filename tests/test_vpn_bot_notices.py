@@ -27,3 +27,12 @@ class VpnNotices(TestCase):
         with patch('bot.vpn_notices.is_test_environment',return_value=True):
             deliver(api,Mock())
         api.assert_not_called()
+
+    def test_reminder_claim_can_wait_for_shop_without_extending_checkout_timeout(self):
+        import io
+        from bot import main
+        with patch.dict('os.environ', BOT_INTERNAL_SECRET='ab'*32), patch.object(main, 'urlopen') as open_url:
+            for route,timeout in [('vpn-reminders/claim',25),('stars/pre-checkout',5)]:
+                open_url.return_value.__enter__.return_value=io.BytesIO(b'{}')
+                main._internal_api(route,{})
+                self.assertEqual(open_url.call_args.kwargs['timeout'],timeout)

@@ -44,6 +44,11 @@ window.pushokVpnSettings=(()=>{
        grid.append(field(k==='idle'?'Дней без подключения':'Дней после регистрации',days),field('Повтор через, дней',repeat));
      }
      inner.append(grid,el('small',k==='expiry'?'Введите сроки через запятую.':'0 в поле повтора — отправить один раз.','muted'));
+     if(k==='never'){
+       const stamp=record.last_first_notice_at;
+       const when=stamp?new Date(stamp*1000).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' МСК':'';
+       inner.append(el('small',when?'Последняя подтверждённая отправка · '+when:'Подтверждённых отправок пока нет.','muted'));
+     }
      const msg=el('textarea');msg.value=p[k+'_text'];msg.required=true;msg.maxLength=700;msg.rows=3;
      inner.append(field('Текст сообщения',msg));
      const tools=el('div',null,'vpn-format');

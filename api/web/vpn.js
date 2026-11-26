@@ -77,6 +77,7 @@ window.pushokVpn = (() => {
     cabinet_stars_disabled:'Оплата Stars для VPN отключена в настройках.',invoice_unavailable:'Telegram не выдал счёт. Повторите открытие этого заказа.',
     telegram_bot_token_not_configured:'Бот для приёма Stars пока не настроен.',vpn_shop_integration:'Магазин не подтвердил связь с кабинетом.',
     vpn_account_conflict:'Этот аккаунт Telegram уже привязан к другому профилю. Обратитесь в поддержку.',
+    vpn_restore_elapsed:'Срок прежней попытки восстановления истёк. Обновите карточку и выберите новый срок.',
     vpn_changed:'Подписка изменилась. Обновите карточку.',
     vpn_profiles_in_use:'Лимит меньше числа действующих дополнительных профилей.',
     vpn_subscription_missing:'Эта подписка больше недоступна.',
@@ -147,7 +148,7 @@ window.pushokVpn = (() => {
     }
     open(expanded,false);
     toggle.onclick=()=>open(panel.hidden||isStatus,false);
-    statusButton.onclick=()=>{open(panel.hidden||!isStatus,true);if(!panel.hidden&&!pending)statusSelect.focus({preventScroll:true});};
+    statusButton.onclick=()=>{open(panel.hidden||(!isStatus&&!pending),true);if(!panel.hidden&&!pending)statusSelect.focus({preventScroll:true});};
     op.onchange=fields;statusSelect.onchange=()=>{op.value=statusSelect.value;fields();};
     if (pending) {
       op.value = pending.action; fields(); qty.value = pending.value;

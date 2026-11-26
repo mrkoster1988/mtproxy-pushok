@@ -44,3 +44,16 @@ class VpnPolicy(unittest.TestCase):
             rendered=notices.format_body(settings.Policy().expiry_text,dict(имя='Тест',срок=notices.days_label(day),дата='01.12.2026'))
             self.assertIn(f'<b>{day} {word}</b>',rendered)
             self.assertIn('01.12.2026',rendered)
+
+    def test_first_notice_for_confirmed_unissued_profile_only(self):
+        p=settings.Policy().model_dump()
+        now=1800000000
+        row=dict(registered=now-86400, ever_used=False, last_seen=0)
+        for state in ('pending','expired'):
+            row['sub']=dict(state=state, first_profile_unissued=True, activity_known=False)
+            self.assertEqual([k for k,*_ in notices.due(p,row,now)],['never'])
+            row['sub']['first_profile_unissued']=False
+            self.assertEqual(list(notices.due(p,row,now)),[])
+        row.update(ever_used=True,last_seen=now-25*86400)
+        row['sub']['first_profile_unissued']=True
+        self.assertEqual(list(notices.due(p,row,now)),[])

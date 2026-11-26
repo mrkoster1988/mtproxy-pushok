@@ -114,7 +114,12 @@ def router_for(get_dsn,current_user):
     @router.get('/settings')
     def settings(user=Depends(current_user)):
         admin(user)
-        with psycopg.connect(get_dsn(),row_factory=dict_row) as conn:return private(read(conn))
+        with psycopg.connect(get_dsn(),row_factory=dict_row) as conn:
+            result = read(conn)
+            result['last_first_notice_at'] = conn.execute(
+                "SELECT max(sent_at) AS stamp FROM vpn_scheduled_notices WHERE kind='never'"
+            ).fetchone()['stamp']
+            return private(result)
 
     @router.put('/settings')
     def save(data:Save,user=Depends(current_user)):

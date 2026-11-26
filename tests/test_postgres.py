@@ -131,6 +131,45 @@ class PostgresIntegration(unittest.TestCase):
         path.write_text(json.dumps(report))
         return path
 
+    def test_first_vpn_notice_reservation_retry_and_confirmed_delivery(self):
+        from app import vpn_reminders, vpn_settings
+        from app.vpn_notices import Receipt
+        from fastapi import FastAPI
+        now = int(time.time())
+        tg = 9820315087123
+        with psycopg.connect(self.dsn) as conn:
+            uid = conn.execute("""INSERT INTO users(telegram_user_id,created_at,first_name)
+                VALUES(%s,to_timestamp(%s),%s) RETURNING id""", (tg, now-90000, 'Тест <&>')).fetchone()[0]
+        sample = dict(activity_schema=1, sampled_at=now, accounts={
+            str(uid): dict(state='pending', first_profile_unissued=True)})
+        with patch.dict(os.environ,DATABASE_URL=self.dsn,BOT_INTERNAL_SECRET='ab'*32), \
+                patch.object(vpn_reminders,'observations',return_value=sample):
+            def claim():
+                return [i for i in vpn_reminders.claim() if i['telegram_id']==tg]
+            item, = claim()
+            self.assertEqual(item['category'],'never')
+            self.assertIn('Тест &lt;&amp;&gt;',item['formatted_body'])
+            self.assertEqual(claim(),[])
+            def finish(row, status):
+                vpn_reminders.finish(Receipt(id=row['id'],lease=row['lease'],status=status),'ab'*32)
+            finish(item,'retry')
+            with psycopg.connect(self.dsn) as conn:
+                conn.execute('UPDATE vpn_scheduled_notices SET next_attempt=0 WHERE id=%s',(item['id'],))
+            retry, = claim()
+            self.assertEqual(item['id'],retry['id'])
+            self.assertNotEqual(item['lease'],retry['lease'])
+            finish(item,'sent')  # A stale acknowledgement cannot confirm the current attempt.
+            with psycopg.connect(self.dsn) as conn:
+                self.assertIsNone(conn.execute('SELECT sent_at FROM vpn_scheduled_notices WHERE id=%s',(item['id'],)).fetchone()[0])
+            finish(retry,'sent')
+            self.assertEqual(claim(),[])
+            app=FastAPI()
+            app.include_router(vpn_settings.router_for(lambda:self.dsn,lambda:{'role':'admin'}))
+            with TestClient(app) as client:
+                report=client.get('/api/v1/vpn/settings')
+                self.assertEqual(report.status_code,200)
+                self.assertGreaterEqual(report.json()['last_first_notice_at'],now)
+
     def test_unified_engine_migration_keeps_legacy_and_allows_safe_plan(self):
         migration = (ROOT / "database/009_unified_engine_selection.sql").read_text()
         node_id, admin_id = uuid4(), uuid4()

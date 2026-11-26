@@ -86,7 +86,7 @@ def change_subscription(actor, subject, change):
                     raise HTTPException(409, {'code': 'vpn_order_issuing', 'order_id': order_id})
             known = {'vpn_subscription_missing','vpn_changed','vpn_profiles_in_use','vpn_limit_range','vpn_days_range',
                      'vpn_order_in_progress','vpn_key_rotation','vpn_node_unavailable','vpn_expiry_schedule_required',
-                     'vpn_pending_operation','vpn_node_unconfirmed','vpn_change_unconfirmed'}
+                     'vpn_restore_elapsed','vpn_pending_operation','vpn_node_unconfirmed','vpn_change_unconfirmed'}
             # Older Shop releases used Russian descriptions for these validated conflicts.
             reasons = {
                 'Есть незавершённый заказ': 'vpn_order_in_progress',
@@ -122,8 +122,14 @@ def router_for(get_dsn, cabinet_user):
     def manage(subject: UUID, change: Change, user=Depends(cabinet_user)):
         if not is_staff(user):
             raise HTTPException(403, 'admin_required')
-        change_subscription(user['id'], subject, change)
         global _expires
+        try:
+            change_subscription(user['id'], subject, change)
+        except HTTPException as error:
+            if error.detail == 'vpn_restore_elapsed':
+                with _lock:
+                    _expires = 0
+            raise
         with _lock:
             _expires = 0
         return {'ok': True}

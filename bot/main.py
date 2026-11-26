@@ -103,7 +103,9 @@ def _internal_api(route, payload):
                  "X-Pushok-Telegram-Environment": environment_name()},
         method="POST",
     )
-    with urlopen(request, timeout=5) as stream:
+    # Reminder claims may wait on Shop presence before reserving recipients in PostgreSQL.
+    timeout = 25 if route == 'vpn-reminders/claim' else 5
+    with urlopen(request, timeout=timeout) as stream:
         return json.load(stream)
 
 
