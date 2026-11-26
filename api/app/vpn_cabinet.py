@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 import psycopg
 from psycopg.rows import dict_row
 import requests
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from .flow_shop_ticket import bridge_key
@@ -123,6 +123,18 @@ def change_subscription(actor, subject, change):
 
 def router_for(get_dsn, cabinet_user):
     router = APIRouter(prefix='/api/v1/vpn')
+
+    @router.get('/users/{subject}/messages')
+    def messages(subject: UUID, source: Literal['vpn','telegram','support']='vpn',
+                 offset: int=Query(0,ge=0,le=2147483600), user=Depends(cabinet_user)):
+        if str(subject)!=str(user['id']) and not is_staff(user):
+            raise HTTPException(403, 'admin_required')
+        if source=='vpn':
+            from .vpn_notices import relay
+            return relay('history', {'subject':str(subject),'offset':offset})
+        from . import recipient_history
+        return JSONResponse(recipient_history.read(get_dsn(),subject,source,offset),
+                            headers={'Cache-Control':'private, no-store'})
 
     @router.post('/users/{subject}/management')
     def manage(subject: UUID, change: Change, user=Depends(cabinet_user)):

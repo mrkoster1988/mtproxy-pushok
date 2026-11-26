@@ -192,7 +192,7 @@ def check_management_navigation(browser, base, output, failures, dsn):
         states={'active':'Активна','expired':'Истекла','revoked':'Отозвана','pending':'Готовится'}
         members=[dict(id=str(uuid4()), name=label, state=state, subscription_id=str(uuid4()),
                       country_code='RU' if state=='active' else 'CH',city='Москва' if state=='active' else 'Берн',
-                      endpoint_ip='192.0.2.1',tunnel_ips=['10.0.0.7'],tariff_name='Тестовый тариф')
+                      plan_notice={'delivery':'waiting_chat'},endpoint_ip='192.0.2.1',tunnel_ips=['10.0.0.7'],tariff_name='Тестовый тариф')
                  for state,label in states.items()]
         admin.route('**/api/v1/vpn/dashboard', lambda route: route.fulfill(json={'can_manage':True,'members':members,'personal':None}))
         admin.evaluate("window.cabinet.go('vpn')")
@@ -222,6 +222,17 @@ def check_management_navigation(browser, base, output, failures, dsn):
             for badge in directory.locator('button[data-subscription]').all():
                 assert badge.evaluate('b=>b.scrollWidth<=b.clientWidth+1 && b.getBoundingClientRect().right<=innerWidth')
         first=directory.locator('.vpn-card').filter(has=admin.locator('[data-subscription=active]'))
+        expect(first.locator('.vpn-mail .ui-icon')).to_have_css('color','rgb(255, 144, 155)')
+        expect(first.locator('details.vpn-details')).not_to_have_attribute('open','')
+        first.get_by_title('Изменить лимит профилей').click()
+        expect(first.get_by_label('Дополнительных профилей')).to_be_visible()
+        first.get_by_role('button',name='Отозвать подписку',exact=True).click()
+        expect(first.get_by_role('checkbox')).not_to_be_checked()
+        first.get_by_role('button',name='Подтвердить отзыв').click()
+        expect(first.get_by_role('checkbox')).not_to_be_checked()
+        first.get_by_role('button',name='Отмена',exact=True).click()
+        expect(first.locator('.vpn-controls')).to_be_hidden()
+        first.locator('.vpn-details summary').click()
         address=first.locator('.vpn-addresses dd')
         expect(address.nth(1)).to_have_text('Москва')
         expect(address.nth(1)).to_have_css('font-style','italic')

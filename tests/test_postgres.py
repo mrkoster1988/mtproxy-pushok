@@ -131,6 +131,27 @@ class PostgresIntegration(unittest.TestCase):
         path.write_text(json.dumps(report))
         return path
 
+    def test_recipient_history_projects_only_outgoing_messages_for_the_selected_account(self):
+        from app import recipient_history
+        from uuid import uuid4
+        uid,other=uuid4(),uuid4()
+        tg,second=int(uid.hex[:12],16),int(other.hex[:12],16)
+        with psycopg.connect(self.dsn) as conn:
+            for key,chat in ((uid,tg),(other,second)):
+                conn.execute('INSERT INTO users(id,telegram_user_id) VALUES(%s,%s)',(key,chat))
+                cid=conn.execute("INSERT INTO support_conversations(telegram_id,category) VALUES(%s,'question') RETURNING id",(chat,)).fetchone()[0]
+                for sender in ('staff','ai-agent','user'):
+                    conn.execute('INSERT INTO support_chat_messages(conversation_id,sender,body) VALUES(%s,%s,%s)',
+                                 (cid,sender,sender+' '+str(key)))
+        for chat in (tg,second):
+            msg={'message_id':7,'chat':{'id':chat},'date':1800000000,'text':'Сообщение '+str(chat)}
+            recipient_history.record(self.dsn,msg)
+            recipient_history.record(self.dsn,msg)
+        items=recipient_history.read(self.dsn,uid,'telegram',0)['items']
+        self.assertEqual([(r['text'],r['delivery']) for r in items],[('Сообщение '+str(tg),'sent')])
+        replies=recipient_history.read(self.dsn,uid,'support',0)['items']
+        self.assertEqual({r['text'] for r in replies},{'staff '+str(uid),'ai-agent '+str(uid)})
+
     def test_first_vpn_notice_reservation_retry_and_confirmed_delivery(self):
         from app import vpn_reminders, vpn_settings
         from app.vpn_notices import Receipt

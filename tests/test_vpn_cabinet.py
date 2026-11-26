@@ -45,6 +45,23 @@ class VpnVisibility(unittest.TestCase):
             self.assertEqual(staff['tariff_name'],'Семейный')
             self.assertEqual(staff['plan_notice'],account['plan_notice'])
 
+    def test_message_history_authorizes_before_any_recipient_lookup(self):
+        user={'id':UUID(int=1),'role':'advertiser'}
+        app=FastAPI()
+        app.include_router(vpn_cabinet.router_for(lambda:'fixture',lambda:user))
+        client=TestClient(app)
+        with patch('app.vpn_notices.relay',return_value={'items':[],'next':None}) as relay, \
+                patch('app.recipient_history.read',return_value={'items':[],'next':None}) as read:
+            for source in ('vpn','telegram','support'):
+                url=f'/api/v1/vpn/users/{UUID(int=2)}/messages?source={source}'
+                self.assertEqual(client.get(url).status_code,403)
+            relay.assert_not_called();read.assert_not_called()
+            self.assertEqual(client.get(f"/api/v1/vpn/users/{user['id']}/messages").status_code,200)
+            relay.assert_called_once_with('history',{'subject':str(user['id']),'offset':0})
+            user['role']='admin'
+            self.assertEqual(client.get(url).status_code,200)
+            read.assert_called_once_with('fixture',UUID(int=2),'support',0)
+
     def test_management_checks_current_role_before_forwarding(self):
         user = {'id': UUID(int=1), 'role':'operator'}
         app = FastAPI()

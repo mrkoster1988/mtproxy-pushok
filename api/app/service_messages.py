@@ -98,6 +98,8 @@ def send(notice, shop=False):
     message = telegram_call(token, 'sendMessage', payload)
     if not message.get('message_id') or (message.get('chat') or {}).get('id') != notice.chat_id:
         raise HTTPException(503, 'service_notice_unconfirmed')
+    from .recipient_history import record
+    record(os.getenv('DATABASE_URL'),message)
     return {'sent': True}
 
 

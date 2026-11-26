@@ -250,3 +250,36 @@ body.cabinet-mode .vpn-policy-card .vpn-format button{width:auto;min-width:32px;
   font-weight: 700;
   text-shadow: 0 0 8px #ffc35080;
 }
+
+.cabinet-mode .vpn-card {display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:0 6px}
+.cabinet-mode .vpn-card > * {grid-column:1/-1;min-width:0}
+.cabinet-mode .vpn-card .tile-heading {display:flex;align-items:center;gap:6px}
+.cabinet-mode .vpn-card .tile-heading > div {min-width:0;flex:1}
+.cabinet-mode .vpn-card .vpn-status-stack {display:flex;align-items:center;gap:2px;max-width:none;margin-inline-start:auto}
+.cabinet-mode .vpn-card .vpn-status-stack button.vpn-pencil,.cabinet-mode .vpn-card .vpn-revoke,
+.cabinet-mode .vpn-card .vpn-mail {display:inline-grid;place-items:center;flex:none;width:32px;height:32px;min-width:0;min-height:0;margin:0;padding:0;background:transparent;border:0;border-radius:8px;color:var(--mint)}
+.cabinet-mode .vpn-card .vpn-revoke,.cabinet-mode .vpn-card .vpn-mail:is([data-delivery=blocked],[data-delivery=retry],[data-delivery=queued],[data-delivery=waiting_chat],[data-delivery=paused]) {color:#ff909b}
+.vpn-card .vpn-mail[data-delivery=unknown],.vpn-card .vpn-mail[data-delivery=none]{opacity:.7}
+.cabinet-mode .vpn-card .vpn-dates{align-items:center;justify-content:start;gap:6px;margin:3px 0}
+.vpn-card .vpn-terms-line{display:flex;align-items:baseline;gap:5px;flex-wrap:wrap;flex:1}
+.cabinet-mode .vpn-card .vpn-tariff,.cabinet-mode .vpn-card .vpn-limit{width:auto;min-width:0;min-height:0;margin:0;padding:3px 0;border:0;background:transparent;color:var(--mint);font:inherit;text-align:start}
+.cabinet-mode .vpn-card .vpn-tariff.vpn-premium-label{color:#ffe3a0}
+.cabinet-mode .vpn-card .vpn-details,.cabinet-mode .vpn-card .vpn-summary-tools {grid-row:3;border-top:1px solid var(--line-soft)}
+.cabinet-mode .vpn-card .vpn-details{grid-column:1/-1}
+.vpn-details > summary{width:fit-content;cursor:pointer;color:var(--muted);line-height:32px;font-size:13px}
+.cabinet-mode .vpn-card .vpn-summary-tools {grid-column:2;justify-self:end;border:0;align-self:start;padding-top:2px}
+.cabinet-mode .vpn-card .vpn-limit{font-size:12px;min-height:30px}
+.vpn-details .vpn-facts{display:grid;grid-template-columns:1fr 1fr}
+.vpn-card .vpn-controls [hidden]{display:none!important}
+.vpn-card .vpn-controls[data-mode=tariff]>.vpn-rule>summary{display:none}
+.vpn-card .vpn-controls[data-mode=revoke] button[type=submit]{color:#fff;background:#9c3548}
+.vpn-history-tabs{display:flex;flex-wrap:wrap;gap:4px}
+.cabinet-mode .vpn-history-tabs button{width:auto;min-height:34px;padding:4px 10px;font-size:13px}
+.vpn-history-tabs [aria-pressed=true]{border-color:var(--mint);color:var(--mint)}
+.vpn-history-entry{padding:12px 0;border-bottom:1px solid var(--line-soft)}
+.vpn-history-entry header{display:flex;gap:6px;align-items:baseline;justify-content:space-between}
+.vpn-history-entry small{color:var(--muted)}
+.vpn-history-entry p{white-space:pre-line;overflow-wrap:anywhere;margin:5px 0}
+.vpn-history-entry a{display:block}
+.vpn-delivery[data-delivery=blocked],.vpn-delivery[data-delivery=waiting_chat]{color:#ff909b}
+.cabinet-mode .vpn-card .vpn-mail .ui-icon,.cabinet-mode .vpn-card .vpn-revoke .ui-icon{color:inherit}
