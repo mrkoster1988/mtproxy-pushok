@@ -671,6 +671,7 @@
   if(!allowed){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}
   if($('notice').dataset.route!==location.hash)$('notice').hidden=true;
   if(name!=='management'||section!=='ai-bot')$('support-bot-settings').replaceChildren();
+  if(name==='users'&&!['users','user','member'].includes(previousRoute))window.pushokUsers.defaultSort();
   topHelp.open=false;state.route=name;Object.entries(pages).forEach(([key,page])=>page.hidden=key!==name);
   $('advertiser').hidden=true;$('operator').hidden=true;
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);

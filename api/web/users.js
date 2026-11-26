@@ -16,6 +16,9 @@ window.pushokUsers=(()=>{
   return {root,input,set,resolve,disable(flag){root.hidden=flag;input.disabled=flag;search.disabled=flag;}};
  }
  let directoryView=null;
+ function defaultSort(){
+  if(directoryView){directoryView.sort='newest';directoryView.page=0;}
+ }
  function directory(target){
   if(!['admin','operator'].includes(me?.role)){target.replaceChildren();return;}
   const session=token,uid=me.id;
@@ -26,15 +29,21 @@ window.pushokUsers=(()=>{
   const sorting=el('select'),sortLabel=el('label','Сортировка');
   sortLabel.className='directory-sort';sorting.setAttribute('aria-label','Сортировка пользователей');
   for(const [key,title] of [['newest','Сначала новые'],['recent','По последнему входу'],['oldest','Сначала ранние'],['name','По имени (А–Я)']])option(sorting,key,title);
-  sorting.value=view.sort;sortLabel.append(sorting);
+  sorting.autocomplete='off';sorting.value=view.sort;sortLabel.append(sorting);
   search.type='search';search.placeholder=me?.role==='admin'?'Никнейм, имя или ID':'Имя или ID';search.setAttribute('aria-label','Поиск пользователей');search.maxLength=100;role.setAttribute('aria-label','Категория пользователя');option(role,'','Все категории');for(const key of ['user','advertiser','friends','moderator','operator','admin','developer'])option(role,key,window.pushokTeam.roles[key]);visited.type='checkbox';vl.prepend(visited);const submit=el('button','Найти');submit.type='submit';search.value=view.query;role.value=view.role;visited.checked=view.visited;form.append(search,role,submit,sortLabel,vl);target.replaceChildren(form,window.pushokProfiles.agentCard('users'),summary,list,nav);
   list.addEventListener('friend-mark-changed',()=>{if(view.role==='friends')void load();});
   async function load(){const seq=++serial;Object.assign(view,{query:search.value.trim(),role:role.value,visited:visited.checked,sort:sorting.value,page});summary.textContent='Загрузка пользователей…';try{const data=await api('/admin/users?'+new URLSearchParams({query:search.value.trim(),category:role.value,visited:visited.checked,sort:sorting.value,page}));if(seq!==serial||session!==token||uid!==me?.id||!form.isConnected||location.hash!=='#/users')return;list.replaceChildren();nav.replaceChildren();summary.textContent='Пользователей: '+data.total;
-   for(const user of data.items){const row=el('article',undefined,'card directory-user');const access=window.pushokTeam.roleControl(user);row.append(window.pushokProfiles.compact(user,'users'),access.badge,access.editor,el('p',user.last_login_at?'Последний вход: '+date(user.last_login_at):'Вход в приложение ещё не зафиксирован.','muted'));list.append(row);}
+   const byRegistration=sorting.value==='newest'||sorting.value==='oldest';
+   for(const user of data.items){
+    const row=el('article',undefined,'card directory-user'),access=window.pushokTeam.roleControl(user);
+    const timestamp=byRegistration?'Регистрация · '+date(user.created_at):
+      user.last_login_at?'Последний вход: '+date(user.last_login_at):'Вход в приложение ещё не зафиксирован.';
+    row.append(window.pushokProfiles.compact(user,'users'),access.badge,access.editor,el('p',timestamp,'muted'));list.append(row);
+   }
    if(!data.items.length)list.append(el('p','Пользователи не найдены. Измените поиск или фильтр.','empty'));
    if(page)nav.append(button('Предыдущие',()=>{page--;return load();}));if(data.more)nav.append(button('Следующие',()=>{page++;return load();}));
   }catch(e){if(seq===serial&&session===token&&form.isConnected){summary.textContent=e.message;list.replaceChildren(button('Повторить',load));}}}
   form.addEventListener('submit',e=>{e.preventDefault();page=0;void load();});sorting.addEventListener('change',()=>{page=0;void load();});role.addEventListener('change',()=>{page=0;void load();});visited.addEventListener('change',()=>{page=0;void load();});void load();
  }
- return {picker,directory,caption};
+ return {picker,directory,caption,defaultSort};
 })();

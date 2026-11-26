@@ -15,6 +15,11 @@ def check_admin_users(browser,base,output,failures,dsn):
         for i,(role,uid) in enumerate(ids.items()):
             conn.execute('INSERT INTO users(id,telegram_user_id,role,first_name,username) VALUES(%s,%s,%s,%s,%s)',(uid,99883400+i,'advertiser' if role=='new_staff' else role,'Каталог '+role,'directory_'+role))
             sid=uuid4();conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')",(sid,uid));tokens[role]=api._create_session_token(uid,sid)
+        # Opposite registration and login orders, restricted to this fixture's search below.
+        conn.execute("""UPDATE users SET created_at=now()-interval '2 days',last_login_at=clock_timestamp()
+                        WHERE id=%s""",(ids['admin'],))
+        conn.execute("""UPDATE users SET created_at=clock_timestamp(),last_login_at=now()-interval '1 day'
+                        WHERE id=%s""",(ids['new_staff'],))
         conn.execute("INSERT INTO tariffs(id,name,duration_seconds,price_kopecks,stars_price_xtr) VALUES(%s,'Каталог тариф',3600,10000,100)",(tariff,))
         conn.execute("INSERT INTO sponsor_channels(id,owner_user_id,title,telegram_url) VALUES(%s,%s,'Кампания из каталога','https://t.me/directory_campaign')",(channel,ids['advertiser']))
         conn.execute("INSERT INTO campaigns(id,advertiser_user_id,channel_id,tariff_id,tariff_name_snapshot,duration_seconds_snapshot,price_kopecks_snapshot,currency_snapshot) VALUES(%s,%s,%s,%s,'Каталог тариф',3600,10000,'RUB')",(campaign,ids['advertiser'],channel,tariff))
@@ -37,6 +42,19 @@ def check_admin_users(browser,base,output,failures,dsn):
         card=admin.locator('.campaign-tile').filter(has_text='Кампания из каталога');card.get_by_role('link',name='Открыть кампанию Кампания из каталога').click();expect(admin.locator('#queue')).to_contain_text('Кампания из каталога')
         go(admin,'profile');admin.get_by_role('link',name='Пользователи',exact=True).click()
         sort=admin.get_by_label('Сортировка пользователей',exact=True)
+        expect(sort).to_have_value('newest')
+        search=admin.get_by_label('Поиск пользователей',exact=True)
+        search.fill('directory_');admin.locator('.directory-search button[type=submit]').click()
+        first=admin.locator('.user-directory .directory-user').first
+        expect(first).to_contain_text('@directory_new_staff')
+        expect(first).to_contain_text('Регистрация ·')
+        sort.select_option('recent')
+        expect(first).to_contain_text('@directory_admin')
+        expect(first).to_contain_text('Последний вход:')
+        go(admin,'profile');admin.get_by_role('link',name='Пользователи',exact=True).click()
+        expect(sort).to_have_value('newest')
+        expect(first).to_contain_text('@directory_new_staff')
+        expect(first).to_contain_text('Регистрация ·')
         sort.select_option('name')
         admin.get_by_label('Поиск пользователей',exact=True).fill('@directory_advertiser');admin.locator('.directory-search button[type=submit]').click()
         row=admin.locator('.user-directory .directory-user');expect(row).to_have_count(1);expect(row).to_contain_text('Последний вход:')
