@@ -59,7 +59,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="2.37",
+    version="2.38",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)

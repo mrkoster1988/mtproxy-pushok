@@ -93,6 +93,15 @@ window.pushokVpn = (() => {
     link.href=installers[platform]||'https://www.wireguard.com/install/';link.target='_blank';link.rel='noopener noreferrer';
     link.prepend(window.pushokViews.icon('download'));return link;
   }
+  function androidDownloadLink() {
+    const link=el('a',undefined,'dashboard-flow-download');
+    link.href='/api/v1/vpn/flow.apk';link.download='';
+    link.append(window.pushokViews.icon('download'),el('span','Скачать Pushok Flow'),el('small','Android'));
+    link.addEventListener('click',event=>{
+      if(typeof window.Telegram?.WebApp?.openLink==='function'){event.preventDefault();download();}
+    });
+    return link;
+  }
   function download() {
     const url=new URL('/api/v1/vpn/flow.apk',location.origin).href;
     const app=window.Telegram?.WebApp;
@@ -272,6 +281,7 @@ window.pushokVpn = (() => {
     }
     tile.append(head);
     const details=el('details',undefined,'vpn-details'),summary=el('summary','Подробности');
+    details.open=own&&!admin;
     details.append(summary);
     const body=row?details:tile;
     if(row) {
@@ -316,11 +326,14 @@ window.pushokVpn = (() => {
       if(row.state==='revoked')body.append(el('p','Доступ отозван'+(row.revoked_at?' '+date(row.revoked_at):'')+
         '. Прежний ключ отключён. Для повторного подключения нужен новый профиль.','vpn-revoked-note'));
     } else tile.append(el('p','У аккаунта пока нет VPN-подписки.','tile-period'));
-    if(own){
+    if(own&&admin){
       const actions=el('div',undefined,'vpn-links'),get=installer(localSystem());
       if(!row?.is_premium)actions.append(renewLink());actions.append(get);body.append(actions);
       const widget=el('a','Моя подписка в Telegram','ui-button labeled-action');
       widget.href='https://t.me/mtproxy_pushok_bot?start=subscription';widget.target='_blank';widget.rel='noopener noreferrer';body.append(widget);
+    }else if(own&&row){
+      const platform=localSystem();
+      if(installers[platform])body.append(installer(platform));
     }
     if(admin){
       if(edit)tile.append(edit.panel);
@@ -384,6 +397,7 @@ window.pushokVpn = (() => {
       const row=selected||(own?data.personal:null);
       host.replaceChildren();
       if(!admin||!directory)host.append(card(row,subject,own&&directory?'Моя подписка':'VPN · Pushok Flow',own,admin,reload));
+      if(own&&!admin)host.append(androidDownloadLink());
       if(directory&&admin){
         const settings=el('a','Настройки VPN','ui-button');settings.href='#/management/vpn';
         host.prepend(settings,usageSummary((data.members||[]).filter(r=>r.id!==subject)));
@@ -403,7 +417,7 @@ window.pushokVpn = (() => {
       if(host.isConnected&&session===token){
         const retry=button('Обновить сведения',reload);
         host.replaceChildren(el('p','Не удалось загрузить сведения о подписке.','muted'),retry);
-        if(own&&!staff())offers();
+        if(own&&!staff()){host.append(androidDownloadLink());offers();}
         else if(own&&!directory)host.append(renewLink());
       }
     }
@@ -412,5 +426,5 @@ window.pushokVpn = (() => {
     if (id !== me?.id && !staff()) return;
     const block = el('div',undefined,'vpn-profile'); target.append(block); void show(block,id,false);
   }
-  return {download,load:(target,section)=>{if(section==='messages')return window.pushokVpnHistory.show(target,location.hash.split('/')[3]);if(section==='renew')return window.pushokVpnRenew.show(target);reset();return show(target,me?.id,true);},historyBack:()=>historyFrom,renewBack:()=>renewFrom,badge,profile,reset};
+  return {androidDownloadLink,download,load:(target,section)=>{if(section==='messages')return window.pushokVpnHistory.show(target,location.hash.split('/')[3]);if(section==='renew')return window.pushokVpnRenew.show(target);reset();return show(target,me?.id,true);},historyBack:()=>historyFrom,renewBack:()=>renewFrom,badge,profile,reset};
 })();

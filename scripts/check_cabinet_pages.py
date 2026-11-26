@@ -990,7 +990,8 @@ def main():
                     oid='00000000-0000-4000-8000-000000000209'
                     mini.route('**/api/v1/vpn/plans',lambda route:route.fulfill(json={
                         'available':True,'plans':[{'name':'На неделю','id':'week','version':1,'days':7,'amount':79},
-                            {'name':'На месяц','id':'month','version':1,'days':30,'amount':199}],
+                            {'name':'На месяц','id':'month','version':1,'days':30,'amount':199},
+                            {'name':'На год','id':'year','version':1,'days':365,'amount':1000}],
                         'terms':'Условия тестового тарифа','policy_version':1}))
                     mini.route('**/api/v1/vpn/checkout',lambda route:route.fulfill(json={
                         'id':oid,'status':'pending','payment_url':'https://t.me/$vpn_test_invoice'}))
@@ -998,24 +999,38 @@ def main():
                     mini.route('**/api/v1/vpn/orders/'+oid,lambda route:route.fulfill(json=receipt_state))
                     personal={'state':'active','tariff_name':'Пробный','received':100,'sent':10,'is_premium':False}
                     mini.route('**/api/v1/vpn/dashboard',lambda route:route.fulfill(json={'personal':personal,'can_manage':False}))
+                    mini.evaluate("window.Telegram.WebApp.platform='android'")
                     mini.locator('.mobile-bottom-nav a[data-route=vpn]').click()
                     vpn_page=mini.locator('[data-page=vpn]')
-                    expect(vpn_page.locator('.vpn-inline-offers .vpn-plan')).to_have_count(2)
+                    expect(vpn_page.locator('.vpn-inline-offers .vpn-plan')).to_have_count(3)
+                    expect(vpn_page.locator('.vpn-card details')).to_have_js_property('open',True)
+                    download=vpn_page.locator('.vpn-card + .dashboard-flow-download')
+                    expect(download).to_have_attribute('href','/api/v1/vpn/flow.apk')
+                    expect(vpn_page.locator('.dashboard-flow-download + .vpn-inline-offers')).to_be_visible()
+                    expect(vpn_page.get_by_role('link',name='Продлить')).to_have_count(0)
+                    expect(vpn_page.get_by_role('link',name='Моя подписка в Telegram')).to_have_count(0)
                     expect(vpn_page.locator('.vpn-usage,.vpn-directory')).to_have_count(0)
                     expect(mini.locator('.mobile-bottom-nav [data-route=moderation]')).to_be_hidden()
                     vpn_page.get_by_role('radio',name='На месяц',exact=False).check()
                     pay_vpn=mini.get_by_role('button',name='Оплатить 199 ⭐')
                     expect(pay_vpn).to_have_text('Оплатить 199 ⭐')
-                    expect(pay_vpn).to_be_disabled()
+                    terms=vpn_page.locator('.vpn-renew .campaign-pay-action + details')
+                    expect(terms).to_have_js_property('open',False)
+                    expect(terms.get_by_role('checkbox',include_hidden=True)).to_be_hidden()
+                    for width in (320,390):
+                        mini.set_viewport_size({'width':width,'height':844})
+                        assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                    vpn_page.locator('.vpn-stack').screenshot(path=str(output/'vpn-personal-offers.png'))
+                    pay_vpn.click()
+                    expect(terms).to_have_js_property('open',True)
+                    expect(terms.get_by_role('checkbox')).to_be_focused()
+                    assert not any(method=='POST' and url.endswith('/api/v1/vpn/checkout') for method,url in mini_requests)
                     mini.get_by_label('Принимаю условия оплаты').check()
                     pay_vpn.click()
                     mini.wait_for_function("window.__miniInvoiceUrl==='https://t.me/$vpn_test_invoice'")
                     mini.evaluate("window.__miniInvoiceCallback('failed')")
                     expect(mini.get_by_text('Telegram не завершил оплату.',exact=False)).to_be_visible()
-                    top_up=mini.get_by_role('link',name='Пополнить через @PremiumBot')
-                    expect(top_up).to_have_attribute('href','https://t.me/PremiumBot')
-                    top_up.click()
-                    assert mini.evaluate('window.__miniLink')=='https://t.me/PremiumBot'
+                    expect(vpn_page.locator('a[href*="PremiumBot"]')).to_have_count(0)
                     # Reopen the Mini App without its old checkout session. Only the order ID survives.
                     mini.evaluate("Object.keys(sessionStorage).filter(k=>k.startsWith('pushok-vpn-order:')).forEach(k=>sessionStorage.removeItem(k))")
                     go(mini,'vpn/renew')
@@ -1034,7 +1049,7 @@ def main():
                     expect(mini).to_have_url(base+'/miniapp#/vpn/renew')
                     mini.locator('.mobile-bottom-nav a[data-route=profile]').click()
                     expect(mini.locator('[data-page=profile]')).to_be_visible()
-                    expect(mini.locator('[data-page=profile] .vpn-inline-offers .vpn-plan')).to_have_count(2)
+                    expect(mini.locator('[data-page=profile] .vpn-inline-offers .vpn-plan')).to_have_count(3)
                     expect(mini.locator('[data-page=profile] .vpn-usage')).to_have_count(0)
                     personal['is_premium']=True
                     go(mini,'vpn')

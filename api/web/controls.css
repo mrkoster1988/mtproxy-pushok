@@ -220,6 +220,8 @@ body.cabinet-mode .vpn-policy-card .vpn-format button{width:auto;min-width:32px;
 .cabinet-mode .dashboard-hero-actions > .dashboard-subscription { grid-row: 2; }
 .cabinet-mode .dashboard-hero-actions > .dashboard-flow-download {
   grid-row: 3;
+}
+.cabinet-mode .dashboard-flow-download {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -241,6 +243,11 @@ body.cabinet-mode .vpn-policy-card .vpn-format button{width:auto;min-width:32px;
 .dashboard-flow-download small { color: #22553c; font-size: .72em; }
 .dashboard-flow-download:focus-visible { outline: 2px solid #a8ffd0; outline-offset: 3px; }
 .dashboard-flow-download:hover { filter: brightness(1.1); }
+.cabinet-mode .vpn-stack > .dashboard-flow-download {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+}
 .cabinet-mode .vpn-card.vpn-premium {
   border-color: #aa8541;
   box-shadow: 0 0 0 1px #e4b55524, 0 0 16px #ce9e3728;
@@ -314,11 +321,46 @@ body.cabinet-mode .vpn-policy-card .vpn-format button{width:auto;min-width:32px;
 .wallet-deposit:focus-visible {outline:3px solid currentColor;outline-offset:3px}
 
 .vpn-inline-offers:empty {display:none}
-.cabinet-mode .vpn-inline-offers .vpn-plans {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(130px,100%),1fr));gap:8px;margin:0;padding:0;border:0}
-.vpn-inline-offers .vpn-plans legend {font-size:1.05rem;font-weight:700;margin-bottom:10px}
-.cabinet-mode .vpn-inline-offers .vpn-plan {display:grid;grid-template-columns:1fr auto;align-content:start;gap:6px;padding:12px;min-width:0;border:1px solid var(--line);border-radius:12px}
-.vpn-inline-offers .vpn-plan span {grid-column:1;grid-row:1;min-width:0;overflow-wrap:anywhere}
-.vpn-inline-offers .vpn-plan input {grid-column:2;grid-row:1}
-.vpn-inline-offers .vpn-plan b {grid-column:1 / -1}
-.cabinet-mode .vpn-inline-offers .vpn-plan:has(input:checked) {border-color:var(--mint);background:var(--surface)}
-.vpn-inline-offers .campaign-pay-action {width:100%;min-height:44px}
+.cabinet-mode .vpn-renew .vpn-plans {
+  display: grid;
+  gap: 7px;
+}
+.vpn-renew .vpn-plans legend {
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding-bottom: 10px;
+}
+.cabinet-mode .vpn-renew .vpn-plan {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 60px;
+  padding: 9px 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.vpn-renew .vpn-plan span { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; line-height: 1.25; }
+.vpn-renew .vpn-plan small { font-weight: 400; }
+.cabinet-mode .vpn-renew :is(.vpn-plan, .vpn-consent) input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+}
+.vpn-renew .vpn-plan b { color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cabinet-mode .vpn-renew .vpn-plan:has(input:checked) {
+  border-color: var(--mint);
+  background: linear-gradient(110deg, #3bcfbd1f, #3bcfbd07);
+}
+.vpn-renew .vpn-plan:has(input:focus-visible) { outline: 2px solid var(--mint); outline-offset: 2px; }
+.cabinet-mode .vpn-renew > .campaign-pay-action { min-height: 46px; animation: none; }
+.vpn-renew .vpn-terms { margin: 8px 0 0; }
+.vpn-renew .vpn-terms summary { width: fit-content; cursor: pointer; padding: 8px 0; }
+.cabinet-mode .vpn-renew .vpn-consent { flex-direction: row; justify-content: flex-start; min-height: 44px; margin: 0; }
+.vpn-renew > [role=status]:empty { display: none; }
+@media (min-width: 720px) {
+  .cabinet-mode .vpn-renew .vpn-plans { grid-template-columns: repeat(auto-fit, minmax(min(205px, 100%), 1fr)); }
+}
