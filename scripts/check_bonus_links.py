@@ -63,15 +63,7 @@ def check_bonus_links(browser,base,output,failures,dsn):
         expect(page.locator('.wallet-entry').filter(has_text='Подарок по ссылке')).to_have_count(1)
         with psycopg.connect(dsn) as conn:
             assert conn.execute('SELECT count(*) FROM wallet_gift_redemptions WHERE gift_id=%s',(gift,)).fetchone()[0]==1
-        page.locator('[data-wallet-section=telegram] > summary').click()
-        expect(page.get_by_text('В Telegram откройте',exact=False)).to_be_visible()
-        bot=page.evaluate('window.cabinetBotConfig.telegram_bot_username')
-        if bot:
-            link=page.get_by_role('link',name='Открыть чат со ссылкой на мои звёзды')
-            expect(link).to_have_attribute('href','https://t.me/'+bot+'?start=stars')
-            page.evaluate('window.Telegram.WebApp.openTelegramLink=url=>window.clickedStars=url')
-            link.click()
-            assert page.evaluate('window.clickedStars')=='https://t.me/'+bot+'?start=stars'
+        expect(page.locator('[data-wallet-section=telegram]')).to_have_count(0)
         page.screenshot(path=str(output/'51-gift-deeplink-mobile.png'),full_page=True)
     finally:page.context.close()
 
