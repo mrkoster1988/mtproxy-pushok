@@ -96,10 +96,19 @@ window.pushokVpn = (() => {
   function download() {
     const url=new URL('/api/v1/vpn/flow.apk',location.origin).href;
     const app=window.Telegram?.WebApp;
-    if(app?.isVersionAtLeast?.('8.0') && typeof app.downloadFile==='function') {
-      app.downloadFile({url,file_name:'Pushok-Flow.apk'});return;
+    if(typeof app?.openLink==='function'){
+      const android=/^android(?:_x)?$/.test(app.platform)||/Android/i.test(navigator.userAgent);
+      try{
+        app.openLink(url,android?{try_browser:'chrome'}:{});
+      }catch{
+        // Older clients can still use a regular download link.
+        const fallback=el('a','Скачать APK','ui-button');fallback.href=url;fallback.download='';
+        notice('Откройте ссылку для загрузки Pushok Flow.',false,{actions:[fallback]});return;
+      }
+      if(android)notice('После загрузки откройте APK в браузере или в «Мои файлы → Загрузки».',true);
+      return;
     }
-    const link=el('a');link.href=url;link.download='Pushok-Flow.apk';document.body.append(link);link.click();link.remove();
+    const link=el('a');link.href=url;link.download='';document.body.append(link);link.click();link.remove();
   }
   Object.assign(errors,{
     vpn_order_in_progress:'Магазин предыдущей версии заблокировал изменение из-за заказа. Обновите Shop и повторите.',

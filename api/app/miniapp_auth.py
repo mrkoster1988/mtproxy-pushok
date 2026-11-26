@@ -53,4 +53,4 @@ def validate_init_data(raw, bot_token, *, now=None):
     # Отдельное пространство replay-ключей от Login Widget; порядок URL не влияет.
     replay = hashlib.sha256(('miniapp:' + expected).encode()).hexdigest()
     return {k: user.get(k) for k in ('id', 'first_name', 'last_name', 'username')} | {
-        'auth_date': auth_date, 'hash': replay}
+        'auth_date': auth_date, 'hash': replay, 'start_param': data.get('start_param', '')}

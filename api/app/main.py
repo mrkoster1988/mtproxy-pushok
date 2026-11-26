@@ -58,7 +58,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="2.24",
+    version="2.25",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -512,9 +512,9 @@ def remember_browser_session(response, token, lifetime):
 
 
 @app.post("/api/v1/auth/telegram", response_model=SessionResponse, tags=["authentication"])
-def telegram_login(payload: TelegramLoginPayload, response: Response) -> SessionResponse:
+def telegram_login(payload: TelegramLoginPayload, response: Response, request: Request) -> SessionResponse:
     _verify_telegram_login(payload)
-    session = _start_telegram_session(payload)
+    session = _start_telegram_session(payload, referral_codes=(request.cookies.get('__Host-pushok_invite'),))
     remember_browser_session(response, session.access_token, session.expires_in)
     return session
 
@@ -550,16 +550,19 @@ class MiniAppLoginPayload(BaseModel):
 
 
 @app.post('/api/v1/auth/telegram/miniapp', response_model=SessionResponse, tags=['authentication'])
-def miniapp_login(payload: MiniAppLoginPayload, response: Response):
+def miniapp_login(payload: MiniAppLoginPayload, response: Response, request: Request):
     response.headers['Cache-Control'] = 'private, no-store'
     if os.getenv('PUSHOK_MINIAPP_ENABLED', '0') != '1':
         raise HTTPException(409, 'miniapp_disabled')
     bot_token = _required_secret(TELEGRAM_BOT_TOKEN, 'TELEGRAM_BOT_TOKEN').decode()
     verified = validate_init_data(payload.init_data, bot_token)
-    return _start_telegram_session(TelegramLoginPayload(**verified), surface="telegram")
+    start = verified.pop('start_param')
+    invite = re.fullmatch(r'(?:r_|ref_)([A-Za-z0-9_-]{3,48})', start)
+    return _start_telegram_session(TelegramLoginPayload(**verified), surface="telegram",
+        referral_codes=(invite[1] if invite else None, request.cookies.get('__Host-pushok_invite')))
 
 
-def _start_telegram_session(payload: TelegramLoginPayload, *, surface="web") -> SessionResponse:
+def _start_telegram_session(payload: TelegramLoginPayload, *, surface="web", referral_codes=()) -> SessionResponse:
     _required_secret(SESSION_SIGNING_KEY, 'SESSION_SIGNING_KEY')
     session_id = uuid4()
     expires_at = datetime.fromtimestamp(
@@ -592,12 +595,14 @@ def _start_telegram_session(payload: TelegramLoginPayload, *, surface="web") -> 
                         last_name = EXCLUDED.last_name,
                         username = EXCLUDED.username,
                         updated_at = now()
-                    RETURNING id,blocked_at
+                    RETURNING id,blocked_at,(xmax=0) AS registered
                     """,
                     (payload.id, payload.first_name, payload.last_name, payload.username),
                 ).fetchone()
                 if user['blocked_at'] is not None:
                     raise HTTPException(403, 'user_blocked')
+                if user['registered']:
+                    attribute_registration(connection, user['id'], referral_codes)
                 cursor.execute(
                     """
                     INSERT INTO user_sessions (id, user_id, expires_at, login_surface)
@@ -2911,7 +2916,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=2.24" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=2.25" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
@@ -3319,7 +3324,7 @@ app.include_router(default_sponsor_router(lambda: DATABASE_URL, require_admin))
 from .campaign_notices import router as campaign_notice_router
 app.include_router(campaign_notice_router)
 
-from .growth import router_for as growth_router_for
+from .growth import attribute_registration, router_for as growth_router_for
 app.include_router(growth_router_for(lambda: DATABASE_URL, get_current_user, require_admin))
 
 from .wallet import router_for as wallet_router_for

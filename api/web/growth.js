@@ -92,7 +92,7 @@ window.pushokGrowth=(()=>{
   const wallet=el('a','Баланс и история операций →');wallet.href='#/wallet';p.append(wallet);
   if(!mine.invitations.length)p.append(el('p','Принятых приглашений пока нет.'));
   else p.append(el('p','Последние 100 приглашений. Для каждого сохранены условия на момент принятия.','muted'));
-  const labels={previous_inviter:'Награда была выдана до переназначения',waiting:'Приглашение принято · награды пока нет',rewarded:'Награда выдана',reversed:'Награда отменена после возврата'};
+  const labels={unrewarded:'Прямая регистрация · программа наград была на паузе',previous_inviter:'Награда была выдана до переназначения',waiting:'Приглашение принято · награды пока нет',rewarded:'Награда выдана',reversed:'Награда отменена после возврата'};
   for(const r of mine.invitations){
    const row=el('article',undefined,'card');row.append(el('h3',labels[r.status]));
    if(r.status==='rewarded'||r.status==='reversed')row.append(el('p',rewardDescription(r)));

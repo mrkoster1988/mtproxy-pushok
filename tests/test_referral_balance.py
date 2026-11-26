@@ -130,6 +130,23 @@ class ReferralBalanceIntegration(unittest.TestCase):
         self.assertEqual(friend_entries[0]['source'],'direct')
         self.assertEqual(friend_entries[0]['campaign_id'],str(cid))
 
+    def test_direct_signup_while_paused_does_not_issue_a_reward_after_resume(self):
+        from app.growth import attribute_registration
+        self.settings(referrals_enabled=False)
+        with psycopg.connect(self.dsn, row_factory=dict_row) as conn:
+            conn.execute("UPDATE users SET is_owner=false WHERE is_owner")
+            conn.execute("UPDATE users SET is_owner=true WHERE id=%s", (self.admin,))
+            attribute_registration(conn, self.friend, ())
+        self.settings()
+        cid = self.order()
+        self.external(cid)
+        self.complete(cid)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute("SELECT inviter_user_id FROM growth_referrals WHERE referred_user_id=%s",
+                                          (self.friend,)).fetchone(), (self.admin,))
+            self.assertEqual(conn.execute("SELECT count(*) FROM growth_wallet_rewards WHERE referred_user_id=%s",
+                                          (self.friend,)).fetchone(), (0,))
+
     def test_concurrent_first_completions_only_one_reward(self):
         self.bind();cids=[self.order(),self.order()]
         for cid in cids:self.external(cid)

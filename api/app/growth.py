@@ -206,14 +206,19 @@ def check_referral_cycle(conn, uid, inviter_id):
         raise HTTPException(409, 'growth_invitation_unavailable')
 
 
+def referral_inviter(conn, code):
+    code = normalize_code(code)
+    return conn.execute('''SELECT user_id FROM growth_profiles WHERE code=%s
+        UNION SELECT user_id FROM growth_referral_links WHERE code=%s''', (code, code)).fetchone()
+
+
 def claim_referral(conn, uid, code):
     conn.execute('SELECT pg_advisory_xact_lock(736102484)')
     conn.execute('SELECT id FROM users WHERE id=%s FOR UPDATE', (uid,))
     settings = conn.execute('SELECT * FROM growth_settings').fetchone()
     if not settings['referrals_enabled']:
         raise HTTPException(409, 'growth_referrals_disabled')
-    inviter = conn.execute('''SELECT user_id FROM growth_profiles WHERE code=%s
-        UNION SELECT user_id FROM growth_referral_links WHERE code=%s''', (normalize_code(code),normalize_code(code))).fetchone()
+    inviter = referral_inviter(conn, code)
     if not inviter or inviter['user_id'] == uid:
         raise HTTPException(409, 'growth_invitation_unavailable')
     old = conn.execute('SELECT inviter_user_id FROM growth_referrals WHERE referred_user_id=%s', (uid,)).fetchone()
@@ -227,8 +232,31 @@ def claim_referral(conn, uid, code):
     conn.execute('''INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days,reward_mode,reward_bonus_kopecks)
         VALUES(%s,%s,%s,%s,%s,%s)''', (uid, inviter['user_id'], settings['reward_percent'], settings['reward_days'],
                                    settings['reward_mode'], settings['reward_bonus_kopecks']))
+    conn.execute("DELETE FROM growth_direct_registrations WHERE user_id=%s", (uid,))
     conn.execute("INSERT INTO audit_events(actor_user_id,event_type) VALUES(%s,'referral_bound')", (uid,))
     return {'saved': True}
+
+
+def attribute_registration(conn, uid, codes):
+    """Consume the invitation in the transaction creating the account, before its first session."""
+    for code in dict.fromkeys(codes):
+        if not re.fullmatch(r'[A-Za-z0-9_-]{3,48}', code or ''):
+            continue
+        try:
+            claim_referral(conn, uid, code)
+            return
+        except HTTPException as exc:
+            if exc.detail == 'growth_referrals_disabled':
+                # A genuine invitation on a paused program must not be credited to the developer.
+                if referral_inviter(conn, code):
+                    return
+            elif exc.detail != 'growth_invitation_unavailable':
+                raise
+    conn.execute("""INSERT INTO growth_direct_registrations(user_id,rewards_enabled,reward_mode,
+            reward_percent,reward_days,reward_bonus_kopecks)
+        SELECT %s,referrals_enabled,reward_mode,reward_percent,reward_days,reward_bonus_kopecks FROM growth_settings
+        ON CONFLICT DO NOTHING""", (uid,))
+    conn.execute('SELECT pushok_bind_direct_registrations(%s)', (uid,))
 
 
 def router_for(get_dsn, get_user, require_admin):
@@ -340,7 +368,8 @@ def router_for(get_dsn, get_user, require_admin):
             invitations = conn.execute('''SELECT r.created_at,r.reward_mode,r.reward_percent,r.reward_days,coalesce(w.amount,r.reward_bonus_kopecks) AS reward_bonus_kopecks,
                 CASE WHEN w.inviter_user_id<>r.inviter_user_id OR o.recipient_user_id<>r.inviter_user_id THEN 'previous_inviter'
                      WHEN w.reversal_id IS NOT NULL OR (o.id IS NOT NULL AND NOT o.active) THEN 'reversed'
-                     WHEN w.entry_id IS NOT NULL OR o.id IS NOT NULL THEN 'rewarded' ELSE 'waiting' END AS status
+                     WHEN w.entry_id IS NOT NULL OR o.id IS NOT NULL THEN 'rewarded'
+                     WHEN NOT r.rewards_enabled THEN 'unrewarded' ELSE 'waiting' END AS status
                 FROM growth_referrals r LEFT JOIN growth_wallet_rewards w ON w.referred_user_id=r.referred_user_id
                 LEFT JOIN growth_offers o ON o.reward_for_user_id=r.referred_user_id
                 WHERE r.inviter_user_id=%s ORDER BY r.created_at DESC,r.referred_user_id LIMIT 100''', (user['id'],)).fetchall()
@@ -399,6 +428,7 @@ def router_for(get_dsn, get_user, require_admin):
             check_referral_cycle(conn, uid, inviter)
             previous = conn.execute("SELECT inviter_user_id FROM growth_referrals WHERE referred_user_id=%s FOR UPDATE",
                                     (uid,)).fetchone()
+            conn.execute("DELETE FROM growth_direct_registrations WHERE user_id=%s", (uid,))
             if previous and previous['inviter_user_id'] == inviter:
                 return {'saved': True}
             conn.execute("""INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_mode,

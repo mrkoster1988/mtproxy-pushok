@@ -327,6 +327,15 @@ def main():
                 expect(proxy).not_to_have_attribute('aria-disabled', 'true')
                 expect(advertiser.locator('body')).to_have_attribute('data-cabinet-loaded', 'true')
                 print('PASS: dashboard proxy link from real API survives connection refresh', flush=True)
+                advertiser.evaluate("""() => {
+                    window.Telegram = {WebApp:{platform:'android',openLink:(url, options) => {
+                        window.capturedFlowDownload = {url, browser:options.try_browser};
+                    }, downloadFile:() => { throw Error('Unexpected Telegram APK download'); }}};
+                }""")
+                advertiser.locator('.dashboard-flow-download').click()
+                assert advertiser.evaluate('window.capturedFlowDownload') == {
+                    'url':base+'/api/v1/vpn/flow.apk','browser':'chrome'}
+                advertiser.evaluate('delete window.Telegram')
                 previous_viewport = advertiser.viewport_size
                 # v1.120 enlarged the button to the 150px / 46vw / 220px
                 # design. Check each intended diameter, including 430px where
