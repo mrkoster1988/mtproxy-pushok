@@ -17,7 +17,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 
 from .flow_shop_ticket import bridge_key
-from .vpn_geo import country
+from .vpn_geo import location
+from .telegram_environment import environment_name
 
 _lock = Lock()
 _expires = 0.0
@@ -57,7 +58,7 @@ def is_staff(user):
 
 class Change(BaseModel):
     model_config = {'extra': 'forbid'}
-    action: Literal['extend', 'shorten', 'limit', 'retry', 'revoke', 'restore']
+    action: Literal['extend', 'shorten', 'limit', 'retry', 'revoke', 'restore', 'expire']
     subscription_id: str = Field(min_length=1, max_length=100)
     request_id: UUID
     before: int = Field(ge=0, strict=True)
@@ -76,10 +77,33 @@ def change_subscription(actor, subject, change):
             response = client.post('https://pushok.shop/shop/api/flow/cabinet-management', data=body,
                 headers={'Content-Type':'application/json', 'X-Pushok-Management':stamp + ':' + sig.hex()},
                 timeout=(3, 45), allow_redirects=False)
-        if response.status_code in (404, 409, 422):
+        if response.status_code in (404, 409, 422, 502, 503):
             detail = response.json().get('detail')
-            known = ('vpn_subscription_missing', 'vpn_changed', 'vpn_profiles_in_use', 'vpn_limit_range', 'vpn_days_range')
-            raise HTTPException(response.status_code, detail if detail in known else 'vpn_change_conflict')
+            known = {'vpn_subscription_missing','vpn_changed','vpn_profiles_in_use','vpn_limit_range','vpn_days_range',
+                     'vpn_order_in_progress','vpn_key_rotation','vpn_node_unavailable','vpn_expiry_schedule_required',
+                     'vpn_pending_operation','vpn_node_unconfirmed','vpn_change_unconfirmed'}
+            # Older Shop releases used Russian descriptions for these validated conflicts.
+            reasons = {
+                'Есть незавершённый заказ': 'vpn_order_in_progress',
+                'Во время удаления появился незавершённый заказ': 'vpn_order_in_progress',
+                'Основной WireGuard-ключ перевыпускается': 'vpn_key_rotation',
+                'Есть незавершённая операция с дополнительным профилем': 'vpn_key_rotation',
+                'Нужен WGDashboard с управлением сроком': 'vpn_expiry_schedule_required',
+                'Исходный WGDashboard недоступен': 'vpn_node_unavailable',
+                'Не удалось проверить конфигурацию исходного WGDashboard': 'vpn_node_unavailable',
+                'Для продления нужен сохранённый': 'vpn_key_missing',
+                'Не найден или повреждён сохранённый ключ': 'vpn_key_missing',
+                'Новый срок должен быть в будущем': 'vpn_shorten_past',
+                'Предыдущее продление': 'vpn_pending_operation',
+                'WGDashboard не подтвердил': 'vpn_node_unconfirmed',
+                'Панель не подтвердила': 'vpn_node_unconfirmed',
+                'Состояние подписки изменилось': 'vpn_changed',
+                'Срок подписки изменился': 'vpn_changed',
+                'План продления устарел': 'vpn_changed',
+            }
+            fallback = 'vpn_change_conflict' if response.status_code < 500 else 'vpn_change_unconfirmed'
+            code = next((v for k,v in reasons.items() if isinstance(detail,str) and detail.startswith(k)),fallback)
+            raise HTTPException(response.status_code,detail if isinstance(detail,str) and detail in known else code)
         if response.status_code != 200 or response.json() != {'ok': True}:
             raise ValueError('unconfirmed')
     except (ValueError, requests.RequestException):
@@ -105,21 +129,23 @@ def router_for(get_dsn, cabinet_user):
         accounts = data['accounts']
         own = accounts.get(str(user['id']))
         staff = is_staff(user)
-        public_fields = ('state', 'expires_at', 'online', 'last_seen', 'received', 'sent', 'device_limit', 'periods','revoked_at')
+        public_fields = ('state', 'expires_at', 'online', 'last_seen', 'received', 'sent', 'device_limit', 'periods','revoked_at','tariff_name')
         result = {'sampled_at': data['sampled_at'], 'can_manage': staff,
-                  'personal': {k: own.get(k) for k in public_fields} if own else None}
+                  'personal': {**{k: own.get(k) for k in public_fields}, 'phone_verified': bool(user.get('phone_verified'))} if own else None}
         if staff:
             ids = [UUID(key) for key in accounts]
             people = []
             if ids:
                 with psycopg.connect(get_dsn(), row_factory=dict_row) as conn:
-                    people = conn.execute("""SELECT id,first_name,last_name,username,telegram_user_id,is_developer FROM users
-                        WHERE id=ANY(%s) AND blocked_at IS NULL""", (ids,)).fetchall()
+                    people = conn.execute("""SELECT id,first_name,last_name,username,telegram_user_id,
+                        EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=users.id
+                               AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
+                        FROM users WHERE id=ANY(%s) AND blocked_at IS NULL""", (environment_name(), ids)).fetchall()
             members = [{'id': str(p['id']), 'name': ' '.join(filter(None, (p['first_name'], p['last_name']))) or 'Участник',
-                        'username':p.get('username'),'telegram_id':p.get('telegram_user_id'),
+                        'username':p.get('username'),'telegram_id':p.get('telegram_user_id'),'phone_verified':bool(p.get('phone_verified')),
                         **{k:accounts[str(p['id'])].get(k) for k in (*public_fields,'tunnel_ips','endpoint_ip','subscription_id','pending_change')} } for p in people]
             for member in members:
-                member['country_code']=country(member.get('endpoint_ip'))
+                member['country_code'], member['city'] = location(member.get('endpoint_ip'))
             members.sort(key=lambda p: (-(p.get('last_seen') or 0), p['id']))
             result['members'] = members
         return JSONResponse(result, headers={'Cache-Control': 'private, no-store'})

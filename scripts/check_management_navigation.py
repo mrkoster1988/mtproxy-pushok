@@ -65,7 +65,8 @@ def check_management_navigation(browser, base, output, failures, dsn):
         expect(appearance.get_by_role('status')).to_have_text('Оформление сохранено')
         for width in (320,390,768):
             admin.set_viewport_size({'width':width,'height':844})
-            assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth+1'), width
+            assert admin.evaluate('document.documentElement.scrollWidth <= innerWidth+1'), (width, admin.evaluate(
+                "Array.from(document.querySelectorAll('body *')).filter(n=>n.getBoundingClientRect().right>innerWidth+1).slice(0,16).map(n=>[n.tagName,n.id,n.className,Math.round(n.getBoundingClientRect().width)])"))
         admin.reload()
         expect(welcome).to_have_value('Добро пожаловать в **Pushok Flow**!')
         welcome.fill(initial)

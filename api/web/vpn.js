@@ -64,6 +64,14 @@ window.pushokVpn = (() => {
     const link=el('a');link.href=url;link.download='Pushok-Flow.apk';document.body.append(link);link.click();link.remove();
   }
   Object.assign(errors,{
+    vpn_order_in_progress:'В Shop есть незавершённый заказ WireGuard. Проверьте его в разделе «Заказы», затем повторите изменение.',
+    vpn_key_rotation:'Идёт перевыпуск ключа или дополнительного профиля. Дождитесь завершения и обновите карточку.',
+    vpn_node_unavailable:'Исходный сервер WireGuard недоступен. Проверьте подключение WGDashboard в Shop.',
+    vpn_expiry_schedule_required:'В Shop откройте настройки узла WGDashboard и проверьте управление сроком пиров и часовой пояс.',
+    vpn_pending_operation:'Предыдущее изменение ещё в работе. Обновите карточку и нажмите «Повторить изменение».',
+    vpn_node_unconfirmed:'Узел WireGuard не подтвердил изменение. Проверьте связь с ним и повторите тот же запрос.',
+    vpn_key_missing:'У Shop нет сохранённого ключа для продления. Проверьте основной пир подписки в диагностике WGDashboard.',
+    vpn_shorten_past:'Такой срок уже прошёл. Чтобы отключить доступ сейчас, выберите статус «Истекла».',
     vpn_offer_changed:'Условия оплаты изменились. Обновите тарифы.',vpn_order_missing:'Заказ не найден.',
     vpn_test_store:'Платные заказы доступны в рабочем боте.',vpn_shop_unavailable:'Магазин не ответил. Попробуйте ещё раз.',
     cabinet_stars_disabled:'Оплата Stars для VPN отключена в настройках.',invoice_unavailable:'Telegram не выдал счёт. Повторите открытие этого заказа.',
@@ -77,10 +85,15 @@ window.pushokVpn = (() => {
     vpn_policy_changed:'Настройки уже изменены. Обновите раздел.',vpn_policy_rejected:'Проверьте условия выдачи и актуальность настроек.',
     vpn_days_range:'Выберите от 1 до 365 дней.',vpn_limit_range:'Выберите от 0 до 20 дополнительных профилей.'
   });
+  let disclosureId=0;
   function controls(row,subject,reload,expanded) {
-    const panel = el('details',undefined,'vpn-controls');
-    panel.open=expanded;
-    const title=el('summary');title.append(window.pushokViews.icon('edit'),document.createTextNode('Управление подпиской'));panel.append(title);
+    const panel=el('div',undefined,'vpn-controls');
+    panel.id='vpn-edit-'+(++disclosureId);
+    const toggle=el('button',undefined,'vpn-pencil');
+    toggle.type='button';toggle.append(window.pushokViews.icon('edit'));
+    toggle.title='Редактировать подписку';toggle.setAttribute('aria-label',toggle.title);
+    toggle.setAttribute('aria-controls',panel.id);
+
     const form = el('form',undefined,'vpn-edit'), op = el('select'), qty = el('input');
     const actionLabel = el('label','Действие'), valueLabel = el('label');
     const caption = el('span'), feedback = el('small',undefined,'muted');
@@ -91,6 +104,24 @@ window.pushokVpn = (() => {
     if (row.state === 'pending') options.push(['retry','Повторить выдачу']);
     if (row.state==='revoked') options.unshift(['restore','Выдать новый доступ']);
     else if (['active','expired'].includes(row.state)) options.push(['revoke','Отозвать доступ']);
+    if(row.state==='active')options.push(['expire','Завершить срок сейчас']);
+    const statusLabel=el('label','Новый статус'),statusSelect=el('select');
+    const prompt=el('option','Выберите статус');prompt.value='';prompt.disabled=true;statusSelect.append(prompt);
+    const transitions={
+      active:[['expire','Истекла'],['revoke','Отозвана']],
+      expired:[['extend','Активна'],['revoke','Отозвана']],
+      revoked:[['restore','Активна']],
+      pending:[['retry','Активна · повторить выдачу']]
+    };
+    for(const [key,label] of transitions[row.state]||[]){const item=el('option',label);item.value=key;statusSelect.append(item);}
+    statusLabel.append(statusSelect);
+    const consentLabel=el('label',undefined,'vpn-status-consent'),consent=el('input'),consentText=el('span');
+    consent.type='checkbox';consentLabel.append(consent,consentText);
+    const refresh=button('Обновить карточку',reload);refresh.hidden=true;
+    let isStatus=false;
+    const statusButton=el('button',states[row.state]||'Уточняется','badge campaign-current');
+    statusButton.type='button';statusButton.dataset.subscription=row.state;statusButton.title='Изменить статус подписки';
+    statusButton.setAttribute('aria-label','Изменить статус подписки: '+statusButton.textContent);statusButton.setAttribute('aria-controls',panel.id);
     const pending = row.pending_change;
     for (const [key,label] of options) { const item = el('option',label); item.value = key; op.append(item); }
     actionLabel.append(op); valueLabel.append(caption,qty);
@@ -98,11 +129,26 @@ window.pushokVpn = (() => {
     qty.type = 'number'; qty.step = '1'; qty.inputMode = 'numeric';
     function fields() {
       const limit = op.value === 'limit';
-      valueLabel.hidden = ['retry','revoke'].includes(op.value); qty.required = !valueLabel.hidden;
+      const ending=['expire','revoke'].includes(op.value);
+      consentLabel.hidden=!ending;consent.checked=false;consent.required=ending;
+      consentText.textContent=op.value==='revoke'?'Отозвать ключи основного и дополнительных профилей':'Завершить доступ и отключить пиры сейчас';
+      valueLabel.hidden = ending||op.value==='retry'||!op.value; qty.required = !valueLabel.hidden;
       qty.min = limit?'0':'1'; qty.max = limit?'20':'365'; qty.value = limit?String(row.device_limit ?? 0):'1';
       caption.textContent = limit?'Дополнительных профилей':'Количество дней';
     }
-    fields(); op.onchange = fields;
+    function open(opened,status){
+      isStatus=status&&!pending;panel.hidden=!opened;
+      actionLabel.hidden=isStatus;statusLabel.hidden=!isStatus;
+      statusSelect.required=isStatus;op.disabled=!!pending;
+      if(!pending){if(isStatus){statusSelect.value='';op.selectedIndex=-1;}else if(!op.value)op.selectedIndex=0;}
+      fields();if(pending){op.value=pending.action;fields();qty.value=pending.value;}toggle.setAttribute('aria-expanded',String(opened&&!isStatus));
+      statusButton.setAttribute('aria-expanded',String(opened&&(isStatus||!!pending)));
+      if(opened)feedback.textContent='';
+    }
+    open(expanded,false);
+    toggle.onclick=()=>open(panel.hidden||isStatus,false);
+    statusButton.onclick=()=>{open(panel.hidden||!isStatus,true);if(!panel.hidden&&!pending)statusSelect.focus({preventScroll:true});};
+    op.onchange=fields;statusSelect.onchange=()=>{op.value=statusSelect.value;fields();};
     if (pending) {
       op.value = pending.action; fields(); qty.value = pending.value;
       op.disabled = qty.disabled = true; submit.textContent = 'Повторить изменение';
@@ -111,22 +157,21 @@ window.pushokVpn = (() => {
     form.onsubmit = async event => {
       event.preventDefault();
       if (sending || !form.reportValidity()) return;
-      const session = token, action = op.value, value = ['retry','revoke'].includes(action)?0:Number(qty.value);
-      if(action==='revoke'&&!confirm('Отозвать подписку и отключить её основной и дополнительные профили?'))return;
+      const session = token, action = op.value, value = ['retry','revoke','expire'].includes(action)?0:Number(qty.value);
       const before = action === 'limit'?row.device_limit:row.expires_at || 0;
       if (!intent || intent.action !== action || intent.value !== value) {
         intent = {request_id:crypto.randomUUID(),action,value,before,subscription_id:row.subscription_id,...pending};
       }
-      sending = true; submit.disabled = op.disabled = qty.disabled = true; feedback.textContent = 'Сохраняем…';
+      sending = true; refresh.hidden=true; toggle.disabled=statusButton.disabled=statusSelect.disabled=submit.disabled=op.disabled=qty.disabled=true; feedback.textContent = 'Сохраняем…';
       try {
         await api('/vpn/users/'+encodeURIComponent(subject)+'/management',{method:'POST',body:intent});
         if (session !== token) return;
         reset(); notice(action === 'retry'?'Заявка повторно поставлена в очередь.':'Изменения сохранены.',true);
         await reload();
-      } catch (error) { if (session === token) feedback.textContent = error.message; }
-      finally { sending = submit.disabled = false; op.disabled = qty.disabled = !!pending; }
+      } catch (error) { if (session === token){feedback.textContent=error.message;refresh.hidden=false;} }
+      finally { sending=submit.disabled=toggle.disabled=statusButton.disabled=statusSelect.disabled=false; op.disabled = qty.disabled = !!pending; }
     };
-    form.append(actionLabel,valueLabel,submit,feedback); panel.append(form); return panel;
+    form.append(statusLabel,actionLabel,valueLabel,consentLabel,submit,feedback,refresh);panel.append(form);return {toggle,panel,statusButton};
   }
   function card(row,subject,name,own,admin,reload,expanded,profileLink=false) {
     const tile=el('article',undefined,'campaign-tile vpn-card'),head=el('div',undefined,'tile-heading');
@@ -134,17 +179,36 @@ window.pushokVpn = (() => {
     if(!profileLink)avatar.append(window.pushokViews.icon('server'));
     const copy=el('div'),title=el(profileLink?'a':'h2',name,'tile-title');
     if(profileLink){title.href='#/user/'+encodeURIComponent(subject);title.onclick=()=>window.pushokProfiles.setBackRoute('vpn');}
-    copy.append(title);
-    if(row)copy.append(signal(row));
+    const identity=el('div',undefined,'vpn-identity');
+    identity.append(title);
+    if(row){
+      const marks=el('span',undefined,'vpn-indicators');
+      if(row.phone_verified)marks.append(window.pushokVerification.badge());
+      const dot=el('span','·','vpn-separator');dot.setAttribute('aria-hidden','true');
+      marks.append(dot,signal(row));identity.append(marks);
+    }
+    copy.append(identity);
     if(profileLink&&row?.username)copy.append(el('small','@'+row.username,'muted'));
     head.append(avatar,copy);
-    if(row) {
-      const state=el('span',states[row.state]||'Уточняется','badge campaign-current');
-      state.dataset.subscription=row.state; head.append(state);
+    const edit=admin&&row?.subscription_id?controls(row,subject,reload,expanded):null;
+    if(row){
+      const stack=el('span',undefined,'vpn-status-stack');
+      const state=edit?.statusButton||el('span',states[row.state]||'Уточняется','badge campaign-current');
+      state.dataset.subscription=row.state;
+      const tariff=el('small',row.tariff_name||'Тариф не указан','vpn-tariff');
+      tariff.title='Тариф подписки';stack.append(state,tariff);if(edit)stack.append(edit.toggle);head.append(stack);
     }
     tile.append(head);
     if(row) {
-      tile.append(el('p',row.expires_at?'Доступ до '+date(row.expires_at):'Срок уточняется','tile-period'));
+      const dates=el('div',undefined,'vpn-dates tile-period');
+      dates.append(el('span',row.expires_at?'Доступ до '+date(row.expires_at):'Срок уточняется'));
+      if(row.last_seen){
+        const stamp=new Date(row.last_seen*1000);
+        const seen=el('time',stamp.toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}),'vpn-seen');
+        seen.dateTime=stamp.toISOString();seen.title='Последний отклик';seen.setAttribute('aria-label','Последний отклик '+seen.textContent);
+        dates.append(seen);
+      }
+      tile.append(dates);
       const facts=el('dl',undefined,'tile-meta campaign-tile-facts vpn-facts');
       facts.append(metric('Получено',traffic(row.received)),metric('Отправлено',traffic(row.sent)),metric('Доп. профили',String(row.device_limit??'—')));
       tile.append(facts);
@@ -153,19 +217,18 @@ window.pushokVpn = (() => {
         let place=row.country_code;
         if(place){try{place=new Intl.DisplayNames(['ru'],{type:'region'}).of(place);}catch{}}
         addresses.append(metric('Последний IP подключения',row.endpoint_ip||'—'),
-          metric('Страна по IP',place||'—'),metric('IP в туннеле',ips.join(', ')||'—'));
+          metric('Геолокация по IP',row.country_code==='RU'?(row.city||'—'):([place,row.city].filter(Boolean).join(', ')||'—')),metric('IP в туннеле',ips.join(', ')||'—'));
         tile.append(addresses);
       }
       if(row.state==='revoked')tile.append(el('p','Доступ отозван'+(row.revoked_at?' '+date(row.revoked_at):'')+
         '. Прежний ключ отключён. Для повторного подключения нужен новый профиль.','vpn-revoked-note'));
-      if(row.last_seen)tile.append(el('p','Последний отклик · '+new Date(row.last_seen*1000).toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}),'vpn-seen'));
     } else tile.append(el('p','У аккаунта пока нет VPN-подписки.','tile-period'));
     if(own){
       const actions=el('div',undefined,'vpn-links'),get=button('Скачать Flow',download);get.className='ui-button labeled-action vpn-link';get.prepend(window.pushokViews.icon('download'));
       actions.append(renewLink(),get);tile.append(actions);
     }
     if(admin){
-      if(row?.subscription_id)tile.append(controls(row,subject,reload,expanded));
+      if(edit)tile.append(edit.panel);
       else tile.append(el('small',row?'Параметры управления пока недоступны. Обновите сведения.':'Изменение срока и лимита станет доступно после выдачи подписки.','muted'));
     }
     return tile;
@@ -225,8 +288,10 @@ window.pushokVpn = (() => {
       if(directory&&admin){
         const settings=el('a','Настройки VPN','ui-button');settings.href='#/management/vpn';
         host.prepend(settings,usageSummary((data.members||[]).filter(r=>r.id!==subject)));
-        const credit=el('a','Страна по IP · DB-IP','muted');credit.href='https://db-ip.com';credit.target='_blank';credit.rel='noopener noreferrer';host.append(credit);
       }else if(row)host.append(usageSummary([row],true));
+      if(admin&&(directory||row)){
+        const credit=el('a','Геолокация по IP · DB-IP','muted');credit.href='https://db-ip.com';credit.target='_blank';credit.rel='noopener noreferrer';host.append(credit);
+      }
       if(admin&&directory){
         const list=el('section',undefined,'vpn-directory'),heading=el('h2','Управление VPN');
         const members=(data.members||[]).filter(r=>r.id!==subject);
