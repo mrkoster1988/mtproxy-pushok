@@ -1997,9 +1997,7 @@ def main():
                 expect(advertiser.get_by_label('Автоматически оплачивать мои одобренные заявки',exact=True)).not_to_be_checked()
                 # Персональный подарок и реальная выгрузка журнала активаций.
                 go(outsider,'profile')
-                expect(outsider.locator('.profile-personal')).to_contain_text('Telegram ID: 99116003')
-                outsider.locator('.profile-personal>summary').click()
-                expect(outsider.get_by_role('button',name='Скопировать ID',exact=True)).to_be_visible()
+                expect(outsider.locator('.profile-personal')).to_have_count(0)
                 go(admin,'wallet')
                 open_wallet_tools(admin)
                 admin.get_by_label('Название подарка',exact=True).fill('Персональный подарок')

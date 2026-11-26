@@ -114,8 +114,15 @@ def check_verified_profiles(browser, base, output, failures, dsn):
                 page.set_viewport_size({'width': width, 'height': 844})
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
                 page.screenshot(path=str(output/f'home-clean-{width}.png'))
+            page.evaluate("window.cabinet.go('profile')")
+            expect(page.locator('[data-page=profile]')).to_be_visible()
+            expect(page.locator('.profile-personal')).to_have_count(0)
+            expect(page.locator('.profile-identity .phone-verified-badge')).to_have_count(1)
+            with psycopg.connect(dsn) as conn:
+                conn.execute("UPDATE users SET role='admin' WHERE telegram_user_id=%s", (tg,))
             with patch.object(verified, 'telegram_birthday', return_value=None) as lookup:
-                page.evaluate("window.cabinet.go('profile')")
+                page.reload()
+                expect(page.locator('.profile-identity')).to_contain_text('Администратор')
                 expect(page.locator('.profile-personal')).to_contain_text('Дату рождения можно взять из Telegram или указать здесь')
                 lookup.assert_not_called()
             personal = page.locator('.profile-personal')
@@ -151,9 +158,6 @@ def check_verified_profiles(browser, base, output, failures, dsn):
                 record = conn.execute('''SELECT v.birth_day,v.birth_month,v.birth_year,v.phone_number FROM verified_profiles v
                     JOIN users u ON u.id=v.user_id WHERE u.telegram_user_id=%s''', (tg,)).fetchone()
                 assert record == (11, 11, None, '+79990001122')
-                conn.execute("UPDATE users SET role='admin' WHERE telegram_user_id=%s", (tg,))
-            page.reload()
-            expect(page.locator('.profile-identity')).to_contain_text('Администратор')
             page.evaluate("window.cabinet.go('management/payments')")
             open_management(page,'people')
             settings = page.locator('#birthday-settings')

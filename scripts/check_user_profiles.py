@@ -75,11 +75,7 @@ def check_user_profiles(browser, base, output, failures, dsn):
             go(client,'profile')
             own=client.locator('[data-page=profile]')
             expect(own.locator('.profile-stats')).to_contain_text('11')
-            expect(own.get_by_role('button',name='Скопировать ID',exact=True)).to_be_hidden()
-            own.locator('.profile-personal>summary').click()
-            expect(own.get_by_role('button',name='Скопировать ID',exact=True)).to_be_visible()
-            expect(own.locator('.profile-details')).to_contain_text('В кабинете с')
-            own.locator('.profile-personal>summary').click()
+            expect(own.locator('.profile-personal')).to_have_count(0)
             client.screenshot(path=str(output/'51-own-profile.png'))
             for label,route in (('Каналы: 1','channels'),('Кампании: 11','campaigns/mine'),('Архив: 1','archive')):
                 own.get_by_role('button',name=label,exact=True).click()
