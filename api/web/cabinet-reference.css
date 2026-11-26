@@ -915,7 +915,7 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .vpn-directory>.vpn-member{display:block;color:var(--text);padding:7px 0}
 @media(min-width:640px){.cabinet-mode .vpn-edit{grid-template-columns:2fr 1fr auto;align-items:end}.vpn-edit small{grid-column:1/-1}.cabinet-mode .vpn-links .ui-button{flex:none}}
 
-.cabinet-mode .vpn-addresses{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;align-items:start;margin:6px 0 0;font-size:12px;line-height:1.25}
+.cabinet-mode .vpn-addresses{display:grid;grid-template-columns:minmax(0,1fr) fit-content(28%) minmax(0,1fr);gap:4px;align-items:start;margin:6px 0 0;font-size:12px;line-height:1.25}
 .vpn-addresses>div:nth-child(2){text-align:center}
 .vpn-addresses>div:last-child{text-align:right}
 .vpn-addresses dt{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
