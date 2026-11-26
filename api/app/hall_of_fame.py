@@ -158,7 +158,7 @@ def service_once(dsn):
 def medal_history(conn, uid):
     return conn.execute('''SELECT r.metric,r.rank,r.score,r.bonus_amount,p.starts_at,p.ends_at
         FROM hall_results r JOIN hall_periods p ON p.id=r.period_id
-        WHERE r.user_id=%s AND r.rank<=3 AND p.kind='month' AND p.closed_at IS NOT NULL
+        WHERE r.user_id=%s AND r.metric='invited' AND r.rank<=3 AND p.kind='month' AND p.closed_at IS NOT NULL
         ORDER BY p.starts_at DESC,r.rank,r.metric LIMIT 120''',(uid,)).fetchall()
 
 
@@ -174,6 +174,8 @@ def router_for(dsn,current_user,require_admin):
     @router.get('')
     def board(response: Response,kind:Kind='month',metric:Metric='invited',period_id:int|None=Query(None,ge=1),user=Depends(current_user)):
         response.headers['Cache-Control']='private, no-store'
+        if metric!='invited' and user['role']!='admin':
+            raise HTTPException(404,'hall_metric_not_found')
         def read(conn):
             cfg=conn.execute('SELECT * FROM hall_settings WHERE singleton').fetchone()
             cfg['started_at']=counting_start(conn,cfg)
@@ -204,7 +206,7 @@ def router_for(dsn,current_user,require_admin):
                         hide_username(row)
             own=next((r for r in rows if str(r['user_id'])==str(user['id'])),None)
             return dict(rows=rows[:effective['top_size']],own=own,periods=periods,starts_at=start,ends_at=end,closed=bool(period_id),top_size=effective['top_size'],
-                        rewards=effective['rewards'].get(kind,{}).get(metric,[]),metrics=METRICS,started_at=cfg['started_at'],legacy_spend=legacy_spend)
+                        rewards=effective['rewards'].get(kind,{}).get(metric,[]),metrics={'invited':METRICS['invited']},started_at=cfg['started_at'],legacy_spend=legacy_spend)
         return db(read)
 
     @router.get('/avatar/{uid}')

@@ -73,8 +73,11 @@ window.pushokCommunity=(()=>{
   }
   box.addEventListener('toggle',()=>{if(box.open&&!loaded)void load();});return box;
  }
- async function leaders(target){const s=token;target.setAttribute('aria-busy','true');try{const data=await Promise.all(['invited','paid_referrals','spend','paid_campaigns'].map(metric=>api('/hall?kind=month&metric='+metric)));if(s!==token||!target.isConnected)return;
-  const key=JSON.stringify(data.map(d=>d.rows.find(r=>r.rank===1)?.user_id));if(target.dataset.leaders===key)return;target.dataset.leaders=key;const ids=new Set(),rowNode=el('div',undefined,'home-leader-avatars');target.replaceChildren(el('h2','Лидеры месяца'),rowNode);for(const d of data){const row=d.rows.find(r=>r.rank===1);if(!row||ids.has(row.user_id))continue;ids.add(row.user_id);const avatar=v().userAvatar(row.user_id,row.first_name||'Участник');window.pushokHall.frame(avatar,1);rowNode.append(avatar);}if(!ids.size)rowNode.append(el('span','Первые места пока свободны','muted'));target.hidden=false;
+ async function leaders(target){const s=token;target.setAttribute('aria-busy','true');try{const data=await api('/hall?kind=month&metric=invited');if(s!==token||!target.isConnected)return;
+  const leaders=data.rows.filter(r=>r.rank<=3),key=JSON.stringify(leaders.map(r=>[r.user_id,r.rank,r.first_name]));if(target.dataset.leaders===key)return;target.dataset.leaders=key;
+  const avatars=el('div',undefined,'home-leader-avatars');target.replaceChildren(el('h2','Лидеры месяца'),avatars);
+  for(const row of leaders){const avatar=v().userAvatar(row.user_id,row.first_name||'Участник');window.pushokHall.frame(avatar,row.rank);avatars.append(avatar);}
+  if(!leaders.length)avatars.append(el('span','Первые места пока свободны','muted'));target.hidden=false;
  }catch{target.hidden=true;}finally{target.setAttribute('aria-busy','false');}}
  function ownerTools(target,uid,data,reload){if(!hasDeveloperAccess(me))return;
   const box=el('details',undefined,'owner-personal-tools'),head=el('summary');head.append(v().icon('settings'),el('span','Изменить сведения'));head.title='Изменить или перенести сведения';head.setAttribute('aria-label',head.title);box.append(head);target.append(box);

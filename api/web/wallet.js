@@ -184,7 +184,7 @@ window.pushokWallet=(()=>{
   try{
    const [data,journal]=await Promise.all([api('/wallet'+(deletedTopups?'?deleted_topups=true':'')),api('/wallet/entries?page='+historyPage)]);if(version!==epoch||session!==token||uid!==me?.id)return;
    const root=el('div',undefined,'wallet-page');balances(root,data,true);
-   const tools=el('nav',undefined,'wallet-tools');tools.setAttribute('aria-label','Действия баланса');tools.append(window.pushokViews.iconAction(button('',()=>load(node)),'refresh','Обновить баланс'));
+   const tools=el('nav',undefined,'wallet-tools');tools.setAttribute('aria-label','Действия баланса');
    const payments=el('a','Мои оплаты','ui-button');payments.href='#/payments';tools.append(payments);root.append(tools);
    const request=pending();if(request){const p=panel('Незавершённая операция');p.append(el('p','Ответ не получен. Повтор отправит тот же запрос и не создаст вторую операцию.'),button('Повторить незавершённую операцию',()=>replay(request)));root.append(p);}
    if(data.enabled){topupForm(root,data);redeemGift(root);}else root.append(el('p','Внутренний баланс выключен. Остатки и история сохранены, новые пополнения и списания остановлены. Ранее выставленные счета продолжают проверяться. Заявки можно оплачивать напрямую.','wallet-warning'));
@@ -203,8 +203,15 @@ window.pushokWallet=(()=>{
   }catch(e){if(version===epoch&&session===token)node.replaceChildren(el('p',e.message),button('Повторить',()=>load(node)));}
  }
  function telegramStars(root){
-  const p=panel('Мои Stars в Telegram'),link=el('a','Открыть мои Stars в Telegram ↗','ui-button');link.href='tg://settings/stars';
-  const note=el('p','Telegram → Настройки → Мои звёзды. Личный баланс и вся история Stars находятся в Telegram. Здесь показаны только операции puShok.','muted block-note');p.append(link,note);root.append(p);
+  const p=panel('Мои Stars в Telegram');
+  p.append(el('p','В Telegram откройте «Настройки → Мои звёзды». Там видны личный баланс и история Stars.'));
+  const bot=window.cabinetBotConfig?.telegram_bot_username;
+  if(/^[A-Za-z0-9_]{5,32}$/.test(bot||'')){
+   const link=el('a','Открыть чат со ссылкой на мои звёзды','ui-button');
+   link.href='https://t.me/'+bot+'?start=stars';link.target='_blank';link.rel='noopener noreferrer';
+   p.append(link);
+  }
+  root.append(p);
  }
  function redeemGift(root){
   const p=panel('Активировать подарочный код'),f=el('form'),code=field(f,'Подарочный код на баланс','text');code.required=true;code.maxLength=64;code.placeholder='GIFT-…';code.autocomplete='off';

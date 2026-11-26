@@ -337,7 +337,7 @@ def router_for(get_dsn, get_user, require_admin):
                 coalesce(sum(amount) FILTER(WHERE reversal_id IS NOT NULL),0)::bigint AS reversed
                 FROM growth_wallet_rewards WHERE inviter_user_id=%s''', (user['id'],)).fetchone()
             # Пригласившему не выдаём телефоны, Telegram ID или заявки друга.
-            invitations = conn.execute('''SELECT r.created_at,r.reward_mode,r.reward_percent,r.reward_days,r.reward_bonus_kopecks,
+            invitations = conn.execute('''SELECT r.created_at,r.reward_mode,r.reward_percent,r.reward_days,coalesce(w.amount,r.reward_bonus_kopecks) AS reward_bonus_kopecks,
                 CASE WHEN w.inviter_user_id<>r.inviter_user_id OR o.recipient_user_id<>r.inviter_user_id THEN 'previous_inviter'
                      WHEN w.reversal_id IS NOT NULL OR (o.id IS NOT NULL AND NOT o.active) THEN 'reversed'
                      WHEN w.entry_id IS NOT NULL OR o.id IS NOT NULL THEN 'rewarded' ELSE 'waiting' END AS status

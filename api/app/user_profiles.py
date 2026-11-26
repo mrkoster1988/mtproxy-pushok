@@ -98,7 +98,7 @@ def router_for(dsn, current_user):
                 campaign['topic_label'] = topic_label(campaign['topic'])
             from .hall_of_fame import medal_history
             private = {'medals': medal_history(conn, uid)}
-            private['frame_rank'] = conn.execute('''SELECT min(rank) rank FROM hall_results WHERE user_id=%s AND rank<=10
+            private['frame_rank'] = conn.execute('''SELECT min(rank) rank FROM hall_results WHERE user_id=%s AND metric='invited' AND rank<=10
                 AND period_id=(SELECT id FROM hall_periods WHERE kind='month' AND closed_at IS NOT NULL ORDER BY starts_at DESC LIMIT 1)''',(uid,)).fetchone()['rank']
             if viewer['id'] == uid or viewer['role'] == 'admin':
                 private['verification'] = private_profile(conn, uid)

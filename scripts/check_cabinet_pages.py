@@ -1731,7 +1731,7 @@ def main():
                 admin.get_by_label('Основание возврата',exact=True).fill('Отмена тестового размещения')
                 admin.get_by_role('button',name='Вернуть на баланс',exact=True).click()
                 expect(admin.locator('[data-page=wallet]')).to_contain_text('Возвращено на баланс')
-                advertiser.get_by_role('button',name='Обновить баланс',exact=True).click()
+                advertiser.locator('#refresh').click()
                 expect(advertiser.locator('.wallet-balances').first).to_contain_text('300')
                 with psycopg.connect(PostgresIntegration.dsn) as connection:
                     assert connection.execute('SELECT status FROM wallet_payments WHERE campaign_id=%s',(growth_cid,)).fetchone()[0]=='refunded'
@@ -1841,7 +1841,7 @@ def main():
                 admin.screenshot(path=str(output/'42-wallet-gifts-admin-mobile.png'),full_page=True)
                 go(advertiser,'wallet')
                 open_wallet_tools(advertiser)
-                expect(advertiser.get_by_role('link',name='Открыть мои Stars в Telegram ↗')).to_have_attribute('href','tg://settings/stars')
+                expect(advertiser.get_by_text('В Telegram откройте',exact=False)).to_be_visible()
                 expect(advertiser.get_by_label('Валюта пополнения',exact=True)).to_have_count(0)
                 expect(advertiser.get_by_role('button',name='Пополнить через СБП',exact=True)).to_be_visible()
                 for _ in range(2):

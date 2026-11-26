@@ -92,7 +92,13 @@ window.pushokGrowth=(()=>{
   const wallet=el('a','Баланс и история операций →');wallet.href='#/wallet';p.append(wallet);
   if(!mine.invitations.length)p.append(el('p','Принятых приглашений пока нет.'));
   else p.append(el('p','Последние 100 приглашений. Для каждого сохранены условия на момент принятия.','muted'));
-  mine.invitations.forEach(r=>{const row=el('article',undefined,'card');row.append(el('h3',({previous_inviter:'Награда была выдана до переназначения',waiting:'Ожидается оплаченное и завершённое размещение',rewarded:'Награда выдана',reversed:'Награда отменена после возврата'})[r.status]),el('p',rewardDescription(r)),el('p','Приглашение принято: '+date(r.created_at),'muted'));p.append(row);});root.append(p);
+  const labels={previous_inviter:'Награда была выдана до переназначения',waiting:'Приглашение принято · награды пока нет',rewarded:'Награда выдана',reversed:'Награда отменена после возврата'};
+  for(const r of mine.invitations){
+   const row=el('article',undefined,'card');row.append(el('h3',labels[r.status]));
+   if(r.status==='rewarded'||r.status==='reversed')row.append(el('p',rewardDescription(r)));
+   row.append(el('p','Приглашение принято: '+date(r.created_at),'muted'));p.append(row);
+  }
+  root.append(p);
  }
  async function claimProxyInvite(){
   const key='__Host-pushok_invite';

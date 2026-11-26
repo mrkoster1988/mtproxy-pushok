@@ -29,7 +29,7 @@ window.pushokGateway=(()=>{
     const data=await api('/me/proxy-interest');if(!current())return;
     const form=el('form'),label=el('label','Интересующая тема'),select=el('select');select.id='proxy-interest-topic';
     select.append(new Option('Не указывать',''));for(const item of data.topics)select.append(new Option(item.label,item.id));select.value=data.topic||'';label.append(select);
-    const note=el('p','Необязательно. Сохраняем только выбранную вами тему для подбора узла со спонсором по интересам. Переписку и подписки Telegram не читаем. Выберите «Не указывать», чтобы удалить тему.','muted');
+    const note=el('p','Необязательно. Сохраняем только выбранную вами тему для подбора узла со спонсором по интересам. Выберите «Не указывать», чтобы удалить тему.','muted');
     const feedback=el('p',undefined,'muted');feedback.setAttribute('role','status');
     const actions=el('div',undefined,'actions'),save=el('button','Сохранить тему');save.type='submit';
     const connect=el('a','Подключиться','ui-button');connect.hidden=true;connect.target='_blank';connect.rel='noopener noreferrer';

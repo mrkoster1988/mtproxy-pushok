@@ -558,7 +558,7 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
                  'reply_markup':{'inline_keyboard':buttons}}, None)
     stars = re.fullmatch(r'/start(?:@'+re.escape(configured_bot_username())+r')?\s+stars', str(message.get('text') or ''), re.IGNORECASE)
     if stars and chat.get('type') == 'private' and type(actor.get('id')) is int and actor['id'] == chat.get('id'):
-        return ({'chat_id':chat['id'], 'text':'⭐ <a href="tg://settings/stars">Открыть мои Stars</a>\n\nЕсли Telegram не открывает ссылку: Настройки → Мои звёзды. Это личный баланс Telegram.', 'parse_mode':'HTML', 'reply_markup':keyboard()}, None)
+        return ({'chat_id':chat['id'], 'text':'⭐ <a href="tg://stars">Открыть мои Stars</a>\n\nЕсли Telegram не открывает ссылку: Настройки → Мои звёзды. Это личный баланс Telegram.', 'parse_mode':'HTML', 'reply_markup':keyboard()}, None)
     flow = re.fullmatch(r'(?i:/start(?:@'+re.escape(configured_bot_username())+r')?)\s+flow_([23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12})', str(message.get('text') or ''))
     if flow:
         if (chat.get('type') != 'private' or type(actor.get('id')) is not int

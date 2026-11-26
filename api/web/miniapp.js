@@ -143,7 +143,7 @@ window.pushokMiniApp=(()=>{
  }
  document.addEventListener('click',event=>{
   const link=event.target.closest('a');if(!link||!app?.openTelegramLink)return;
-  try{const url=new URL(link.href);if(url.protocol==='https:'&&url.hostname==='t.me'&&!url.username&&!url.password){event.preventDefault();app.openTelegramLink(url.href);}}catch{}
+  try{const url=new URL(link.href);if(url.protocol==='https:'&&url.hostname==='t.me'&&!url.username&&!url.password){if(!event.defaultPrevented){app.openTelegramLink(url.href);event.preventDefault();}}}catch{}
  });
  retry.addEventListener('click',start);
  message('Подключение к Telegram…');

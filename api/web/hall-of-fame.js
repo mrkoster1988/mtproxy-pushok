@@ -1,6 +1,6 @@
 'use strict';
 window.pushokHall=(()=>{
- const kinds={month:'Месяц',year:'Год'},titles={invited:'Приглашённые',paid_referrals:'Платящие приглашённые',spend:'Расходы на рекламу',paid_campaigns:'Оплаченные кампании'};
+ const kinds={month:'Месяц',year:'Год'},titles={invited:'Приглашённые'};
  const date=d=>new Date(d).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'});
  const fmt=n=>Number(n).toLocaleString('ru-RU'),month=d=>new Date(d).toLocaleDateString('ru-RU',{month:'long',year:'numeric',timeZone:'Europe/Moscow'});
  function frame(node,rank){if(!node||!rank)return;node.classList.add('hall-frame',rank===1?'hall-gold':rank===2?'hall-silver':rank===3?'hall-bronze':'hall-teal');node.title='Место '+rank;}
@@ -14,7 +14,7 @@ window.pushokHall=(()=>{
   history.setAttribute('aria-label','Период рейтинга');
   for(const [key,title] of Object.entries(kinds)){const b=button(title,()=>{kind=key;period='';void refresh();});b.dataset.kind=key;tabs.append(b);}
   history.onchange=()=>{period=history.value;void refresh();};controls.append(tabs,history);target.replaceChildren(controls,body,admin);
-  const help=el('details',undefined,'context-help');help.append(el('summary','ⓘ Как считаем и награждаем'),el('p','Учёт с регистрации первого пользователя. Участвуют пользователи и сотрудники, кроме разработчика и заблокированных аккаунтов. Расходы Stars учитываются по рублёвой цене заявки, рублёвые — по фактически оплаченной сумме без бонусов. Тестовые, ручные и возвращённые оплаты не учитываются. Периоды по Москве. До окончания периода места могут меняться. Итоги и бонусы фиксируются после завершения; повторных начислений нет. Исторические периоды до запуска доски восстанавливаются без бонусов. При равенстве выше первая учитываемая активность, затем ID.'));target.append(help);
+  const help=el('details',undefined,'context-help');help.append(el('summary','ⓘ Как считаем и награждаем'),el('p','Учёт с регистрации первого пользователя. Участвуют пользователи и сотрудники, кроме разработчика и заблокированных аккаунтов. Учитываются принятые приглашения. Периоды по Москве. До окончания периода места могут меняться. Итоги и бонусы фиксируются после завершения; повторных начислений нет. Исторические периоды до запуска доски восстанавливаются без бонусов. При равенстве выше первая учитываемая активность, затем ID.'));target.append(help);
   function valid(){return session===token&&target.isConnected&&location.hash.startsWith('#/hall');}
   function periodTitle(d){return new Date(d.starts_at).toLocaleDateString('ru-RU',{year:'numeric',...(kind==='month'?{month:'long'}:{}),timeZone:'Europe/Moscow'});}
   function person(row,metric,podium=false){
@@ -28,18 +28,16 @@ window.pushokHall=(()=>{
   }
   async function refresh(){
    const request=++serial;body.setAttribute('aria-busy','true');[...tabs.children].forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.kind===kind)));
-   try{const all=await Promise.all(Object.keys(titles).map(metric=>api('/hall?kind='+kind+'&metric='+metric+(period?'&period_id='+period:''))));if(!valid()||request!==serial)return;
-    const first=all[0];history.replaceChildren();const current=el('option',periodTitle({starts_at:new Date(),ends_at:new Date()}));current.value='';history.append(current);
+   try{const first=await api('/hall?kind='+kind+'&metric=invited'+(period?'&period_id='+period:''));if(!valid()||request!==serial)return;
+    history.replaceChildren();const current=el('option',periodTitle({starts_at:new Date(),ends_at:new Date()}));current.value='';history.append(current);
     if(!period)current.textContent=periodTitle(first);for(const p of first.periods){const o=el('option',periodTitle(p));o.value=p.id;history.append(o);}history.value=period;
     const heading=el('div',undefined,'hall-heading');heading.append(el('small',first.closed?'Итоги сохранены':'Места обновляются до конца периода','muted'));body.replaceChildren(heading);
-    Object.keys(titles).forEach((metric,i)=>{const data=all[i],section=el('section',undefined,'hall-category');section.append(el('h2',titles[metric]));const podium=el('div',undefined,'hall-podium');for(const rank of [2,1,3]){const row=data.rows.find(r=>r.rank===rank);if(row)podium.append(person(row,metric,true));}section.append(podium);
-     if(Object.keys(data.legacy_spend||{}).length){section.append(el('p','Архив сохранён в прежних номинациях, без пересчёта валют.','muted'));for(const [old,rows] of Object.entries(data.legacy_spend)){section.append(el('h3',old==='spend_rub'?'Расходы в рублях':'Расходы в Stars'));rows.forEach(row=>section.append(person(row,old)));}body.append(section);return;}
+    const metric='invited',data=first,section=el('section',undefined,'hall-category');section.append(el('h2',titles[metric]));const podium=el('div',undefined,'hall-podium');for(const rank of [2,1,3]){const row=data.rows.find(r=>r.rank===rank);if(row)podium.append(person(row,metric,true));}section.append(podium);
      if(!data.rows.length)section.append(el('p','Первое место пока свободно','muted'));
      const rest=el('details',undefined,'hall-rest'),own=data.own;rest.append(el('summary','Все участники · топ-'+data.top_size+' · '+(own?'Ваше место: '+own.rank:'У вас пока нет результата')));
      for(const row of data.rows.filter(r=>r.rank>3))rest.append(person(row,metric));if(own&&own.rank>data.top_size)rest.append(person(own,metric));
      if(!data.rows.some(r=>r.rank>3))rest.append(el('p','Других участников пока нет','muted'));section.append(rest);
      if(data.rewards.some(n=>n>0))section.append(el('small','Призы: '+data.rewards.map((n,j)=>n?'#'+(j+1)+' · '+fmt(n/100)+' ₽':null).filter(Boolean).join(' / '),'hall-prizes'));body.append(section);
-    });
    }catch(e){if(valid()&&request===serial)body.replaceChildren(el('p',e.message,'empty'),button('Повторить',refresh));}finally{if(request===serial)body.removeAttribute('aria-busy');}
   }
   await refresh();if(me?.role==='admin'&&valid())await adminPanel(admin,valid);
@@ -47,7 +45,7 @@ window.pushokHall=(()=>{
  async function adminPanel(target,valid){
   try{const data=await api('/hall/admin');if(!valid())return;const box=el('details',undefined,'hall-admin panel');box.append(el('summary','Управление и статистика'));target.replaceChildren(box);
    box.append(el('p','Победителей: '+fmt(data.totals.winners)+' · Призовых мест: '+fmt(data.totals.awards)+' · Начислено: '+fmt(data.totals.bonus/100)+' бонусных ₽'));
-   const activity=el('details');activity.append(el('summary','Статистика текущего месяца'));for(const [key,item] of Object.entries(data.activity)){activity.append(el('p',titles[key]+' · участников: '+fmt(item.participants)+' · всего: '+fmt(key==='spend'?item.total/100:item.total)));}box.append(activity);
+   const activity=el('details');activity.append(el('summary','Статистика текущего месяца'));for(const [key,item] of Object.entries(data.activity)){if(!titles[key])continue;activity.append(el('p',titles[key]+' · участников: '+fmt(item.participants)+' · всего: '+fmt(key==='spend'?item.total/100:item.total)));}box.append(activity);
    const form=el('form'),size=el('input');size.type='number';size.min=3;size.max=200;size.value=data.settings.top_size;const sizeLabel=el('label','Размер топа');sizeLabel.append(size);form.append(sizeLabel);
    const period=el('select'),metric=el('select');period.setAttribute('aria-label','Период наград');metric.setAttribute('aria-label','Номинация наград');for(const [k,t] of Object.entries(kinds)){const o=el('option',t);o.value=k;period.append(o);}for(const [k,t] of Object.entries(titles)){const o=el('option',t);o.value=k;metric.append(o);}
    const rewards=structuredClone(data.settings.rewards),grid=el('div',undefined,'hall-prize-grid');form.append(period,metric,grid);let previousKind=period.value,previousMetric=metric.value;

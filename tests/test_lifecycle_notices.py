@@ -63,6 +63,6 @@ class StarsLinkTests(unittest.TestCase):
         update={'message':{'text':'/start stars','from':{'id':123},'chat':{'id':123,'type':'private'}}}
         result=response_for(update)[0]
         self.assertEqual(result['parse_mode'],'HTML')
-        self.assertIn('href="tg://settings/stars"',result['text'])
+        self.assertIn('href="tg://stars"',result['text'])
         update['message']['chat']['type']='group'
         self.assertIsNone(response_for(update))

@@ -182,6 +182,8 @@ class HallIntegration(unittest.TestCase):
             period=conn.execute("SELECT id FROM hall_periods WHERE kind='month' AND starts_at='2030-01-01T00:00:00+03'").fetchone()['id']
             conn.execute("DELETE FROM hall_results WHERE period_id=%s AND metric='spend'",(period,))
         url=f'/hall?kind=month&metric=spend&period_id={period}'
+        self.request('GET',url,404)
+        self.actor={'id':self.admin,'role':'admin'}
         before=self.request('GET',url)
         self.assertEqual(before['rows'],[])
         self.assertEqual(before['legacy_spend']['spend_rub'][0]['score'],10000)

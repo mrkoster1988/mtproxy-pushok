@@ -134,7 +134,8 @@ class CommunityIntegration(unittest.TestCase):
             for uid in (self.member,self.friend,self.admin,self.member):
                 profile=self.request('GET',f'/community/users/{uid}')
                 self.assertEqual(profile['frame_rank'],1 if uid==self.member else None)
-            self.assertEqual(scores.call_count,4)
+            self.assertEqual(scores.call_count,1)
+            self.assertEqual(scores.call_args.args[1], "invited")
             clock.return_value=121
             self.request('GET',f'/community/users/{self.member}')
-            self.assertEqual(scores.call_count,8)
+            self.assertEqual(scores.call_count,2)
