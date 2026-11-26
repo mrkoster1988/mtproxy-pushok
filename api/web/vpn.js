@@ -152,8 +152,8 @@ window.pushokVpn = (() => {
         const addresses=el('dl',undefined,'vpn-addresses'),ips=Array.isArray(row.tunnel_ips)?row.tunnel_ips:[];
         let place=row.country_code;
         if(place){try{place=new Intl.DisplayNames(['ru'],{type:'region'}).of(place);}catch{}}
-        addresses.append(metric('IP в туннеле',ips.join(', ')||'—'),metric('Последний IP подключения',row.endpoint_ip||'—'),
-          metric('Страна по IP',place||'Не определена'));
+        addresses.append(metric('Последний IP подключения',row.endpoint_ip||'—'),
+          metric('Страна по IP',place||'—'),metric('IP в туннеле',ips.join(', ')||'—'));
         tile.append(addresses);
       }
       if(row.state==='revoked')tile.append(el('p','Доступ отозван'+(row.revoked_at?' '+date(row.revoked_at):'')+
