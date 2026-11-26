@@ -94,3 +94,109 @@
 .developer-actions {display:flex;flex-wrap:wrap;gap:8px}
 .developer-status {font-size:13px;line-height:1.45;margin:10px 0 0}
 .developer-status:empty {display:none}
+
+/* Campaign detail in the advertiser's cabinet. */
+.cabinet-mode .campaign-detail.campaign-page {
+  display:grid; gap:10px; width:100%; max-width:780px; margin-inline:auto;
+}
+.cabinet-mode .campaign-page .campaign-overview {
+  padding:clamp(14px,3.7vw,24px); border-radius:20px; border:1px solid #345367;
+  background:radial-gradient(ellipse at 98% 0%,#214657 0%,transparent 56%),linear-gradient(120deg,#153448,#0e2538);
+  box-shadow:0 5px 18px #03111a38; color:#edf6f7;
+}
+.cabinet-mode .campaign-page .campaign-overview .tile-heading {
+  display:grid; grid-template-columns:48px minmax(0,1fr) auto; gap:12px; align-items:start; margin:0;
+}
+.campaign-page .campaign-overview .tile-heading>.ui-avatar {width:48px;height:48px;border-radius:15px;overflow:hidden}
+.campaign-page .campaign-overview .tile-heading>.ui-avatar img {width:100%;height:100%;object-fit:cover}
+.cabinet-mode .campaign-page .campaign-overview .tile-title {
+  color:#f3fafb; font-size:clamp(17px,4.5vw,23px); line-height:1.17; font-weight:700;
+  letter-spacing:-.025em; margin:0 0 4px; overflow-wrap:anywhere;
+}
+.campaign-page .campaign-overview .tile-heading small {display:block;margin:3px 0 0;line-height:1.35}
+.campaign-page .campaign-overview .campaign-channel-link {color:#79dfd7;text-decoration:none}
+.campaign-page .campaign-overview .campaign-topic {color:#afc5d4;font-size:12px}
+.cabinet-mode .campaign-page .campaign-overview .campaign-current {
+  align-self:start; max-width:110px; padding:4px 8px; font-size:11px; line-height:1.3; border-radius:20px;
+}
+.cabinet-mode .campaign-page .campaign-overview .tile-period {
+  display:flex;align-items:flex-start;gap:8px;margin:18px 0 13px;font-size:14px;line-height:1.45;color:#d9e9f1;
+}
+.campaign-overview .tile-period>.ui-icon {flex:none;width:17px;height:17px;margin-top:2px;color:#77d8ce}
+.cabinet-mode .campaign-page .campaign-overview .campaign-tile-facts {
+  display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.8fr) minmax(0,1.2fr);
+  margin:0;padding:12px 0 0;border-top:1px solid #45617394;
+}
+.cabinet-mode .campaign-page .campaign-overview .campaign-tile-facts dt {font-size:11px;color:#a9c0cf}
+.cabinet-mode .campaign-page .campaign-overview .campaign-tile-facts dd {font-size:16px;line-height:1.3}
+.cabinet-mode .campaign-page .campaign-overview .campaign-tile-facts div:last-child dd {color:#9aeee0}
+.cabinet-mode .campaign-detail.campaign-page>.actions {display:flex;flex-wrap:wrap;gap:8px;margin:0 0 3px}
+.cabinet-mode .campaign-page>.actions:empty {display:none}
+.cabinet-mode .campaign-page>.actions>.labeled-action {
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:1 1 auto;min-width:0;width:auto;min-height:44px;
+  padding:8px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--text);font:inherit;font-size:14px;font-weight:600;
+}
+.campaign-page>.actions>.labeled-action svg {color:var(--mint);width:18px;height:18px}
+.cabinet-mode .campaign-page>.actions>.primary {background:var(--mint);color:#092633}
+.cabinet-mode .campaign-page>.actions>.primary svg {color:inherit}
+.cabinet-mode .campaign-page>.campaign-analytics {
+  margin:0 0 3px;gap:12px;padding:16px;border-radius:16px;border-color:var(--line-soft);background:var(--surface);
+}
+.campaign-page .analytics-header .analytics-actions {gap:0}
+.cabinet-mode .campaign-page .analytics-actions .icon-action {width:40px;height:40px;min-height:40px;border:0;background:transparent}
+.campaign-page .analytics-header h4 {font-size:17px;font-weight:650}
+.analytics-empty {display:flex;align-items:center;gap:12px;min-width:0}
+.analytics-symbol {width:36px;height:36px;display:grid;place-items:center;flex:none;border-radius:12px;color:var(--mint);background:#2b8d8d21}
+.analytics-symbol svg {width:21px;height:21px}
+.analytics-empty strong {font-size:14px;color:var(--text)}
+.analytics-empty p {font-size:13px;line-height:1.4;margin:3px 0 0;color:var(--muted)}
+.cabinet-mode .campaign-page .analytics-footer {gap:7px}
+.cabinet-mode .campaign-page .analytics-footer .campaign-stat-action {border-radius:10px;font-size:13px}
+.cabinet-mode .campaign-page .analytics-footer .analytics-connect {background:var(--mint);border-color:transparent;color:#092633;font-weight:650}
+.campaign-page .campaign-analytics-metrics {gap:0}
+.cabinet-mode .campaign-page .campaign-analytics-metrics>div {border:0;border-radius:0;background:transparent;padding:8px 10px}
+.campaign-page .campaign-analytics-metrics dd {font-size:20px;font-variant-numeric:tabular-nums}
+.cabinet-mode .campaign-page>.campaign-timing,.cabinet-mode .campaign-page>.campaign-review-fold,.cabinet-mode .campaign-page>.management-actions {
+  margin:0; padding:0 12px;border:0;border-bottom:1px solid var(--line-soft);border-radius:0;background:transparent;box-shadow:none;
+}
+.campaign-page>details>summary {list-style:none;cursor:pointer}
+.cabinet-mode .campaign-page>details>summary {
+  display:flex;align-items:center;gap:10px;min-height:46px;padding:4px 0;margin:0;border:0;color:var(--text);font:inherit;font-size:14px;font-weight:600;
+}
+.campaign-page>details>summary::-webkit-details-marker {display:none}
+.campaign-page>details>summary>.ui-icon {width:18px;height:18px;flex:none;color:var(--mint)}
+.campaign-page>details>summary>.ui-icon:last-child {width:15px;margin-left:auto;transform:rotate(90deg);color:var(--muted)}
+.campaign-page>details[open]>summary>.ui-icon:last-child {transform:rotate(-90deg)}
+.campaign-page>details:not([open])>:not(summary) {display:none!important}
+.campaign-page>details[open] {padding-bottom:12px}
+.campaign-page .campaign-review-fold p {margin:6px 0;color:var(--text);line-height:1.5;font-size:14px}
+.campaign-page .campaign-review-fold time,.campaign-page .campaign-reference {display:block;font-size:12px;color:var(--muted);margin:8px 0}
+.cabinet-mode .campaign-page .campaign-action-tools .labeled-action {display:inline-flex;width:auto;height:auto;align-items:center;gap:6px;padding:8px 12px;font-size:13px;min-height:42px}
+.cabinet-mode .campaign-page .automation-panel {margin:0;border-left:3px solid var(--mint);border-radius:12px;padding:12px 14px;background:var(--surface)}
+.campaign-page .automation-panel[data-automation-status=agent_unavailable] {border-left-color:#dda861}
+.campaign-page .automation-panel p:empty {display:none}
+.campaign-page .campaign-progress {grid-template-columns:repeat(3,minmax(0,1fr));row-gap:9px}
+.campaign-page .campaign-progress li {flex-direction:row;justify-content:flex-start;gap:5px;font-size:11px;text-align:left}
+.campaign-page .campaign-progress li::before,.campaign-page .campaign-progress li::after {display:none}
+.campaign-page .campaign-progress .progress-dot {flex:none;width:19px;height:19px;font-size:10px}
+.campaign-page .campaign-progress .progress-dot svg {width:13px;height:13px}
+@media(max-width:380px){
+  .cabinet-mode .campaign-page .campaign-overview .tile-heading {grid-template-columns:40px minmax(0,1fr) auto;gap:8px}
+  .campaign-page .campaign-overview .tile-heading>.ui-avatar {width:40px;height:40px}
+  .cabinet-mode .campaign-page .campaign-overview .campaign-current {max-width:82px}
+  .campaign-page .campaign-progress {grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(min-width:600px){
+  .cabinet-mode .campaign-page .campaign-overview .tile-heading {grid-template-columns:56px minmax(0,1fr) auto}
+  .campaign-page .campaign-overview .tile-heading>.ui-avatar {width:56px;height:56px}
+  .campaign-page .campaign-analytics-metrics {grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+.campaign-window {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:17px 0 13px}
+.campaign-window>div:last-of-type {text-align:right}
+.campaign-window>div>span,.campaign-window time small {display:block;font-size:11px;line-height:1.5;color:#b0c9d6}
+.campaign-window time strong {display:block;font-size:16px;line-height:1.3;font-weight:650}
+.campaign-window progress {grid-column:1/-1;appearance:none;width:100%;height:4px;border:0;border-radius:4px;overflow:hidden;background:#304d5f}
+.campaign-window progress::-webkit-progress-bar {background:#304d5f}
+.campaign-window progress::-webkit-progress-value {background:linear-gradient(90deg,#329aab,#7be8d2);border-radius:4px}
+.campaign-window progress::-moz-progress-bar {background:#71dbc9}
+.campaign-page .campaign-facts:empty {display:none}

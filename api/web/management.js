@@ -53,7 +53,7 @@ window.pushokManagement=(()=>{
  function archiveCampaign(parent,c,route){
   return archive(parent,'/campaigns/'+c.id,'Убрать заявку «'+(c.channel_title||'#'+c.id.slice(0,8))+'» из списка? Будущий слот отменится.',route);
  }
- function campaignActions(c,operator=false){
+ function campaignActions(c,operator=false,labeled=false){
   const box=el('details',undefined,'management-actions approval-section'),heading=el('summary'),body=el('div',undefined,'approval-body'),tools=el('div',undefined,'campaign-action-tools');
   heading.append(window.pushokViews.icon('edit'),el('span','Изменить или удалить заявку'),window.pushokViews.icon('chevron'));
   tools.setAttribute('role','group');tools.setAttribute('aria-label','Действия заявки');body.append(tools);box.append(heading,body);
@@ -74,7 +74,11 @@ window.pushokManagement=(()=>{
     await api('/operator/campaigns/'+c.id+'/slot',{method:'DELETE'});await refresh();notice('Слот снят. Оплата сохранена, можно выбрать новое время.',true);
    });
   }
-  archiveCampaign(tools,c,operator?'moderation':'campaigns');return box;
+  archiveCampaign(tools,c,operator?'moderation':'campaigns');
+  if(labeled)for(const control of tools.children){
+   control.classList.remove('icon-action');control.classList.add('labeled-action');control.append(el('span',control.getAttribute('aria-label')));
+  }
+  return box;
  }
  function nodeActions(n){
   const box=el('div',undefined,'node-actions'),controls=el('div',undefined,'node-action-buttons');controls.setAttribute('role','group');controls.setAttribute('aria-label','Действия узла '+n.name);box.append(controls);

@@ -327,7 +327,7 @@ function showCampaignReport(c, box,{refresh=false,embedded=false}={}){
  const panel=old||el('section',undefined,'campaign-report'),session=token,request=(panel.reportRequest||0)+1;panel.reportRequest=request;
  const current=()=>panel.isConnected&&session===token&&request===panel.reportRequest;
  panel.setAttribute('aria-label','Отчёт о рекламной кампании');
- if(!old)box.append(panel);
+ if(!old){const analytics=box.matches('.campaign-page')&&box.querySelector('.campaign-analytics');if(analytics)analytics.after(panel);else box.append(panel);}
  panel.querySelector(':scope > .report-status')?.remove();
  const status=el('div',undefined,'report-status'),message=el('p','Загружаем сведения…','muted');status.setAttribute('role','status');status.append(message);panel.prepend(status);panel.setAttribute('aria-busy','true');
  return api('/campaigns/'+c.id+'/report').then(data=>{
@@ -406,9 +406,12 @@ function manualPaymentActions(c,box,actions){
 }
 
 function card(c,op,{compact=false,showPayment=false}={}){
- const box=el('section',undefined,'campaign-detail');
- box.append(window.pushokViews.campaignSummary(c,op?'moderation':'campaign',{actions:showPayment}));
- const timing=window.pushokViews.disclosure('Этапы и сроки размещения',[window.pushokViews.progress(c),window.pushokViews.facts(c)],'inline-help campaign-timing');
+ const overview=showPayment&&!op&&!compact;
+ const box=el('section',undefined,overview?'campaign-detail campaign-page':'campaign-detail');
+ box.append(window.pushokViews.campaignSummary(c,op?'moderation':'campaign',{actions:showPayment&&!overview,overview}));
+ const timingContent=[window.pushokViews.progress(c),window.pushokViews.facts(c,overview,!!box.querySelector('.campaign-window'))];
+ if(overview)timingContent.push(window.pushokViews.statusSteps(c,true),el('small','Заявка #'+c.id.slice(0,8),'campaign-reference'));
+ const timing=window.pushokViews.disclosure('Этапы и сроки размещения',timingContent,'inline-help campaign-timing');
  const timingHeading=timing.querySelector('summary');
  timingHeading.prepend(window.pushokViews.icon('calendar'));timingHeading.append(window.pushokViews.icon('chevron'));
  box.append(timing);
@@ -420,23 +423,34 @@ function card(c,op,{compact=false,showPayment=false}={}){
   box.append(window.pushokCampaignAnalytics.panel(c,compact?null:reportButton));
  }
  if(c.growth_offer_name)box.append(el('p','Скидка: '+c.growth_offer_name+' · '+c.discount_percent_snapshot+'%.'+(miniAppMode?'':' Цена до скидки: '+money(c.base_price_kopecks_snapshot)+'.'),'muted'));
- if(c.moderator_comment)box.append(el('p','Модерация: '+c.moderator_comment));
- if(c.payment_review_comment)box.append(el('p','Проверка оплаты: '+c.payment_review_comment));
+ if(overview&&(c.ai_checked_at||c.moderator_comment||c.payment_review_comment)){
+  const notes=[];
+  if(c.ai_description)notes.push(el('p',c.ai_description,'campaign-ai-description'));
+  if(c.moderator_comment&&c.moderator_comment!==c.ai_description)notes.push(el('p',c.moderator_comment));
+  if(c.payment_review_comment)notes.push(el('p','Проверка оплаты · '+c.payment_review_comment));
+  if(c.ai_checked_at){const at=el('time','Pushok ИИ · '+date(c.ai_checked_at));at.dateTime=c.ai_checked_at;notes.push(at);}
+  const review=window.pushokViews.disclosure('Проверка кампании',notes,'campaign-review-fold');
+  const summary=review.querySelector('summary');summary.prepend(window.pushokViews.icon('moderation'));summary.append(window.pushokViews.icon('chevron'));
+  review.open=['changes_requested','rejected'].includes(c.moderation_status)||c.payment_status==='rejected';box.append(review);
+ }else{
+  if(c.moderator_comment)box.append(el('p','Модерация: '+c.moderator_comment));
+  if(c.payment_review_comment)box.append(el('p','Проверка оплаты: '+c.payment_review_comment));
+ }
  const actions=el('div',undefined,'actions');box.append(actions);
- if(!op&&window.pushokManagement)box.append(window.pushokManagement.campaignActions(c));
+ if(!op&&window.pushokManagement)box.append(window.pushokManagement.campaignActions(c,false,overview));
  const change=async(path,body)=>{await api('/operator/campaigns/'+c.id+'/'+path,{method:'POST',body});notice('Изменения сохранены.',true);await refresh();};
  if(!op){
-  if(c.moderation_status==='approved'&&c.price_kopecks_snapshot>0&&!location.hash.startsWith('#/payments/')){const pay=el('a',c.payment_status==='verified'?'Оплата':'Оплатить',c.payment_status==='verified'?'ui-button':'ui-button primary');pay.setAttribute('aria-label',c.payment_status==='verified'?'Посмотреть оплату':'Перейти к оплате');if(c.payment_status==='verified')window.pushokViews.iconAction(pay,'wallet','Посмотреть оплату');else pay.prepend(window.pushokViews.icon('wallet'));pay.href='#/payments/'+c.id;actions.append(pay);}
+  if(c.moderation_status==='approved'&&c.price_kopecks_snapshot>0&&!location.hash.startsWith('#/payments/')){const pay=el('a',c.payment_status==='verified'?'Оплата':'Оплатить',c.payment_status==='verified'?'ui-button':'ui-button primary');pay.setAttribute('aria-label',c.payment_status==='verified'?'Посмотреть оплату':'Перейти к оплате');if(c.payment_status==='verified'&&!overview)window.pushokViews.iconAction(pay,'wallet','Посмотреть оплату');else{pay.classList.add('labeled-action');pay.prepend(window.pushokViews.icon('wallet'));}pay.href='#/payments/'+c.id;actions.append(pay);}
   if(compact){const reports=el('details',undefined,'order-reports');reports.append(el('summary','История и отчёт'),reportButton);box.append(reports);}
-  if(['scheduled','active','completed'].includes(c.placement_status)){
+  if(overview||['scheduled','active','completed'].includes(c.placement_status)){
    const observationButton=button('Автоматика',async()=>{
-    let panel=box.querySelector('.automation-panel');if(panel){panel.remove();return;}
-    panel=el('section',undefined,'observation-panel automation-panel');panel.dataset.promotionCampaign=c.id;panel.setAttribute('aria-label','Статус автоматического размещения');box.append(panel);
-    await updatePromotionPanel(panel);
-   });observationButton.setAttribute('aria-label','Статус автоматического размещения');observationButton.prepend(window.pushokViews.icon('status'));actions.append(observationButton);
+    let panel=box.querySelector('.automation-panel');if(panel){panel.remove();observationButton.setAttribute('aria-expanded','false');return;}
+    panel=el('section',undefined,'observation-panel automation-panel');panel.dataset.promotionCampaign=c.id;panel.setAttribute('aria-label','Статус автоматического размещения');if(overview)actions.after(panel);else box.append(panel);
+    observationButton.setAttribute('aria-expanded','true');await updatePromotionPanel(panel);
+   });observationButton.classList.add('labeled-action');observationButton.setAttribute('aria-expanded','false');observationButton.setAttribute('aria-label','Статус автоматического размещения');observationButton.prepend(window.pushokViews.icon('status'));actions.append(observationButton);
   }
   addHoldAction(c,box,actions);
-  manualPaymentActions(c,box,actions);
+  if(!overview)manualPaymentActions(c,box,actions);
   if(['draft','changes_requested'].includes(c.moderation_status)){
    actions.append(button('Исправить канал',async()=>{
     if(box.querySelector('.correction-form'))return;
@@ -528,6 +542,10 @@ function card(c,op,{compact=false,showPayment=false}={}){
    if(!confirm('Тег кампании снят вручную или агентом? В подключённом к этому прокси Telegram без подписки канал кампании больше не показан как спонсор? Второй аккаунт не нужен. Если исходный тег ведёт на тот же канал, возврат настроек не подтверждает прекращение показа.'))return;
    await change('complete',{tag_removed_confirmed:true,verification_method:'separate_unsubscribed_client'});
   }));
+ }
+ if(overview){
+  box.firstElementChild.after(actions);
+  box.querySelector('.campaign-analytics')?.after(timing);
  }
  return box;
 }
@@ -1202,7 +1220,7 @@ const automationMessages={
  completed:['Кампания завершена',()=> 'Отчёт и история размещения сохранены в архиве.'],
  cancelled:['Размещение отменено',()=> 'Автоматический запуск этой кампании отменён.'],
  start_missed:['Запуск не был подтверждён',()=> 'Назначенный период уже прошёл. После восстановления связи с агентом система подберёт новый период; он не считается отработанным.'],
- agent_unavailable:['Нет свежего ответа агента',()=> 'Запуск сейчас не подтверждён. Администратору нужно проверить службу агента в разделе «Спонсоры и узлы».'],
+ agent_unavailable:['Нет свежего ответа агента',()=> ['admin','operator'].includes(me?.role)?'Проверьте подключение агента в разделе «Спонсоры и узлы».':'Узел пока не подтвердил текущее размещение. Здесь появится результат следующей проверки.'],
  preparing_tag:['Привязываем канал в Telegram',()=> 'Автоматика готовит канал через @MTProxyBot. После проверки и обновления Telegram будет назначен полный оплаченный период.'],
  selecting_tag:['Подбираем готовый тег',()=> 'Система автоматически выберет ближайший свободный период на узле с подтверждённым тегом этого канала. Длительность тарифа сохранится.'],
  setup_required:['Ожидаем подготовку тега',s=>['admin','operator'].includes(me?.role)?'Подключите аккаунт владельца в настройках запуска: агент сам подготовит привязку через @MTProxyBot. Готовый тег также можно сохранить вручную.':'Готовим тег вашего канала. После подготовки система автоматически выберет ближайший свободный период; оплата сохранена.'],
@@ -1216,7 +1234,7 @@ async function updatePromotionPanel(panel){
  const session=token,request=(panel.promotionRequest||0)+1;panel.promotionRequest=request;
  if(!panel.hasChildNodes()){
   if(panel.dataset.promotionSummary)panel.textContent='Получаем статус автоматики…';
-  else{panel.append(el('h4','Автоматическое размещение'),el('p','Получаем состояние…','automation-message'),el('p','','automation-agent muted'),el('p','','automation-error muted'),button('Закрыть',()=>panel.remove()));}
+  else{panel.append(el('h4','Автоматическое размещение'),el('p','Получаем состояние…','automation-message'),el('p','','automation-agent muted'),el('p','','automation-error muted'),button('Закрыть',()=>{panel.closest('.campaign-detail')?.querySelector('[aria-label="Статус автоматического размещения"]')?.setAttribute('aria-expanded','false');panel.remove();}));}
  }
  try{
   const state=await api('/campaigns/'+panel.dataset.promotionCampaign+'/promotion-status');

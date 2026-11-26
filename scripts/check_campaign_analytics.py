@@ -41,7 +41,8 @@ def check_campaign_analytics(browser,base,output,failures,dsn):
         with patch.dict(os.environ,env):
             page.goto(base+'/#/campaign/'+str(cid));expect(page.locator('body')).to_have_attribute('data-cabinet-loaded','true')
             area=page.locator('[data-page=campaign] .campaign-analytics');expect(area).to_contain_text('Статистика ссылки')
-            expect(area.locator('dd')).to_have_text(['—','—','—','—'])
+            expect(area.locator('.analytics-empty')).to_contain_text('Подсчёт не подключён')
+            expect(area.locator('dd')).to_have_count(0)
             footer=area.locator('.analytics-footer')
             expect(footer.get_by_role('button',name='Отчёт по кампании')).to_be_visible()
             expect(footer.get_by_role('button',name='Подключить подсчёт')).to_have_text('Подключить подсчёт')

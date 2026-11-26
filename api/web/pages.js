@@ -583,6 +583,13 @@
   const selected=state.campaigns.find(c=>c.id===id),key=JSON.stringify([name,id,selected]);
   if(background&&id&&['campaign','payments','create'].includes(name)&&state.selectedKey===key){refreshLivePanels();return;}
   const openPanels=background&&selected?[...pages[name].querySelectorAll('.campaign-report,.automation-panel')]:[];
+  const foldStates=new Map();
+  if(background&&name==='campaign'&&selected){
+   for(const key of ['campaign-timing','campaign-review-fold','management-actions']){
+    const fold=pages[name].querySelector('.campaign-page>.'+key);
+    if(fold)foldStates.set(key,fold.open);
+   }
+  }
   state.selectedKey=key;
   if(name==='license'&&!background)void window.pushokAppLicense.load(content.license);
   if(name==='help'&&!background)void window.pushokSupport.show(supportHost);
@@ -615,7 +622,7 @@
   }
   if(name==='campaign'){
    detail.replaceChildren();const c=state.campaigns.find(c=>c.id===id);
-   if(c){detail.append(card(c,false,{showPayment:true}));void renderPromotionStatus(c,detail);metrics('campaign',[]);}
+   if(c){detail.append(card(c,false,{showPayment:true}));metrics('campaign',[]);}
    else{empty(detail,'Кампания отсутствует в рабочем списке или недоступна вашему аккаунту. Завершённые кампании находятся в архиве.');detail.append(link('Открыть архив','archive/'+id));metrics('campaign',[]);}
   }
   if(name==='payments'&&id){
@@ -625,10 +632,16 @@
    else paymentRows.append(el('p','Заявка недоступна или ещё не одобрена.'));
   }
   const updatedCard=pages[name]?.querySelector('.campaign-detail');
+  if(updatedCard)for(const [key,open] of foldStates){
+   const fold=updatedCard.querySelector(':scope > .'+key);if(fold)fold.open=open;
+  }
   if(updatedCard&&openPanels.length){
-   updatedCard.append(...openPanels);
+   for(const panel of openPanels){
+    const anchor=updatedCard.matches('.campaign-page')&&updatedCard.querySelector(panel.matches('.automation-panel')?':scope > .actions':'.campaign-analytics');
+    if(anchor)anchor.after(panel);else updatedCard.append(panel);
+   }
    if(updatedCard.querySelector('.campaign-report'))void showCampaignReport(selected,updatedCard,{refresh:true}).catch(()=>{});
-   updatedCard.querySelectorAll('.automation-panel').forEach(panel=>void updatePromotionPanel(panel));
+   updatedCard.querySelectorAll('.automation-panel').forEach(panel=>{updatedCard.querySelector('[aria-label="Статус автоматического размещения"]')?.setAttribute('aria-expanded','true');void updatePromotionPanel(panel);});
   }
  }
  function back(){

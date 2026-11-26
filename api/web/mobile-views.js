@@ -168,8 +168,29 @@ window.pushokViews=(()=>{
   }
   return 'Запуск в свободный период, не раньше чем через 1 час после подтверждения канала в Telegram';
  }
- function facts(c){const list=el('dl',undefined,'campaign-facts');
-  [['Размещение','Прокси-спонсорство'],['Тариф',c.tariff_name_snapshot],['Срок',duration(c)],['Стоимость',price(c)],...(c.requested_start_at?[['Желаемое начало',launchTime(c.requested_start_at)]]:[]),['Начало',c.scheduled_start_at?launchTime(c.scheduled_start_at):'Не назначено'],['Окончание',c.scheduled_end_at?launchTime(c.scheduled_end_at):'Не назначено']].forEach(([k,v])=>{list.append(el('dt',k),el('dd',v||'—'));});return list;
+ function campaignWindow(c){
+  if(!['active','scheduled','completed'].includes(c.placement_status))return null;
+  const start=Date.parse(c.scheduled_start_at),end=Date.parse(c.scheduled_end_at);
+  if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return null;
+  const period=el('div',undefined,'campaign-window');
+  for(const [label,value] of [['Начало',c.scheduled_start_at],['Окончание',c.scheduled_end_at]]){
+   const stamp=new Date(value),group=el('div'),time=el('time');
+   time.dateTime=value;time.title=launchTime(value);
+   time.append(el('strong',stamp.toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'short',year:'numeric'})),
+    el('small',stamp.toLocaleTimeString('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit'})+' МСК'));
+   group.append(el('span',label),time);period.append(group);
+  }
+  const fraction=Math.max(0,Math.min(100,100*(Date.now()-start)/(end-start)));
+  const track=el('progress');track.max=100;track.value=fraction;track.setAttribute('aria-label','Прошедшая часть запланированного периода');period.append(track);
+  return period;
+ }
+ function facts(c,datesOnly=false,datesInOverview=false){
+  const list=el('dl',undefined,'campaign-facts');
+  const rows=datesOnly?[]:[['Размещение','Прокси-спонсорство'],['Тариф',c.tariff_name_snapshot],['Срок',duration(c)],['Стоимость',price(c)]];
+  if(c.requested_start_at)rows.push(['Желаемое начало',launchTime(c.requested_start_at)]);
+  if(!datesInOverview)rows.push(['Начало',c.scheduled_start_at?launchTime(c.scheduled_start_at):'Не назначено'],['Окончание',c.scheduled_end_at?launchTime(c.scheduled_end_at):'Не назначено']);
+  for(const [key,value] of rows)list.append(el('dt',key),el('dd',value||'—'));
+  return list;
  }
  function price(c){return c.price_kopecks_snapshot===0?'Без оплаты':miniAppMode?(c.stars_price_snapshot>0?c.stars_price_snapshot+' XTR':'Цена Stars не задана'):money(c.price_kopecks_snapshot);}
  // Единая карточка во всех разделах; контекст меняет только действия и переходы.
@@ -178,20 +199,21 @@ window.pushokViews=(()=>{
   if(!actions){actions=el('div',undefined,'tile-actions campaign-tools');actions.setAttribute('role','group');actions.setAttribute('aria-label','Действия кампании');item.append(actions);}
   return actions;
  }
- function campaignSummary(c,mode='campaign',{actions=true,route,openLabel,openIcon='chevron',onOpen}={}){
+ function campaignSummary(c,mode='campaign',{actions=true,route,openLabel,openIcon='chevron',onOpen,overview=false}={}){
   const item=el('article',undefined,'campaign-tile'),head=el('div',undefined,'tile-heading'),copy=el('div');
   item.dataset.placement=c.placement_status;item.dataset.campaignId=c.id;
   const destination=route||(['sponsors','moderation'].includes(mode)?'moderation/':mode==='archive'?'archive/':'campaign/')+c.id;
-  const a=el('a',title(c),'tile-title');a.href='#/'+destination;const details=el('small','#'+c.id.slice(0,8)),channelUrl=c.channel_url||channels.find(x=>x.id===c.channel_id)?.telegram_url;
-  if(/^https:\/\/(?:t\.me|telegram\.me)\/[A-Za-z][A-Za-z0-9_]{3,31}\/?$/.test(channelUrl||'')){const channel=el('a',handle(channelUrl),'campaign-channel-link');channel.href=channelUrl;channel.target='_blank';channel.rel='noopener noreferrer';channel.title='Открыть канал в Telegram';details.append(document.createTextNode(' · '),channel);}
-  copy.append(a,details);
+  const a=el(overview?'h2':'a',title(c),'tile-title');if(!overview)a.href='#/'+destination;const details=el('small',overview?'':'#'+c.id.slice(0,8)),channelUrl=c.channel_url||channels.find(x=>x.id===c.channel_id)?.telegram_url;
+  if(/^https:\/\/(?:t\.me|telegram\.me)\/[A-Za-z][A-Za-z0-9_]{3,31}\/?$/.test(channelUrl||'')){const channel=el('a',handle(channelUrl),'campaign-channel-link');channel.href=channelUrl;channel.target='_blank';channel.rel='noopener noreferrer';channel.title='Открыть канал в Telegram';if(!overview)details.append(document.createTextNode(' · '));details.append(channel);}
+  copy.append(a);if(details.childNodes.length&&details.textContent)copy.append(details);
   if(c.topic_label)copy.append(el('small',c.topic_label,'campaign-topic'));
-  const open=onOpen?button('',()=>onOpen(item)):link('',destination);iconAction(open,openIcon,openLabel||'Открыть кампанию '+title(c));const current=campaignState(c),stateBadge=badge(current[0],current[1]);stateBadge.classList.add('campaign-current');head.append(channelAvatar(c.channel_id,title(c),c.channel_url),copy,stateBadge,open);item.append(head);
+  const open=onOpen?button('',()=>onOpen(item)):link('',destination);iconAction(open,openIcon,openLabel||'Открыть кампанию '+title(c));const current=campaignState(c),stateBadge=badge(current[0],current[1]);stateBadge.classList.add('campaign-current');head.append(channelAvatar(c.channel_id,title(c),c.channel_url),copy,stateBadge);if(!overview)head.append(open);else item.classList.add('campaign-overview');item.append(head);
   const period=el('p',undefined,'tile-period'),periodText=el('span',launchPeriod(c));
   if(c.requested_start_at&&!c.scheduled_start_at&&!c.archived_at&&c.placement_status==='not_scheduled'&&c.moderation_status==='approved'&&c.payment_status==='verified'&&!c.auto_start_not_before)periodText.append(el('small','Желаемое начало: '+launchTime(c.requested_start_at),'tile-requested'));
-  period.append(periodText);item.append(period);
+  if(overview)period.append(icon('calendar'));period.append(periodText);
+  const windowDates=overview&&campaignWindow(c);item.append(windowDates||period);
   if(mode==='sponsors')item.classList.add('sponsor-placement');
-  item.append(statusSteps(c,true));
+  if(!overview)item.append(statusSteps(c,true));
   if(c.moderation_status==='pending'&&!c.archived_at&&c.moderation_check){
    const section=el('section',undefined,'campaign-review-note');
    section.append(el('h3','Проверка заявки'));
@@ -207,7 +229,7 @@ window.pushokViews=(()=>{
    }
    item.append(section);
   }
-  if(c.ai_checked_at){
+  if(c.ai_checked_at&&!overview){
    const description=el('p',c.ai_description||'Описание канала пока отсутствует.','campaign-ai-description');
    const stamp=el('time','Проверено: '+date(c.ai_checked_at),'muted');stamp.dateTime=c.ai_checked_at;
    item.append(el('strong','Pushok ИИ:'),description,stamp);

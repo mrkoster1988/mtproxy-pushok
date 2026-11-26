@@ -96,7 +96,7 @@ def check_campaign_cards(browser, base, output, failures, dsn):
 
     try:
         client, operator, outsider = launch('advertiser'), launch('operator'), launch('outsider')
-        for route in ('campaigns', 'reports', 'campaign/' + str(paid), 'create/' + str(paid)):
+        for route in ('campaigns', 'reports', 'create/' + str(paid)):
             card = check(client, route, paid, 'campaign/' + str(paid))
             if route == 'campaigns':
                 remove=card.get_by_role('button',name='Удалить',exact=True)
@@ -111,6 +111,21 @@ def check_campaign_cards(browser, base, output, failures, dsn):
             if route == 'reports':
                 card.get_by_role('button', name='История кампании').click()
                 expect(card.locator('.campaign-report')).to_contain_text('История действий')
+        go(client, 'campaign/' + str(paid))
+        detail = client.locator('[data-page=campaign] .campaign-page')
+        hero = detail.locator('.campaign-overview')
+        expect(hero.get_by_role('heading', name=title)).to_be_visible()
+        expect(hero.locator('.campaign-channel-link')).to_have_attribute('href', 'https://t.me/unified_cards')
+        expect(hero.locator('.campaign-tile-facts dt')).to_have_text(['Тариф', 'Срок', 'Стоимость'])
+        expect(hero.locator('.campaign-current')).to_be_visible()
+        expect(hero.locator('.campaign-topic')).to_contain_text('18+')
+        expect(detail.get_by_role('link', name='Перейти к оплате')).to_be_visible()
+        expect(detail.locator('.management-actions .danger-text')).to_be_hidden()
+        for width in (320, 390, 768, 1280):
+            client.set_viewport_size({'width': width, 'height': 844})
+            assert client.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+            if width in (390, 768):
+                detail.screenshot(path=str(output / f'campaign-overview-{width}.png'))
         check(client, 'campaigns', free, 'campaign/' + str(free))
         foreign=check(operator, 'campaigns', paid, 'moderation/' + str(paid))
         expect(foreign.get_by_text('Поделиться ссылкой на оплату',exact=True)).to_be_visible()

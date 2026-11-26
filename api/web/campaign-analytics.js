@@ -11,13 +11,20 @@ window.pushokCampaignAnalytics=(()=>{
    try{const data=await api('/campaigns/'+c.id+'/analytics');if(!current(n))return;
     const signature=JSON.stringify(data);if(root.dataset.snapshot===signature)return;const historyOpen=root.querySelector('.analytics-history')?.open,helpOpen=root.querySelector('.analytics-help')?.open;
     const header=el('div',undefined,'analytics-header'),actions=el('div',undefined,'analytics-actions');header.append(el('h4','Статистика ссылки'),actions);actions.append(window.pushokViews.iconAction(button('',load),'refresh','Обновить статистику кампании'));root.replaceChildren(header);
+    if(!data.configured){
+     const empty=el('div',undefined,'analytics-empty'),mark=el('span',undefined,'analytics-symbol'),copy=el('div');
+     mark.append(window.pushokViews.icon('chart'));
+     copy.append(el('strong',c.archived_at?'Статистика не собиралась':'Подсчёт не подключён'),el('p',c.archived_at?'Кампания завершилась без ссылки для подсчёта.':'Подключите ссылку кампании, чтобы видеть переходы и подписки.'));
+     empty.append(mark,copy);root.append(empty);
+    }else{
     const metrics=el('dl',undefined,'campaign-analytics-metrics');
     for(const [label,value] of [['Охват ссылки',data.link_views],['Переходы',data.clicks],['Подписки',data.joins],['Конверсия',data.conversion_percent===null?null:data.conversion_percent+'%']]){const cell=el('div');cell.append(el('dt',label),el('dd',value===null?'—':String(value)));metrics.append(cell);}root.append(metrics);
+    }
 
     if(data.configured&&!data.enabled)root.append(el('p','Канал, бот или среда Telegram изменились. Сохранена история прежнего источника; ссылка отключена.','muted'));
     if(data.test_environment)root.append(el('p','Тестовая среда Telegram','muted'));
     footer.replaceChildren();
-    if(!data.configured&&!c.archived_at){const connect=button('Подключить подсчёт',async()=>{await api('/campaigns/'+c.id+'/analytics/enable',{method:'POST'});await load();});connect.className='campaign-stat-action';connect.prepend(window.pushokViews.icon('plus'));footer.append(connect);}
+    if(!data.configured&&!c.archived_at){const connect=button('Подключить подсчёт',async()=>{await api('/campaigns/'+c.id+'/analytics/enable',{method:'POST'});await load();});connect.className='campaign-stat-action analytics-connect';connect.prepend(window.pushokViews.icon('plus'));footer.append(connect);}
     if(data.url){const line=el('div',undefined,'analytics-link'),a=el('a','Ссылка кампании'),copy=window.pushokViews.iconAction(button('',async()=>{await navigator.clipboard.writeText(data.url);notice('Ссылка кампании скопирована.',true); }),'copy','Скопировать ссылку кампании');a.href=data.url;a.target='_blank';a.rel='noopener noreferrer';const share=window.pushokViews.iconAction(button('',()=>{const url='https://t.me/share/url?url='+encodeURIComponent(data.url)+'&text='+encodeURIComponent('Приглашаю в канал '+(c.channel_username||'')+' — переходите по ссылке.');if(window.Telegram?.WebApp?.openTelegramLink)window.Telegram.WebApp.openTelegramLink(url);else window.open(url,'_blank','noopener,noreferrer');}),'share','Поделиться ссылкой кампании');line.append(a,copy,share);root.append(line);}
     const help=window.pushokViews.disclosure('Как считаем',[
      el('p','Это статистика отдельной ссылки. Показы спонсора MTProxy недоступны и сюда не входят.'),
