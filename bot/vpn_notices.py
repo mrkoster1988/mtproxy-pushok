@@ -1,4 +1,5 @@
 """Deliver committed VPN events to their linked Telegram account."""
+import json
 import logging
 from html import escape
 from urllib.error import HTTPError
@@ -34,7 +35,15 @@ def deliver(api, send, launch='https://pushok.shop/miniapp', queue='vpn-notices'
                   'reply_markup':{'inline_keyboard':[[button]]}})
             status = 'sent'
         except HTTPError as error:
-            status = 'blocked' if error.code == 403 else 'retry'
+            status = 'retry'
+            try:
+                detail = json.loads(error.read(4096)).get('detail')
+            except (ValueError,AttributeError,TypeError,OSError):
+                detail = None
+            if error.code == 403 and detail == 'recipient_blocked':
+                status = 'blocked'
+            elif queue == 'vpn-notices' and error.code == 503 and detail == 'support_bot_chat_not_started':
+                status = 'waiting_chat'
         except Exception:
             status = 'retry'
         try:

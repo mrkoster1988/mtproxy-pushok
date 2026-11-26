@@ -1,3 +1,5 @@
+from io import BytesIO
+import json
 from unittest import TestCase
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
@@ -18,10 +20,11 @@ class VpnNotices(TestCase):
 
     def test_delivery_errors_and_test_environment(self):
         event={'id':1,'lease':'ab'*16,'telegram_id':123,'text':'Pushok ИИ','renew':False}
-        for code,status in [(403,'blocked'),(429,'retry')]:
+        for code,detail,status in [(403,'recipient_blocked','blocked'),(403,'invalid_bridge','retry'),
+                                   (429,'rate_limit','retry'),(503,'support_bot_chat_not_started','waiting_chat')]:
             api=Mock(side_effect=[{'items':[event]},{}])
             with patch('bot.vpn_notices.is_test_environment',return_value=False):
-                deliver(api,Mock(side_effect=HTTPError('https://example.invalid',code,'test',{},None)))
+                deliver(api,Mock(side_effect=HTTPError('https://example.invalid',code,'test',{},BytesIO(json.dumps({'detail':detail}).encode()))))
             self.assertEqual(api.call_args.args[1]['status'],status)
         api=Mock()
         with patch('bot.vpn_notices.is_test_environment',return_value=True):

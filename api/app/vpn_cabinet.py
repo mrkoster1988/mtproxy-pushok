@@ -143,7 +143,7 @@ def router_for(get_dsn, cabinet_user):
         accounts = data['accounts']
         own = accounts.get(str(user['id']))
         staff = is_staff(user)
-        public_fields = ('state', 'expires_at', 'online', 'last_seen', 'received', 'sent', 'device_limit', 'periods','revoked_at','tariff_name','renewal_name','is_premium')
+        public_fields = ('state', 'expires_at', 'online', 'last_seen', 'received', 'sent', 'device_limit', 'periods','revoked_at','tariff_name','renewal_name','is_premium','plan_notice')
         result = {'sampled_at': data['sampled_at'], 'can_manage': staff,
                   'personal': {**{k: own.get(k) for k in public_fields}, 'phone_verified': bool(user.get('phone_verified'))} if own else None}
         if staff:

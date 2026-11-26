@@ -223,6 +223,19 @@ window.pushokVpn = (() => {
     };
     form.append(statusLabel,actionLabel,valueLabel,consentLabel,submit,feedback,refresh);panel.append(form,window.pushokVpnPlans.assignment(row,subject,reload));return {toggle,panel,statusButton};
   }
+  function planNotice(event,own){
+    const box=el('details',undefined,'vpn-plan-notice');
+    const states={sent:'Telegram принял сообщение',waiting_chat:'Ожидает запуска чата с Pushok ИИ',
+      blocked:'Telegram запретил отправку в этот чат',retry:'Ожидает повторной отправки',
+      paused:'Отправка уведомлений выключена в магазине',queued:'В очереди на отправку',unknown:'Для этой отправки подтверждение не сохранено'};
+    const caption=own?'Сообщение о смене тарифа':'Уведомление о тарифе';
+    box.append(el('summary',caption+' · '+date(event.created)),el('p',event.text),el('small',states[event.delivery]||states.unknown,'muted'));
+    if(own&&event.delivery!=='sent'){
+      const link=el('a','Открыть Pushok ИИ','ui-button labeled-action');link.href='/ai-support';link.target='_blank';link.rel='noopener noreferrer';
+      box.append(link,el('small','В Telegram нажмите «Старт». Если бот заблокирован, сначала разблокируйте его.','muted'));
+    }
+    return box;
+  }
   function card(row,subject,name,own,admin,reload,expanded,profileLink=false) {
     const tile=el('article',undefined,'campaign-tile vpn-card'),head=el('div',undefined,'tile-heading');
     const avatar=profileLink?window.pushokViews.userAvatar(subject,name):el('span',undefined,'ui-avatar vpn-avatar');
@@ -276,6 +289,7 @@ window.pushokVpn = (() => {
       if(row.state==='revoked')tile.append(el('p','Доступ отозван'+(row.revoked_at?' '+date(row.revoked_at):'')+
         '. Прежний ключ отключён. Для повторного подключения нужен новый профиль.','vpn-revoked-note'));
     } else tile.append(el('p','У аккаунта пока нет VPN-подписки.','tile-period'));
+    if(row?.plan_notice&&(own||admin))tile.append(planNotice(row.plan_notice,own));
     if(own){
       const actions=el('div',undefined,'vpn-links'),get=installer(localSystem());
       if(!row?.is_premium)actions.append(renewLink());actions.append(get);tile.append(actions);

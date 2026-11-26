@@ -13,7 +13,7 @@ class VpnVisibility(unittest.TestCase):
         app = FastAPI()
         app.include_router(vpn_cabinet.router_for(lambda: 'test', lambda: user))
         client = TestClient(app)
-        account = {'state':'active', 'tariff_name':'Семейный', 'online':True, 'received':12345, 'sent':99,
+        account = {'state':'active','plan_notice':{'created':1800000000,'delivery':'waiting_chat','text':'Тариф изменён'}, 'tariff_name':'Семейный', 'online':True, 'received':12345, 'sent':99,
                    'expires_at':1900000000, 'last_seen':1800000000, 'endpoint_ip':'192.0.2.4',
                    'tunnel_ips':['10.0.0.4']}
         mock = MagicMock()
@@ -31,6 +31,7 @@ class VpnVisibility(unittest.TestCase):
                 user['role']=role
                 personal=client.get('/api/v1/vpn/dashboard').json()['personal']
                 self.assertEqual(personal['received'],12345)
+                self.assertEqual(personal['plan_notice'],account['plan_notice'])
                 for key in ('endpoint_ip','tunnel_ips','country_code','city'):
                     self.assertNotIn(key,personal)
             user['id'] = uid
@@ -42,6 +43,7 @@ class VpnVisibility(unittest.TestCase):
             self.assertIn('city',staff)
             self.assertTrue(staff['phone_verified'])
             self.assertEqual(staff['tariff_name'],'Семейный')
+            self.assertEqual(staff['plan_notice'],account['plan_notice'])
 
     def test_management_checks_current_role_before_forwarding(self):
         user = {'id': UUID(int=1), 'role':'operator'}

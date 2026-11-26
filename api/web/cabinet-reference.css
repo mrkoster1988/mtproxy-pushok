@@ -993,3 +993,8 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 .support-chat-message[data-sender=user]{border-inline-start-color:#8ca8bd}
 .support-chat-message time{margin-inline-start:.6rem;font-size:.78rem}
 .support-chat-message p{white-space:pre-wrap;overflow-wrap:anywhere;margin:.35rem 0 0}
+
+.vpn-plan-notice{margin:.45rem 0;border-top:1px solid var(--line);padding-top:.35rem}
+.vpn-plan-notice summary{cursor:pointer;font-size:.88rem;font-weight:650}
+.vpn-plan-notice p{white-space:pre-line;overflow-wrap:anywhere}
+.vpn-plan-notice small{display:block;margin:.35rem 0}

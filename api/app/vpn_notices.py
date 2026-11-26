@@ -20,7 +20,7 @@ class Receipt(BaseModel):
     model_config = {'extra':'forbid'}
     id: int = Field(gt=0,strict=True)
     lease: str = Field(pattern=r'^[0-9a-f]{32}$')
-    status: Literal['sent','retry','blocked']
+    status: Literal['sent','retry','blocked','waiting_chat']
 
 
 def relay(operation, payload):

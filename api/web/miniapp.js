@@ -41,16 +41,10 @@ window.pushokMiniApp=(()=>{
     if(state==='unsupported')shortcut.hidden=true;
    });
   }
-  if(app.isVersionAtLeast?.('6.9')){
-   const notify=action('Разрешить уведомления бота',button=>{
-    button.disabled=true;
-    app.requestWriteAccess(allowed=>{
-     button.disabled=allowed;
-     button.textContent=allowed?'Боту разрешено писать':'Разрешить уведомления бота';
-    });
-   });
-   if(app.initDataUnsafe?.user?.allows_write_to_pm){notify.disabled=true;notify.textContent='Боту разрешено писать';}
-  }
+  const notify=document.createElement('a');notify.textContent='Подключить уведомления Pushok ИИ';
+  notify.className='ui-button labeled-action';notify.href='/ai-support';notify.target='_blank';notify.rel='noopener noreferrer';
+  const hint=document.createElement('small');hint.className='muted';hint.textContent='Откройте чат и нажмите «Старт». Туда придут изменения вашей подписки.';
+  section.append(notify,hint);
   if(section.childElementCount>1){phoneControls=section;target.append(section);}
  }
  function syncNavigation(){

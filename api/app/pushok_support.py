@@ -391,13 +391,13 @@ def handle_update(db, dsn, key, update, legacy=True):
                 caption['caption'] = caption.pop('text')
                 try:
                     bot_call(key, 'sendPhoto', caption)
-                    return
+                    return uid if command == '/start' else None
                 except PhotoRejected:
                     pass
             bot_call(key, 'sendMessage', fields)
         except RecipientUnavailable:
-            pass
-        return
+            return
+        return uid if command == '/start' else None
     if command == '/new':
         db.execute('UPDATE support_bot_contacts SET current_case=NULL,pending_action=NULL WHERE telegram_id=%s', (uid,))
         response = design.heading(style, '📝', lang.tr(locale,'new')) + '\n\n' + lang.tr(locale,'question')
@@ -461,8 +461,14 @@ def run_bot(dsn, stop):
                 updates = bot_call(key, 'getUpdates', {'offset': cursor.get('offset', 0), 'timeout': 2,
                                                        'limit': 10, 'allowed_updates': ['message', 'callback_query']})
                 for update in updates:
-                    handle_update(db, dsn(), key, update, legacy)
+                    resumed = handle_update(db, dsn(), key, update, legacy)
                     db.commit()
+                    if resumed:
+                        from .vpn_notices import relay
+                        try:
+                            relay('resume-chat', {'telegram_id':resumed})
+                        except HTTPException:
+                            log.warning('Could not advance pending tariff notifications after bot start')
                     control.write(cursor_name, {'offset': update['update_id'] + 1})
                 pending = db.execute("""SELECT o.message_id,o.telegram_id,m.body,c.reply_locale FROM support_bot_outbox o
                     JOIN support_chat_messages m ON m.id=o.message_id JOIN support_conversations c ON c.id=m.conversation_id WHERE NOT o.delivered AND o.retry_at<=now()

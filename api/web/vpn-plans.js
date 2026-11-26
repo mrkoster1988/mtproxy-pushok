@@ -81,11 +81,11 @@ window.pushokVpnPlans=(()=>{
           save.disabled=select.disabled=true;
           try{await api('/vpn/settings/plans/choice',{method:'POST',body:{subject,subscription_id:row.subscription_id,
             plan_id:p.id,plan_version:p.version,version:row.renewal_version||0,before:row.expires_at||0}});
-            notice('Тариф изменён.',true);await reload();}
+            notice('Тариф сохранён. Статус отправки — в карточке подписки.',true);await reload();}
           catch(error){note.textContent=error.message;}finally{select.disabled=false;save.disabled=false;}};
         const hint=el('small',null,'muted');
         const update=select.onchange;select.onchange=()=>{update();const p=plans.find(p=>p.id===select.value);
-          hint.textContent=!p||p.retry?'':p.lifetime?'Пользователь получит поздравление от Пушка.':row.is_premium?'Бессрочный доступ сменится выбранным тарифом. Новый срок начнётся сегодня.':'Дата окончания сохранится, списания не будет.';};
+          hint.textContent=!p||p.retry?'':p.lifetime?'Поздравление появится в карточке подписки. Для сообщения в Telegram нужен чат с Pushok ИИ.':row.is_premium?'Бессрочный доступ сменится выбранным тарифом. Новый срок начнётся сегодня.':'Дата окончания сохранится, списания не будет.';};
         content.replaceChildren(label('Новый тариф',select),terms,hint,save,note);
         if(row.tariff_retry){select.value=plans[0].id;select.onchange();save.textContent='Повторить назначение';}
       }catch(error){content.textContent=error.message;loaded=false;}
