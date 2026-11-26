@@ -64,5 +64,6 @@ class StarsLinkTests(unittest.TestCase):
         result=response_for(update)[0]
         self.assertEqual(result['parse_mode'],'HTML')
         self.assertIn('href="tg://stars"',result['text'])
+        self.assertIn('href="tg://stars_topup?balance=1"',result['text'])
         update['message']['chat']['type']='group'
         self.assertIsNone(response_for(update))

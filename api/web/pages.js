@@ -421,7 +421,7 @@
   channelRows.classList.add('channel-manager');
   renderChannels();
   renderList();
-  window.pushokViews.profile(profileMain,updatePanel);
+  if(!(background&&state.route==='profile'&&profileMain.querySelector('.vpn-inline-offers')))window.pushokViews.profile(profileMain,updatePanel);
   window.pushokMiniApp?.phoneSettings?.(profileMain);
   if(['admin','operator'].includes(me.role))window.pushokViews.sponsors(sponsorQueue,operatorCampaigns);
   onboarding.hidden=false;
@@ -597,7 +597,7 @@
   state.selectedKey=key;
   if(name==='license'&&!background)void window.pushokAppLicense.load(content.license);
   if(name==='help'&&!background)void window.pushokSupport.show(supportHost);
-  if(name==='wallet')void window.pushokWallet?.load(content.wallet);
+  if(name==='wallet'&&!(background&&id==='topup'))void window.pushokWallet?.load(content.wallet);
   if(name==='vpn'&&!background)void window.pushokVpn.load(content.vpn,id);
   if(name==='hall'&&!background)void window.pushokHall.load(content.hall);
   if(name==='growth')void window.pushokGrowth?.load(content.growth);
@@ -678,8 +678,8 @@
   if(name==='calendar')calendarPanel.append(calendar);else calendarOrigin.append(calendar);
   const canModerate=['admin','operator','moderator'].includes(me.role);bottomNav.style.setProperty('--nav-count',canModerate?7:6);
   bottomNav.querySelectorAll('a').forEach(a=>{a.hidden=a.dataset.route==='moderation'&&!canModerate;const section=['campaign','create','archive','calendar','channels'].includes(name)?'campaigns':name==='payments'?'wallet':name==='user'?'moderation':['dashboard','vpn','moderation','campaigns','wallet','hall'].includes(name)?name:'profile';const active=a.dataset.route===section;if(active)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current');});
-  backButton.hidden=['dashboard','campaigns','wallet','profile'].includes(name)||(name==='moderation'&&!section);profileShortcut.hidden=name!=='dashboard';
-  const pageTitle=name==='vpn'&&section==='messages'?'История сообщений':name==='vpn'&&section==='renew'?'Продление VPN':name==='payments'&&section?'Оплата размещения':name==='management'?window.pushokInterface.managementSection(section).title:routes[name][0];
+  backButton.hidden=['dashboard','campaigns','profile'].includes(name)||(name==='wallet'&&section!=='topup')||(name==='moderation'&&!section);profileShortcut.hidden=name!=='dashboard';
+  const pageTitle=name==='wallet'&&section==='topup'?'Пополнение баланса':name==='vpn'&&section==='messages'?'История сообщений':name==='vpn'&&section==='renew'?'Продление VPN':name==='payments'&&section?'Оплата размещения':name==='management'?window.pushokInterface.managementSection(section).title:routes[name][0];
   pages[name].querySelector('h1').textContent=pageTitle;
   mobileBrand.querySelector('strong').textContent=name==='dashboard'?'puShok':pageTitle;
   mobileBrand.classList.toggle('page-brand',name!=='dashboard');

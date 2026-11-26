@@ -394,9 +394,11 @@ def main():
                 expect(history).not_to_have_attribute('open','')
                 history.locator(':scope > summary').click()
                 expect(advertiser.locator('.wallet-journal')).to_be_visible()
-                expect(advertiser.locator('[data-wallet-section=topup]')).not_to_have_attribute('open', '')
-                expect(advertiser.get_by_label('Сумма пополнения, ₽',exact=True)).to_be_hidden()
-                advertiser.locator('[data-wallet-section=topup] > summary').click()
+                deposit=advertiser.get_by_role('link',name='Пополнить',exact=True)
+                expect(deposit).to_be_visible()
+                expect(advertiser.locator('.wallet-topup')).to_have_count(0)
+                deposit.click()
+                expect(advertiser).to_have_url(base+'/#/wallet/topup')
                 expect(advertiser.get_by_label('Сумма пополнения, ₽',exact=True)).to_be_visible()
                 methods = advertiser.get_by_role('group', name='Способ пополнения')
                 expect(methods.get_by_role('radio', name='Platega', exact=False)).to_be_checked()
@@ -404,7 +406,8 @@ def main():
                 expect(advertiser.get_by_label('Email для чека Antilopay')).to_be_visible()
                 methods.get_by_role('radio', name='Platega', exact=False).check()
                 expect(advertiser.get_by_label('Email для чека Antilopay')).to_be_hidden()
-                advertiser.locator('[data-wallet-section=topup] > summary').click()
+                advertiser.locator('.screen-back').click()
+                expect(advertiser).to_have_url(base+'/#/wallet')
                 expect(advertiser.get_by_label('Автоматически оплачивать мои одобренные заявки')).not_to_be_checked()
                 go(advertiser, 'profile')
                 expect(advertiser.locator('.profile-group')).to_have_count(2)
@@ -984,21 +987,23 @@ def main():
                     assert not mini.evaluate('window.__miniBackVisible')
                     expect(mini.locator('[data-page=dashboard]')).to_be_visible()
                     expect(mini.locator('.mobile-bottom-nav a:visible')).to_have_count(6)
-                    mini.locator('.mobile-bottom-nav a[data-route=vpn]').click()
-                    paid_link=mini.locator('[data-page=vpn] a[href="#/vpn/renew"]')
-                    expect(paid_link).to_be_visible()
-                    expect(paid_link).to_have_text('Продлить')
-                    expect(mini.locator('[data-page=vpn] .vpn-directory')).to_have_count(0)
-                    expect(mini.locator('.mobile-bottom-nav [data-route=moderation]')).to_be_hidden()
                     oid='00000000-0000-4000-8000-000000000209'
                     mini.route('**/api/v1/vpn/plans',lambda route:route.fulfill(json={
-                        'available':True,'plans':[{'name':'На месяц','id':'month','version':1,'days':30,'amount':199}],
+                        'available':True,'plans':[{'name':'На неделю','id':'week','version':1,'days':7,'amount':79},
+                            {'name':'На месяц','id':'month','version':1,'days':30,'amount':199}],
                         'terms':'Условия тестового тарифа','policy_version':1}))
                     mini.route('**/api/v1/vpn/checkout',lambda route:route.fulfill(json={
                         'id':oid,'status':'pending','payment_url':'https://t.me/$vpn_test_invoice'}))
                     receipt_state={'status':'pending','amount':199,'payment_url':'https://t.me/$vpn_test_invoice'}
                     mini.route('**/api/v1/vpn/orders/'+oid,lambda route:route.fulfill(json=receipt_state))
-                    paid_link.click()
+                    personal={'state':'active','tariff_name':'Пробный','received':100,'sent':10,'is_premium':False}
+                    mini.route('**/api/v1/vpn/dashboard',lambda route:route.fulfill(json={'personal':personal,'can_manage':False}))
+                    mini.locator('.mobile-bottom-nav a[data-route=vpn]').click()
+                    vpn_page=mini.locator('[data-page=vpn]')
+                    expect(vpn_page.locator('.vpn-inline-offers .vpn-plan')).to_have_count(2)
+                    expect(vpn_page.locator('.vpn-usage,.vpn-directory')).to_have_count(0)
+                    expect(mini.locator('.mobile-bottom-nav [data-route=moderation]')).to_be_hidden()
+                    vpn_page.get_by_role('radio',name='На месяц',exact=False).check()
                     pay_vpn=mini.get_by_role('button',name='Оплатить 199 ⭐')
                     expect(pay_vpn).to_be_disabled()
                     mini.get_by_label('Принимаю условия оплаты').check()
@@ -1012,6 +1017,7 @@ def main():
                     assert mini.evaluate('window.__miniLink')=='https://t.me/PremiumBot'
                     # Reopen the Mini App without its old checkout session. Only the order ID survives.
                     mini.evaluate("Object.keys(sessionStorage).filter(k=>k.startsWith('pushok-vpn-order:')).forEach(k=>sessionStorage.removeItem(k))")
+                    go(mini,'vpn/renew')
                     mini.reload()
                     reopen=mini.get_by_role('button',name='Открыть счёт')
                     expect(reopen).to_be_visible()
@@ -1027,6 +1033,14 @@ def main():
                     expect(mini).to_have_url(base+'/miniapp#/vpn/renew')
                     mini.locator('.mobile-bottom-nav a[data-route=profile]').click()
                     expect(mini.locator('[data-page=profile]')).to_be_visible()
+                    expect(mini.locator('[data-page=profile] .vpn-inline-offers .vpn-plan')).to_have_count(2)
+                    expect(mini.locator('[data-page=profile] .vpn-usage')).to_have_count(0)
+                    personal['is_premium']=True
+                    go(mini,'vpn')
+                    expect(vpn_page.get_by_text('Бессрочно',exact=True)).to_be_visible()
+                    expect(vpn_page.locator('.vpn-inline-offers,.vpn-usage')).to_have_count(0)
+                    personal['is_premium']=False
+                    go(mini,'profile')
                     expect(mini.locator('.profile-menu a[href="#/settings"]')).to_have_count(0)
                     expect(mini.locator('.profile-menu a[href="#/moderation"]')).to_have_count(0)
                     mini.locator('.mobile-bottom-nav a[data-route=dashboard]').click()
@@ -1126,6 +1140,12 @@ def main():
                             go(mini,route)
                             if screen=='wallet':
                                 expect(mini.locator('.wallet-balances .wallet-primary')).to_have_attribute('data-currency','RUB')
+                                deposit=mini.get_by_role('link',name='Пополнить',exact=True)
+                                expect(deposit).to_be_visible()
+                                expect(mini.locator('.wallet-payment-methods')).to_have_count(0)
+                                deposit.click()
+                                expect(mini).to_have_url(base+'/miniapp#/wallet/topup')
+                                expect(mini.locator('[data-page=wallet] h1')).to_have_text('Пополнение баланса')
                                 methods=mini.locator('.wallet-payment-methods')
                                 for name in ('Telegram Stars','Platega','СБП через Antilopay'):
                                     expect(methods.get_by_text(name,exact=True)).to_be_visible()
@@ -1133,6 +1153,12 @@ def main():
                                 expect(methods.get_by_role('link',name='Тарифы VPN')).to_have_attribute('href','#/vpn/renew')
                                 expect(methods.locator('[data-state=test]')).to_have_count(2)
                                 expect(mini.locator('.wallet-topup')).to_have_count(0)
+                                assert mini.evaluate('document.documentElement.scrollWidth<=innerWidth+2')
+                                if width==390:
+                                    mini.screenshot(path=str(output/'miniapp-topup.png'),full_page=True)
+                                mini.evaluate('window.__miniBack()')
+                                expect(mini).to_have_url(base+'/miniapp#/wallet')
+                                expect(deposit).to_be_visible()
                             if screen=='growth':
                                 expect(mini.locator('.growth-page')).to_be_visible()
                             if screen=='home':
@@ -1904,7 +1930,7 @@ def main():
                 open_wallet_tools(advertiser)
                 expect(advertiser.get_by_text('В Telegram откройте',exact=False)).to_be_visible()
                 expect(advertiser.get_by_label('Валюта пополнения',exact=True)).to_have_count(0)
-                expect(advertiser.get_by_role('button',name='Выставить счёт',exact=True)).to_be_visible()
+                expect(advertiser.get_by_role('link',name='Пополнить',exact=True)).to_be_visible()
                 for _ in range(2):
                     advertiser.get_by_label('Подарочный код на баланс',exact=True).fill(gift_code)
                     advertiser.evaluate("window.previousGiftPage=document.querySelector('[data-page=wallet] .wallet-page')")

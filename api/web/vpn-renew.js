@@ -22,10 +22,12 @@ window.pushokVpnRenew = (() => {
     help.append(el('summary','Не хватает Stars?'),el('p','Откройте официальный бот Telegram на компьютере, в Telegram Web или в Android-версии с сайта Telegram. После пополнения вернитесь к счёту Pushok.'),bot);
     return help;
   }
-  async function show(target) {
+  async function show(target,embedded=false) {
     const session=token, box=el('article',undefined,'campaign-tile vpn-renew');
     target.replaceChildren(box);
-    const visible=()=>token===session && box.isConnected && location.hash==='#/vpn/renew';
+    const route=location.hash;
+    const visible=()=>token===session && box.isConnected && location.hash===route;
+    const again=()=>show(target,embedded);
     const note=el('p','Загружаем тарифы…','muted'); note.setAttribute('role','status'); box.append(note);
     let revision=0;
     async function openOrder(id,url) {
@@ -45,7 +47,7 @@ window.pushokVpnRenew = (() => {
       try { order=await api('/vpn/orders/'+encodeURIComponent(id)); }
       catch(e) {
         if (!visible()||turn!==revision) return;
-        if (e.status===404) {clear(); return show(target);}
+        if (e.status===404) {clear(); return again();}
         box.replaceChildren(el('p',e.message),button('Проверить заказ',()=>receipt(id))); return;
       }
       if (!visible()||turn!==revision) return;
@@ -56,7 +58,7 @@ window.pushokVpnRenew = (() => {
       box.replaceChildren(el('h2',message),el('p',order.amount+' ⭐ · Заказ № '+id.slice(0,8),'muted'));
       if (done || canceled) {
         clear();window.pushokVpn.reset();
-        box.append(button(done?'Моя подписка':'К тарифам',()=>done?window.cabinet.go('vpn'):show(target)));
+        box.append(button(done?'Моя подписка':'К тарифам',()=>done?window.cabinet.go('vpn'):again()));
         return;
       }
       if (paid) box.append(el('p','Магазин обновляет срок подписки.'));
@@ -69,17 +71,19 @@ window.pushokVpnRenew = (() => {
       }
       box.append(button('Проверить оплату',()=>receipt(id)));
       if(confirming && !paid && attempt>=8)box.append(el('p','Подтверждение задерживается. Проверьте этот заказ позже.','muted'));
-      if (!paid && !confirming) box.append(button('К тарифам',()=>{clear();return show(target);}));
+      if (!paid && !confirming) box.append(button('К тарифам',()=>{clear();return again();}));
       if ((paid||confirming) && attempt<8) setTimeout(()=>{if(visible()&&turn===revision)void receipt(id,attempt+1);},3000);
     }
     const prior=saved();
     if (prior?.order && /^[a-f0-9-]{36}$/.test(prior.order)) return receipt(prior.order);
     let catalog;
     try { catalog=await api('/vpn/plans'); }
-    catch(e) { if(visible())box.replaceChildren(el('p',e.message),button('Повторить',()=>show(target)));return; }
+    catch(e) { if(visible())box.replaceChildren(el('p',e.message),button('Повторить',again));return; }
     if(!visible())return;
+    if(catalog.premium&&embedded){target.replaceChildren();return;}
     if(catalog.premium){box.replaceChildren(el('h2','Ваша подписка'),el('p','Продление сейчас не требуется. Подробности — в карточке VPN.'),button('Моя подписка',()=>window.cabinet.go('vpn')));return;}
-    const choices=el('fieldset',undefined,'vpn-plans'); choices.append(el('legend','Срок продления'));
+    const choices=el('fieldset',undefined,'vpn-plans'),group='vpn-plan-'+crypto.randomUUID();
+    choices.append(el('legend',embedded?'Тарифы VPN':'Срок продления'));
     const terms=el('details',undefined,'vpn-terms');
     terms.append(el('summary','Условия оплаты'),el('p',catalog.terms||''));
     const consent=el('label',undefined,'vpn-consent'),check=el('input');check.type='checkbox';
@@ -90,7 +94,7 @@ window.pushokVpnRenew = (() => {
     function update(){pay.textContent=selected?'Оплатить '+selected.amount+' ⭐':'Оплатить';pay.disabled=busy||!selected||!check.checked||!catalog.available;}
     for(const plan of catalog.plans){
       const label=el('label',undefined,'vpn-plan'),radio=el('input'),copy=el('span');
-      radio.type='radio';radio.name='vpn-plan';radio.checked=plan===selected;
+      radio.type='radio';radio.name=group;radio.checked=plan===selected;
       radio.onchange=()=>{selected=plan;requestId=crypto.randomUUID();update();};
       copy.append(el('strong',plan.name),el('small',plan.days+' дн.'));label.append(radio,copy,el('b',plan.amount+' ⭐'));choices.append(label);
     }
@@ -103,11 +107,13 @@ window.pushokVpnRenew = (() => {
       try {
         const order=await api('/vpn/checkout',{method:'POST',body:{plan:selected.id,plan_version:selected.version,amount:selected.amount,
           policy_version:catalog.policy_version,accept_terms:true,request_id:requestId}});
+        if(session!==token)return;
+        if(order.id&&order.status!=='canceled')save({order:order.id,url:order.payment_url});
         if(!visible())return;
-        if(['active','paid','checkout'].includes(order.status)){save({order:order.id});return receipt(order.id);}
+        if(['active','paid','checkout'].includes(order.status))return receipt(order.id);
         if(order.status==='canceled'){requestId=crypto.randomUUID();throw Error('Этот заказ отменён. Выберите тариф ещё раз.');}
         await openOrder(order.id,order.payment_url);
-      } catch(e) { if(visible()){note.textContent=e.message;if(e.code==='vpn_offer_changed')box.append(button('Обновить тарифы',()=>{clear();return show(target);}));} }
+      } catch(e) { if(visible()){note.textContent=e.message;if(e.code==='vpn_offer_changed')box.append(button('Обновить тарифы',()=>{clear();return again();}));} }
       finally {busy=false;choices.disabled=check.disabled=false;update();}
     };
     box.replaceChildren(choices);

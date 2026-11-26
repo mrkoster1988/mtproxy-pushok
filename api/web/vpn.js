@@ -373,6 +373,10 @@ window.pushokVpn = (() => {
     const host=el('div',undefined,'vpn-stack'),busy=el('p','Загрузка подписки…','muted');
     host.append(busy);target.replaceChildren(host);
     const reload=()=>{reset();return show(target,subject,directory);};
+    function offers(){
+      const slot=el('section',undefined,'vpn-inline-offers');host.append(slot);
+      void window.pushokVpnRenew.show(slot,true);
+    }
     try{
       const data=await snapshot();
       if(!host.isConnected||session!==token)return;
@@ -383,7 +387,8 @@ window.pushokVpn = (() => {
       if(directory&&admin){
         const settings=el('a','Настройки VPN','ui-button');settings.href='#/management/vpn';
         host.prepend(settings,usageSummary((data.members||[]).filter(r=>r.id!==subject)));
-      }else if(row)host.append(usageSummary([row],true));
+      }else if(admin&&row)host.append(usageSummary([row],true));
+      else if(own&&!admin&&!row?.is_premium)offers();
       if(admin&&(directory||row)){
         const credit=el('a','Геолокация по IP · DB-IP','muted');credit.href='https://db-ip.com';credit.target='_blank';credit.rel='noopener noreferrer';host.append(credit);
       }
@@ -398,7 +403,8 @@ window.pushokVpn = (() => {
       if(host.isConnected&&session===token){
         const retry=button('Обновить сведения',reload);
         host.replaceChildren(el('p','Не удалось загрузить сведения о подписке.','muted'),retry);
-        if(own&&(!directory||!staff()))host.append(renewLink());
+        if(own&&!staff())offers();
+        else if(own&&!directory)host.append(renewLink());
       }
     }
   }
