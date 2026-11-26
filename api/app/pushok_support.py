@@ -10,15 +10,16 @@ import psycopg
 from psycopg.rows import dict_row
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from . import channel_ai_connection as ai, channel_topic_suggestions as topics, control
+from . import support_appearance as design
 from .telegram_environment import is_test_environment
 from .vpn_settings import private
 from .vpn_reminders import format_body
 
 BOT = 'server_pushok_bot'
-HANDLE = 'https://t.me/'+BOT
+BOT_FILE = 'support-bot-private.json'
 Category = Literal['question','problem','idea']
 
 
@@ -42,7 +43,24 @@ class StaffMessage(BaseModel):
 
 
 class BotCredential(BaseModel):
-    token:SecretStr
+    token: SecretStr | None = None
+    username: str | None = None
+
+    @field_validator('username')
+    @classmethod
+    def valid_username(cls, value):
+        if value is None:
+            return None
+        value = value.strip().removeprefix('@').lower()
+        if not re.fullmatch(r'[a-z][a-z0-9_]{1,28}bot', value):
+            raise ValueError('invalid Telegram bot username')
+        return value
+
+
+class BotName(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+    username: str
+    name: str = Field(min_length=1, max_length=64)
 
 
 def staff(user):
@@ -53,11 +71,43 @@ def developer(user):
     if not (user.get('is_owner') or user.get('is_developer')):raise HTTPException(403,'developer_required')
 
 
-def token():
-    return (control.read('support-bot-private.json',{}) or {}).get('token') or os.getenv('PUSHOK_SUPPORT_BOT_TOKEN','')
+def credential():
+    saved = control.read(BOT_FILE, {}) or {}
+    return {**saved, 'username': saved.get('username', BOT),
+            'token': saved.get('token') or os.getenv('PUSHOK_SUPPORT_BOT_TOKEN', '')}
+
+
+def bot_id(key):
+    prefix = key.partition(':')[0]
+    return int(prefix) if prefix.isdecimal() and len(prefix) < 17 else 0
+
+
+def public_bot(cfg):
+    return {'username': cfg['username'], 'configured': bool(cfg['token']), 'display_name': cfg.get('display_name', '')}
+
+
+def verify_bot(key, username):
+    if not re.fullmatch(r'[0-9]{1,16}:[a-zA-Z0-9_-]{25,250}', key):
+        raise HTTPException(422, 'support_bot_token_invalid')
+    if bot_id(key) == bot_id(os.getenv('TELEGRAM_BOT_TOKEN', '')):
+        raise HTTPException(409, 'support_bot_cabinet')
+    me = bot_call(key, 'getMe', {})
+    if me.get('username', '').lower() != username:
+        raise HTTPException(409, 'support_bot_wrong_name')
+    if bot_call(key, 'getWebhookInfo', {}).get('url'):
+        raise HTTPException(409, 'support_bot_has_webhook')
+    return me
 
 
 class RecipientUnavailable(RuntimeError):
+    pass
+
+
+class PhotoRejected(RuntimeError):
+    pass
+
+
+class CallbackExpired(RuntimeError):
     pass
 
 
@@ -67,7 +117,11 @@ def bot_call(key, method, fields):
     try:
         result = json.loads(topics.read_url(req, 8, 512000))
     except HTTPError as error:
-        if method == 'sendMessage' and error.code in (400, 403):
+        if method == 'sendPhoto' and error.code == 400:
+            raise PhotoRejected() from None
+        if method == 'answerCallbackQuery' and error.code == 400:
+            raise CallbackExpired() from None
+        if method in ('sendPhoto', 'sendMessage') and error.code in (400, 403):
             raise RecipientUnavailable('support_recipient_unavailable') from None
     except (OSError, ValueError):
         pass
@@ -88,9 +142,10 @@ def answer(category,question,history,requested):
     if cfg:
         try:
             topics.reserve_ai_call()
+            emoji_hint = 'Уместны эмодзи.' if design.Appearance(**design.read().get('settings', {})).emoji else 'Пиши без эмодзи.'
             messages=[{'role':'system','content':'Ты Pushok ИИ, поддержка Pushok. Отвечай кратко по-русски. '
                        'Ты не выполняешь действий, не видишь платежей и ключей. Не запрашивай секреты. '
-                       'Используй короткие абзацы, **жирное**, __курсив__ и уместные эмодзи. Верни JSON с полями text и human (boolean). Если данных мало, попроси уточнение или поставь human=true. '+facts}]
+                       'Используй короткие абзацы, **жирное** и __курсив__. '+emoji_hint+' Верни JSON с полями text и human (boolean). Если данных мало, попроси уточнение или поставь human=true. '+facts}]
             messages += [{'role':'assistant' if m['sender']!='user' else 'user','content':m['body'][:1200]} for m in history[-6:]]
             messages.append({'role':'user','content':question})
             payload=dict(model=cfg[1],messages=messages,response_format={'type':'json_object'},max_completion_tokens=320)
@@ -140,7 +195,12 @@ def post(dsn,uid,msg):
 def router_for(dsn,current_user):
     router=APIRouter(route_class=ai.PrivateRoute)
     @router.get('/ai-support',include_in_schema=False)
-    def open_bot():return RedirectResponse(HANDLE,302)
+    def open_bot():
+        return RedirectResponse('https://t.me/' + credential()['username'], 302, headers={'Cache-Control':'no-store'})
+
+    @router.get('/ai-support/images/{image_id}.jpg', include_in_schema=False)
+    def welcome_image(image_id: str):
+        return design.photo(image_id)
     @router.get('/api/v1/support/cases')
     def cases(team:bool=False,user=Depends(current_user)):
         if team and not staff(user):raise HTTPException(403)
@@ -168,53 +228,128 @@ def router_for(dsn,current_user):
             if saved:
                 mid=db.execute("INSERT INTO support_chat_messages(conversation_id,sender,body) VALUES(%s,'staff',%s) RETURNING id",(cid,msg.text)).fetchone()['id']
                 db.execute("UPDATE support_conversations SET state=%s,updated_at=now() WHERE id=%s",('closed' if msg.close else 'open',cid))
-                db.execute('INSERT INTO support_bot_outbox(message_id,telegram_id) SELECT %s,%s WHERE EXISTS(SELECT 1 FROM support_bot_contacts WHERE telegram_id=%s)',(mid,case['telegram_id'],case['telegram_id']))
+                db.execute('INSERT INTO support_bot_outbox(message_id,telegram_id,bot_id) SELECT %s,telegram_id,bot_id FROM support_bot_contacts WHERE telegram_id=%s',(mid,case['telegram_id']))
         return {'ok':True}
     @router.get('/api/v1/support/bot')
     def bot_status(user=Depends(current_user)):
         developer(user)
-        return private({'username':BOT,'configured':bool(token())})
+        return private(public_bot(credential()))
+
     @router.put('/api/v1/support/bot')
-    def set_bot(body:BotCredential,user=Depends(current_user)):
+    def set_bot(body: BotCredential, user=Depends(current_user)):
         developer(user)
-        val=body.token.get_secret_value().strip()
-        if not re.fullmatch(r'[0-9]+:[a-zA-Z0-9_-]{25,250}',val):raise HTTPException(422,'support_bot_token_invalid')
+        previous = credential()
+        key = body.token.get_secret_value().strip() if body.token else previous['token']
+        username = body.username or previous['username']
         try:
-            me=bot_call(val,'getMe',{})
-            if me.get('username','').lower()!=BOT:raise HTTPException(409,'support_bot_wrong_name')
-            if bot_call(val,'getWebhookInfo',{}).get('url'):raise HTTPException(409,'support_bot_has_webhook')
-        except RuntimeError:raise HTTPException(503,'support_bot_unavailable') from None
-        with control.locked():control.write('support-bot-private.json',{'token':val})
-        return private({'username':BOT,'configured':True})
+            me = verify_bot(key, username)
+        except RuntimeError:
+            raise HTTPException(503, 'support_bot_unavailable') from None
+        with control.locked():
+            if previous != credential():
+                raise HTTPException(409, 'support_bot_settings_changed')
+            cfg = dict(token=key, username=username, display_name=me.get('first_name', ''),
+                       legacy_id=previous.get('legacy_id', bot_id(previous['token']) or bot_id(key)))
+            control.write(BOT_FILE, cfg)
+        return private(public_bot(cfg))
+
+    @router.put('/api/v1/support/bot/name')
+    def set_display_name(body: BotName, user=Depends(current_user)):
+        developer(user)
+        cfg = credential()
+        if not cfg['token'] or cfg['username'] != body.username:
+            raise HTTPException(409, 'support_bot_settings_changed')
+        try:
+            verify_bot(cfg['token'], cfg['username'])
+            bot_call(cfg['token'], 'setMyName', {'name': body.name})
+        except RuntimeError:
+            raise HTTPException(503, 'support_bot_unavailable') from None
+        with control.locked():
+            if credential() != cfg:
+                raise HTTPException(409, 'support_bot_settings_changed')
+            cfg['display_name'] = body.name
+            control.write(BOT_FILE, cfg)
+        return private(public_bot(cfg))
+
+    @router.get('/api/v1/support/bot/appearance')
+    def appearance(user=Depends(current_user)):
+        developer(user)
+        return private(design.public(design.read()))
+
+    @router.put('/api/v1/support/bot/appearance')
+    def update_appearance(body: design.AppearanceEdit, user=Depends(current_user)):
+        developer(user)
+        return private(design.save(body))
     return router
 
 
-def handle_update(db, dsn, key, update):
-    message = update.get('message') or {}
+def handle_update(db, dsn, key, update, legacy=True):
+    callback = update.get('callback_query') or {}
+    message = callback.get('message') or update.get('message') or {}
     chat = message.get('chat') or {}
-    sender = message.get('from') or {}
+    sender = callback.get('from') if callback else message.get('from')
     uid = chat.get('id')
-    if chat.get('type') != 'private' or type(uid) is not int or uid <= 0 or uid != sender.get('id') or sender.get('is_bot'):
+    if (chat.get('type') != 'private' or type(uid) is not int or uid <= 0 or not sender
+            or uid != sender.get('id') or sender.get('is_bot')):
         return
+    if callback:
+        action = callback.get('data', '').removeprefix('support:')
+        if action not in design.ACTIONS or callback.get('data') != 'support:' + action:
+            return
+        try:
+            bot_call(key, 'answerCallbackQuery', {'callback_query_id': callback['id']})
+        except CallbackExpired:
+            pass
+        body = '/' + action
+    else:
+        body = (message.get('text') or '').strip()[:2000]
 
-    body = (message.get('text') or '').strip()[:2000]
-    db.execute('INSERT INTO support_bot_contacts(telegram_id) VALUES(%s) ON CONFLICT DO NOTHING', (uid,))
+    identity = bot_id(key)
+    contact = db.execute("""INSERT INTO support_bot_contacts(telegram_id,bot_id) VALUES(%s,%s)
+        ON CONFLICT (telegram_id) DO UPDATE SET bot_id=excluded.bot_id,
+        current_case=CASE WHEN support_bot_contacts.bot_id=excluded.bot_id OR
+                         (support_bot_contacts.bot_id=0 AND %s) THEN support_bot_contacts.current_case END,
+        pending_action=CASE WHEN support_bot_contacts.bot_id=excluded.bot_id THEN support_bot_contacts.pending_action END
+        RETURNING current_case,pending_action""", (uid, identity, legacy)).fetchone()
     categories = {'/idea': 'idea', '/problem': 'problem', '/question': 'question', '/human': 'problem'}
     command, _, remaining = body.partition(' ')
     remaining = remaining.strip()
-    if body in ('/start', '/help') or not body:
-        response = ('🐾 Я Pushok ИИ. Задайте вопрос о Flow или Mini App. Для новой идеи напишите /idea и предложение, '
-                    'для сотрудника — /human и вопрос. /new начнёт отдельное обращение.')
-    elif body == '/new':
-        db.execute('UPDATE support_bot_contacts SET current_case=NULL WHERE telegram_id=%s', (uid,))
-        response = 'Напишите вопрос, пожелание или описание проблемы.'
+    state = design.read()
+    style = design.Appearance(**state.get('settings', {}))
+    if command in ('/start', '/help') or not body:
+        fields, path = design.welcome_payload(state, uid, command == '/help')
+        if command == '/start':
+            db.execute('UPDATE support_bot_contacts SET pending_action=NULL WHERE telegram_id=%s', (uid,))
+        try:
+            if path:
+                caption = dict(fields, photo=design.photo_url(path))
+                caption['caption'] = caption.pop('text')
+                try:
+                    bot_call(key, 'sendPhoto', caption)
+                    return
+                except PhotoRejected:
+                    pass
+            bot_call(key, 'sendMessage', fields)
+        except RecipientUnavailable:
+            pass
+        return
+    if command == '/new':
+        db.execute('UPDATE support_bot_contacts SET current_case=NULL,pending_action=NULL WHERE telegram_id=%s', (uid,))
+        response = design.heading(style, '📝', 'Новое обращение') + '\n\nНапишите вопрос, пожелание или описание проблемы.'
     elif command in categories and not remaining:
-        response = 'Добавьте сообщение после команды, например «/idea Хочу видеть историю расхода».'
+        action = command[1:]
+        default = ('🛠', 'Опишите проблему и укажите, на каком шаге она возникает.')
+        glyph, prompt = design.ACTIONS.get(action, default)
+        response = design.heading(style, glyph, getattr(style, action, 'Сообщить о проблеме')) + '\n\n' + prompt
+        db.execute('UPDATE support_bot_contacts SET pending_action=%s,current_case=NULL WHERE telegram_id=%s', (action, uid))
     else:
-        cid = db.execute('SELECT current_case FROM support_bot_contacts WHERE telegram_id=%s', (uid,)).fetchone()['current_case']
+        cid = contact['current_case']
+        if command not in categories and contact['pending_action']:
+            command, remaining = '/' + contact['pending_action'], body
+        namespace = 'pushok:ai-bot:' if legacy else f'pushok:ai-bot:{identity}:'
         try:
             record = post(dsn, uid, Message(
-                request_id=uuid5(NAMESPACE_URL, f'pushok:ai-bot:{uid}:{message["message_id"]}'),
+                request_id=uuid5(NAMESPACE_URL, f'{namespace}{uid}:{message["message_id"]}'),
                 case_id=None if command in categories else cid, category=categories.get(command, 'question'),
                 human=command == '/human', text=remaining if command in categories else body))
         except HTTPException as exc:
@@ -222,8 +357,8 @@ def handle_update(db, dsn, key, update):
                 raise
             response = 'Получил много сообщений подряд. Попробуйте написать через пять минут.'
         else:
-            db.execute('UPDATE support_bot_contacts SET current_case=%s WHERE telegram_id=%s', (record['id'], uid))
-            response = '**Обращение №' + str(record['id']) + '**\n\n' + record['reply']
+            db.execute('UPDATE support_bot_contacts SET current_case=%s,pending_action=NULL WHERE telegram_id=%s', (record['id'], uid))
+            response = design.heading(style, '💬', style.case_title + ' №' + str(record['id'])) + '\n\n' + record['reply']
     try:
         bot_call(key, 'sendMessage', {'chat_id': uid, 'text': format_body(response), 'parse_mode': 'HTML'})
     except RecipientUnavailable:
@@ -235,7 +370,9 @@ def run_bot(dsn, stop):
     log = logging.getLogger(__name__)
     verified_key = None
     while not stop.is_set():
-        key = token()
+        cfg = credential()
+        key = cfg['token']
+        identity = bot_id(key)
         if not key or is_test_environment():
             stop.wait(15)
             continue
@@ -244,26 +381,30 @@ def run_bot(dsn, stop):
                 if not db.execute('SELECT pg_try_advisory_lock(78661, 1) AS ok').fetchone()['ok']:
                     stop.wait(5)
                     continue
-                if verified_key != key:
-                    if bot_call(key, 'getMe', {}).get('username', '').lower() != BOT:
-                        raise RuntimeError('bot_identity')
-                    if bot_call(key, 'getWebhookInfo', {}).get('url'):
-                        raise RuntimeError('bot_has_webhook')
-                    verified_key = key
-                cursor = control.read('support-bot-offset.json', {}) or {}
+                if verified_key != (key, cfg['username']):
+                    verify_bot(key, cfg['username'])
+                    verified_key = (key, cfg['username'])
+                legacy = cfg.get('legacy_id', identity) == identity
+                cursor_name = f'support-bot-offset-{identity}.json'
+                cursor = control.read(cursor_name)
+                if cursor is None:
+                    cursor = control.read('support-bot-offset.json', {}) if legacy else {}
                 updates = bot_call(key, 'getUpdates', {'offset': cursor.get('offset', 0), 'timeout': 2,
-                                                       'limit': 10, 'allowed_updates': ['message']})
+                                                       'limit': 10, 'allowed_updates': ['message', 'callback_query']})
                 for update in updates:
-                    handle_update(db, dsn(), key, update)
+                    handle_update(db, dsn(), key, update, legacy)
                     db.commit()
-                    control.write('support-bot-offset.json', {'offset': update['update_id'] + 1})
+                    control.write(cursor_name, {'offset': update['update_id'] + 1})
                 pending = db.execute("""SELECT o.message_id,o.telegram_id,m.body FROM support_bot_outbox o
                     JOIN support_chat_messages m ON m.id=o.message_id WHERE NOT o.delivered AND o.retry_at<=now()
-                    ORDER BY o.message_id LIMIT 10""").fetchall()
+                    AND (o.bot_id=%s OR (o.bot_id=0 AND %s))
+                    ORDER BY o.message_id LIMIT 10""", (identity, legacy)).fetchall()
+                if pending:
+                    style = design.Appearance(**design.read().get('settings', {}))
                 for item in pending:
                     try:
                         bot_call(key, 'sendMessage', {'chat_id': item['telegram_id'],
-                                                     'text': format_body('**Ответ поддержки Pushok**\n\n' + item['body']), 'parse_mode': 'HTML'})
+                                                     'text': format_body(design.heading(style, '👤', style.staff_title) + '\n\n' + item['body']), 'parse_mode': 'HTML'})
                     except RecipientUnavailable:
                         db.execute('DELETE FROM support_bot_outbox WHERE message_id=%s', (item['message_id'],))
                     except RuntimeError:

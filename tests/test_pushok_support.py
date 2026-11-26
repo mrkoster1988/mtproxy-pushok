@@ -61,6 +61,33 @@ class SupportChat(unittest.TestCase):
             self.assertEqual(len(db.execute('SELECT message_id FROM support_bot_outbox WHERE telegram_id=%s',(uid,)).fetchall()),1)
 
 
+    def test_welcome_falls_back_and_buttons_route_the_next_message(self):
+        uid=8452991
+        chat={'type':'private','id':uid}
+        key='111:'+'k'*30
+        def update(text,mid):
+            return {'message':{'chat':chat,'from':{'id':uid},'text':text,'message_id':mid}}
+        with support.connection(self.dsn) as db, patch.object(support,'bot_call') as tg:
+            tg.side_effect=[support.PhotoRejected(),True]
+            support.handle_update(db,self.dsn,key,update('/start',20))
+            photo,text=[c.args for c in tg.call_args_list]
+            self.assertEqual((photo[1],text[1]),('sendPhoto','sendMessage'))
+            self.assertEqual(photo[2]['caption'],text[2]['text'])
+            self.assertEqual(text[2]['reply_markup']['inline_keyboard'][1][0]['callback_data'],'support:idea')
+            tg.side_effect=None
+            callback={'id':'test','data':'support:idea','from':{'id':uid},'message':{'chat':chat,'message_id':21}}
+            support.handle_update(db,self.dsn,key,{'callback_query':callback})
+            self.assertEqual(tg.call_args_list[-2].args[1],'answerCallbackQuery')
+            support.handle_update(db,self.dsn,key,update('Хочу предложить поиск',22))
+            self.assertIn('Обращение №',tg.call_args.args[2]['text'])
+            case=db.execute('SELECT category,state FROM support_conversations WHERE telegram_id=%s',(uid,)).fetchone()
+            self.assertEqual(case,{'category':'idea','state':'waiting_staff'})
+            support.handle_update(db,self.dsn,key,update('/human',23))
+            support.handle_update(db,self.dsn,key,update('Проверьте подписку',24))
+            case=db.execute('SELECT category,state FROM support_conversations WHERE telegram_id=%s ORDER BY id DESC LIMIT 1',(uid,)).fetchone()
+            self.assertEqual(case,{'category':'problem','state':'waiting_staff'})
+
+
 class BotSettings(unittest.TestCase):
     def test_only_developers_can_verify_and_save_the_dedicated_bot(self):
         import os
@@ -81,6 +108,67 @@ class BotSettings(unittest.TestCase):
             self.assertEqual(client.put(url, json={'token':fake}).status_code, 409)
             telegram.side_effect = [{'username':support.BOT},{'url':''}]
             saved = client.put(url, json={'token':fake})
-            self.assertEqual(saved.json(), {'username':support.BOT, 'configured':True})
+            self.assertEqual(saved.json(), {'username':support.BOT, 'configured':True, 'display_name':''})
             self.assertEqual(client.get(url).json(), saved.json())
             self.assertNotIn(fake, saved.text)
+
+    def test_identity_is_verified_links_follow_it_and_profile_name_is_independent(self):
+        import os
+        from tempfile import TemporaryDirectory
+        app = FastAPI()
+        actor = {'is_owner':True}
+        app.include_router(support.router_for(lambda: 'unused', lambda: actor))
+        client = TestClient(app)
+        url = '/api/v1/support/bot'
+        old = '345:'+ 'a'*30
+        new = '678:'+ 'b'*30
+        main = '789:'+ 'c'*30
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {'PUSHOK_CONTROL_DIR':directory, 'PUSHOK_SUPPORT_BOT_TOKEN':old,'TELEGRAM_BOT_TOKEN':main}), patch.object(support,'bot_call') as telegram:
+            self.assertEqual(client.put(url,json={'username':'other_bot','token':main}).status_code,409)
+            telegram.assert_not_called()
+            telegram.side_effect=[{'username':'other_bot'}, {'url':'https://example.org/webhook'}]
+            self.assertEqual(client.put(url,json={'username':'other_bot','token':new}).status_code,409)
+            self.assertEqual(client.get('/ai-support',follow_redirects=False).headers['location'],'https://t.me/'+support.BOT)
+            telegram.side_effect=[{'username':'other_bot','first_name':'Поддержка'}, {'url':''}]
+            received=client.put(url,json={'username':'@Other_Bot','token':new})
+            self.assertEqual(received.json()['username'],'other_bot')
+            self.assertNotIn(new,received.text)
+            self.assertEqual(support.credential()['legacy_id'],345)
+            self.assertEqual(client.get('/ai-support',follow_redirects=False).headers['location'],'https://t.me/other_bot')
+            telegram.side_effect=[{'username':'other_bot'}, {'url':''}, True]
+            name=client.put(url+'/name',json={'username':'other_bot','name':'Пушок на связи'})
+            self.assertEqual(name.json()['display_name'],'Пушок на связи')
+            self.assertEqual(telegram.call_args.args,(new,'setMyName',{'name':'Пушок на связи'}))
+            self.assertEqual(client.put(url,json={'username':'../../bad','token':new}).status_code,422)
+
+    def test_appearance_upload_preview_access_and_conflicts(self):
+        import base64, os
+        from io import BytesIO
+        from tempfile import TemporaryDirectory
+        from PIL import Image
+        actor = {'role':'operator'}
+        app = FastAPI()
+        app.include_router(support.router_for(lambda: 'unused', lambda: actor))
+        client = TestClient(app);url='/api/v1/support/bot/appearance'
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {'PUSHOK_CONTROL_DIR':directory}):
+            self.assertEqual(client.get(url).status_code,403)
+            actor['is_developer']=True
+            initial=client.get(url).json()
+            settings={**initial['settings'],'welcome':'**Привет** <script>','image_mode':'custom','buttons':False,'emoji':False}
+            body={'settings':settings,'revision':initial['revision']}
+            self.assertEqual(client.put(url,json=dict(body,image_base64='invalid')).status_code,422)
+            photo=BytesIO()
+            Image.new('RGB',(64,64),'teal').save(photo,format='PNG')
+            image=base64.b64encode(photo.getvalue()).decode()
+            saved=client.put(url,json=dict(body,image_base64=image)).json()
+            self.assertEqual(saved['settings'],settings)
+            self.assertEqual(client.get(saved['image_path']).headers['content-type'],'image/jpeg')
+            self.assertNotIn(image,client.get(url).text)
+            self.assertEqual(client.put(url,json=body).status_code,409)
+            fields,path=support.design.welcome_payload(support.design.read(),567)
+            self.assertEqual(path,saved['image_path'])
+            self.assertIn('<b>Привет</b> &lt;script&gt;',fields['text'])
+            self.assertIn('/idea',fields['text'])
+            self.assertNotIn('🐾',fields['text']);self.assertNotIn('reply_markup',fields)
+            actor['is_developer']=False
+            self.assertEqual(client.put(url,json=body).status_code,403)

@@ -941,3 +941,23 @@ body.cabinet-mode,body.cabinet-mode.miniapp-mode[data-miniapp-theme]{
 
 .cabinet-mode .vpn-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
 .cabinet-mode .vpn-links .vpn-link{box-sizing:border-box;width:100%;min-width:0;height:42px;margin:0;border:1px solid var(--line-soft);border-radius:12px;background:var(--surface);color:inherit;font:inherit;font-weight:600;letter-spacing:normal}
+
+#support-bot-settings{max-width:720px;margin-inline:auto}
+#support-bot-settings .vpn-policy-card{display:grid;gap:.75rem;min-width:0}
+#support-bot-settings .vpn-policy-card[hidden],#support-bot-settings [hidden]{display:none}
+#support-bot-settings .vpn-policy-card :is(h2,h3,p){margin:0}
+#support-bot-settings .vpn-field{display:grid;gap:.3rem}
+#support-bot-settings :is(select,textarea,input){max-width:100%;min-width:0}
+#support-bot-settings textarea{resize:vertical}
+.support-toolbar,.support-preview-top{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem}
+.support-toolbar button{min-width:2.4rem;min-height:2.4rem;padding:.25rem}
+.support-toolbar button:first-child{font-weight:bold}.support-toolbar button:nth-child(2){font-style:italic}
+.support-extra{border-block:1px solid var(--line-soft);padding:.65rem 0}
+.support-extra summary{cursor:pointer;font-weight:600}.support-extra label{margin-top:.65rem}
+.support-toggle{display:flex;align-items:center;gap:.65rem}.support-toggle input[type=checkbox]{width:1.15rem;height:1.15rem}
+.support-preview{background:#0b1c2b;padding:.75rem;border-radius:14px;color:#eaf3fa}
+.support-preview-top{justify-content:space-between;margin-bottom:.65rem}.support-preview-top select{width:auto}
+.support-bubble{background:#203849;border-radius:14px 14px 14px 3px;overflow:hidden;max-width:380px;margin-inline:auto}
+.support-bubble img{display:block;width:100%;height:155px;object-fit:contain;background:#112a39}
+.support-bubble-text{padding:.8rem .95rem;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.4}
+.support-preview-button{display:block;padding:.5rem;text-align:center;background:#254a5a;border-top:2px solid #102534;color:#a8eff0;overflow-wrap:anywhere}
