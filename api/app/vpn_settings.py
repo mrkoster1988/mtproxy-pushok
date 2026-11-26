@@ -29,15 +29,15 @@ class Policy(BaseModel):
     stars_enabled: bool | None = None
     expiry_enabled: bool = True
     expiry_days: list[Day] = Field(default_factory=lambda:[7,3,1],min_length=1,max_length=12)
-    expiry_text: Text = 'Ваша VPN-подписка действует до {дата}. Осталось дней: {дней}.'
+    expiry_text: Text = 'Заглянул в календарь, {имя} 🗓️ До конца подписки — **{срок}**.\n\nVPN работает до **{дата}**. Хотите добавить времени? Нажмите «Продлить подписку».'
     never_enabled: bool = True
     never_days: Day = 1
     never_repeat: Repeat = 7
-    never_text: Text = 'Вы ещё не подключались к VPN. Откройте раздел VPN в кабинете, чтобы начать.'
+    never_text: Text = 'Привет, {имя}! Я Пушок 🐾 Устроим первое подключение?\n\nЗагляните в раздел **VPN** — там можно проверить доступ и скачать **Pushok Flow**. Если застрянете, я в разделе «Помощь».'
     idle_enabled: bool = True
     idle_days: Day = 14
     idle_repeat: Repeat = 7
-    idle_text: Text = 'Последнее подключение к VPN было {дней} дн. назад. Доступ можно проверить в кабинете.'
+    idle_text: Text = 'Давно не виделись, {имя}! 👋 Последнее подключение было **{срок} назад**.\n\nЕсли VPN снова нужен, откройте **Pushok Flow** и нажмите кнопку подключения. Срок подписки можно посмотреть в кабинете.'
 
     @field_validator('expiry_days')
     @classmethod
@@ -49,7 +49,7 @@ class Policy(BaseModel):
     @classmethod
     def template(cls,value):
         for _,field,spec,conversion in Formatter().parse(value):
-            if field is not None and (field not in ('имя','дней','дата') or spec or conversion):
+            if field is not None and (field not in ('имя','дней','дата','срок') or spec or conversion):
                 raise ValueError('Неизвестная подстановка')
         return value
 

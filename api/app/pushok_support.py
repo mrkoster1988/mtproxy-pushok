@@ -132,8 +132,15 @@ def bot_call(key, method, fields):
 
 
 def answer(category,question,history,requested):
-    if requested:return 'Передаю вопрос команде. Ответ сотрудника появится в этом чате.',True
-    if category=='idea':return 'Записал предложение для команды Pushok. Какой результат вы хотели бы получить и в какой ситуации это пригодится?',True
+    style=design.Appearance(**design.read().get('settings', {}))
+    playful=style.tone=='playful'
+    if requested:return 'Передал вопрос команде. Ответ сотрудника придёт прямо сюда.',True
+    if category=='idea':
+        opening='Вот это идея! ' if playful else 'Спасибо за предложение. '
+        return opening+'Записал для команды Pushok. В какой момент эта функция была бы вам особенно полезна?',True
+    if question.strip().casefold().rstrip('!.? ') in ('привет','здравствуйте','добрый день','добрый вечер','доброе утро'):
+        return (('Привет! Пушок на связи'+(' 🐾' if style.emoji else '!')+' Что сегодня разбираем — Flow, Mini App или новую идею?') if playful
+                else 'Здравствуйте! Чем помочь с Pushok Flow или Mini App?'),False
     facts=('В Android Flow на главной кнопка подключения. В настройках доступны маршруты приложений, подписки и диагностика. '
            'В Mini App вкладка VPN показывает срок доступа. Кнопка «Продлить» ведёт к оплате Stars. '
            'Отзыв подписки отключает доступ. Администратор может выдать новый профиль. '
@@ -142,10 +149,13 @@ def answer(category,question,history,requested):
     if cfg:
         try:
             topics.reserve_ai_call()
-            emoji_hint = 'Уместны эмодзи.' if design.Appearance(**design.read().get('settings', {})).emoji else 'Пиши без эмодзи.'
+            emoji_hint = 'Уместны эмодзи.' if style.emoji else 'Пиши без эмодзи.'
+            tone_hint=('Говори тепло и живо, как Пушок. Короткая кошачья шутка уместна в приветствии или разговоре об идеях. '
+                       'При ошибках, платежах, отзыве и передаче сотруднику сразу переходи к делу.' if playful else
+                       'Говори спокойно, прямо, без шуток и образных выражений.')
             messages=[{'role':'system','content':'Ты Pushok ИИ, поддержка Pushok. Отвечай кратко по-русски. '
                        'Ты не выполняешь действий, не видишь платежей и ключей. Не запрашивай секреты. '
-                       'Используй короткие абзацы, **жирное** и __курсив__. '+emoji_hint+' Верни JSON с полями text и human (boolean). Если данных мало, попроси уточнение или поставь human=true. '+facts}]
+                       'Используй короткие абзацы, **жирное** и __курсив__. '+emoji_hint+' '+tone_hint+' Верни JSON с полями text и human (boolean). Если данных мало, попроси уточнение или поставь human=true. '+facts}]
             messages += [{'role':'assistant' if m['sender']!='user' else 'user','content':m['body'][:1200]} for m in history[-6:]]
             messages.append({'role':'user','content':question})
             payload=dict(model=cfg[1],messages=messages,response_format={'type':'json_object'},max_completion_tokens=320)
@@ -160,7 +170,7 @@ def answer(category,question,history,requested):
     if 'отозван' in text:return 'Отозванная подписка отключает прежний профиль. Передаю вопрос сотруднику, который может проверить доступ и выдать новый профиль.',True
     if any(word in text for word in ('оплат','звёзд','stars','списал')):return 'Для продления откройте **VPN → Продлить**. Если Stars уже списались, пришлите номер заказа. Передаю обращение сотруднику для проверки.',True
     if 'трафик' in text:return 'В Mini App расход подписки виден во вкладке VPN. Расход по приложениям телефона можно посмотреть в **Pushok Flow → Настройки → IP и трафик**.',False
-    return 'Обращение принято. Уточните, пожалуйста, что вы делали и что увидели на экране. Сотрудник сможет ответить в этой переписке.',True
+    return 'Давайте разберёмся вместе. На что вы нажали и что появилось на экране? Передал вопрос команде — ответ придёт в этот чат.',True
 
 
 def connection(dsn):
@@ -355,7 +365,7 @@ def handle_update(db, dsn, key, update, legacy=True):
         except HTTPException as exc:
             if exc.status_code != 429:
                 raise
-            response = 'Получил много сообщений подряд. Попробуйте написать через пять минут.'
+            response = 'Дайте мне пять минут разобрать сообщения. После этого можно будет написать снова.'
         else:
             db.execute('UPDATE support_bot_contacts SET current_case=%s,pending_action=NULL WHERE telegram_id=%s', (record['id'], uid))
             response = design.heading(style, '💬', style.case_title + ' №' + str(record['id'])) + '\n\n' + record['reply']

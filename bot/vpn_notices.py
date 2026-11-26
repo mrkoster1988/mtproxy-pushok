@@ -22,8 +22,8 @@ def deliver(api, send, launch='https://pushok.shop/miniapp', queue='vpn-notices'
                 button = {'text':'Продлить подписку','web_app':{'url':launch+'?vpn=renew'}}
             else:
                 button = {'text':'Открыть VPN' if item.get('connect') else 'Моя подписка','web_app':{'url':launch+'?vpn=home'}}
-            titles={'expiry':'⏳ Срок подписки','never':'👋 Первое подключение','idle':'💤 Давно без VPN',
-                    'created':'✨ Подписка создана','changed':'🔔 Изменение подписки','order':'🧾 Заказ',
+            titles={'expiry':'⏳ Сколько ещё работает VPN?','never':'👋 Первый выход с Пушком','idle':'🐾 Пушок на связи',
+                    'created':'✨ У вас новая подписка','changed':'🐾 Что нового с вашей подпиской','order':'🧾 Новости по заказу',
                     'refund':'↩️ Возврат','device':'📱 Профиль устройства','removed':'🗂 Подписка удалена',
                     'link':'🔗 Ссылка подключения','reminder':'⏳ Срок подписки'}
             title=titles.get(item.get('category'),'🔔 VPN-подписка')

@@ -30,6 +30,12 @@ def format_body(template,fields=None):
     return ''.join(output)
 
 
+def days_label(days):
+    last = days % 10
+    word = 'дней' if 11 <= days % 100 <= 14 else 'день' if last == 1 else 'дня' if 2 <= last <= 4 else 'дней'
+    return f'{days} {word}'
+
+
 def due(p,row,now):
     sub=row['sub']
     if sub and sub.get('state')=='active':
@@ -88,7 +94,7 @@ def claim():
                     (%s>0 AND vpn_scheduled_notices.sent_at+%s<=%s)))) RETURNING id""",
                     (row['id'],kind,anchor,lease,now+120,now,repeat,repeat*DAY,now)).fetchone()
                 if event:
-                    fields=dict(имя=row['first_name'] or 'друг',дней=days,
+                    fields=dict(имя=row['first_name'] or 'друг',дней=days,срок=days_label(days),
                         дата=datetime.fromtimestamp(stamp,ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y'))
                     items.append({'id':event['id'],'lease':lease,'telegram_id':row['telegram_user_id'],
                         'category':kind,'formatted_body':format_body(policy[kind+'_text'],fields),

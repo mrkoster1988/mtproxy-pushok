@@ -3,9 +3,9 @@ window.pushokVpnSettings=(()=>{
  const groups=[
    {key:'expiry',title:'Окончание подписки',icon:'⏳'},
    {key:'never',title:'Первое подключение',icon:'👋'},
-   {key:'idle',title:'Давно без VPN',icon:'💤'}
+   {key:'idle',title:'Давно без VPN',icon:'🐾'}
  ];
- const heads={expiry:'Срок подписки',never:'Первое подключение',idle:'Давно без VPN'};
+ const heads={expiry:'Сколько ещё работает VPN?',never:'Первый выход с Пушком',idle:'Пушок на связи'};
  function field(label,input){const l=el('label',label,'vpn-field');l.append(input);return l;}
  function number(value,min,max){const n=el('input');n.type='number';n.value=value;n.min=min;n.max=max;n.step=1;n.required=true;return n;}
  function switcher(value,title){const n=el('input');n.type='checkbox';n.checked=value;n.setAttribute('aria-label',title);return n;}
@@ -19,7 +19,7 @@ window.pushokVpnSettings=(()=>{
  function preview(box,template,group,days){
    box.replaceChildren(el('strong',group.icon+' '+heads[group.key]));
    const p=el('p'),date=new Date();date.setDate(date.getDate()+(group.key==='expiry'?days:-days));
-   const text=template.replaceAll('{дней}',String(days)).replaceAll('{имя}','Александр').replaceAll('{дата}',date.toLocaleDateString('ru-RU'));
+   const text=template.replaceAll('{срок}',days+' '+({one:'день',few:'дня',many:'дней',other:'дней'})[new Intl.PluralRules('ru').select(days)]).replaceAll('{дней}',String(days)).replaceAll('{имя}','Александр').replaceAll('{дата}',date.toLocaleDateString('ru-RU'));
    appendFormattedText(p,text);
    box.append(p,el('small','Pushok ИИ','muted'));
  }
@@ -47,7 +47,7 @@ window.pushokVpnSettings=(()=>{
      const msg=el('textarea');msg.value=p[k+'_text'];msg.required=true;msg.maxLength=700;msg.rows=3;
      inner.append(field('Текст сообщения',msg));
      const tools=el('div',null,'vpn-format');
-     for(const [name,mark] of [['Жирный','**'],['Курсив','__'],['Имя','{имя}'],['Дни','{дней}'],['Дата','{дата}']]){
+     for(const [name,mark] of [['Жирный','**'],['Курсив','__'],['Имя','{имя}'],['Дни','{дней}'],['Дни словами','{срок}'],['Дата','{дата}']]){
        const b=el('button',name,'labeled-action');b.type='button';b.onclick=()=>{const a=msg.selectionStart,z=msg.selectionEnd;
          const replacement=mark.startsWith('{')?mark:mark+(msg.value.slice(a,z)||'текст')+mark;
          msg.setRangeText(replacement,a,z,'end');msg.focus();paint();};tools.append(b);

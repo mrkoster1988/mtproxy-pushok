@@ -451,7 +451,7 @@ def process_stars_update(update, token, internal_api=None, send=None):
             # Shop enqueues its payment/subscription messages in the same transaction.
             return True
         text = (
-            "✅ Оплата Stars подтверждена. Ожидайте назначения рекламного размещения."
+            "⭐ Оплата Stars подтверждена! Следующий шаг — назначение времени размещения. За статусом можно следить в разделе «Кампании»."
             if state in ("applied", "already_processed")
             else "⚠️ Платёж поступил, но требует сверки. Напишите /paysupport."
         )

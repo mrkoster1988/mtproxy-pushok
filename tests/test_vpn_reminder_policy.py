@@ -38,3 +38,9 @@ class VpnPolicy(unittest.TestCase):
         with patch.object(settings,'shop',return_value={'enabled':True}):
             user['is_developer']=True
             self.assertEqual(client.get('/api/v1/vpn/settings/access').json(),{'enabled':True})
+
+    def test_days_are_spelled_out_in_new_templates(self):
+        for day,word in ((1,'день'),(3,'дня'),(7,'дней'),(11,'дней'),(12,'дней'),(21,'день'),(32,'дня')):
+            rendered=notices.format_body(settings.Policy().expiry_text,dict(имя='Тест',срок=notices.days_label(day),дата='01.12.2026'))
+            self.assertIn(f'<b>{day} {word}</b>',rendered)
+            self.assertIn('01.12.2026',rendered)

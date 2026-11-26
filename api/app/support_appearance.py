@@ -16,21 +16,22 @@ FILE = 'support-bot-appearance.json'
 MASCOT = '/assets/pushok-pencil.png'
 COMMANDS = '/question — задать вопрос\n/idea — предложить идею\n/human — позвать сотрудника\n/new — начать заново'
 ACTIONS = {
-    'question': ('💬', 'Напишите, с чем нужна помощь в Flow или Mini App.'),
-    'idea': ('💡', 'Расскажите, чего вам не хватает и как вы хотели бы этим пользоваться.'),
-    'human': ('👤', 'Опишите вопрос для сотрудника. Ответ придёт в этот чат.'),
+    'question': ('💬', 'Я весь внимание! Что подсказать про Flow или Mini App?'),
+    'idea': ('💡', 'Люблю такие разговоры! Какой функции вам не хватает и когда она бы пригодилась?'),
+    'human': ('👤', 'Подключим команду. Расскажите, что случилось, и сотрудник ответит здесь.'),
 }
 
 
 class Appearance(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
-    title: str = Field(default='Привет! Я Pushok ИИ', min_length=1, max_length=64)
-    welcome: str = Field(default='Помогу с **Pushok Flow** и **Mini App**.\n\nЗадайте вопрос о подключении, расскажите о проблеме или предложите идею для следующего обновления.', min_length=1, max_length=500)
+    title: str = Field(default='Привет! Это Пушок', min_length=1, max_length=64)
+    welcome: str = Field(default='Рад вас видеть! Одной лапой помогу разобраться с **Pushok Flow**, другой — с **Mini App**.\n\nЧто у вас сегодня — вопрос, хитрая неполадка или идея, которой пора дать ход?', min_length=1, max_length=500)
     case_title: str = Field(default='Обращение', min_length=1, max_length=48)
     staff_title: str = Field(default='Ответ команды Pushok', min_length=1, max_length=64)
     question: str = Field(default='Задать вопрос', min_length=1, max_length=24)
     idea: str = Field(default='Предложить идею', min_length=1, max_length=24)
     human: str = Field(default='Позвать сотрудника', min_length=1, max_length=24)
+    tone: Literal['playful', 'calm'] = 'playful'
     emoji: bool = True
     buttons: bool = True
     image_mode: Literal['mascot', 'custom', 'none'] = 'mascot'
@@ -44,7 +45,18 @@ class AppearanceEdit(BaseModel):
 
 
 def read():
-    return control.read(FILE, {}) or {}
+    state = control.read(FILE, {}) or {}
+    if not state or state.get('greeting_version', 0) >= 2:
+        return state
+    with control.locked():
+        state = control.read(FILE, {}) or {}
+        if state and state.get('greeting_version', 0) < 2:
+            settings = dict(state.get('settings', {}))
+            for field in ('title', 'welcome'):
+                settings.pop(field, None)
+            state.update(settings=settings, greeting_version=2, revision=control.now())
+            control.write(FILE, state)
+        return state
 
 
 def image_path(state):
@@ -75,15 +87,16 @@ def picture(encoded):
 
 def save(edit):
     image = picture(edit.image_base64) if edit.image_base64 is not None else None
+    read()  # Apply the greeting update before checking the editor's revision.
     with control.locked():
-        state = read()
+        state = control.read(FILE, {}) or {}
         if edit.revision != state.get('revision', ''):
             raise HTTPException(409, 'support_bot_settings_changed')
         if image is not None:
             state.update(image_id=sha256(image).hexdigest(), photo=base64.b64encode(image).decode())
         if edit.settings.image_mode == 'custom' and not state.get('image_id'):
             raise HTTPException(422, 'support_bot_bad_image')
-        state.update(settings=edit.settings.model_dump(), revision=control.now())
+        state.update(settings=edit.settings.model_dump(), greeting_version=2, revision=control.now())
         control.write(FILE, state)
         return public(state)
 

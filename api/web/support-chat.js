@@ -153,6 +153,11 @@ window.pushokSupport=(()=>{
   for(const [key,text] of [['emoji','Добавлять эмодзи в заголовки и кнопки'],['buttons','Показывать кнопки под приветствием']]){
    const label=el('label',undefined,'support-toggle'),item=el('input');item.type='checkbox';item.checked=values[key];inputs[key]=item;label.append(item,document.createTextNode(text));details.append(label);
   }
+  const toneLabel=el('label','Стиль ответов ИИ','vpn-field'),tone=el('select');
+  for(const [key,label] of [['playful','Живой, с юмором'],['calm','Спокойный, по делу']]){
+   const opt=el('option',label);opt.value=key;tone.append(opt);
+  }
+  tone.value=values.tone||'playful';toneLabel.append(tone);details.append(toneLabel);inputs.tone=tone;
   const buttons=el('div');details.append(buttons);
   const actions=[['question','💬','Кнопка вопроса'],['idea','💡','Кнопка предложения'],['human','👤','Кнопка сотрудника']];
   for(const [key,,label] of actions)textField(buttons,key,label,24);

@@ -172,3 +172,23 @@ class BotSettings(unittest.TestCase):
             self.assertNotIn('🐾',fields['text']);self.assertNotIn('reply_markup',fields)
             actor['is_developer']=False
             self.assertEqual(client.put(url,json=body).status_code,403)
+
+    def test_new_greeting_replaces_old_text_once_and_keeps_settings(self):
+        from tempfile import TemporaryDirectory
+        import os
+        from app import support_appearance as design
+        with TemporaryDirectory() as directory, patch.dict(os.environ, {'PUSHOK_CONTROL_DIR':directory}):
+            design.control.write(design.FILE, {'settings':{'title':'Прежний текст','welcome':'Старый текст','buttons':False,
+                                  'image_mode':'none'},'revision':'old'})
+            migrated=design.public(design.read())
+            self.assertEqual(migrated['settings']['welcome'],design.Appearance().welcome)
+            self.assertFalse(migrated['settings']['buttons'])
+            self.assertEqual(migrated['settings']['image_mode'],'none')
+            self.assertNotIn('Старый текст',str(design.control.read(design.FILE)))
+            changed=dict(migrated['settings'],title='Новое название',tone='calm')
+            edit=design.AppearanceEdit(settings=changed,revision=migrated['revision'])
+            design.save(edit)
+            self.assertEqual(design.public(design.read())['settings']['title'],'Новое название')
+            greeting,handoff=support.answer('question','Привет!',[],False)
+            self.assertFalse(handoff)
+            self.assertIn('Здравствуйте',greeting)
