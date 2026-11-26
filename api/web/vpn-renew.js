@@ -90,7 +90,7 @@ window.pushokVpnRenew = (() => {
     consent.append(check,document.createTextNode('Принимаю условия оплаты'));
     let selected=catalog.plans.find(p=>p.id===catalog.preferred_plan)||catalog.plans[0],busy=false,requestId=prior?.request_id||crypto.randomUUID();
     if (prior?.plan) selected=catalog.plans.find(p=>p.id===prior.plan)||selected;
-    const pay=el('button',undefined,'campaign-pay-action');pay.type='button';note.textContent='';
+    const pay=el('button',undefined,'campaign-pay-action labeled-action');pay.type='button';note.textContent='';
     function update(){pay.textContent=selected?'Оплатить '+selected.amount+' ⭐':'Оплатить';pay.disabled=busy||!selected||!check.checked||!catalog.available;}
     for(const plan of catalog.plans){
       const label=el('label',undefined,'vpn-plan'),radio=el('input'),copy=el('span');

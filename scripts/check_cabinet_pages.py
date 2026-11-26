@@ -1005,6 +1005,7 @@ def main():
                     expect(mini.locator('.mobile-bottom-nav [data-route=moderation]')).to_be_hidden()
                     vpn_page.get_by_role('radio',name='На месяц',exact=False).check()
                     pay_vpn=mini.get_by_role('button',name='Оплатить 199 ⭐')
+                    expect(pay_vpn).to_have_text('Оплатить 199 ⭐')
                     expect(pay_vpn).to_be_disabled()
                     mini.get_by_label('Принимаю условия оплаты').check()
                     pay_vpn.click()
