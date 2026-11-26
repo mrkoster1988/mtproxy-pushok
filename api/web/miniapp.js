@@ -120,7 +120,7 @@ window.pushokMiniApp=(()=>{
    const clean=new URL(location.href);
    for(const key of [...clean.searchParams.keys()])if(key.startsWith('tgWebApp')||key==='sbp_campaign')clean.searchParams.delete(key);
    if((newLaunch&&launch.startsWith('r_'))||!clean.hash.startsWith('#/'))clean.hash='/dashboard';
-   if(newLaunch&&['profile','campaigns','moderation','sponsors','create','channels'].includes(startParam))clean.hash='/'+startParam;
+   if(newLaunch&&['profile','wallet','campaigns','moderation','sponsors','create','channels'].includes(startParam))clean.hash='/'+startParam;
    const noticeRoute=/^(archive|moderation|campaign)_([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/.exec(startParam||'');
    if(newLaunch&&noticeRoute)clean.hash='/'+noticeRoute[1]+'/'+noticeRoute[2];
    if(newLaunch&&startParam==='ai_bot_settings')clean.hash='/management/ai-bot';

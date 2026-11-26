@@ -59,7 +59,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="2.34",
+    version="2.35",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -2923,7 +2923,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=2.34" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=2.35" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
@@ -3339,6 +3339,8 @@ app.include_router(wallet_router_for(lambda: DATABASE_URL, get_current_user, req
 
 from .sbp_connection import router_for as sbp_connection_router
 app.include_router(sbp_connection_router(lambda: DATABASE_URL, require_owner))
+from .wallet_connections import router_for as wallet_connections_router
+app.include_router(wallet_connections_router(lambda: DATABASE_URL, require_owner))
 
 from .channel_logos import router_for as channel_logos_router
 app.include_router(channel_logos_router(lambda: DATABASE_URL, get_current_user))

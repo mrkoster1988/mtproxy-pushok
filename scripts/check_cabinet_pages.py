@@ -386,6 +386,8 @@ def main():
                 forbidden = advertiser.request.get(base + '/api/v1/admin/payments/status',
                     headers={"Authorization": "Bearer " + sessions['advertiser']})
                 assert forbidden.status == 403
+                assert advertiser.request.get(base+'/api/v1/admin/wallet/connections',
+                    headers={'Authorization':'Bearer '+sessions['advertiser']}).status == 403
                 # Компактная стартовая раскладка: история доступна, формы открываются по запросу.
                 go(advertiser, 'wallet')
                 history=advertiser.locator('[data-wallet-section=history]')
@@ -1124,7 +1126,13 @@ def main():
                             go(mini,route)
                             if screen=='wallet':
                                 expect(mini.locator('.wallet-balances .wallet-primary')).to_have_attribute('data-currency','RUB')
-                                expect(mini.locator('.wallet-tools a')).to_have_attribute('href','#/payments')
+                                methods=mini.locator('.wallet-payment-methods')
+                                for name in ('Telegram Stars','Platega','СБП через Antilopay'):
+                                    expect(methods.get_by_text(name,exact=True)).to_be_visible()
+                                expect(methods.get_by_role('link',name='Мои оплаты')).to_have_attribute('href','#/payments')
+                                expect(methods.get_by_role('link',name='Тарифы VPN')).to_have_attribute('href','#/vpn/renew')
+                                expect(methods.locator('[data-state=test]')).to_have_count(2)
+                                expect(mini.locator('.wallet-topup')).to_have_count(0)
                             if screen=='growth':
                                 expect(mini.locator('.growth-page')).to_be_visible()
                             if screen=='home':
@@ -1272,6 +1280,14 @@ def main():
                     admin.locator('#payment-switches button').click()
                     expect(admin.locator('#notice')).to_contain_text('Настройки оплаты сохранены')
                     expect(admin.locator('#enable-stars')).to_be_checked()
+                    merchants=admin.locator('#wallet-connections')
+                    for name in ('Platega','СБП через Antilopay'):
+                        summary=merchants.locator('summary').filter(has_text=name)
+                        expect(summary).to_be_visible()
+                        summary.click()
+                        expect(merchants.locator('details[open] input[type=password]')).to_have_value('')
+                        expect(merchants.get_by_role('button',name='Сохранить',exact=True)).to_be_visible()
+                        summary.click()
                     connection=admin.locator('#sbp-connection')
                     expect(connection.locator('summary')).to_contain_text('Подключение СБП')
                     connection.locator('details').evaluate('(node)=>node.open=true')

@@ -45,7 +45,7 @@ function clearCabinetSession({preserveUnboundFlow=false,expired=false,clearWorks
  window.pushokFlowAccount?.reset({preserveUnbound:preserveUnboundFlow});
  $('workspace').hidden=true;$('login').hidden=miniAppMode;$('logout').hidden=true;
  if(clearWorkspace){
-  window.pushokSBP?.reset();window.pushokChannelSubscriptionSettings?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();
+  window.pushokSBP?.reset();window.pushokWalletConnections?.reset();window.pushokChannelSubscriptionSettings?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();
   window.cabinet?.logout({preserveUnboundFlow});
  }
  if(expired&&miniAppMode)window.pushokMiniApp.expired({preserveUnboundFlow});
@@ -159,7 +159,7 @@ function resetPaymentSettings(){
  }
  $('payment-config-note').textContent='';$('payment-switch-feedback').textContent='';
  $('sbp-review-list').replaceChildren();$('wallet-settings').replaceChildren();
- window.pushokSBP?.reset();
+ window.pushokSBP?.reset();window.pushokWalletConnections?.reset();
  for(const cell of document.querySelectorAll('.payment-metrics dd'))cell.textContent='—';
  $('settings-payments-note').textContent='';
 }
@@ -1140,6 +1140,7 @@ async function loadControl({payments=false,replaceDraft=false}={}){
  displayedVersion=c.version;softwareControl=c;
  if(payments){
  void window.pushokSBP?.load();
+ void window.pushokWalletConnections?.load();
  showPaymentControls(c,replaceDraft);
  }
  renderSoftware();

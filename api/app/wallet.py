@@ -139,15 +139,17 @@ def router_for(dsn,current_user,require_admin):
                 if invoice['currency'] == 'RUB':
                     invoice['invoice_url'] = None
         result['topup_methods'] = []
-        if not result['stars_only']:
-            for provider, minimum in topups.acquirers.MINIMUM.items():
-                method = topups.acquirers.settings(provider)
-                if method['enabled']:
-                    result['topup_methods'].append(dict(id=provider, min_amount=minimum,
-                        max_amount=topups.acquirers.MAXIMUM, test_mode=method['test_mode']))
-            if result['sbp_available']:
-                result['topup_methods'].append(dict(id='sbp', min_amount=100, max_amount=100000000,
-                                                     test_mode=cfg['test_mode']))
+        result['web_wallet_methods'] = []
+        for provider, minimum in topups.acquirers.MINIMUM.items():
+            method = topups.acquirers.settings(provider)
+            item = dict(id=provider, min_amount=minimum, max_amount=topups.acquirers.MAXIMUM)
+            state = ('test' if method['test_mode'] else 'active') if method['enabled'] and result['enabled'] else 'off'
+            result['web_wallet_methods'].append(dict(item, state=state))
+            if method['enabled'] and not result['stars_only']:
+                result['topup_methods'].append(dict(item, test_mode=method['test_mode']))
+        if result['sbp_available']:
+            result['topup_methods'].append(dict(id='sbp', min_amount=100, max_amount=100000000,
+                                               test_mode=cfg['test_mode']))
         return result
 
     @router.get('/api/v1/admin/wallet/settings')

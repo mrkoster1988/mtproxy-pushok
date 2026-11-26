@@ -14,6 +14,7 @@ from uuid import UUID
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.exceptions import UnsupportedAlgorithm
+from . import control
 from .sbp_provider import SBPProviderError, _NoRedirect
 from .sbp_verification import SBPVerificationError
 
@@ -32,10 +33,24 @@ def signing_key(encoded):
     return key if isinstance(key, rsa.RSAPrivateKey) else None
 
 
-def settings(provider):
-    prefix = provider.upper() + '_'
+FIELDS = {'platega': ('MERCHANT_ID', 'SECRET'), 'antilopay': ('PROJECT_ID', 'SECRET_ID', 'PRIVATE_KEY_BASE64', 'VAT')}
+
+
+def connection_values(provider):
+    name = f'wallet-{provider}-private.json'
+    keys = (*FIELDS[provider], 'ENABLED', 'TEST_MODE')
+    if (control.root() / name).exists():
+        saved = control.read(name)
+        if not isinstance(saved, dict) or not all(isinstance(saved.get(k, ''), str) for k in keys):
+            return {}
+        return {k: saved.get(k, '') for k in keys}
+    return {key: os.getenv(f'{provider.upper()}_{key}', '').strip() for key in keys}
+
+
+def settings(provider, values=None):
+    values = connection_values(provider) if values is None else values
     def get(name):
-        return os.getenv(prefix + name, '').strip()
+        return values.get(name, '')
     if provider == 'platega':
         account = get('MERCHANT_ID')
         creds = {'X-MerchantId': account, 'X-Secret': get('SECRET')}

@@ -29,6 +29,8 @@ from installer_runtime import sync_directory
 WRITERS = {'api', 'bot', 'sbp-worker', 'flow-push'}
 CONFIG = {'.control/github-access-private.json':'github-access-private.json', '.control/channel-ai-private.json':'channel-ai-private.json', '.control/license-seller-key.json':'license-seller-key.json', '.control/license-installation-key.json':'license-installation-key.json', '.env': 'config.env', 'compose.yaml': 'compose.yaml',
           'compose.override.yaml': 'compose.override.yaml', 'Caddyfile': 'Caddyfile',
+          '.control/wallet-platega-private.json':'wallet-platega-private.json',
+          '.control/wallet-antilopay-private.json':'wallet-antilopay-private.json',
           '.control/sbp-private.json':'sbp-private.json', '.control/payments.json':'payments.json', '.control/emoji-map.json':'emoji-map.json'}
 REQUIRED = {'database.dump', 'proofs.tar', 'config.env', 'compose.yaml'}
 ALLOWED = REQUIRED | set(CONFIG.values())
