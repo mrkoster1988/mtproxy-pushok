@@ -1,5 +1,7 @@
 """Пополнения: доверенные подтверждения провайдеров и повторяемые операции."""
 import os
+import re
+from . import wallet_acquirers as acquirers
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
@@ -20,7 +22,7 @@ def connect(dsn):
 
 
 def view(row):
-    return {k:row[k] for k in ('id','currency','amount','status','invoice_url','test_mode',
+    return {k:row[k] for k in ('id','provider','currency','amount','status','invoice_url','test_mode',
             'refunded_amount','created_at','settled_at','review_reason')}
 
 
@@ -47,16 +49,22 @@ def _create(dsn,user,data):
         raise HTTPException(409, 'wallet_stars_topup_retired')
     if currency=='RUB' and user.get('login_surface')=='telegram':
         raise HTTPException(409,'wallet_stars_only_in_telegram')
-    cfg=sbp_settings()
-    if currency=='RUB':
-        if not cfg['enabled']:raise HTTPException(409,'sbp_checkout_disabled_until_acceptance')
-        if data.amount<100:raise HTTPException(422,'sbp_invalid_amount')
-        account,test,provider=cfg['shop'],cfg['test_mode'],'sbp'
-    else:
-        if not stars_invoices_enabled():raise HTTPException(409,'stars_checkout_disabled_until_acceptance')
-        if data.amount>1000000:raise HTTPException(422,'wallet_topup_limit')
-        token,bot_id=stars_checkout.credentials()
-        account,test,provider=str(bot_id),is_test_environment(),'telegram_stars'
+    provider = getattr(data, 'provider', 'sbp')
+    cfg = acquirers.settings(provider) if provider in acquirers.MINIMUM else sbp_settings()
+    if not cfg['enabled']:
+        raise HTTPException(409, 'wallet_method_unavailable' if provider in acquirers.MINIMUM else 'sbp_checkout_disabled_until_acceptance')
+    if provider in acquirers.MINIMUM:
+        if not acquirers.MINIMUM[provider] <= data.amount <= acquirers.MAXIMUM:
+            raise HTTPException(422, 'wallet_method_amount')
+    elif data.amount < 100:
+        raise HTTPException(422, 'sbp_invalid_amount')
+    email = getattr(data, 'receipt_email', None)
+    if provider == 'antilopay' and not email:
+        raise HTTPException(422, 'wallet_receipt_email')
+    account, test = cfg['shop'], cfg['test_mode']
+    host = cfg['host']
+    if host and not re.fullmatch(r'[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?', host):
+        raise HTTPException(409, 'wallet_method_unavailable')
     # Ключ сохраняется до внешнего вызова; неопределённый результат повторяем тем же ключом.
     with connect(dsn) as conn:
         controls.require_enabled(conn)
@@ -67,13 +75,13 @@ def _create(dsn,user,data):
         if not row:
             if conn.execute("SELECT 1 FROM wallet_topups WHERE user_id=%s AND currency=%s AND status IN ('created','pending','review')",(user['id'],currency)).fetchone():
                 raise HTTPException(409,'wallet_topup_in_progress')
-            row=conn.execute('''INSERT INTO wallet_topups(user_id,request_id,provider,currency,amount,provider_account,test_mode)
-                VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING *''',
-                (user['id'],data.request_id,provider,currency,data.amount,account,test)).fetchone()
-            if currency=='RUB':
+            row=conn.execute('''INSERT INTO wallet_topups(user_id,request_id,provider,currency,amount,provider_account,test_mode,receipt_email)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *''',
+                (user['id'],data.request_id,provider,currency,data.amount,account,test,email if provider == 'antilopay' else None)).fetchone()
+            if host:
                 conn.execute('UPDATE wallet_topups SET return_url=%s WHERE id=%s',
                     ('https://'+cfg['host']+'/?wallet_topup='+str(row['id']),row['id']))
-        elif row['currency']!=currency or row['amount']!=data.amount:
+        elif row['currency']!=currency or row['amount']!=data.amount or row['provider']!=provider:
             raise HTTPException(409,'wallet_request_conflict')
     return resume(dsn,row['id'],user)
 
@@ -83,9 +91,22 @@ def resume(dsn,tid,user):
         controls.require_enabled(conn)
         row=conn.execute('SELECT * FROM wallet_topups WHERE id=%s AND user_id=%s FOR UPDATE',(tid,user['id'])).fetchone()
         if not row:raise HTTPException(404,'wallet_topup_not_found')
+        if row['currency'] == 'RUB' and user.get('login_surface') == 'telegram':
+            raise HTTPException(409, 'wallet_stars_only_in_telegram')
         if row['status']!='created':return view(row)
-        if row['currency']=='RUB':
-            if user.get('login_surface')=='telegram':raise HTTPException(409,'wallet_stars_only_in_telegram')
+        if row['provider'] in acquirers.MINIMUM:
+            cfg = matching_acquirer(row)
+            if not cfg['enabled']:
+                raise HTTPException(409, 'wallet_method_unavailable')
+            try:
+                pid, url = acquirers.create(row, cfg)
+            except acquirers.InvoiceRejected:
+                rejected = conn.execute("""UPDATE wallet_topups SET status='failed',
+                    receipt_email=NULL,review_reason='invoice_rejected' WHERE id=%s RETURNING *""", (tid,)).fetchone()
+                return view(rejected)
+            row = conn.execute("""UPDATE wallet_topups SET status='pending',provider_payment_id=%s,
+                invoice_url=%s,receipt_email=NULL WHERE id=%s RETURNING *""", (pid, url, tid)).fetchone()
+        elif row['currency']=='RUB':
             cfg=sbp_settings()
             if (not cfg['enabled'] or row['provider_account']!=cfg['shop'] or row['test_mode']!=cfg['test_mode']
                 or row['return_url']!='https://'+cfg['host']+'/?wallet_topup='+str(row['id'])):
@@ -120,22 +141,49 @@ def refund_amount(payment,maximum):
     return int(value*100)
 
 
+def matching_acquirer(row):
+    cfg = acquirers.settings(row['provider'])
+    if not cfg['configured'] or cfg['shop'] != row['provider_account'] or cfg['test_mode'] != row['test_mode']:
+        raise HTTPException(409, 'sbp_configuration_changed')
+    return cfg
+
+
+def record_paid(conn, row, refunded, reason):
+    if refunded<row['refunded_amount']:raise SBPVerificationError('refund_amount_decreased')
+    if row['status'] not in ('pending','succeeded','refunded'):raise SBPVerificationError('payment_state_conflict')
+    if not row['test_mode']:
+        ledger.post(conn,row['user_id'],'RUB',row['amount'],'topup','topup:'+str(row['id']),
+                    reason,topup=row['id'])
+        if refunded>row['refunded_amount']:
+            ledger.post(conn,row['user_id'],'RUB',row['refunded_amount']-refunded,'provider_refund',
+                'provider-refund:'+str(row['id'])+':'+str(refunded),'Возврат платёжной системой',topup=row['id'])
+    conn.execute("""UPDATE wallet_topups SET status=%s,settled_at=coalesce(settled_at,now()),refunded_amount=%s,
+        invoice_url=NULL,check_failures=0,review_reason=NULL,next_check_at=now()+interval '1 hour' WHERE id=%s""",
+        ('refunded' if refunded==row['amount'] else 'succeeded',refunded,row['id']))
+
+
+def verify_acquirer(conn, row):
+    state, refunded = acquirers.inspect_payment(row, matching_acquirer(row))
+    if state == 'paid':
+        reason = 'Пополнение через Platega' if row['provider'] == 'platega' else 'Пополнение через СБП · Antilopay'
+        record_paid(conn, row, refunded, reason)
+    elif state == 'review':
+        conn.execute("""UPDATE wallet_topups SET review_reason='provider_dispute_or_partial_refund',
+            next_check_at=now()+interval '1 hour',invoice_url=NULL WHERE id=%s""", (row['id'],))
+    elif row['status'] != 'pending':
+        raise SBPVerificationError('payment_state_conflict')
+    else:
+        conn.execute("""UPDATE wallet_topups SET status=%s, review_reason=NULL, check_failures=0,
+            invoice_url=CASE WHEN %s='failed' THEN NULL ELSE invoice_url END,
+            next_check_at=now()+interval '1 minute' WHERE id=%s""", (state,state,row['id']))
+
+
 def settle_sbp(conn,row,payment):
     validate_sbp_identity(payment,expected_payment_id=row['provider_payment_id'],expected_campaign_id=str(row['id']),
         expected_kopecks=row['amount'],expected_test=row['test_mode'],wallet_topup=True)
     if payment.get('status')=='succeeded' and payment.get('paid') is True and payment.get('captured_at'):
         refunded=refund_amount(payment,row['amount'])
-        if refunded<row['refunded_amount']:raise SBPVerificationError('refund_amount_decreased')
-        if row['status'] not in ('pending','succeeded','refunded'):raise SBPVerificationError('payment_state_conflict')
-        if not row['test_mode']:
-            ledger.post(conn,row['user_id'],'RUB',row['amount'],'topup','topup:'+str(row['id']),
-                        'Пополнение через СБП',topup=row['id'])
-            if refunded>row['refunded_amount']:
-                ledger.post(conn,row['user_id'],'RUB',row['refunded_amount']-refunded,'provider_refund',
-                    'provider-refund:'+str(row['id'])+':'+str(refunded),'Возврат платёжной системой',topup=row['id'])
-        conn.execute("""UPDATE wallet_topups SET status=%s,settled_at=coalesce(settled_at,now()),refunded_amount=%s,
-            invoice_url=NULL,check_failures=0,review_reason=NULL,next_check_at=now()+interval '1 hour' WHERE id=%s""",
-            ('refunded' if refunded==row['amount'] else 'succeeded',refunded,row['id']))
+        record_paid(conn, row, refunded, 'Пополнение через СБП')
     elif payment.get('status')=='canceled' and payment.get('paid') is False and row['status']=='pending':
         conn.execute("UPDATE wallet_topups SET status='failed',invoice_url=NULL WHERE id=%s",(row['id'],))
     elif payment.get('status')=='pending' and row['status']=='pending':
@@ -154,6 +202,9 @@ def verify(dsn,tid,uid):
             return view(row)
         if row['status'] in ('failed','refunded','review'):return view(row)
         if not row['provider_payment_id']:raise HTTPException(409,'wallet_resume_topup')
+        if row['provider'] in acquirers.MINIMUM:
+            verify_acquirer(conn, row)
+            return view(conn.execute('SELECT * FROM wallet_topups WHERE id=%s',(tid,)).fetchone())
         cfg=sbp_settings()
         if not cfg['configured'] or row['provider_account']!=cfg['shop'] or row['test_mode']!=cfg['test_mode']:
             raise HTTPException(409,'sbp_configuration_changed')

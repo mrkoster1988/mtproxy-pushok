@@ -81,6 +81,9 @@ def main():
         proxy_dir = proxy_fixtures.enter_context(tempfile.TemporaryDirectory(prefix='pushok-ui-proxy-'))
         proxy_file = Path(proxy_dir) / 'proxy-link.json'
         proxy_fixtures.enter_context(patch('app.proxy_link.LINK_FILE', proxy_file))
+        proxy_fixtures.enter_context(patch('app.wallet_acquirers.settings', return_value={
+            'enabled': True, 'configured': True, 'shop':'fixture', 'host':'example.org', 'test_mode':True}))
+        proxy_fixtures.enter_context(patch('app.wallet_acquirers.request', side_effect=AssertionError('Unexpected live acquirer request')))
         sessions = {}
         session_ids = {}
         with psycopg.connect(PostgresIntegration.dsn) as connection:
@@ -393,6 +396,12 @@ def main():
                 expect(advertiser.get_by_label('Сумма пополнения, ₽',exact=True)).to_be_hidden()
                 advertiser.locator('[data-wallet-section=topup] > summary').click()
                 expect(advertiser.get_by_label('Сумма пополнения, ₽',exact=True)).to_be_visible()
+                methods = advertiser.get_by_role('group', name='Способ пополнения')
+                expect(methods.get_by_role('radio', name='Platega', exact=False)).to_be_checked()
+                methods.get_by_role('radio', name='СБП через Antilopay', exact=False).check()
+                expect(advertiser.get_by_label('Email для чека Antilopay')).to_be_visible()
+                methods.get_by_role('radio', name='Platega', exact=False).check()
+                expect(advertiser.get_by_label('Email для чека Antilopay')).to_be_hidden()
                 advertiser.locator('[data-wallet-section=topup] > summary').click()
                 expect(advertiser.get_by_label('Автоматически оплачивать мои одобренные заявки')).not_to_be_checked()
                 go(advertiser, 'profile')
@@ -1879,7 +1888,7 @@ def main():
                 open_wallet_tools(advertiser)
                 expect(advertiser.get_by_text('В Telegram откройте',exact=False)).to_be_visible()
                 expect(advertiser.get_by_label('Валюта пополнения',exact=True)).to_have_count(0)
-                expect(advertiser.get_by_role('button',name='Пополнить через СБП',exact=True)).to_be_visible()
+                expect(advertiser.get_by_role('button',name='Выставить счёт',exact=True)).to_be_visible()
                 for _ in range(2):
                     advertiser.get_by_label('Подарочный код на баланс',exact=True).fill(gift_code)
                     advertiser.evaluate("window.previousGiftPage=document.querySelector('[data-page=wallet] .wallet-page')")
@@ -1912,7 +1921,7 @@ def main():
                 go(advertiser,'wallet')
                 open_wallet_tools(advertiser)
                 expect(advertiser.locator('[data-page=wallet]')).to_contain_text('Внутренний баланс выключен.')
-                expect(advertiser.get_by_role('button',name='Пополнить через СБП',exact=True)).to_have_count(0)
+                expect(advertiser.get_by_role('button',name='Выставить счёт',exact=True)).to_have_count(0)
                 expect(advertiser.get_by_role('button',name='Получить подарок',exact=True)).to_have_count(0)
                 expect(advertiser.locator('.wallet-entry').filter(has_text='Подарок: Подарок для проверки')).to_have_count(1)
                 advertiser.screenshot(path=str(output/'44-wallet-disabled-mobile.png'),full_page=True)

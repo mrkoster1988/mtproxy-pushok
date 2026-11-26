@@ -24,6 +24,9 @@ class Topup(Input):
     request_id: UUID
     currency: Literal['RUB','XTR']
     amount: int=Field(gt=0,le=100000000,strict=True)
+    provider: Literal['sbp','platega','antilopay'] = 'sbp'
+    receipt_email: str | None = Field(default=None, min_length=3, max_length=254,
+                                      pattern=r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
 
 
 class WalletSettings(Input):
@@ -131,6 +134,20 @@ def router_for(dsn,current_user,require_admin):
         result.update(stars_only=user.get('login_surface')=='telegram',
             stars_available=stars_configured and topups.stars_invoices_enabled(),
             sbp_available=cfg['enabled'] and user.get('login_surface')!='telegram')
+        if result['stars_only']:
+            for invoice in result['topups']:
+                if invoice['currency'] == 'RUB':
+                    invoice['invoice_url'] = None
+        result['topup_methods'] = []
+        if not result['stars_only']:
+            for provider, minimum in topups.acquirers.MINIMUM.items():
+                method = topups.acquirers.settings(provider)
+                if method['enabled']:
+                    result['topup_methods'].append(dict(id=provider, min_amount=minimum,
+                        max_amount=topups.acquirers.MAXIMUM, test_mode=method['test_mode']))
+            if result['sbp_available']:
+                result['topup_methods'].append(dict(id='sbp', min_amount=100, max_amount=100000000,
+                                                     test_mode=cfg['test_mode']))
         return result
 
     @router.get('/api/v1/admin/wallet/settings')
@@ -305,7 +322,10 @@ def router_for(dsn,current_user,require_admin):
 
     @router.post('/api/v1/wallet/topups/{tid}/verify')
     def verify(tid:UUID,user=Depends(current_user)):
-        return provider_call(topups.verify,tid,user['id'])
+        result = provider_call(topups.verify,tid,user['id'])
+        if user.get('login_surface') == 'telegram' and result['currency'] == 'RUB':
+            result['invoice_url'] = None
+        return result
 
     @router.get('/api/v1/admin/wallet/users')
     def search_users(query:str=Query(default='',max_length=100),admin=Depends(require_admin)):

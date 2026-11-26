@@ -3,6 +3,7 @@ window.pushokWallet=(()=>{
  let epoch=0,overviewEpoch=0,target=null,adminTelegram='',historyPage=0,adminPage=0,giftPage=0,giftDeleted=false,giftArchived=false,settingsEpoch=0;
  const names={RUB:'Рубли',XTR:'Остаток Stars прежнего кошелька',BONUS:'Бонусные рубли'};
  const kinds={gift_credit:'Подарочный код',topup:'Пополнение',payment:'Оплата размещения',refund:'Возврат на баланс',manual_credit:'Ручное начисление',manual_debit:'Ручное списание',reversal:'Отмена корректировки',provider_refund:'Возврат провайдером',referral_reward:'Реферальная награда',referral_reversal:'Отмена реферальной награды'};
+ const providerNames={platega:'Platega',antilopay:'СБП через Antilopay',sbp:'СБП через ЮKassa',telegram_stars:'Telegram Stars'};
  const statuses={created:'Выпуск счёта не завершён',pending:'Ожидает оплаты',succeeded:'Подтверждено',failed:'Счёт закрыт',refunded:'Возвращено провайдером',review:'Требуется сверка'};
  Object.assign(errors,{wallet_bonus_disabled:'Оплата бонусами выключена. Обновите расчёт, чтобы оплатить рублями.',wallet_topup_not_closed:'Счёт ещё ожидает оплаты. Обновите его статус перед удалением.',wallet_stars_topup_retired:'Stars оплачиваются напрямую из Telegram. Новые пополнения внутреннего кошелька Stars закрыты.',
   gift_share_bot_unavailable:'Укажите имя Telegram-бота в настройках, чтобы отправить сертификат.',gift_share_rate_limit:'Слишком много запросов. Повторите через минуту.',
@@ -27,6 +28,7 @@ window.pushokWallet=(()=>{
   wallet_topup_in_progress:'Уже есть незавершённое пополнение этой валюты. Откройте его ниже.',wallet_topup_not_found:'Пополнение не найдено.',
   wallet_provider_unavailable:'Ответ платёжной системы пока не получен. Запрос сохранён: повторите его, не создавая новый.',
   wallet_provider_mismatch:'Платёж требует сверки администратором. Не оплачивайте его повторно.',wallet_resume_topup:'Нажмите «Продолжить выпуск счёта».',
+  wallet_method_unavailable:'Этот способ пополнения сейчас недоступен.',wallet_method_amount:'Сумма выходит за пределы выбранного способа.',wallet_receipt_email:'Введите email для чека.',
   wallet_topup_limit:'Превышен предел суммы пополнения.'
  });
  let expanded={},deletedTopups=false;
@@ -107,10 +109,38 @@ window.pushokWallet=(()=>{
  function topupForm(root,data){
   if(miniAppMode||data.stars_only)return;
   const p=panel('Пополнить баланс'),form=el('form');p.classList.add('wallet-topup');
-  const a=field(form,'Сумма пополнения, ₽','text','');a.required=true;a.inputMode='decimal';a.placeholder='Например, 300';
-  form.append(el('p','Через СБП: 1 ₽ = 1 ₽ на балансе.','muted'));
-  const b=submit(form,'Пополнить через СБП',async()=>{await remembered('/wallet/topups',{currency:'RUB',amount:minor(a.value,'RUB')});notice('Счёт готов в списке пополнений.',true);});
-  b.disabled=!data.sbp_available;if(!data.sbp_available)form.append(el('p','Пополнение через СБП пока не подключено.','muted'));p.append(form);root.append(p);
+  const methods=data.topup_methods||[];
+  if(!methods.length){p.append(el('p','Способы пополнения пока не подключены.','muted'));root.append(p);return;}
+  const choices=el('fieldset',undefined,'wallet-methods');
+  choices.append(el('legend','Способ пополнения'));
+  form.append(choices);
+  const a=field(form,'Сумма пополнения, ₽','text');a.required=true;a.inputMode='decimal';a.placeholder='Например, 300';
+  const email=field(form,'Email для чека Antilopay','email');email.maxLength=254;email.autocomplete='email';
+  const format=new Intl.NumberFormat('ru-RU');
+  let selected;
+  function select(method){
+   selected=method;email.required=method.id==='antilopay';email.disabled=!email.required;
+   email.parentElement.hidden=email.disabled;
+  }
+  for(const method of methods){
+   const label=el('label',undefined,'wallet-method'),radio=el('input'),copy=el('span');
+   radio.type='radio';radio.name='wallet-provider';radio.value=method.id;
+   radio.checked=method===methods[0];radio.addEventListener('change',()=>select(method));
+   copy.append(el('strong',providerNames[method.id]),el('small',
+    format.format(method.min_amount/100)+' – '+format.format(method.max_amount/100)+' ₽'+(method.test_mode?' · Тестовый счёт':'')));
+   label.append(radio,copy);choices.append(label);
+  }
+  select(methods[0]);
+  submit(form,'Выставить счёт',async()=>{
+   const amount=minor(a.value,'RUB');
+   if(amount<selected.min_amount||amount>selected.max_amount)throw Error('Введите сумму от '+format.format(selected.min_amount/100)+' до '+format.format(selected.max_amount/100)+' ₽.');
+   const body={currency:'RUB',provider:selected.id,amount};
+   if(selected.id==='antilopay')body.receipt_email=email.value.trim();
+   const invoice=await remembered('/wallet/topups',body);
+   if(invoice.status==='failed')throw Error('Платёжная система отклонила счёт. Проверьте данные или выберите другой способ.');
+   notice('Счёт готов. Откройте его в списке пополнений.',true);
+  });
+  p.append(form);root.append(p);
  }
  function topupList(root,data){
   const p=panel('Мои пополнения');p.classList.add('wallet-invoices');p.append(button(deletedTopups?'Текущие счета':'Удалённые счета',()=>{deletedTopups=!deletedTopups;return load(target);}));
@@ -119,7 +149,7 @@ window.pushokWallet=(()=>{
    if(t.hidden_at)head.append(window.pushokViews.iconAction(button('',async()=>{await api('/wallet/topups/'+t.id+'/restore',{method:'POST'});await load(target);}),'refresh','Восстановить счёт'));
    else if(['failed','succeeded','refunded'].includes(t.status))head.append(window.pushokViews.iconAction(button('',async()=>{if(!confirm('Удалить счёт из списка? Записи об оплате, история и возвраты сохранятся.'))return;await api('/wallet/topups/'+t.id,{method:'DELETE'});await load(target);}),'close','Удалить счёт'));
    head.querySelector('[aria-label="Удалить счёт"]')?.classList.add('danger-text');
-   row.append(head,el('p',(statuses[t.status]||t.status)+(t.test_mode?' · ТЕСТОВЫЙ, без зачисления':'')),el('p',date(t.created_at)+' · #'+t.id.slice(0,8),'muted'));
+   row.append(head,el('p',(statuses[t.status]||t.status)+(t.test_mode?' · ТЕСТОВЫЙ, без зачисления':'')),el('p',(providerNames[t.provider]?providerNames[t.provider]+' · ':'')+date(t.created_at)+' · #'+t.id.slice(0,8),'muted'));
    if(t.refunded_amount)row.append(el('p','Возвращено провайдером: '+amount(t.refunded_amount,t.currency)));
    if(t.review_reason)row.append(el('p','Сверка задерживается. Администратор может проверить этот счёт.','muted'));
    if(t.invoice_url&&!t.hidden_at&&!(t.currency==='RUB'&&(miniAppMode||data.stars_only)))row.append(button('Открыть счёт',()=>openInvoice(t)));
