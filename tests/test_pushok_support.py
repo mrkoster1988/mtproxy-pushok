@@ -85,10 +85,49 @@ class SupportChat(unittest.TestCase):
             support.handle_update(db,self.dsn,key,update('/human',23))
             support.handle_update(db,self.dsn,key,update('Проверьте подписку',24))
             case=db.execute('SELECT category,state FROM support_conversations WHERE telegram_id=%s ORDER BY id DESC LIMIT 1',(uid,)).fetchone()
-            self.assertEqual(case,{'category':'problem','state':'waiting_staff'})
+            self.assertEqual(case,{'category':'idea','state':'waiting_staff'})
+            self.assertEqual(db.execute('SELECT count(*) AS n FROM support_conversations WHERE telegram_id=%s',(uid,)).fetchone()['n'],1)
+
+    def test_shared_language_preferences_and_handoff(self):
+        uid=8452998
+        actor={'role':'advertiser','telegram_user_id':uid}
+        app=FastAPI()
+        app.include_router(support.router_for(lambda:self.dsn,lambda:actor))
+        client=TestClient(app)
+        url='/api/v1/support/language'
+        self.assertEqual(client.get(url).json()['preference'],'auto')
+        self.assertEqual(client.put(url,json={'preference':'untrusted'}).status_code,422)
+        self.assertEqual(client.put(url,json={'preference':'es'}).status_code,200)
+        with support.connection(self.dsn) as db, patch.object(support,'bot_call') as send:
+            def message(body,mid):
+                support.handle_update(db,self.dsn,'123:fixture',{'message':{'message_id':mid,
+                    'from':{'id':uid,'language_code':'en-US'},'chat':{'id':uid,'type':'private'},'text':body}})
+            message('/start',10)
+            self.assertIn('Hola',send.call_args.args[2]['caption'])
+            message('Consumo de datos',11)
+            self.assertIn('En Flow para Android',send.call_args.args[2]['text'])
+            cid=db.execute('SELECT current_case FROM support_bot_contacts WHERE telegram_id=%s',(uid,)).fetchone()['current_case']
+            message('/human',12)
+            message('/human',12)
+            case=db.execute('SELECT state,reply_locale FROM support_conversations WHERE id=%s',(cid,)).fetchone()
+            self.assertEqual(case,{'state':'waiting_staff','reply_locale':'es'})
+            self.assertEqual(len(client.get(f'/api/v1/support/cases/{cid}').json()['messages']),4)
+            message('/language en',13)
+        self.assertEqual(client.get(url).json()['preference'],'en')
+        actor['telegram_user_id']+=1
+        self.assertEqual(client.get(url).json()['preference'],'auto')
 
 
 class BotSettings(unittest.TestCase):
+    def test_guides_and_fallback_in_supported_languages(self):
+        for loc,question,phrase in [('en','data usage','Settings'),('es','mis datos: consumo','Ajustes'),('ru','расход трафика','Настройки')]:
+            with patch.object(support.ai,'active',return_value=None):
+                self.assertIn(phrase,support.answer('question',question,[],False,loc)[0])
+                self.assertTrue(support.answer('problem','?',[],False,loc)[1])
+        self.assertEqual(support.lang.effective('auto','es-MX'),'es')
+        self.assertEqual(support.lang.effective('auto','fr-FR'),'en')
+        self.assertNotIn('privatevalue',support.lang.for_model('PrivateKey = privatevalue'))
+        self.assertNotIn('secretticket',support.lang.for_model('https://example.invalid/sub/secretticket'))
     def test_only_developers_can_verify_and_save_the_dedicated_bot(self):
         import os
         from tempfile import TemporaryDirectory

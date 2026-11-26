@@ -1,40 +1,78 @@
 'use strict';
 window.pushokSupport=(()=>{
- const labels={question:'Вопрос',problem:'Проблема',idea:'Предложение'},state={open:'Открыто',waiting_staff:'Ожидает сотрудника',closed:'Закрыто'};
+ const copy={
+  ru:{chat:'Открыть чат в Telegram ↗',settings:'Настроить бота Pushok ИИ',team:'Обращения пользователей',kind:'Тип обращения',question:'Вопрос',problem:'Проблема',idea:'Предложение',message:'Ваш вопрос или предложение',human:'Позвать сотрудника',close:'Закрыть обращение',send:'Отправить',fresh:'Новое обращение',case:'Обращение',me:'Вы',user:'Пользователь',staff:'Сотрудник',open:'Открыто',closed:'Закрыто',waiting_staff:'Ожидает сотрудника',auto:'Авто',quick:['Подключить Flow','Как пополнить Stars?','Расход трафика']},
+  en:{chat:'Open Telegram chat ↗',settings:'Bot settings',team:'Team inbox',kind:'Topic',question:'Question',problem:'Problem',idea:'Idea',message:'Your question or suggestion',human:'Talk to a person',close:'Close conversation',send:'Send',fresh:'New conversation',case:'Conversation',me:'You',user:'Customer',staff:'Team member',open:'Open',closed:'Closed',waiting_staff:'Waiting for the team',auto:'Automatic',quick:['Connect Flow','How do I top up Stars?','Data usage']},
+  es:{chat:'Abrir chat en Telegram ↗',settings:'Ajustes del bot',team:'Bandeja del equipo',kind:'Tema',question:'Pregunta',problem:'Problema',idea:'Idea',message:'Tu pregunta o sugerencia',human:'Hablar con el equipo',close:'Cerrar consulta',send:'Enviar',fresh:'Nueva consulta',case:'Consulta',me:'Tú',user:'Usuario',staff:'Equipo',open:'Abierta',closed:'Cerrada',waiting_staff:'En espera del equipo',auto:'Automático',quick:['Conectar Flow','¿Cómo recargar Stars?','Consumo de datos']}
+ };
  async function show(host){
-  const session=token, owner=!!(me?.is_owner||me?.is_developer),staff=owner||['admin','operator','moderator'].includes(me?.role);
-  const box=el('section',undefined,'panel vpn-policy-card'),thread=el('div'),list=el('div'),feedback=el('p',undefined,'muted');
-  host.replaceChildren(box);const live=()=>token===session&&box.isConnected;
-  const tg=el('a','Чат и уведомления в Telegram ↗','ui-button labeled-action');tg.href='/ai-support';tg.target='_blank';tg.rel='noopener noreferrer';
-  box.append(el('h2','Pushok ИИ'),tg);
-  if(owner){const link=el('a','Настроить бота Pushok ИИ','ui-button labeled-action');link.href='#/management/ai-bot';box.append(link);}
-  let team=staff&&location.hash==='#/help/team',current=null,asStaff=false,rev=0;
-  const toggle=el('input');toggle.type='checkbox';toggle.checked=team;
-  if(staff){const l=el('label','Обращения пользователей');l.append(toggle);box.append(l);toggle.onchange=()=>{team=toggle.checked;clear();void load();};}
-  const entry=el('form',undefined,'vpn-rule-body'),kind=el('select'),msg=el('textarea'),human=el('input'),close=el('input');
-  for(const [k,v] of Object.entries(labels)){const o=el('option',v);o.value=k;kind.append(o);}
-  kind.setAttribute('aria-label','Тип обращения');msg.placeholder='Ваш вопрос или предложение';msg.setAttribute('aria-label','Сообщение');msg.required=true;msg.maxLength=2000;
-  const humanLabel=el('label','Передать сотруднику'),closeLabel=el('label','Закрыть обращение');human.type=close.type='checkbox';humanLabel.append(human);closeLabel.append(close);
-  const send=el('button','Отправить','ui-button labeled-action');send.type='submit';entry.append(kind,msg,humanLabel,closeLabel,send);
-  const fresh=button('Новое обращение',()=>clear());box.append(list,thread,fresh,entry,feedback);
-  function clear(){++rev;thread.replaceChildren();current=null;asStaff=false;kind.hidden=false;closeLabel.hidden=true;humanLabel.hidden=false;entry.hidden=team;fresh.hidden=team;msg.value='';feedback.textContent='';}
-  async function open(id){const turn=++rev;try{const data=await api('/support/cases/'+id);if(!live()||turn!==rev)return;
-   current=id;asStaff=team&&data.can_reply_as_staff;entry.hidden=team&&!asStaff;kind.hidden=true;humanLabel.hidden=asStaff;closeLabel.hidden=!asStaff;
-   thread.replaceChildren(el('h3','Обращение №'+id));for(const row of data.messages){
-    const line=el('div',undefined,'vpn-notice-preview'),body=el('p');
-    if(row.sender==='user')body.textContent=row.body;else appendFormattedText(body,row.body);
-    line.append(el('strong',({user:team?'Пользователь':'Вы','ai-agent':'Pushok ИИ',staff:'Сотрудник'})[row.sender]),body);thread.append(line);}
-  }catch(e){if(live())feedback.textContent=e.message;}}
-  async function load(){const scope=team;try{const data=await api('/support/cases?team='+scope);if(!live()||scope!==team)return;
-   list.replaceChildren();for(const row of data.items)list.append(button('№'+row.id+' · '+labels[row.category]+' · '+state[row.state],()=>open(row.id)));
-  }catch(e){if(live())feedback.textContent=e.message;}}
-  let intent,key;
-  entry.onsubmit=async(e)=>{e.preventDefault();if(send.disabled||!msg.value.trim())return;send.disabled=true;
-   const text=msg.value.trim(),fp=JSON.stringify([current,asStaff,text,kind.value,human.checked,close.checked]);if(fp!==key){key=fp;intent=crypto.randomUUID();}
-   try{const row=await api(asStaff?'/support/cases/'+current+'/staff':'/support/cases',{method:'POST',body:asStaff?{request_id:intent,text,close:close.checked}:{request_id:intent,text,case_id:current,category:kind.value,human:human.checked}});
-    if(!live())return;msg.value='';key=null;close.checked=human.checked=false;await open(row.id||current);await load();}
-   catch(err){if(live())feedback.textContent=err.message;}finally{send.disabled=false;}};
-  clear();await load();
+  const session=token, panel=el('section',undefined,'panel vpn-policy-card');
+  host.replaceChildren(panel);
+  const live=()=>token===session&&panel.isConnected;
+  const hint=(window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code||navigator.language||'ru').slice(0,40);
+  const pref=await api('/support/language',{session});
+  if(!live())return;
+  let preference=pref.preference, team=false, current=null, asStaff=false, rev=0, listRev=0, intent,key;
+  const owner=!!(me?.is_owner||me?.is_developer), staff=owner||['admin','operator','moderator'].includes(me?.role);
+  team=staff&&location.hash==='#/help/team';
+  async function draw(draft='',selectedKind='question'){
+   const automatic=hint.toLowerCase().split(/[-_]/)[0], locale=preference==='auto'?(Object.hasOwn(copy,automatic)?automatic:'en'):preference;
+   const t=copy[locale]||copy.ru;
+   const initialCase=current; rev++; listRev++; panel.replaceChildren();panel.lang=locale;
+   const language=el('select');language.setAttribute('aria-label','Язык / Language / Idioma');
+   for(const [k,v] of Object.entries({auto:t.auto,ru:'Русский',en:'English',es:'Español'})){const opt=el('option',v);opt.value=k;language.append(opt);}
+   language.value=preference;
+   const header=el('div',undefined,'support-chat-heading');header.append(el('h2','Pushok ИИ'),language);panel.append(header);
+   const tg=el('a',t.chat,'ui-button labeled-action');tg.href='/ai-support';tg.target='_blank';tg.rel='noopener noreferrer';panel.append(tg);
+   if(owner){const link=el('a',t.settings,'ui-button labeled-action');link.href='#/management/ai-bot';panel.append(link);}
+   const list=el('div',undefined,'support-case-list'),thread=el('div'),feedback=el('p',undefined,'muted');
+   feedback.setAttribute('role','status');
+   if(staff){const toggle=el('input');toggle.type='checkbox';toggle.checked=team;const label=el('label',t.team);label.append(toggle);panel.append(label);
+    toggle.onchange=()=>{team=toggle.checked;clear();void load();};}
+   const chips=el('div',undefined,'support-quick'),entry=el('form',undefined,'vpn-rule-body'),kind=el('select'),msg=el('textarea');
+   for(const k of ['question','problem','idea']){const o=el('option',t[k]);o.value=k;kind.append(o);}
+   kind.setAttribute('aria-label',t.kind);msg.placeholder=t.message;msg.setAttribute('aria-label',t.message);msg.required=true;msg.maxLength=2000;
+   const human=el('input'),close=el('input'),humanLabel=el('label',t.human),closeLabel=el('label',t.close);
+   human.type=close.type='checkbox';humanLabel.append(human);closeLabel.append(close);
+   const send=el('button',t.send,'ui-button labeled-action');send.type='submit';entry.append(kind,msg,humanLabel,closeLabel,send);
+   const fresh=button(t.fresh,()=>clear());
+   for(const prompt of t.quick)chips.append(button(prompt,()=>{msg.value=prompt;msg.focus();}));
+   panel.append(list,thread,fresh,chips,entry,feedback);
+   const mounted=()=>live()&&panel.contains(entry);
+   function clear(){++rev;current=null;asStaff=false;thread.replaceChildren();kind.hidden=false;humanLabel.hidden=false;closeLabel.hidden=true;
+    entry.hidden=chips.hidden=fresh.hidden=team;msg.value='';human.checked=close.checked=false;feedback.textContent='';}
+   async function open(id){
+    const turn=++rev;
+    try{const data=await api('/support/cases/'+id,{session});if(!mounted()||turn!==rev)return;
+     current=id;asStaff=team&&data.can_reply_as_staff;entry.hidden=team&&!asStaff;kind.hidden=chips.hidden=true;humanLabel.hidden=true;closeLabel.hidden=!asStaff;
+     human.checked=close.checked=false;msg.value='';feedback.textContent='';thread.replaceChildren(el('h3',t.case+' №'+id+' · '+t[data.state]));
+     for(const row of data.messages){
+      const line=el('article',undefined,'vpn-notice-preview support-chat-message'),body=el('p');line.dataset.sender=row.sender;body.dir='auto';
+      if(row.sender==='user')body.textContent=row.body;else appendFormattedText(body,row.body);
+      const when=el('time',new Date(row.created_at).toLocaleString(locale,{dateStyle:'short',timeStyle:'short'}),'muted');when.dateTime=row.created_at;
+      line.append(el('strong',({user:team?t.user:t.me,'ai-agent':'Pushok ИИ',staff:t.staff})[row.sender]),when,body);thread.append(line);}
+     if(!team&&data.state==='open')thread.append(button(t.human,()=>submit(msg.value.trim()||t.human,true)));
+    }catch(e){if(mounted()&&turn===rev)feedback.textContent=e.message;}
+   }
+   async function load(){const seq=++listRev;try{const data=await api('/support/cases?team='+team,{session});if(!mounted()||seq!==listRev)return;
+    list.replaceChildren();for(const row of data.items)list.append(button((row.subject||t[row.category])+' · '+t[row.state]+(team?' · '+row.reply_locale.toUpperCase():''),()=>open(row.id)));
+   }catch(e){if(mounted()&&seq===listRev)feedback.textContent=e.message;}}
+   async function submit(text,handoff){
+    if(send.disabled||!text)return;const turn=rev;send.disabled=true;language.disabled=true;
+    const fp=JSON.stringify([current,asStaff,text,kind.value,handoff,close.checked]);if(fp!==key){key=fp;intent=crypto.randomUUID();}
+    try{const row=await api(asStaff?'/support/cases/'+current+'/staff':'/support/cases',{method:'POST',session,body:asStaff?{request_id:intent,text,close:close.checked}:{request_id:intent,text,case_id:current,category:kind.value,human:handoff,locale_hint:hint}});
+     if(!mounted()||turn!==rev)return;key=null;await open(row.id||current);await load();
+    }catch(e){if(mounted()&&turn===rev)feedback.textContent=e.message;}finally{send.disabled=false;language.disabled=false;}
+   }
+   entry.onsubmit=e=>{e.preventDefault();void submit(msg.value.trim(),human.checked);};
+   language.onchange=async()=>{language.disabled=true;try{
+    const result=await api('/support/language',{method:'PUT',session,body:{preference:language.value}});
+    if(!mounted())return;preference=result.preference;await draw(msg.value,kind.value);
+   }catch(e){if(mounted()){language.disabled=false;language.value=preference;feedback.textContent=e.message;}}};
+   clear();await load();if(initialCase&&mounted())await open(initialCase);
+   if(mounted()){msg.value=draft;kind.value=selectedKind;}
+  }
+  await draw();
  }
  async function showBotSettings(host){
   host.replaceChildren();

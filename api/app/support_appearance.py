@@ -117,8 +117,10 @@ def heading(style, glyph, title):
     return icon(style, glyph) + '**' + title + '**'
 
 
-def welcome_payload(state, uid, help_command=False):
+def welcome_payload(state, uid, help_command=False, locale="ru"):
+    from . import support_languages as lang
     style = Appearance(**state.get('settings', {}))
+    style = style.model_copy(update=lang.APPEARANCE[locale])
     text = heading(style, '🐾', style.title) + '\n\n' + style.welcome
     fields = {'chat_id': uid, 'parse_mode': 'HTML'}
     if style.buttons:
@@ -127,7 +129,8 @@ def welcome_payload(state, uid, help_command=False):
             for action, (glyph, _) in ACTIONS.items()
         ]}
     if help_command or not style.buttons:
-        text += '\n\n' + COMMANDS
+        text += '\n\n' + lang.tr(locale, 'commands')
+    text += '\n\n/language · ' + lang.tr(locale, 'lang')
     fields['text'] = format_body(text)
     path = {'mascot': MASCOT, 'custom': image_path(state), 'none': None}[style.image_mode]
     return fields, path

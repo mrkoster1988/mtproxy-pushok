@@ -13,7 +13,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from . import channel_ai_connection as ai, channel_topic_suggestions as topics, control
-from . import support_appearance as design
+from . import support_appearance as design, support_languages as lang
 from .telegram_environment import is_test_environment
 from .vpn_settings import private
 from .vpn_reminders import format_body
@@ -23,6 +23,10 @@ BOT_FILE = 'support-bot-private.json'
 Category = Literal['question','problem','idea']
 
 
+class LanguageChoice(BaseModel):
+    preference: lang.Preference
+
+
 class Message(BaseModel):
     model_config=ConfigDict(extra='forbid',str_strip_whitespace=True)
     request_id:UUID
@@ -30,6 +34,7 @@ class Message(BaseModel):
     category:Category='question'
     case_id:int|None=Field(default=None,gt=0)
     human:bool=False
+    locale_hint:str=Field(default="", max_length=40)
 
 
 class BotMessage(Message):
@@ -133,16 +138,21 @@ def bot_call(key, method, fields):
     raise RuntimeError('support_bot_unavailable') from None
 
 
-def answer(category,question,history,requested):
+def answer(category,question,history,requested,locale="ru"):
     style=design.Appearance(**design.read().get('settings', {}))
     playful=style.tone=='playful'
-    if requested:return 'Передал вопрос команде. Ответ сотрудника придёт прямо сюда.',True
-    if category=='idea':
-        opening='Вот это идея! ' if playful else 'Спасибо за предложение. '
-        return opening+'Записал для команды Pushok. В какой момент эта функция была бы вам особенно полезна?',True
-    if question.strip().casefold().rstrip('!.? ') in ('привет','здравствуйте','добрый день','добрый вечер','доброе утро'):
-        return (('Привет! Пушок на связи'+(' 🐾' if style.emoji else '!')+' Что сегодня разбираем — Flow, Mini App или новую идею?') if playful
-                else 'Здравствуйте! Чем помочь с Pushok Flow или Mini App?'),False
+    if requested:
+        return lang.tr(locale, 'handoff'), True
+    if category == 'idea':
+        return lang.tr(locale, 'idea'), True
+    guide = lang.guided(question, history)
+    if guide:
+        key, human = guide
+        return lang.tr(locale, key), human
+    if question.strip().casefold().strip('¡!?. ') in ('привет','здравствуйте','добрый день','добрый вечер','доброе утро','hi','hello','hola','buenos días'):
+        if playful and locale == 'ru':
+            return 'Привет! Пушок на связи'+(' 🐾' if style.emoji else '!')+' Чем помочь?',False
+        return lang.tr(locale, 'hello'),False
     facts=('В Android Flow на главной кнопка подключения. В настройках доступны маршруты приложений, подписки и диагностика. '
            'В Mini App вкладка VPN показывает срок доступа. Кнопка «Продлить» ведёт к оплате Stars. '
            'Отзыв подписки отключает доступ. Администратор может выдать новый профиль. '
@@ -155,11 +165,11 @@ def answer(category,question,history,requested):
             tone_hint=('Говори тепло и живо, как Пушок. Короткая кошачья шутка уместна в приветствии или разговоре об идеях. '
                        'При ошибках, платежах, отзыве и передаче сотруднику сразу переходи к делу.' if playful else
                        'Говори спокойно, прямо, без шуток и образных выражений.')
-            messages=[{'role':'system','content':'Ты Pushok ИИ, поддержка Pushok. Отвечай кратко по-русски. '
+            messages=[{'role':'system','content':f'Ты Pushok ИИ, поддержка Pushok. Отвечай кратко на языке {lang.MODEL_LANGUAGE[locale]}. '
                        'Ты не выполняешь действий, не видишь платежей и ключей. Не запрашивай секреты. '
                        'Используй короткие абзацы, **жирное** и __курсив__. '+emoji_hint+' '+tone_hint+' Верни JSON с полями text и human (boolean). Если данных мало, попроси уточнение или поставь human=true. '+facts}]
-            messages += [{'role':'assistant' if m['sender']!='user' else 'user','content':m['body'][:1200]} for m in history[-6:]]
-            messages.append({'role':'user','content':question})
+            messages += [{'role':'assistant' if m['sender']!='user' else 'user','content':lang.for_model(m['body'])[:1200]} for m in history[-6:]]
+            messages.append({'role':'user','content':lang.for_model(question)})
             payload=dict(model=cfg[1],messages=messages,response_format={'type':'json_object'},max_completion_tokens=320)
             req=Request('https://api.openai.com/v1/chat/completions',data=json.dumps(payload).encode(),headers={
                 'Content-Type':'application/json','Authorization':'Bearer '+cfg[0]})
@@ -168,11 +178,7 @@ def answer(category,question,history,requested):
             if isinstance(result.get('text'),str) and result['text'].strip() and type(result.get('human')) is bool:
                 return result['text'].strip()[:2000],result['human']
         except Exception:pass
-    text=question.casefold()
-    if 'отозван' in text:return 'Отозванная подписка отключает прежний профиль. Передаю вопрос сотруднику, который может проверить доступ и выдать новый профиль.',True
-    if any(word in text for word in ('оплат','звёзд','stars','списал')):return 'Для продления откройте **VPN → Продлить**. Если Stars уже списались, пришлите номер заказа. Передаю обращение сотруднику для проверки.',True
-    if 'трафик' in text:return 'В Mini App расход подписки виден во вкладке VPN. Расход по приложениям телефона можно посмотреть в **Pushok Flow → Настройки → IP и трафик**.',False
-    return 'Давайте разберёмся вместе. На что вы нажали и что появилось на экране? Передал вопрос команде — ответ придёт в этот чат.',True
+    return lang.tr(locale, 'fallback'),True
 
 
 def connection(dsn):
@@ -190,16 +196,20 @@ def post(dsn,uid,msg):
             raise HTTPException(429,'support_rate_limited')
         cid=msg.case_id
         if cid:
-            case=db.execute('SELECT id,category,state FROM support_conversations WHERE id=%s AND telegram_id=%s FOR UPDATE',(cid,uid)).fetchone()
+            case=db.execute('SELECT id,category,state FROM support_conversations WHERE id=%s AND telegram_id=%s FOR NO KEY UPDATE',(cid,uid)).fetchone()
             if not case:raise HTTPException(404,'case_not_found')
             category=case['category']
         else:
             category=msg.category
             cid=db.execute('INSERT INTO support_conversations(telegram_id,category) VALUES(%s,%s) RETURNING id',(uid,category)).fetchone()['id']
         history=list(reversed(db.execute('SELECT sender,body FROM support_chat_messages WHERE conversation_id=%s ORDER BY id DESC LIMIT 6',(cid,)).fetchall()))
-        reply,human=answer(category,msg.text,history,msg.human or bool(msg.case_id and case['state']=='waiting_staff'))
+        locale = lang.effective(lang.get(db, uid), msg.locale_hint)
+        if msg.case_id and case['state']=='waiting_staff' and not msg.human:
+            reply,human=lang.tr(locale,'queued'),True
+        else:
+            reply,human=answer(category,msg.text,history,msg.human,locale)
         db.execute("INSERT INTO support_chat_messages(conversation_id,sender,body) VALUES(%s,'user',%s),(%s,'ai-agent',%s)",(cid,msg.text,cid,reply))
-        db.execute('UPDATE support_conversations SET updated_at=now(),state=%s WHERE id=%s',('waiting_staff' if human else 'open',cid))
+        db.execute('UPDATE support_conversations SET updated_at=now(),state=%s,reply_locale=%s WHERE id=%s',('waiting_staff' if human else 'open',locale,cid))
         db.execute('INSERT INTO support_chat_intents VALUES(%s,%s,%s,%s)',(uid,key,cid,reply))
         return {'id':cid,'reply':reply}
 
@@ -213,12 +223,26 @@ def router_for(dsn,current_user):
     @router.get('/ai-support/images/{image_id}.jpg', include_in_schema=False)
     def welcome_image(image_id: str):
         return design.photo(image_id)
+    @router.get('/api/v1/support/language')
+    def language(user=Depends(current_user)):
+        with connection(dsn()) as db:
+            return {'preference':lang.get(db, user['telegram_user_id'])}
+
+    @router.put('/api/v1/support/language')
+    def change_language(body: LanguageChoice, user=Depends(current_user)):
+        with connection(dsn()) as db:
+            lang.save(db, user['telegram_user_id'], body.preference)
+        return {'preference':body.preference}
+
     @router.get('/api/v1/support/cases')
     def cases(team:bool=False,user=Depends(current_user)):
         if team and not staff(user):raise HTTPException(403)
         with connection(dsn()) as db:
             where='' if team else 'WHERE telegram_id=%s'
-            rows=db.execute('SELECT id,category,state,updated_at FROM support_conversations '+where+' ORDER BY updated_at DESC LIMIT 100',() if team else (user['telegram_user_id'],)).fetchall()
+            order = "(state='waiting_staff') DESC," if team else ''
+            rows=db.execute("""SELECT id,category,state,updated_at,reply_locale,
+                (SELECT left(body,80) FROM support_chat_messages WHERE conversation_id=c.id AND sender='user'
+                 ORDER BY id LIMIT 1) AS subject FROM support_conversations c """+where+' ORDER BY '+order+'updated_at DESC,id DESC LIMIT 100',() if team else (user['telegram_user_id'],)).fetchall()
         return {'items':rows}
     @router.get('/api/v1/support/cases/{cid}')
     def detail(cid:int,user=Depends(current_user)):
@@ -306,13 +330,14 @@ def handle_update(db, dsn, key, update, legacy=True):
         return
     if callback:
         action = callback.get('data', '').removeprefix('support:')
-        if action not in design.ACTIONS or callback.get('data') != 'support:' + action:
+        language_action = action in {'lang:'+code for code in ('auto',*lang.NAMES)}
+        if (action not in design.ACTIONS and not language_action) or callback.get('data') != 'support:' + action:
             return
         try:
             bot_call(key, 'answerCallbackQuery', {'callback_query_id': callback['id']})
         except CallbackExpired:
             pass
-        body = '/' + action
+        body = '/language '+action[5:] if language_action else '/' + action
     else:
         body = (message.get('text') or '').strip()[:2000]
 
@@ -326,19 +351,36 @@ def handle_update(db, dsn, key, update, legacy=True):
     categories = {'/idea': 'idea', '/problem': 'problem', '/question': 'question', '/human': 'problem'}
     command, _, remaining = body.partition(' ')
     remaining = remaining.strip()
+    hint = str(sender.get('language_code') or '')[:40]
+    preference = lang.get(db, uid)
+    if command == '/language':
+        if remaining in ('auto', *lang.NAMES):
+            lang.save(db, uid, remaining)
+            preference = remaining
+        locale = lang.effective(preference, hint)
+        options = {'auto':lang.tr(locale,'auto'), **lang.NAMES}
+        keyboard = [[{'text':('✓ ' if code == preference else '')+title,'callback_data':'support:lang:'+code}] for code,title in options.items()]
+        bot_call(key,'sendMessage',{'chat_id':uid,'text':'🌐 '+lang.tr(locale,'lang'),'reply_markup':{'inline_keyboard':keyboard}})
+        return
+    locale = lang.effective(preference, hint)
     sections={'/subscriptions':('vpn','Моя подписка'),'/campaigns':('campaigns','Мои кампании'),
               '/tariffs':('vpn_renew','Тарифы VPN'),'/advertise':('create','Создать кампанию'),
               '/channels':('channels','Каналы'),'/moderation':('moderation','Модерация')}
     if command in sections:
         route,title=sections[command]
+        menus={'en':('My subscription','My campaigns','VPN plans','Create campaign','Channels','Moderation'),
+               'es':('Mi suscripción','Mis campañas','Planes VPN','Crear campaña','Canales','Moderación')}
+        if locale in menus:
+            title = menus[locale][list(sections).index(command)]
         from .service_messages import cabinet_link
         bot_call(key,'sendMessage',{'chat_id':uid,'text':title,
             'reply_markup':{'inline_keyboard':[[cabinet_link({'text':title,'callback_data':route})]]}})
         return
     state = design.read()
     style = design.Appearance(**state.get('settings', {}))
+    style = style.model_copy(update=lang.APPEARANCE[locale])
     if command in ('/start', '/help') or not body:
-        fields, path = design.welcome_payload(state, uid, command == '/help')
+        fields, path = design.welcome_payload(state, uid, command == '/help', locale)
         if command == '/start':
             from .vpn_reminders import resume_recipient
             resume_recipient(db,uid)
@@ -358,27 +400,31 @@ def handle_update(db, dsn, key, update, legacy=True):
         return
     if command == '/new':
         db.execute('UPDATE support_bot_contacts SET current_case=NULL,pending_action=NULL WHERE telegram_id=%s', (uid,))
-        response = design.heading(style, '📝', 'Новое обращение') + '\n\nНапишите вопрос, пожелание или описание проблемы.'
-    elif command in categories and not remaining:
+        response = design.heading(style, '📝', lang.tr(locale,'new')) + '\n\n' + lang.tr(locale,'question')
+    elif command in categories and not remaining and not (command == '/human' and contact['current_case']):
         action = command[1:]
         default = ('🛠', 'Опишите проблему и укажите, на каком шаге она возникает.')
         glyph, prompt = design.ACTIONS.get(action, default)
-        response = design.heading(style, glyph, getattr(style, action, 'Сообщить о проблеме')) + '\n\n' + prompt
+        prompt = prompt if locale == 'ru' else lang.tr(locale,'idea_prompt' if action == 'idea' else action)
+        response = design.heading(style, glyph, getattr(style, action, lang.tr(locale,'problem'))) + '\n\n' + prompt
         db.execute('UPDATE support_bot_contacts SET pending_action=%s,current_case=NULL WHERE telegram_id=%s', (action, uid))
     else:
         cid = contact['current_case']
         if command not in categories and contact['pending_action']:
             command, remaining = '/' + contact['pending_action'], body
+        if command == '/human' and not remaining:
+            remaining = style.human
+        event_id = 'callback:'+str(callback['id']) if callback else message['message_id']
         namespace = 'pushok:ai-bot:' if legacy else f'pushok:ai-bot:{identity}:'
         try:
             record = post(dsn, uid, Message(
-                request_id=uuid5(NAMESPACE_URL, f'{namespace}{uid}:{message["message_id"]}'),
-                case_id=None if command in categories else cid, category=categories.get(command, 'question'),
+                request_id=uuid5(NAMESPACE_URL, f'{namespace}{uid}:{event_id}'),
+                case_id=cid if command == '/human' or command not in categories else None, locale_hint=hint, category=categories.get(command, 'question'),
                 human=command == '/human', text=remaining if command in categories else body))
         except HTTPException as exc:
             if exc.status_code != 429:
                 raise
-            response = 'Дайте мне пять минут разобрать сообщения. После этого можно будет написать снова.'
+            response = lang.tr(locale,'rate')
         else:
             db.execute('UPDATE support_bot_contacts SET current_case=%s,pending_action=NULL WHERE telegram_id=%s', (record['id'], uid))
             response = design.heading(style, '💬', style.case_title + ' №' + str(record['id'])) + '\n\n' + record['reply']
@@ -418,8 +464,8 @@ def run_bot(dsn, stop):
                     handle_update(db, dsn(), key, update, legacy)
                     db.commit()
                     control.write(cursor_name, {'offset': update['update_id'] + 1})
-                pending = db.execute("""SELECT o.message_id,o.telegram_id,m.body FROM support_bot_outbox o
-                    JOIN support_chat_messages m ON m.id=o.message_id WHERE NOT o.delivered AND o.retry_at<=now()
+                pending = db.execute("""SELECT o.message_id,o.telegram_id,m.body,c.reply_locale FROM support_bot_outbox o
+                    JOIN support_chat_messages m ON m.id=o.message_id JOIN support_conversations c ON c.id=m.conversation_id WHERE NOT o.delivered AND o.retry_at<=now()
                     AND (o.bot_id=%s OR (o.bot_id=0 AND %s))
                     ORDER BY o.message_id LIMIT 10""", (identity, legacy)).fetchall()
                 if pending:
@@ -427,7 +473,7 @@ def run_bot(dsn, stop):
                 for item in pending:
                     try:
                         bot_call(key, 'sendMessage', {'chat_id': item['telegram_id'],
-                                                     'text': format_body(design.heading(style, '👤', style.staff_title) + '\n\n' + item['body']), 'parse_mode': 'HTML'})
+                                                     'text': format_body(design.heading(style, '👤', lang.APPEARANCE[lang.effective(lang.get(db,item['telegram_id']),item['reply_locale'])].get('staff_title', style.staff_title)) + '\n\n' + item['body']), 'parse_mode': 'HTML'})
                     except RecipientUnavailable:
                         db.execute('DELETE FROM support_bot_outbox WHERE message_id=%s', (item['message_id'],))
                     except RuntimeError:
