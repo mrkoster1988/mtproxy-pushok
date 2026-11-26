@@ -40,7 +40,7 @@ window.pushokAI=(()=>{
    form.append(fields);
    const row=el('label','Использовать ИИ','ai-switch'),enabled=el('input');enabled.type='checkbox';enabled.id='channel-ai-enabled';enabled.checked=saved.enabled;row.append(enabled);fields.append(row);
    const permissions=el('fieldset',undefined,'ai-permissions');permissions.append(el('legend','Что разрешено ИИ'));
-   const choices=[['topics','Предлагать тематику канала'],['campaign_review','Одобрять и отклонять заявки по результатам проверки'],['launch_diagnostics','Объяснять проблемы с запуском'],['user_support','Ответы пользователям'],['proxy_provisioning','Создавать дополнительные прокси по лимитам разработчика']];
+   const choices=[['topics','Предлагать тематику канала'],['campaign_review','Одобрять и отклонять заявки по результатам проверки'],['launch_diagnostics','Объяснять проблемы с запуском'],['user_support','Ответы пользователям'],['editorial','Посты и иллюстрации о Pushok'],['proxy_provisioning','Создавать дополнительные прокси по лимитам разработчика']];
    const capabilities=choices.map(([id,text])=>{const label=el('label',text,'ai-switch'),input=el('input');input.type='checkbox';input.id='channel-ai-cap-'+id;input.value=id;input.checked=(saved.capabilities||['topics']).includes(id);label.append(input);permissions.append(label);return input;});fields.append(permissions);
    function input(label,id,type='text'){const l=el('label',label),i=el('input');i.id=id;i.type=type;l.append(i);fields.append(l);return i;}
    const model=input('Модель OpenAI','channel-ai-model');model.value=saved.model;model.required=true;model.maxLength=80;model.pattern='[A-Za-z0-9._-]{1,80}';model.spellcheck=false;model.autocomplete='off';model.setAttribute('list','channel-ai-models');

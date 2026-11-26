@@ -57,12 +57,18 @@ def telegram_call(token, method, payload):
     try:
         reply = json.loads(read_url(request, 8, 131072))
     except HTTPError as error:
-        if method == 'sendMessage' and error.code in (400, 403):
+        if method in ('sendMessage','sendWidget','editMessageWidgetData','editMessageText') and error.code in (400,403,404):
             try:
                 refusal = json.loads(error.read(8192))
                 description = str(refusal.get('description', '')).lower() if isinstance(refusal, dict) else ''
             except (OSError, ValueError):
                 description = ''
+            if method.startswith('editMessage') and 'message is not modified' in description:
+                return True
+            if method.startswith('editMessage') and 'message to edit not found' in description:
+                raise HTTPException(404,'widget_message_missing') from None
+            if method=='sendWidget' and (error.code==404 or 'method not found' in description):
+                raise HTTPException(400,'widget_unsupported') from None
             if 'chat not found' in description or "can't initiate conversation" in description:
                 raise HTTPException(503, 'cabinet_bot_chat_not_started') from None
             if error.code == 403 and ('blocked by the user' in description or 'user is deactivated' in description):
@@ -70,7 +76,8 @@ def telegram_call(token, method, payload):
         raise HTTPException(503, 'service_notice_unavailable') from None
     except (OSError, ValueError):
         raise HTTPException(503, 'service_notice_unavailable') from None
-    if not isinstance(reply, dict) or reply.get('ok') is not True or not isinstance(reply.get('result'), dict):
+    if not isinstance(reply, dict) or reply.get('ok') is not True or not (isinstance(reply.get('result'),dict) or
+            (method in ('editMessageWidgetData','editMessageText') and reply.get('result') is True)):
         raise HTTPException(503, 'service_notice_unavailable')
     return reply['result']
 

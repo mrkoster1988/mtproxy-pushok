@@ -1,5 +1,6 @@
 from .user_visibility import can_view_username, hide_username
-from .telegram_environment import environment_name
+import logging
+from .telegram_environment import environment_name, is_test_environment
 from .payment_gate import sbp_reconciliation_enabled
 import binascii
 import hashlib
@@ -58,7 +59,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="2.33",
+    version="2.34",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -557,9 +558,15 @@ def miniapp_login(payload: MiniAppLoginPayload, response: Response, request: Req
     bot_token = _required_secret(TELEGRAM_BOT_TOKEN, 'TELEGRAM_BOT_TOKEN').decode()
     verified = validate_init_data(payload.init_data, bot_token)
     start = verified.pop('start_param')
+    grant=verified.pop('allows_write_to_pm',False)
     invite = re.fullmatch(r'(?:r_|ref_)([A-Za-z0-9_-]{3,48})', start)
-    return _start_telegram_session(TelegramLoginPayload(**verified), surface="telegram",
+    session=_start_telegram_session(TelegramLoginPayload(**verified), surface="telegram",
         referral_codes=(invite[1] if invite else None, request.cookies.get('__Host-pushok_invite')))
+    if grant and not is_test_environment() and os.getenv('TELEGRAM_BOT_USERNAME','').lstrip('@').lower()=='mtproxy_pushok_bot':
+        from .vpn_notices import remember_grant
+        try:remember_grant(DATABASE_URL,verified['id'])
+        except psycopg.Error:logging.getLogger(__name__).warning('Could not queue notification write permission')
+    return session
 
 
 def _start_telegram_session(payload: TelegramLoginPayload, *, surface="web", referral_codes=()) -> SessionResponse:
@@ -2916,7 +2923,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=2.33" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=2.34" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 
@@ -3432,6 +3439,10 @@ app.include_router(vpn_reminders_router)
 from .service_messages import router as service_messages_router
 app.include_router(service_messages_router)
 
+from . import editorial
+app.include_router(editorial.router_for(lambda:DATABASE_URL,get_current_user))
+from . import subscription_widgets
+app.include_router(subscription_widgets.router_for(lambda:DATABASE_URL))
 from . import pushok_support
 app.include_router(pushok_support.router_for(lambda:DATABASE_URL,get_current_user))
 

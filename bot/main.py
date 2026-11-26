@@ -104,7 +104,7 @@ def _internal_api(route, payload):
         method="POST",
     )
     # Reminder claims may wait on Shop presence before reserving recipients in PostgreSQL.
-    timeout = 25 if route in ('vpn-reminders/claim','service-message') else 5
+    timeout = 25 if route in ('vpn-reminders/claim','service-message','subscription-widget/open','subscription-widget/refresh') else 5
     with urlopen(request, timeout=timeout) as stream:
         return json.load(stream)
 
@@ -695,6 +695,8 @@ def deliver_notifications(token):
         deliver_vpn_notices(_internal_api, send_service_notice, miniapp_url() or "https://pushok.shop/miniapp")
         deliver_vpn_notices(_internal_api, send_service_notice, miniapp_url() or "https://pushok.shop/miniapp", queue="vpn-reminders")
         deliver_birthdays(_internal_api, send_service_notice, miniapp_url())
+        _internal_api("vpn-notices/retry-grant", {})
+        _internal_api("subscription-widget/refresh", {})
     except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
         LOG.warning("Не удалось обработать рассылку: %s", type(exc).__name__)
 
@@ -762,6 +764,8 @@ def notification_chat_opened(update):
                 _internal_api(queue+'/resume', {'telegram_user_id': uid})
             except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
                 LOG.warning('Не удалось возобновить %s: %s', queue, type(exc).__name__)
+                _internal_api('vpn-notices/grant',{'telegram_user_id':uid})
+                break
     return True
 
 
@@ -789,6 +793,12 @@ def poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigatio
                     continue
                 if ready and notification_chat_opened(update) and 'write_access_allowed' in (update.get('message') or {}):
                     offset = next_offset
+                    continue
+                message = update.get('message') or {}
+                actor,chat=message.get('from') or {},message.get('chat') or {}
+                if ready and chat.get('type')=='private' and chat.get('id')==actor.get('id') and not actor.get('is_bot') and message.get('text') in ('/start subscription','/subscription'):
+                    _internal_api('subscription-widget/open', {'telegram_user_id':chat['id']})
+                    offset=next_offset
                     continue
                 if ready:
                     verified = verification_response(update, _internal_api,

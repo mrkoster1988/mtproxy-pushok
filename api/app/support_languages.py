@@ -47,6 +47,9 @@ COPY = {
     'premium': ('**Premium** — бессрочный тариф в подарок от администратора. Продлевать или оплачивать его не нужно.', '**Premium** is a lifetime plan gifted by an administrator. No renewal or payment is required.', '**Premium** es un plan de por vida que regala un administrador. No hace falta renovarlo ni pagarlo.'),
     'new': ('Новое обращение','New conversation','Nueva consulta'),
     'question': ('Что подсказать про Flow или Mini App?', 'What would you like to know about Flow or the Mini App?', '¿Qué te gustaría saber sobre Flow o la Mini App?'),
+    'probe': ('В Flow на Android откройте диагностику и нажмите **Проверить интернет через туннель**. Раскройте результат и нажмите **Обсудить результат с Пушком**.', 'In Flow for Android, open Diagnostics and run the internet check through the tunnel. Expand the result and share it with Pushok.', 'En Flow para Android, abre el diagnóstico y comprueba internet a través del túnel. Abre el resultado y compártelo con Pushok.'),
+    'probe_failed': ('Вижу результат проверки с телефона. Передаю его команде. Подскажите, это было через Wi-Fi или мобильную сеть?', 'I’ve added the device result for the team. Were you using Wi-Fi or mobile data?', 'He pasado el resultado del dispositivo al equipo. ¿Usabas wifi o datos móviles?'),
+    'probe_ok': ('При этой проверке телефон получил ответ сайта. Если другое приложение по-прежнему недоступно, напишите его название.', 'The site responded to this check. If another app still fails, tell me which one.', 'El sitio respondió en esta prueba. Si otra aplicación sigue fallando, dime cuál.'),
     'problem': ('На каком шаге возникла проблема?', 'Which step are you having trouble with?', '¿En qué paso surgió el problema?'),
     'idea_prompt': ('Какой функции вам не хватает?', 'Which feature would you like to see?', '¿Qué función te gustaría tener?'),
     'human': ('Расскажите, что случилось. Сотрудник ответит здесь.', 'Tell us what happened. A person will reply here.', 'Cuéntanos qué ha pasado. Una persona te responderá aquí.'),
@@ -63,7 +66,13 @@ def tr(locale, key):
 
 def guided(text, history):
     words = text.casefold()
+    from .flow_check_report import LABELS
+    for labels in LABELS.values():
+        if text.startswith(labels[0]+' · ') and text.split('\n')[-1] in labels[1:]:
+            ok=text.endswith(labels[1])
+            return ('probe_ok',False) if ok else ('probe_failed',True)
     rules = [
+        ('probe',False,r'(?:не (?:работает интернет|открыва[ею]тся сайт)|сайты не (?:работают|открываются)|no internet|sites? (?:won.t open|unreachable)|sin internet|sitios? no (?:abre|carga))'),
         ('paid', True, r'списа[лн]|уже оплатил|already (?:charged|paid)|charged twice|ya (?:pagué|pagado|se cobr)|cobraron'),
         ('topup', False, r'provider_account_invalid|пополн.{0,18}(stars|зв[её]зд)|top.?up.{0,16}stars|recargar.{0,14}stars'),
         ('revoked', True, r'отозван|revoked|revocad'),

@@ -55,6 +55,10 @@ window.pushokSupport=(()=>{
     try{const data=await api('/support/cases/'+id,{session});if(!mounted()||turn!==rev)return;
      current=id;asStaff=team&&data.can_reply_as_staff;entry.hidden=team&&!asStaff;kind.hidden=chips.hidden=true;humanLabel.hidden=true;closeLabel.hidden=!asStaff;
      human.checked=close.checked=false;msg.value='';feedback.textContent='';thread.replaceChildren(el('h3',t.case+' №'+id+' · '+t[data.state]));
+     if(!team && data.continue_url){
+      const resume=el('a',({ru:'Продолжить обращение в Telegram',en:'Continue in Telegram',es:'Continuar en Telegram'})[locale],'ui-button labeled-action');
+      resume.href=data.continue_url;resume.target='_blank';resume.rel='noopener noreferrer';thread.append(resume);
+     }
      for(const row of data.messages){
       const line=el('article',undefined,'vpn-notice-preview support-chat-message'),body=el('p');line.dataset.sender=row.sender;body.dir='auto';
       if(row.sender==='user')body.textContent=row.body;else appendFormattedText(body,row.body);
@@ -86,6 +90,7 @@ window.pushokSupport=(()=>{
  async function showBotSettings(host){
   host.replaceChildren();
   if(!hasDeveloperAccess(me))return;
+  window.pushokEditorial?.(host);
   const inbox=el('a','Переписка с пользователями','ui-button labeled-action');inbox.href='#/help/team';host.append(inbox);
   const session=token;
   const form=el('form',undefined,'panel vpn-policy-card');

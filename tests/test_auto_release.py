@@ -32,13 +32,13 @@ class ReleasePromotionTests(unittest.TestCase):
         core = (ROOT / 'api/app/core_readiness.py').read_text()
         installer = (ROOT / 'setup.sh').read_text()
         web = (ROOT / 'api/web/index.html').read_text()
-        self.assertIn('Версия проекта: v2.33.', readme)
-        self.assertIn('version="2.33",', api)
-        self.assertEqual(core.count('"project_version": "2.33"'), 2)
-        self.assertIn('MTProxy Pushok v2.33', installer)
-        self.assertIn('v2.33</span>', web)
-        self.assertIn('/assets/users.js?v=2.33"', web)
-        self.assertIn('docs/RELEASE_v2.33.md', readme)
+        self.assertIn('Версия проекта: v2.34.', readme)
+        self.assertIn('version="2.34",', api)
+        self.assertEqual(core.count('"project_version": "2.34"'), 2)
+        self.assertIn('MTProxy Pushok v2.34', installer)
+        self.assertIn('v2.34</span>', web)
+        self.assertIn('/assets/users.js?v=2.34"', web)
+        self.assertIn('docs/RELEASE_v2.34.md', readme)
 
     def test_plan_is_read_only_and_requires_protected_directory(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -16,7 +16,7 @@ window.pushokMiniApp=(()=>{
  panel.append(runner,title,status,retry);document.querySelector('main').prepend(panel);
  document.body.classList.add('miniapp-mode');
  function message(text,canRetry=false){document.body.classList.add('miniapp-loading');panel.classList.toggle('load-failed',canRetry);panel.hidden=false;status.textContent=text;retry.hidden=!canRetry;}
- function clear(){token='';sessionStorage.removeItem(sessionKey);sessionStorage.removeItem(cacheKey);}
+ function clear(){phoneControls=null;token='';sessionStorage.removeItem(sessionKey);sessionStorage.removeItem(cacheKey);}
  function end(text,{preserveUnboundFlow=false}={}){
   clear();if(window.cabinet)window.cabinet.logout({preserveUnboundFlow});
   $('workspace').hidden=true;$('login').hidden=true;$('logout').hidden=true;
@@ -44,6 +44,19 @@ window.pushokMiniApp=(()=>{
   const notify=document.createElement('a');notify.textContent='Подключить уведомления';
   notify.className='ui-button labeled-action';notify.href='https://t.me/mtproxy_pushok_bot?start=notifications';notify.target='_blank';notify.rel='noopener noreferrer';
   const hint=document.createElement('small');hint.className='muted';hint.textContent='Уведомления приходят в @mtproxy_pushok_bot. Если вы впервые открываете чат, нажмите «Старт».';
+  const sender=String(window.cabinetBotConfig?.telegram_bot_username||'').replace(/^@/,'').toLowerCase();
+  if(sender==='mtproxy_pushok_bot' && app.isVersionAtLeast?.('6.9') && typeof app.requestWriteAccess==='function'){
+   const permission=action('Разрешить уведомления в Telegram',button=>{
+    button.disabled=true;
+    try{app.requestWriteAccess(granted=>{
+     button.disabled=granted;
+     hint.textContent=granted?'Telegram разрешил боту писать вам. Статус каждой отправки виден в истории.':'Можно разрешить сообщения позже или открыть чат вручную.';
+     if(granted)button.textContent='Уведомления разрешены';
+    });}catch{button.disabled=false;hint.textContent='Откройте чат бота и нажмите «Старт».';}
+   });
+   if(app.initDataUnsafe?.user?.allows_write_to_pm===true){permission.textContent='Уведомления разрешены';permission.disabled=true;}
+   notify.textContent='Открыть чат бота';
+  }
   section.append(notify,hint);
   if(section.childElementCount>1){phoneControls=section;target.append(section);}
  }

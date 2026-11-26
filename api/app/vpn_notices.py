@@ -5,6 +5,7 @@ import os
 import time
 from typing import Literal
 
+import psycopg
 import requests
 from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import JSONResponse
@@ -61,3 +62,32 @@ def resume(chat: ChatOpened, x_pushok_bot_secret: str | None = Header(default=No
 def finish(receipt: Receipt, x_pushok_bot_secret: str | None = Header(default=None)):
     _verify_bot_secret(x_pushok_bot_secret)
     return relay('finish',receipt.model_dump())
+
+def remember_grant(dsn,uid,force=False):
+    with psycopg.connect(dsn,connect_timeout=3) as db:
+        db.execute("""INSERT INTO notification_write_grants(telegram_id,retry_at) VALUES(%s,now())
+            ON CONFLICT(telegram_id) DO UPDATE SET retry_at=now(),seen_at=now()
+            WHERE %s OR notification_write_grants.seen_at<now()-interval '1 day'""",(uid,force))
+
+
+@router.post('/grant')
+def grant(chat:ChatOpened,x_pushok_bot_secret:str|None=Header(default=None)):
+    _verify_bot_secret(x_pushok_bot_secret)
+    remember_grant(os.environ['DATABASE_URL'],chat.telegram_user_id,True)
+    return {'ok':True}
+
+
+@router.post('/retry-grant')
+def retry_grant(x_pushok_bot_secret:str|None=Header(default=None)):
+    from .vpn_reminders import resume_recipient
+    _verify_bot_secret(x_pushok_bot_secret)
+    with psycopg.connect(os.environ['DATABASE_URL']) as db:
+        row=db.execute("""SELECT telegram_id FROM notification_write_grants WHERE retry_at<=now()
+            ORDER BY retry_at LIMIT 1 FOR UPDATE SKIP LOCKED""").fetchone()
+        if row:
+            resume_recipient(db,row[0])
+            try:relay('resume-chat',{'telegram_id':row[0]})
+            except HTTPException:
+                db.execute("UPDATE notification_write_grants SET retry_at=now()+interval '2 minutes' WHERE telegram_id=%s",row)
+            else:db.execute('UPDATE notification_write_grants SET retry_at=NULL WHERE telegram_id=%s',row)
+    return {'ok':True}

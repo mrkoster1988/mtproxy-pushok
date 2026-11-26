@@ -13,6 +13,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from . import channel_ai_connection as ai, channel_topic_suggestions as topics, control
+from . import flow_check_report
 from . import support_appearance as design, support_languages as lang
 from .telegram_environment import is_test_environment
 from .vpn_settings import private
@@ -122,6 +123,11 @@ def bot_call(key, method, fields):
     try:
         result = json.loads(topics.read_url(req, 8, 512000))
     except HTTPError as error:
+        if method=='sendMessage' and fields.get('message_thread_id') and error.code==400:
+            try: reason=json.loads(error.read(8192)).get('description','').lower()
+            except (ValueError,OSError): reason=''
+            if 'thread not found' in reason or 'topic_deleted' in reason:
+                raise TopicRemoved() from None
         if method == 'sendPhoto' and error.code == 400:
             raise PhotoRejected() from None
         if method == 'answerCallbackQuery' and error.code == 400:
@@ -217,8 +223,9 @@ def post(dsn,uid,msg):
 def router_for(dsn,current_user):
     router=APIRouter(route_class=ai.PrivateRoute)
     @router.get('/ai-support',include_in_schema=False)
-    def open_bot():
-        return RedirectResponse('https://t.me/' + credential()['username'], 302, headers={'Cache-Control':'no-store'})
+    def open_bot(start: str=''):
+        param='?start='+start if re.fullmatch(flow_check_report.PATTERN,start) else ''
+        return RedirectResponse('https://t.me/' + credential()['username'] + param, 302, headers={'Cache-Control':'no-store'})
 
     @router.get('/ai-support/images/{image_id}.jpg', include_in_schema=False)
     def welcome_image(image_id: str):
@@ -250,7 +257,13 @@ def router_for(dsn,current_user):
             row=db.execute('SELECT telegram_id,state,category FROM support_conversations WHERE id=%s',(cid,)).fetchone()
             if not row or (row['telegram_id']!=user['telegram_user_id'] and not staff(user)):raise HTTPException(404)
             messages=db.execute('SELECT sender,body,created_at FROM support_chat_messages WHERE conversation_id=%s ORDER BY id',(cid,)).fetchall()
-        return {'messages':messages,'state':row['state'],'can_reply_as_staff':staff(user) and row['telegram_id']!=user['telegram_user_id']}
+            resume=None
+            if row['telegram_id']==user['telegram_user_id']:
+                cfg=credential()
+                topic=db.execute('SELECT thread_id FROM support_telegram_topics WHERE case_id=%s AND chat_id=%s AND bot_id=%s',
+                                 (cid,row['telegram_id'],bot_id(cfg['token']))).fetchone()
+                resume='https://t.me/'+cfg['username']+('/'+str(topic['thread_id']) if topic else '?start=case_'+str(cid))
+        return {'messages':messages,'continue_url':resume,'state':row['state'],'can_reply_as_staff':staff(user) and row['telegram_id']!=user['telegram_user_id']}
     @router.post('/api/v1/support/cases')
     def create(msg:Message,user=Depends(current_user)):return post(dsn(),user['telegram_user_id'],msg)
     @router.post('/api/v1/support/cases/{cid}/staff')
@@ -319,6 +332,36 @@ def router_for(dsn,current_user):
     return router
 
 
+class TopicRemoved(RuntimeError):
+    pass
+
+
+def ensure_topic(db,key,uid,cid,locale,incoming=None):
+    identity=bot_id(key)
+    if not identity:return None
+    topic=db.execute('SELECT thread_id FROM support_telegram_topics WHERE case_id=%s AND bot_id=%s',(cid,identity)).fetchone()
+    if topic:return topic['thread_id']
+    if not incoming:
+        try:
+            result=bot_call(key,'createForumTopic',{'chat_id':uid,'name':lang.APPEARANCE[locale].get('case_title','Обращение')+' №'+str(cid)})
+        except RuntimeError:
+            return None
+        incoming=result.get('message_thread_id') if isinstance(result,dict) else None
+    if type(incoming) is not int or incoming<=0:return None
+    db.execute("""INSERT INTO support_telegram_topics(case_id,bot_id,chat_id,thread_id) VALUES(%s,%s,%s,%s)
+        ON CONFLICT(case_id) DO UPDATE SET bot_id=excluded.bot_id,chat_id=excluded.chat_id,thread_id=excluded.thread_id""",
+        (cid,identity,uid,incoming))
+    return incoming
+
+
+def send_case_reply(db,key,uid,thread,fields):
+    if thread:
+        try:return bot_call(key,'sendMessage',dict(fields,chat_id=uid,message_thread_id=thread))
+        except TopicRemoved:
+            db.execute('DELETE FROM support_telegram_topics WHERE bot_id=%s AND chat_id=%s AND thread_id=%s',(bot_id(key),uid,thread))
+    return bot_call(key,'sendMessage',dict(fields,chat_id=uid))
+
+
 def handle_update(db, dsn, key, update, legacy=True):
     callback = update.get('callback_query') or {}
     message = callback.get('message') or update.get('message') or {}
@@ -327,6 +370,9 @@ def handle_update(db, dsn, key, update, legacy=True):
     uid = chat.get('id')
     if (chat.get('type') != 'private' or type(uid) is not int or uid <= 0 or not sender
             or uid != sender.get('id') or sender.get('is_bot')):
+        return
+    # Telegram sends service messages when the bot creates a topic.
+    if not callback and not message.get('text'):
         return
     if callback:
         action = callback.get('data', '').removeprefix('support:')
@@ -348,6 +394,12 @@ def handle_update(db, dsn, key, update, legacy=True):
                          (support_bot_contacts.bot_id=0 AND %s) THEN support_bot_contacts.current_case END,
         pending_action=CASE WHEN support_bot_contacts.bot_id=excluded.bot_id THEN support_bot_contacts.pending_action END
         RETURNING current_case,pending_action""", (uid, identity, legacy)).fetchone()
+    incoming=message.get('message_thread_id')
+    thread=incoming if type(incoming) is int and incoming>0 else None
+    mapped=db.execute('SELECT case_id FROM support_telegram_topics WHERE chat_id=%s AND bot_id=%s AND thread_id=%s',
+                      (uid,identity,thread)).fetchone() if thread else None
+    if thread:
+        contact={'current_case': mapped['case_id'] if mapped else None,'pending_action':None}
     categories = {'/idea': 'idea', '/problem': 'problem', '/question': 'question', '/human': 'problem'}
     command, _, remaining = body.partition(' ')
     remaining = remaining.strip()
@@ -363,6 +415,18 @@ def handle_update(db, dsn, key, update, legacy=True):
         bot_call(key,'sendMessage',{'chat_id':uid,'text':'🌐 '+lang.tr(locale,'lang'),'reply_markup':{'inline_keyboard':keyboard}})
         return
     locale = lang.effective(preference, hint)
+    if command=='/start' and re.fullmatch(r'case_[1-9][0-9]{0,17}',remaining):
+        cid=int(remaining[5:])
+        case=db.execute('SELECT id FROM support_conversations WHERE id=%s AND telegram_id=%s',(cid,uid)).fetchone()
+        if not case:return
+        db.execute('UPDATE support_bot_contacts SET current_case=%s,pending_action=NULL WHERE telegram_id=%s',(cid,uid))
+        thread=ensure_topic(db,key,uid,cid,locale)
+        send_case_reply(db,key,uid,thread,{'text':design.heading(style=design.Appearance(),glyph='💬',title=lang.APPEARANCE[locale].get('case_title','Обращение')+' №'+str(cid)).replace('**','')})
+        return
+    report=flow_check_report.describe(remaining,locale) if command=='/start' else None
+    if report:
+        body='/problem '+report
+        command,remaining='/problem',report
     sections={'/subscriptions':('vpn','Моя подписка'),'/campaigns':('campaigns','Мои кампании'),
               '/tariffs':('vpn_renew','Тарифы VPN'),'/advertise':('create','Создать кампанию'),
               '/channels':('channels','Каналы'),'/moderation':('moderation','Модерация')}
@@ -397,6 +461,7 @@ def handle_update(db, dsn, key, update, legacy=True):
             return
         return
     if command == '/new':
+        thread=None
         db.execute('UPDATE support_bot_contacts SET current_case=NULL,pending_action=NULL WHERE telegram_id=%s', (uid,))
         response = design.heading(style, '📝', lang.tr(locale,'new')) + '\n\n' + lang.tr(locale,'question')
     elif command in categories and not remaining and not (command == '/human' and contact['current_case']):
@@ -417,7 +482,7 @@ def handle_update(db, dsn, key, update, legacy=True):
         try:
             record = post(dsn, uid, Message(
                 request_id=uuid5(NAMESPACE_URL, f'{namespace}{uid}:{event_id}'),
-                case_id=cid if command == '/human' or command not in categories else None, locale_hint=hint, category=categories.get(command, 'question'),
+                case_id=cid if thread or command == '/human' or command not in categories else None, locale_hint=hint, category=categories.get(command, 'question'),
                 human=command == '/human', text=remaining if command in categories else body))
         except HTTPException as exc:
             if exc.status_code != 429:
@@ -425,9 +490,10 @@ def handle_update(db, dsn, key, update, legacy=True):
             response = lang.tr(locale,'rate')
         else:
             db.execute('UPDATE support_bot_contacts SET current_case=%s,pending_action=NULL WHERE telegram_id=%s', (record['id'], uid))
+            thread=ensure_topic(db,key,uid,record['id'],locale,thread)
             response = design.heading(style, '💬', style.case_title + ' №' + str(record['id'])) + '\n\n' + record['reply']
     try:
-        bot_call(key, 'sendMessage', {'chat_id': uid, 'text': format_body(response), 'parse_mode': 'HTML'})
+        send_case_reply(db,key,uid,thread,{'text':format_body(response),'parse_mode':'HTML'})
     except RecipientUnavailable:
         pass
 
@@ -449,7 +515,10 @@ def run_bot(dsn, stop):
                     stop.wait(5)
                     continue
                 if verified_key != (key, cfg['username']):
-                    verify_bot(key, cfg['username'])
+                    info=verify_bot(key,cfg['username'])
+                    if not info.get('has_topics_enabled'):
+                        try:bot_call(key,'setMySettings',{'has_topics_enabled':True,'has_topic_sidebar':True})
+                        except RuntimeError:log.info('Telegram private topics unavailable')
                     verified_key = (key, cfg['username'])
                 legacy = cfg.get('legacy_id', identity) == identity
                 cursor_name = f'support-bot-offset-{identity}.json'
@@ -462,7 +531,7 @@ def run_bot(dsn, stop):
                     handle_update(db, dsn(), key, update, legacy)
                     db.commit()
                     control.write(cursor_name, {'offset': update['update_id'] + 1})
-                pending = db.execute("""SELECT o.message_id,o.telegram_id,m.body,c.reply_locale FROM support_bot_outbox o
+                pending = db.execute("""SELECT o.message_id,o.telegram_id,m.body,c.reply_locale,c.id AS case_id FROM support_bot_outbox o
                     JOIN support_chat_messages m ON m.id=o.message_id JOIN support_conversations c ON c.id=m.conversation_id WHERE NOT o.delivered AND o.retry_at<=now()
                     AND (o.bot_id=%s OR (o.bot_id=0 AND %s))
                     ORDER BY o.message_id LIMIT 10""", (identity, legacy)).fetchall()
@@ -470,7 +539,8 @@ def run_bot(dsn, stop):
                     style = design.Appearance(**design.read().get('settings', {}))
                 for item in pending:
                     try:
-                        bot_call(key, 'sendMessage', {'chat_id': item['telegram_id'],
+                        thread=ensure_topic(db,key,item['telegram_id'],item['case_id'],item['reply_locale'])
+                        send_case_reply(db,key,item['telegram_id'],thread,{
                                                      'text': format_body(design.heading(style, '👤', lang.APPEARANCE[lang.effective(lang.get(db,item['telegram_id']),item['reply_locale'])].get('staff_title', style.staff_title)) + '\n\n' + item['body']), 'parse_mode': 'HTML'})
                     except RecipientUnavailable:
                         db.execute('DELETE FROM support_bot_outbox WHERE message_id=%s', (item['message_id'],))

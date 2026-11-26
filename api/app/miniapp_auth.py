@@ -52,5 +52,6 @@ def validate_init_data(raw, bot_token, *, now=None):
         invalid()
     # Отдельное пространство replay-ключей от Login Widget; порядок URL не влияет.
     replay = hashlib.sha256(('miniapp:' + expected).encode()).hexdigest()
-    return {k: user.get(k) for k in ('id', 'first_name', 'last_name', 'username')} | {
+    grant={'allows_write_to_pm':True} if user.get('allows_write_to_pm') is True else {}
+    return grant | {k: user.get(k) for k in ('id', 'first_name', 'last_name', 'username')} | {
         'auth_date': auth_date, 'hash': replay, 'start_param': data.get('start_param', '')}

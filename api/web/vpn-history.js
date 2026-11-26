@@ -1,7 +1,7 @@
 'use strict';
 window.pushokVpnHistory=(()=>{
-  const labels={sent:'Telegram принял сообщение',waiting_chat:'Ожидает запуска бота',blocked:'Отправка заблокирована',
-    failed:'Не отправлено',retry:'Ожидает повторной отправки',paused:'Рассылка выключена',queued:'В очереди',unknown:'Подтверждение не сохранено',in_app:'В личном чате'};
+  const labels={sent:'Telegram принял сообщение',waiting_chat:'Бот пока не получил доступ к чату',blocked:'Пользователь заблокировал бота или закрыл аккаунт',
+    failed:'Ошибка отправки',retry:'Ожидает повторной отправки',paused:'Рассылка выключена',queued:'В очереди',unknown:'Подтверждение не сохранено',in_app:'В личном чате'};
   const kinds={premium:'Подарочный Premium',renewal_plan:'Смена тарифа',changed:'Изменение подписки',created:'Новая подписка',
     removed:'Отзыв доступа',order:'Заказ',refund:'Возврат',device:'Профиль устройства',link:'Ссылка подключения',reminder:'Напоминание'};
   function status(value){return labels[value]||labels.unknown;}

@@ -192,3 +192,12 @@
 .cabinet-mode .receipt-list-item{padding:14px}.receipt-list-item .channel-avatar{width:36px;height:36px;flex-basis:36px}
 .cabinet-mode .receipt-list-terms{display:flex;justify-content:space-between;align-items:baseline;gap:10px;color:var(--muted);margin:12px 0 0;font-size:.83rem}
 .receipt-list-terms strong{color:var(--text);text-align:right}.receipt-list-item .receipt-link{margin-top:4px}
+
+.editorial[open] { display: grid; gap: .8rem; }
+.editorial summary { cursor: pointer; font-weight: 650; }
+.editorial textarea, .editorial input, .editorial select { width: 100%; min-width: 0; }
+.editorial .support-quick { flex-wrap: wrap; }
+.editorial .support-quick select { flex: 1 1 8rem; }
+.editorial-list, .editorial > div:has(>h3) { display: grid; gap: .65rem; }
+.editorial .support-bubble img { width: 100%; max-height: 14rem; object-fit: contain; }
+.editorial[aria-busy="true"] button { opacity: .65; }
