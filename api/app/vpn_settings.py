@@ -16,7 +16,7 @@ from psycopg.rows import dict_row
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .flow_shop_ticket import bridge_key
-from .vpn_cabinet import is_staff
+from .vpn_cabinet import invalidate, is_staff
 
 Day = Annotated[int, Field(strict=True, ge=1, le=365)]
 Repeat = Annotated[int, Field(strict=True, ge=0, le=365)]
@@ -144,7 +144,9 @@ def router_for(get_dsn,current_user):
     def change_plan(action:Literal['create','update','choice'],data:dict,user=Depends(current_user)):
         admin(user)
         if action=='choice':data['actor']=str(user['id'])
-        return shop('plan-'+action,data)
+        result = shop('plan-'+action,data)
+        invalidate()
+        return result
 
     @router.get('/settings/access')
     def access(user=Depends(current_user)):

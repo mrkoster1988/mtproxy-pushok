@@ -26,6 +26,12 @@ _expires = 0.0
 _sample = None
 
 
+def invalidate():
+    global _expires
+    with _lock:
+        _expires = 0
+
+
 def observations():
     global _sample, _expires
     with _lock:
@@ -122,16 +128,13 @@ def router_for(get_dsn, cabinet_user):
     def manage(subject: UUID, change: Change, user=Depends(cabinet_user)):
         if not is_staff(user):
             raise HTTPException(403, 'admin_required')
-        global _expires
         try:
             change_subscription(user['id'], subject, change)
         except HTTPException as error:
             if error.detail == 'vpn_restore_elapsed':
-                with _lock:
-                    _expires = 0
+                invalidate()
             raise
-        with _lock:
-            _expires = 0
+        invalidate()
         return {'ok': True}
 
     @router.get('/dashboard')
