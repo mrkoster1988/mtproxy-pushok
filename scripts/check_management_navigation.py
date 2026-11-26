@@ -23,7 +23,7 @@ def check_management_navigation(browser, base, output, failures, dsn):
             tokens[role] = main._create_session_token(uid, sid)
 
     def launch(role, route='profile'):
-        context = browser.new_context(viewport={'width': 390, 'height': 844}, reduced_motion='reduce')
+        context = browser.new_context(viewport={'width': 390, 'height': 844}, reduced_motion='reduce', locale='en-US')
         contexts.append(context)
         context.add_init_script('sessionStorage.setItem("pushok-session",' + repr(tokens[role]) + ')')
         page = context.new_page()
@@ -84,6 +84,13 @@ def check_management_navigation(browser, base, output, failures, dsn):
         settings.get_by_role('link',name='Бот Pushok ИИ').click()
         expect(secret).to_have_value('')
         admin.evaluate("window.cabinet.go('help')")
+        locale=admin.get_by_role('combobox',name='Язык / Language / Idioma')
+        expect(admin.get_by_role('button',name='Connect Flow')).to_be_visible()
+        locale.select_option('es')
+        expect(admin.get_by_role('button',name='Conectar Flow')).to_be_visible()
+        admin.reload()
+        expect(locale).to_have_value('es')
+        locale.select_option('ru')
         admin.get_by_role('link',name='Настроить бота Pushok ИИ').click()
         expect(secret).to_be_visible()
         admin.locator('.screen-back').click()

@@ -10,7 +10,16 @@ window.pushokSupport=(()=>{
   host.replaceChildren(panel);
   const live=()=>token===session&&panel.isConnected;
   const hint=(window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code||navigator.language||'ru').slice(0,40);
-  const pref=await api('/support/language',{session});
+  let pref;
+  try{pref=await api('/support/language',{session});}
+  catch(error){
+   if(!live())return;
+   const language=hint.toLowerCase().split(/[-_]/)[0], t=copy[language]||copy.en;
+   const retry={ru:'Повторить',en:'Try again',es:'Reintentar'};
+   const chat=el('a',t.chat,'ui-button labeled-action');chat.href='/ai-support';chat.target='_blank';chat.rel='noopener noreferrer';
+   panel.append(el('h2','Pushok ИИ'),el('p',error.message,'muted'),button(retry[language]||retry.en,()=>show(host)),chat);
+   return;
+  }
   if(!live())return;
   let preference=pref.preference, team=false, current=null, asStaff=false, rev=0, listRev=0, intent,key;
   const owner=!!(me?.is_owner||me?.is_developer), staff=owner||['admin','operator','moderator'].includes(me?.role);
