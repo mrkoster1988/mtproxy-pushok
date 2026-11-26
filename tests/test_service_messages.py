@@ -9,6 +9,32 @@ from bot.main import legacy_entry, notification_chat_opened
 
 
 class ServiceMessages(TestCase):
+    def test_rich_notice_keeps_action_history_and_falls_back_on_explicit_rejection(self):
+        notice=service.Notice(chat_id=22,parse_mode='HTML',rich=True,
+            text='<b>💛 Premium</b>\n\nБессрочно &amp; бесплатно\nВторой абзац\n\n<i>Команда Pushok</i>',
+            reply_markup={'inline_keyboard':[[{'text':'Показать подписку','callback_data':'subscription_widget'}]]})
+        message={'chat':{'id':22},'message_id':51,'date':100}
+        with patch.dict('os.environ',TELEGRAM_BOT_TOKEN='20:'+'X'*30), \
+             patch.object(service,'verify_sender'), patch.object(service,'is_test_environment',return_value=False), \
+             patch.object(service,'telegram_call',return_value=message) as call, \
+             patch('app.recipient_history.record') as record:
+            self.assertEqual(service.send(notice),{'sent':True})
+            self.assertEqual(call.call_args.args[1],'sendRichMessage')
+            payload=call.call_args.args[2]
+            self.assertIn('<h3>',payload['rich_message']['html'])
+            self.assertIn('<footer>',payload['rich_message']['html'])
+            self.assertEqual(payload['reply_markup']['inline_keyboard'][0][0]['callback_data'],'subscription_widget')
+            self.assertIn('Бессрочно & бесплатно',record.call_args.args[1]['text'])
+            call.reset_mock()
+            call.side_effect=[HTTPException(400,'rich_unsupported'),{**message,'text':'Premium'}]
+            service.send(notice)
+            self.assertEqual([c.args[1] for c in call.call_args_list],['sendRichMessage','sendMessage'])
+            call.reset_mock()
+            call.side_effect=HTTPException(503,'service_notice_unavailable')
+            with self.assertRaises(HTTPException):
+                service.send(notice)
+            call.assert_called_once()
+
     def test_notification_buttons_go_to_the_cabinet_identity(self):
         with patch.dict('os.environ',TELEGRAM_BOT_USERNAME='mtproxy_pushok_bot'):
             for button,expected in [
@@ -40,7 +66,8 @@ class ServiceMessages(TestCase):
             return json.dumps({'ok':True, 'result':result}).encode()
         service.verify_sender.cache_clear()
         self.addCleanup(service.verify_sender.cache_clear)
-        with patch.dict('os.environ',TELEGRAM_BOT_TOKEN=token), patch.object(service,'read_url',side_effect=reply) as call:
+        with patch.dict('os.environ',TELEGRAM_BOT_TOKEN=token), patch.object(service,'read_url',side_effect=reply) as call, \
+             patch('app.recipient_history.record'):
             for shop in (False, True):
                 self.assertEqual(service.send(service.Notice(chat_id=22,text='Напоминание'),shop), {'sent':True})
             self.assertEqual(call.call_count,3)

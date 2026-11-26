@@ -22,7 +22,8 @@ def deliver(api, send, launch='https://pushok.shop/miniapp', queue='vpn-notices'
             if item['renew']:
                 button = {'text':'Продлить подписку','web_app':{'url':launch+'?vpn=renew'}}
             else:
-                button = {'text':'Открыть VPN' if item.get('connect') else 'Моя подписка','web_app':{'url':launch+'?vpn=home'}}
+                button = ({'text':'Открыть VPN','web_app':{'url':launch+'?vpn=home'}} if item.get('connect')
+                          else {'text':'Показать подписку', 'callback_data':'subscription_widget'})
             titles={'premium':'💛 Подарок от Пушка','expiry':'⏳ Сколько ещё работает VPN?','never':'👋 Первый выход с Пушком','idle':'🐾 Пушок на связи',
                     'created':'✨ У вас новая подписка','changed':'🐾 Новости вашей подписки','renewal_plan':'🎟 Новый тариф','order':'🧾 Новости по заказу',
                     'refund':'↩️ Возврат','device':'📱 Профиль устройства','removed':'🗂 Подписка удалена',
@@ -31,7 +32,7 @@ def deliver(api, send, launch='https://pushok.shop/miniapp', queue='vpn-notices'
             body=item.get('formatted_body')
             body=body or escape(item['text'].removeprefix('Pushok ИИ').strip())
             send({'chat_id':item['telegram_id'],'text':f'<b>{title}</b>\n\n{body}\n\n<i>Команда Pushok 🐾</i>',
-                  'parse_mode':'HTML',
+                  'parse_mode':'HTML','rich':True,
                   'reply_markup':{'inline_keyboard':[[button]]}})
             status = 'sent'
         except HTTPError as error:

@@ -5,6 +5,7 @@ import os
 import re
 import time
 from functools import lru_cache
+from html import unescape
 from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, Header, HTTPException, Request
@@ -29,10 +30,13 @@ class Notice(BaseModel):
     text: str = Field(min_length=1,max_length=4096)
     parse_mode: Literal['HTML'] | None = None
     reply_markup: dict | None = None
+    rich: bool = False
 
 
 def cabinet_link(button):
     route = button.get('callback_data','')
+    if route == 'subscription_widget':
+        return {'text': str(button['text'])[:64], 'callback_data': route, 'style': 'primary'}
     if 'web_app' in button:
         url = urlsplit(button['web_app']['url'])
         page = url.fragment.removeprefix('/')
@@ -57,7 +61,7 @@ def telegram_call(token, method, payload):
     try:
         reply = json.loads(read_url(request, 8, 131072))
     except HTTPError as error:
-        if method in ('sendMessage','sendWidget','editMessageWidgetData','editMessageText') and error.code in (400,403,404):
+        if method in ('sendMessage','sendWidget','sendRichMessage','editMessageWidgetData','editMessageText') and error.code in (400,403,404):
             try:
                 refusal = json.loads(error.read(8192))
                 description = str(refusal.get('description', '')).lower() if isinstance(refusal, dict) else ''
@@ -67,12 +71,13 @@ def telegram_call(token, method, payload):
                 return True
             if method.startswith('editMessage') and 'message to edit not found' in description:
                 raise HTTPException(404,'widget_message_missing') from None
-            if method=='sendWidget' and (error.code==404 or 'method not found' in description):
-                raise HTTPException(400,'widget_unsupported') from None
             if 'chat not found' in description or "can't initiate conversation" in description:
                 raise HTTPException(503, 'cabinet_bot_chat_not_started') from None
             if error.code == 403 and ('blocked by the user' in description or 'user is deactivated' in description):
                 raise HTTPException(403, 'recipient_blocked') from None
+            if method in ('sendWidget','sendRichMessage') and error.code in (400,404):
+                detail = 'widget_unsupported' if method == 'sendWidget' else 'rich_unsupported'
+                raise HTTPException(400,detail) from None
         raise HTTPException(503, 'service_notice_unavailable') from None
     except (OSError, ValueError):
         raise HTTPException(503, 'service_notice_unavailable') from None
@@ -89,6 +94,16 @@ def verify_sender(token):
         raise HTTPException(503, 'cabinet_bot_wrong_identity')
 
 
+def rich_notice(text):
+    # VPN notifications contain only escaped text and the formatter's bold/italic tags.
+    title, separator, body = text.partition('\n\n')
+    body, footer_separator, footer = body.rpartition('\n\n')
+    if not separator or not footer_separator:
+        return None
+    paragraphs = ''.join('<p>'+part.replace('\n', '<br>')+'</p>' for part in body.split('\n\n'))
+    return {'html': '<h3>'+title+'</h3>'+paragraphs+'<footer>'+footer+'</footer>'}
+
+
 def send(notice, shop=False):
     if is_test_environment():
         raise HTTPException(503, 'service_bot_test_environment')
@@ -96,16 +111,28 @@ def send(notice, shop=False):
     if not re.fullmatch(r'[0-9]{1,16}:[a-zA-Z0-9_-]{25,250}', token):
         raise HTTPException(503, 'cabinet_bot_not_configured')
     verify_sender(token)
-    payload = notice.model_dump(exclude_none=True)
+    payload = notice.model_dump(exclude_none=True, exclude={'rich'})
     if shop:
         payload['reply_markup'] = {'inline_keyboard': [[{'text': 'Открыть магазин', 'url': 'https://pushok.shop/shop/'}]]}
     elif notice.reply_markup:
         payload['reply_markup'] = {'inline_keyboard': [[cabinet_link(button) for button in row]
                                      for row in notice.reply_markup['inline_keyboard']]}
-    message = telegram_call(token, 'sendMessage', payload)
+    rich = rich_notice(notice.text) if notice.rich and notice.parse_mode == 'HTML' and not shop else None
+    message = None
+    if rich:
+        rich_payload = {key:value for key,value in payload.items() if key not in ('text','parse_mode')}
+        try:
+            message = telegram_call(token, 'sendRichMessage', dict(rich_payload, rich_message=rich))
+        except HTTPException as exc:
+            if exc.detail != 'rich_unsupported':
+                raise
+    if message is None:
+        message = telegram_call(token, 'sendMessage', payload)
     if not message.get('message_id') or (message.get('chat') or {}).get('id') != notice.chat_id:
         raise HTTPException(503, 'service_notice_unconfirmed')
     from .recipient_history import record
+    if rich and 'text' not in message:
+        message = dict(message, text=unescape(re.sub(r'</?[bi]>', '', notice.text)))
     record(os.getenv('DATABASE_URL'),message)
     return {'sent': True}
 
@@ -127,6 +154,6 @@ async def from_shop(request:Request):
             proof[2],hmac.digest(key,DOMAIN+proof[1].encode()+b':'+raw,'sha256').hex())):raise HTTPException(403)
     try:notice=Notice.model_validate_json(raw)
     except ValueError:raise HTTPException(422) from None
-    if notice.parse_mode or notice.reply_markup:raise HTTPException(422)
+    if notice.parse_mode or notice.reply_markup or notice.rich:raise HTTPException(422)
     from starlette.concurrency import run_in_threadpool
     return await run_in_threadpool(send,notice,True)

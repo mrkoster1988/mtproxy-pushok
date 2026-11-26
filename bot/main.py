@@ -547,7 +547,7 @@ def response_for(update, campaign_loader=None, wizard=None, submitter=None,
     actor = (callback or message).get('from') or {}
     command = str(message.get('text') or '').split(maxsplit=1)
     command = command[0].lower() if command else ''
-    if command in ('/subscriptions', '/subscriptions@' + configured_bot_username().lower()):
+    if command.partition('@')[0] in ('/subscription', '/subscriptions') and subscription_request(update):
         if (chat.get('type') != 'private' or type(actor.get('id')) is not int
                 or actor.get('is_bot') or actor['id'] != chat.get('id')):
             return None
@@ -740,6 +740,7 @@ def legacy_entry(update):
     if command=='/start':
         launch=miniapp_url()
         keys=[[{'text':'Войти в кабинет','web_app':{'url':launch}}]] if launch else []
+        keys.append([{'text':'Показать подписку','callback_data':'subscription_widget','style':'primary'}])
         text=('🐾 Уведомления подключены. Сюда будут приходить новости о подписке, оплате и кампаниях.'
               if parameter=='notifications' else 'Добро пожаловать! Здесь можно войти в кабинет, оплатить заказ и получать уведомления.')
     else:
@@ -769,6 +770,48 @@ def notification_chat_opened(update):
     return True
 
 
+def subscription_request(update):
+    callback = update.get('callback_query') or {}
+    message = (callback.get('message') if callback else update.get('message')) or {}
+    chat = message.get('chat') or {}
+    actor = (callback or message).get('from') or {}
+    uid = actor.get('id')
+    if chat.get('type') != 'private' or type(uid) is not int or uid <= 0 or uid != chat.get('id') or actor.get('is_bot'):
+        return None
+    if callback:
+        return uid if callback.get('data') == 'subscription_widget' else None
+    command, _, param = str(message.get('text') or '').strip().lower().partition(' ')
+    command, _, target = command.partition('@')
+    if target and target != configured_bot_username().lower():
+        return None
+    if command in ('/subscription','/subscriptions') or (command == '/start' and param.strip() == 'subscription'):
+        return uid
+    return None
+
+
+def show_subscription(token, update, ready):
+    uid = subscription_request(update)
+    if uid is None:
+        return False
+    callback_id = (update.get('callback_query') or {}).get('id')
+    if callback_id:
+        try:
+            raw_telegram_call(token, 'answerCallbackQuery', {'callback_query_id':callback_id}, timeout=3)
+        except (HTTPError, URLError, OSError, RuntimeError, ValueError):
+            pass  # An expired callback does not prevent delivery of the requested card.
+    try:
+        if ready and not is_test_environment() and _internal_api('subscription-widget/open', {'telegram_user_id':uid}).get('ok'):
+            return True
+    except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+        LOG.warning('Карточка подписки недоступна: %s', type(exc).__name__)
+    payload = {'chat_id':uid,'text':'Карточка в чате временно недоступна. Сведения о подписке можно посмотреть в кабинете.'}
+    launch = miniapp_url()
+    if launch:
+        payload['reply_markup'] = {'inline_keyboard':[[{'text':'Открыть VPN','web_app':{'url':launch+'?vpn=home'}}]]}
+    raw_telegram_call(token, 'sendMessage', payload)
+    return True
+
+
 def poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigation, notifications):
     pending = []
     next_cleanup = time.monotonic()
@@ -794,10 +837,7 @@ def poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigatio
                 if ready and notification_chat_opened(update) and 'write_access_allowed' in (update.get('message') or {}):
                     offset = next_offset
                     continue
-                message = update.get('message') or {}
-                actor,chat=message.get('from') or {},message.get('chat') or {}
-                if ready and chat.get('type')=='private' and chat.get('id')==actor.get('id') and not actor.get('is_bot') and message.get('text') in ('/start subscription','/subscription'):
-                    _internal_api('subscription-widget/open', {'telegram_user_id':chat['id']})
+                if show_subscription(token, update, ready):
                     offset=next_offset
                     continue
                 if ready:
