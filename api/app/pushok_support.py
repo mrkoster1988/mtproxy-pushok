@@ -1,5 +1,6 @@
 """Private support threads shared by the cabinet and Pushok's dedicated Telegram bot."""
 import json
+import logging
 import os
 import re
 from typing import Literal
@@ -147,22 +148,21 @@ def bot_call(key, method, fields):
 def answer(category,question,history,requested,locale="ru"):
     style=design.Appearance(**design.read().get('settings', {}))
     playful=style.tone=='playful'
-    if requested:
+    if requested or lang.asks_for_staff(question):
         return lang.tr(locale, 'handoff'), True
-    if category == 'idea':
-        return lang.tr(locale, 'idea'), True
     guide = lang.guided(question, history)
-    if guide:
+    if guide and (guide[0] in ('paid','revoked','probe_failed','probe_ok') or
+                  (category != 'idea' and (guide[1] or not history))):
         key, human = guide
         return lang.tr(locale, key), human
-    if question.strip().casefold().strip('¡!?. ') in ('привет','здравствуйте','добрый день','добрый вечер','доброе утро','hi','hello','hola','buenos días'):
+    if not history and question.strip().casefold().strip('¡!?. ') in ('привет','здравствуйте','добрый день','добрый вечер','доброе утро','hi','hello','hola','buenos días'):
         if playful and locale == 'ru':
             return 'Привет! Пушок на связи'+(' 🐾' if style.emoji else '!')+' Чем помочь?',False
         return lang.tr(locale, 'hello'),False
     facts=('В Android Flow на главной кнопка подключения. В настройках доступны маршруты приложений, подписки и диагностика. '
            'В Mini App вкладка VPN показывает срок доступа. Кнопка «Продлить» ведёт к оплате Stars. '
            'Отзыв подписки отключает доступ. Администратор может выдать новый профиль. '
-           'По расходу Stars, исправлению подписки и вопросам без проверенного ответа передавай вопрос сотруднику.')
+           'Индивидуальные операции с оплатой, подпиской или ключом передавай сотруднику.')
     cfg=ai.active('user_support')
     if cfg:
         try:
@@ -173,22 +173,59 @@ def answer(category,question,history,requested,locale="ru"):
                        'Говори спокойно, прямо, без шуток и образных выражений.')
             messages=[{'role':'system','content':f'Ты Pushok ИИ, поддержка Pushok. Отвечай кратко на языке {lang.MODEL_LANGUAGE[locale]}. '
                        'Ты не выполняешь действий, не видишь платежей и ключей. Не запрашивай секреты. '
-                       'Используй короткие абзацы, **жирное** и __курсив__. '+emoji_hint+' '+tone_hint+' Верни JSON с полями text и human (boolean). Если данных мало, попроси уточнение или поставь human=true. '+facts}]
-            messages += [{'role':'assistant' if m['sender']!='user' else 'user','content':lang.for_model(m['body'])[:1200]} for m in history[-6:]]
+                       'Учитывай начало разговора, предыдущие ответы и последнюю реплику. Если пользователь ответил на твой вопрос, '
+                       'используй эту деталь в ответе. Не спрашивай снова то, что он уже объяснил. Обсуди конкретный пример или предложи '
+                       'вариант решения. Задай максимум один уточняющий вопрос, только если он помогает. '
+                       'Предложения можно обсуждать, даже если такой функции пока нет. Не обещай выпуск, цену, платный доступ или срок. '
+                       'Оставляй human=false для обсуждения идей. При просьбе о сотруднике или необходимости проверить счёт поставь human=true. '
+                       f'Категория обращения: {category}. Используй короткие абзацы. '+emoji_hint+' '+tone_hint+
+                       ' Верни JSON с полями text и human (boolean). '+facts}]
+            for item in history:
+                role = 'user' if item['sender'] == 'user' else 'assistant'
+                name = {'user':'customer', 'staff':'staff', 'ai-agent':'pushok'}[item['sender']]
+                messages.append({'role':role, 'name':name, 'content':lang.for_model(item['body'])[:1800]})
             messages.append({'role':'user','content':lang.for_model(question)})
-            payload=dict(model=cfg[1],messages=messages,response_format={'type':'json_object'},max_completion_tokens=320)
+            payload=dict(model=cfg[1],store=False,messages=messages,response_format={'type':'json_object'},max_completion_tokens=320)
             req=Request('https://api.openai.com/v1/chat/completions',data=json.dumps(payload).encode(),headers={
                 'Content-Type':'application/json','Authorization':'Bearer '+cfg[0]})
             raw=json.loads(topics.read_url(req,8,24000))
             result=json.loads(raw['choices'][0]['message']['content'])
             if isinstance(result.get('text'),str) and result['text'].strip() and type(result.get('human')) is bool:
                 return result['text'].strip()[:2000],result['human']
-        except Exception:pass
+        except Exception as exc:
+            logging.getLogger(__name__).warning('Support model reply unavailable (%s)', type(exc).__name__)
+    if category == 'idea':
+        return lang.idea_followup(locale, question, history), False
+    if guide:
+        return lang.tr(locale, guide[0]), guide[1]
     return lang.tr(locale, 'fallback'),True
 
 
 def connection(dsn):
     return psycopg.connect(dsn,connect_timeout=3,row_factory=dict_row)
+
+
+def thread_context(db, cid):
+    # Keep the original request even after several rounds or a long wait for staff.
+    return db.execute('''SELECT sender,body FROM (
+        (SELECT id,sender,body FROM support_chat_messages
+         WHERE conversation_id=%s AND sender='user' ORDER BY id LIMIT 1)
+        UNION
+        (SELECT id,sender,body FROM support_chat_messages WHERE conversation_id=%s
+         AND NOT (sender='ai-agent' AND body=ANY(%s)) ORDER BY id DESC LIMIT 10)
+        ) AS history ORDER BY id''', (cid, cid, list(lang.COPY['queued']))).fetchall()
+
+
+def automatically_queued_idea(db, cid):
+    # Old versions answered every idea with one fixed invitation, then only receipts.
+    # One staff response or an explicit handoff in any language rules out recovery.
+    invitations = list(lang.COPY['idea'])
+    allowed = invitations + list(lang.COPY['queued'])
+    row = db.execute('''SELECT bool_or(body=ANY(%s)) AND
+        bool_and(sender='ai-agent' AND body=ANY(%s)) AS automatic
+        FROM support_chat_messages WHERE conversation_id=%s AND sender<>'user' ''',
+        (invitations, allowed, cid)).fetchone()
+    return bool(row['automatic'])
 
 
 def post(dsn,uid,msg):
@@ -208,11 +245,12 @@ def post(dsn,uid,msg):
         else:
             category=msg.category
             cid=db.execute('INSERT INTO support_conversations(telegram_id,category) VALUES(%s,%s) RETURNING id',(uid,category)).fetchone()['id']
-        history=list(reversed(db.execute('SELECT sender,body FROM support_chat_messages WHERE conversation_id=%s ORDER BY id DESC LIMIT 6',(cid,)).fetchall()))
         locale = lang.effective(lang.get(db, uid), msg.locale_hint)
-        if msg.case_id and case['state']=='waiting_staff' and not msg.human:
+        waiting = msg.case_id and case['state']=='waiting_staff' and not msg.human
+        if waiting and not (category=='idea' and automatically_queued_idea(db,cid)):
             reply,human=lang.tr(locale,'queued'),True
         else:
+            history = thread_context(db, cid) if msg.case_id and not msg.human else []
             reply,human=answer(category,msg.text,history,msg.human,locale)
         db.execute("INSERT INTO support_chat_messages(conversation_id,sender,body) VALUES(%s,'user',%s),(%s,'ai-agent',%s)",(cid,msg.text,cid,reply))
         db.execute('UPDATE support_conversations SET updated_at=now(),state=%s,reply_locale=%s WHERE id=%s',('waiting_staff' if human else 'open',locale,cid))

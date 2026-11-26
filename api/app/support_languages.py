@@ -36,6 +36,11 @@ COPY = {
     'handoff': ('Передал вопрос команде. Сотрудник увидит переписку и ответит здесь.', 'I’ve passed this conversation to the team. A person will reply here with the chat history available.', 'He pasado la conversación al equipo. Una persona podrá leer el historial y responderte aquí.'),
     'queued': ('Добавил сообщение к обращению. Команда увидит его вместе с перепиской.', 'I’ve added your message to the conversation for the team.', 'He añadido tu mensaje a la conversación para el equipo.'),
     'idea': ('Спасибо за идею! Команда увидит ваше предложение. Когда эта функция пригодилась бы вам больше всего?', 'Thanks for the idea! The team will see it. When would this feature help you most?', '¡Gracias por la idea! El equipo la recibirá. ¿Cuándo te sería más útil esta función?'),
+    'idea_ai': ('Какую задачу вы бы первой поручили Пушку, если бы такой чат уже был доступен?', 'If that chat were available today, what is the first task you would give Pushok?', 'Si ese chat estuviera disponible hoy, ¿qué tarea le pedirías primero a Pushok?'),
+    'idea_speed': ('Понял, важны и скорость, и качество. Для длинного ответа можно показывать первые строки сразу, пока Пушок дописывает остальные. Вам подошёл бы такой вариант?', 'You want a useful answer without the wait. For longer replies, Pushok could show the first lines as it writes the rest. Would that help?', 'Buscas una respuesta útil y rápida. Para respuestas largas, Pushok podría mostrarte las primeras líneas mientras escribe el resto. ¿Te serviría?'),
+    'idea_first': ('Как вы представляете это в работе? Можно на примере одного действия в приложении.', 'How would this work for you? One example of something you would do in the app would help.', '¿Cómo te gustaría que funcionara? Un ejemplo de algo que harías en la aplicación sería útil.'),
+    'idea_example': ('Какой результат вы хотели бы получить в этом примере?', 'What result would you like to get in that example?', '¿Qué resultado te gustaría obtener en ese ejemplo?'),
+    'idea_offline': ('Сейчас генерация ответов недоступна. Ваше уточнение сохранено вместе с идеей. Если хотите обсудить её с командой, выберите «Позвать сотрудника».', 'I can’t generate a full reply right now. Your detail is saved with the idea. Choose “Talk to a person” if you’d like to discuss it with the team.', 'Ahora mismo no puedo generar una respuesta completa. Tu aclaración queda junto a la idea. Elige «Hablar con el equipo» si quieres comentarla con una persona.'),
     'hello': ('Здравствуйте! Чем помочь с Pushok Flow или Mini App?', 'Hello! What can I help you with in Pushok Flow or the Mini App?', '¡Hola! ¿En qué puedo ayudarte con Pushok Flow o la Mini App?'),
     'fallback': ('На каком шаге возникла проблема и что написано на экране? Команда увидит вопрос и сможет ответить здесь.', 'Which step were you on, and what did the screen say? I’ve sent your question to the team so they can reply here.', '¿En qué paso estabas y qué decía la pantalla? He enviado la consulta al equipo para que pueda responderte aquí.'),
     'topup': ('Если баланс Stars равен нулю, Telegram открывает покупку звёзд. При **PROVIDER_ACCOUNT_INVALID** можно попробовать официальный @PremiumBot в Telegram Desktop или Web. После пополнения вернитесь в **VPN → Продлить**.', 'With a zero Stars balance, Telegram opens a Stars purchase. For **PROVIDER_ACCOUNT_INVALID**, try the official @PremiumBot in Telegram Desktop or Web. After topping up, return to **VPN → Продлить** (Renew).', 'Con saldo cero, Telegram abre la compra de Stars. Si aparece **PROVIDER_ACCOUNT_INVALID**, prueba el bot oficial @PremiumBot en Telegram Desktop o Web. Tras recargar, vuelve a **VPN → Продлить** (Renovar).'),
@@ -64,6 +69,33 @@ def tr(locale, key):
     return COPY[key][('ru','en','es').index(locale)]
 
 
+def idea_followup(locale, question, history):
+    """A small offline interview when generation is disabled or unavailable."""
+    earlier = [m['body'] for m in history if m['sender']=='user']
+    replies = {m['body'] for m in history if m['sender']=='ai-agent'}
+    topic = ' '.join([*earlier, question]).casefold()
+    ai_chat = re.search(r'\b(?:ии|ai|ia|chatbot|чатбот)\b|нейросет|чат[- ]бот', topic)
+    detail = question
+    if history and history[-1]['sender']=='user':
+        detail = history[-1]['body'] + ' ' + question
+    speed = re.search(r'быстр|тормоз|тупит|скорост|задержк|\b(?:fast|slow|lag|speed|rápid\w*|lent[oa])\b', detail.casefold())
+    if ai_chat and speed and replies.isdisjoint(COPY['idea_speed']):
+        return tr(locale,'idea_speed')
+    if ai_chat and not earlier:
+        return tr(locale,'idea_ai')
+    if not earlier:
+        return tr(locale,'idea_first')
+    if replies.isdisjoint((*COPY['idea_example'], *COPY['idea_speed'])):
+        return tr(locale,'idea_example')
+    return tr(locale,'idea_offline')
+
+
+def asks_for_staff(text):
+    return re.fullmatch(r'(?:(?:позови(?:те)?|пригласи(?:те)?|подключи(?:те)?) (?:оператора|сотрудника|человека)|'
+                        r'(?:talk|speak) to a (?:person|human)|hablar con (?:el equipo|una persona))[!. ]*',
+                        text.strip().casefold()) is not None
+
+
 def guided(text, history):
     words = text.casefold()
     from .flow_check_report import LABELS
@@ -73,7 +105,7 @@ def guided(text, history):
             return ('probe_ok',False) if ok else ('probe_failed',True)
     rules = [
         ('probe',False,r'(?:не (?:работает интернет|открыва[ею]тся сайт)|сайты не (?:работают|открываются)|no internet|sites? (?:won.t open|unreachable)|sin internet|sitios? no (?:abre|carga))'),
-        ('paid', True, r'списа[лн]|уже оплатил|already (?:charged|paid)|charged twice|ya (?:pagué|pagado|se cobr)|cobraron'),
+        ('paid', True, r'\bсписа[лн]|уже оплатил|already (?:charged|paid)|charged twice|ya (?:pagué|pagado|se cobr)|cobraron'),
         ('topup', False, r'provider_account_invalid|пополн.{0,18}(stars|зв[её]зд)|top.?up.{0,16}stars|recargar.{0,14}stars'),
         ('revoked', True, r'отозван|revoked|revocad'),
         ('traffic', False, r'расход|трафик|traffic usage|data usage|uso de datos|consumo'),
