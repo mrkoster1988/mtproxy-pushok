@@ -138,8 +138,8 @@ window.pushokVpn = (() => {
     const caption = el('span'), feedback = el('small',undefined,'muted');
     feedback.setAttribute('role','status');
     const options = [['limit','Изменить лимит профилей']];
-    if (['active','expired'].includes(row.state)) options.unshift(['extend','Добавить дни']);
-    if (row.state === 'active') options.push(['shorten','Сократить срок']);
+    if (!row.is_premium&&['active','expired'].includes(row.state)) options.unshift(['extend','Добавить дни']);
+    if (!row.is_premium&&row.state === 'active') options.push(['shorten','Сократить срок']);
     if (row.state === 'pending') options.push(['retry','Повторить выдачу']);
     if (row.state==='revoked') options.unshift(['restore','Выдать новый доступ']);
     else if (['active','expired'].includes(row.state)) options.push(['revoke','Отозвать доступ']);
@@ -237,12 +237,13 @@ window.pushokVpn = (() => {
       const state=edit?.statusButton||el('span',states[row.state]||'Уточняется','badge campaign-current');
       state.dataset.subscription=row.state;
       const tariff=el('small',row.tariff_name||'Тариф не указан','vpn-tariff');
+      if(row.is_premium){tile.classList.add('vpn-premium');tariff.classList.add('vpn-premium-label');}
       tariff.title='Тариф подписки';stack.append(state,tariff);if(edit)stack.append(edit.toggle);head.append(stack);
     }
     tile.append(head);
     if(row) {
       const dates=el('div',undefined,'vpn-dates tile-period');
-      dates.append(el('span',row.expires_at?'Доступ до '+date(row.expires_at):'Срок уточняется'));
+      dates.append(el('span',row.is_premium?'Бессрочный доступ':row.expires_at?'Доступ до '+date(row.expires_at):'Срок уточняется'));
       if(row.last_seen){
         const stamp=new Date(row.last_seen*1000);
         const seen=el('time',stamp.toLocaleString('ru-RU',{dateStyle:'short',timeStyle:'short'}),'vpn-seen');
@@ -268,7 +269,7 @@ window.pushokVpn = (() => {
     } else tile.append(el('p','У аккаунта пока нет VPN-подписки.','tile-period'));
     if(own){
       const actions=el('div',undefined,'vpn-links'),get=installer(localSystem());
-      actions.append(renewLink(),get);tile.append(actions);
+      if(!row?.is_premium)actions.append(renewLink());actions.append(get);tile.append(actions);
     }
     if(admin){
       if(edit)tile.append(edit.panel);
@@ -301,7 +302,7 @@ window.pushokVpn = (() => {
     const search=el('input'),sort=el('select'),bar=el('div',undefined,'vpn-directory-tools'),results=el('div',undefined,'vpn-results');
     search.type='search';search.placeholder='Имя, ник или ID';search.setAttribute('aria-label','Поиск подписки');
     sort.setAttribute('aria-label','Сортировка подписок');
-    for(const [key,label] of [['recent','По активности'],['traffic','По расходу'],['expires','По сроку'],['name','По имени']]){
+    for(const [key,label] of [['newest','Сначала новые'],['recent','По активности'],['traffic','По расходу'],['expires','По сроку'],['name','По имени']]){
       const o=el('option',label);o.value=key;sort.append(o);
     }
     const used=r=>{const v=usage(r,'all');return v?v[0]+v[1]:-1;};
@@ -309,7 +310,7 @@ window.pushokVpn = (() => {
       const q=search.value.trim().toLocaleLowerCase('ru').replace(/^@/,'');
       const found=members.filter(r=>[r.name,r.username,r.telegram_id,r.id].some(v=>String(v??'').toLocaleLowerCase('ru').includes(q)));
       const alpha=(a,b)=>a.name.localeCompare(b.name,'ru')||a.id.localeCompare(b.id);
-      found.sort((a,b)=>(sort.value==='traffic'?used(b)-used(a):sort.value==='expires'?(a.expires_at||Infinity)-(b.expires_at||Infinity):sort.value==='recent'?(b.last_seen||0)-(a.last_seen||0):0)||alpha(a,b));
+      found.sort((a,b)=>(sort.value==='newest'?(b.registered_at||0)-(a.registered_at||0):sort.value==='traffic'?used(b)-used(a):sort.value==='expires'?(a.expires_at||Infinity)-(b.expires_at||Infinity):sort.value==='recent'?(b.last_seen||0)-(a.last_seen||0):0)||alpha(a,b));
       results.replaceChildren(...found.map(r=>card(r,r.id,r.name,false,true,reload,false,true)));
       if(!found.length)results.append(el('p',q?'Подписки не найдены.':'Других подписок пока нет.','muted'));
     };
@@ -354,5 +355,5 @@ window.pushokVpn = (() => {
     if (id !== me?.id && !staff()) return;
     const block = el('div',undefined,'vpn-profile'); target.append(block); void show(block,id,false);
   }
-  return {load:(target,section)=>{if(section==='renew')return window.pushokVpnRenew.show(target);reset();return show(target,me?.id,true);},renewBack:()=>renewFrom,badge,profile,reset};
+  return {download,load:(target,section)=>{if(section==='renew')return window.pushokVpnRenew.show(target);reset();return show(target,me?.id,true);},renewBack:()=>renewFrom,badge,profile,reset};
 })();

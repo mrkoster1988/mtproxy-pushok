@@ -50,6 +50,7 @@ window.pushokVpnRenew = (() => {
     try { catalog=await api('/vpn/plans'); }
     catch(e) { if(visible())box.replaceChildren(el('p',e.message),button('Повторить',()=>show(target)));return; }
     if(!visible())return;
+    if(catalog.premium){box.replaceChildren(el('h2','Ваша подписка'),el('p','Продление сейчас не требуется. Подробности — в карточке VPN.'),button('Моя подписка',()=>window.cabinet.go('vpn')));return;}
     const choices=el('fieldset',undefined,'vpn-plans'); choices.append(el('legend','Срок продления'));
     const terms=el('details',undefined,'vpn-terms');
     terms.append(el('summary','Условия оплаты'),el('p',catalog.terms||''));

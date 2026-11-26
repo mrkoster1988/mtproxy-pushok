@@ -333,6 +333,14 @@ def main():
                 # the old shared 192px ceiling rejected the correct layout.
                 for width, diameter in ((320,150),(390,179.4),(430,197.8)):
                     advertiser.set_viewport_size({'width':width,'height':844})
+                    download = advertiser.locator('.dashboard-hero-actions .dashboard-flow-download')
+                    expect(download).to_have_attribute('href','/api/v1/vpn/flow.apk')
+                    expect(download).to_be_visible()
+                    assert download.evaluate("""e => {
+                        const r=e.getBoundingClientRect(), tile=e.closest('.dashboard-hero').getBoundingClientRect();
+                        const connect=document.querySelector('.dashboard-connect-proxy').getBoundingClientRect();
+                        return r.top>=connect.bottom-1 && r.bottom<=tile.bottom+1 && r.left>=tile.left && r.right<=tile.right;
+                    }"""), width
                     bounds = proxy.bounding_box()
                     assert abs(bounds['width'] - diameter) < 1, {'viewport':width,'expected':diameter,'actual':bounds}
                     assert abs(bounds['width'] - bounds['height']) < 1

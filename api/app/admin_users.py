@@ -37,7 +37,7 @@ def router_for(dsn, require_operator):
             raise HTTPException(422, 'invalid_user_sort')
         value = query.strip().lstrip('@')
         show_username = can_view_username(admin)
-        order = USER_SORTS[sort or 'recent']
+        order = USER_SORTS[sort or 'newest']
         if sort == 'name' and not show_username:
             order = order.replace("nullif(username,''),", '')
         ranking = ()

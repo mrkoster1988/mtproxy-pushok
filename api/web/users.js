@@ -19,13 +19,13 @@ window.pushokUsers=(()=>{
  function directory(target){
   if(!['admin','operator'].includes(me?.role)){target.replaceChildren();return;}
   const session=token,uid=me.id;
-  if(directoryView?.session!==session||directoryView.uid!==uid)directoryView={session,uid,sort:'recent',query:'',role:'',visited:false,page:0};
+  if(directoryView?.session!==session||directoryView.uid!==uid)directoryView={session,uid,sort:'newest',query:'',role:'',visited:false,page:0};
   const view=directoryView;
   let page=view.page,serial=0;
   const form=el('form',undefined,'directory-search'),search=el('input'),role=el('select'),visited=el('input'),vl=el('label','Только входившие в приложение'),list=el('div',undefined,'user-directory'),summary=el('p',undefined,'muted'),nav=el('nav',undefined,'profile-pagination');
   const sorting=el('select'),sortLabel=el('label','Сортировка');
   sortLabel.className='directory-sort';sorting.setAttribute('aria-label','Сортировка пользователей');
-  for(const [key,title] of [['recent','По последнему входу'],['newest','Сначала новые'],['oldest','Сначала ранние'],['name','По имени (А–Я)']])option(sorting,key,title);
+  for(const [key,title] of [['newest','Сначала новые'],['recent','По последнему входу'],['oldest','Сначала ранние'],['name','По имени (А–Я)']])option(sorting,key,title);
   sorting.value=view.sort;sortLabel.append(sorting);
   search.type='search';search.placeholder=me?.role==='admin'?'Никнейм, имя или ID':'Имя или ID';search.setAttribute('aria-label','Поиск пользователей');search.maxLength=100;role.setAttribute('aria-label','Категория пользователя');option(role,'','Все категории');for(const key of ['user','advertiser','friends','moderator','operator','admin','developer'])option(role,key,window.pushokTeam.roles[key]);visited.type='checkbox';vl.prepend(visited);const submit=el('button','Найти');submit.type='submit';search.value=view.query;role.value=view.role;visited.checked=view.visited;form.append(search,role,submit,sortLabel,vl);target.replaceChildren(form,window.pushokProfiles.agentCard('users'),summary,list,nav);
   list.addEventListener('friend-mark-changed',()=>{if(view.role==='friends')void load();});

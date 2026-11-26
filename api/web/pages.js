@@ -193,7 +193,11 @@
   }catch(error){if(version!==subscriptionEpoch||session!==token||uid!==me?.id)return;subscriptionRequired=true;subscriptionJoined=false;updateDashboardConnect();subscriptionStatus.textContent='Не удалось проверить подписку. Повторите позже; если ошибка сохраняется, попросите добавить бота администратором канала.';subscription.hidden=false;subscriptionActions.hidden=false;}
   finally{if(version===subscriptionEpoch)verifySubscription.disabled=false;}
  }
- const promoteChannel=link('Продвигать канал','create');promoteChannel.classList.add('dashboard-promote-channel');heroActions.append(connectProxy,subscription);listTools.before(promoteChannel);
+ const promoteChannel=link('Продвигать канал','create');promoteChannel.classList.add('dashboard-promote-channel');heroActions.append(connectProxy,subscription);
+ const androidDownload=el('a',undefined,'dashboard-flow-download');androidDownload.href='/api/v1/vpn/flow.apk';androidDownload.download='Pushok-Flow.apk';
+ androidDownload.append(window.pushokViews.icon('download'),el('span','Скачать Pushok Flow'),el('small','Android'));
+ androidDownload.addEventListener('click',event=>{if(window.Telegram?.WebApp?.isVersionAtLeast?.('8.0')&&typeof window.Telegram.WebApp.downloadFile==='function'){event.preventDefault();window.pushokVpn.download();}});
+ heroActions.append(androidDownload);listTools.before(promoteChannel);
  const dashboardMascot=el('img');dashboardMascot.src='/assets/pushok-pencil.png';dashboardMascot.alt='Пушок — кот в бирюзовом худи';dashboardMascot.width=240;dashboardMascot.height=258;
  dashboardHero.append(heroCopy,dashboardMascot,heroActions);
  const dashboardIntro=el('div',undefined,'dashboard-intro'),dashboardReferral=el('div');dashboardReferral.id='dashboard-referral';dashboardIntro.append(dashboardReferral,dashboardHero);pages.dashboard.insertBefore(dashboardIntro,stats.dashboard);

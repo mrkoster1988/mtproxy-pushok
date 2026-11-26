@@ -66,19 +66,28 @@ window.pushokVpnPlans=(()=>{
       if(!section.open||loaded)return;loaded=true;content.textContent='Загружаем тарифы…';
       try{
         const data=await api('/vpn/settings/plans'),plans=data.plans.filter(p=>p.enabled&&!p.free_traffic_gb);
+        if(data.premium)plans.unshift(data.premium);
+        if(row.tariff_retry){
+          const choice=row.tariff_retry;
+          plans.splice(0,plans.length,{id:choice.plan_id,name:choice.name,version:choice.plan_version,retry:true});
+        }
         if(!plans.length){content.textContent='В каталоге пока нет доступных тарифов WireGuard.';return;}
         const select=el('select');select.append(option('','Выберите тариф'),...plans.map(p=>option(p.id,p.name)));
         const terms=el('small',null,'muted'),save=el('button','Назначить тариф','ui-button labeled-action'),note=el('small',null,'muted');
         save.type='button';save.disabled=true;note.setAttribute('role','status');
         select.onchange=()=>{const plan=plans.find(p=>p.id===select.value);save.disabled=!plan;
-          terms.textContent=plan?plan.days+' дн. · '+plan.price+' ₽ / '+plan.stars+' ⭐ · доп. профилей '+plan.device_limit:'';};
+          terms.textContent=plan?.retry?'Повторим начатое изменение.':plan?.lifetime?'Подарок за счёт заведения · без срока и оплаты':plan?plan.days+' дн. · '+plan.price+' ₽ / '+plan.stars+' ⭐ · доп. профилей '+plan.device_limit:'';};
         save.onclick=async()=>{const p=plans.find(p=>p.id===select.value);if(!p||save.disabled)return;
           save.disabled=select.disabled=true;
           try{await api('/vpn/settings/plans/choice',{method:'POST',body:{subject,subscription_id:row.subscription_id,
             plan_id:p.id,plan_version:p.version,version:row.renewal_version||0,before:row.expires_at||0}});
             notice('Тариф изменён.',true);await reload();}
           catch(error){note.textContent=error.message;}finally{select.disabled=false;save.disabled=false;}};
-        content.replaceChildren(label('Новый тариф',select),terms,el('small','Лимит профилей изменится сразу. Дата окончания сохранится, списания не будет.','muted'),save,note);
+        const hint=el('small',null,'muted');
+        const update=select.onchange;select.onchange=()=>{update();const p=plans.find(p=>p.id===select.value);
+          hint.textContent=!p||p.retry?'':p.lifetime?'Пользователь получит поздравление от Пушка.':row.is_premium?'Бессрочный доступ сменится выбранным тарифом. Новый срок начнётся сегодня.':'Дата окончания сохранится, списания не будет.';};
+        content.replaceChildren(label('Новый тариф',select),terms,hint,save,note);
+        if(row.tariff_retry){select.value=plans[0].id;select.onchange();save.textContent='Повторить назначение';}
       }catch(error){content.textContent=error.message;loaded=false;}
     };
     return section;

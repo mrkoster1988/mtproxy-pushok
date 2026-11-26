@@ -143,7 +143,7 @@ def router_for(get_dsn, cabinet_user):
         accounts = data['accounts']
         own = accounts.get(str(user['id']))
         staff = is_staff(user)
-        public_fields = ('state', 'expires_at', 'online', 'last_seen', 'received', 'sent', 'device_limit', 'periods','revoked_at','tariff_name','renewal_name')
+        public_fields = ('state', 'expires_at', 'online', 'last_seen', 'received', 'sent', 'device_limit', 'periods','revoked_at','tariff_name','renewal_name','is_premium')
         result = {'sampled_at': data['sampled_at'], 'can_manage': staff,
                   'personal': {**{k: own.get(k) for k in public_fields}, 'phone_verified': bool(user.get('phone_verified'))} if own else None}
         if staff:
@@ -151,13 +151,13 @@ def router_for(get_dsn, cabinet_user):
             people = []
             if ids:
                 with psycopg.connect(get_dsn(), row_factory=dict_row) as conn:
-                    people = conn.execute("""SELECT id,first_name,last_name,username,telegram_user_id,
+                    people = conn.execute("""SELECT id,first_name,last_name,username,telegram_user_id,extract(epoch from created_at) AS registered_at,
                         EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=users.id
                                AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
                         FROM users WHERE id=ANY(%s) AND blocked_at IS NULL""", (environment_name(), ids)).fetchall()
             members = [{'id': str(p['id']), 'name': ' '.join(filter(None, (p['first_name'], p['last_name']))) or 'Участник',
-                        'username':p.get('username'),'telegram_id':p.get('telegram_user_id'),'phone_verified':bool(p.get('phone_verified')),
-                        **{k:accounts[str(p['id'])].get(k) for k in (*public_fields,'tunnel_ips','endpoint_ip','endpoint_platform','renewal_version','renewal_plan_id','subscription_id','pending_change')} } for p in people]
+                        'registered_at':float(p['registered_at']) if p.get('registered_at') else None,'username':p.get('username'),'telegram_id':p.get('telegram_user_id'),'phone_verified':bool(p.get('phone_verified')),
+                        **{k:accounts[str(p['id'])].get(k) for k in (*public_fields,'tunnel_ips','endpoint_ip','endpoint_platform','renewal_version','renewal_plan_id','subscription_id','pending_change','tariff_retry')} } for p in people]
             for member in members:
                 member['country_code'], member['city'] = location(member.get('endpoint_ip'))
             members.sort(key=lambda p: (-(p.get('last_seen') or 0), p['id']))

@@ -44,7 +44,7 @@ def due(p,row,now):
         if end<=now:return
         days=(end-now+DAY-1)//DAY
         thresholds=[d for d in p['expiry_days'] if days<=d]
-        if p['expiry_enabled'] and thresholds:
+        if not sub.get('is_premium') and p['expiry_enabled'] and thresholds:
             stage=min(thresholds)
             if not (sub.get('legacy_reminder') and stage==1):
                 yield 'expiry',f"{sub['subscription_id']}:{end}:{stage}",0,days,end
