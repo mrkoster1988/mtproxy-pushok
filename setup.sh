@@ -466,6 +466,7 @@ EOF
     database/080_pushok_ai_support.sql
     database/081_support_bot_actions.sql
     database/082_vpn_notice_copy.sql
+    database/083_vpn_notice_chat_resume.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"

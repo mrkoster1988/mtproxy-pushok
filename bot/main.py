@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from .telegram_environment import bot_api_url, environment_name
 from .wizard import DraftWizard, format_tariff
 from .navigation import Navigation
-from .vpn_notices import deliver as deliver_vpn_notices
+from .vpn_notices import deliver as deliver_vpn_notices, resume_on_start
 from .advertiser_notices import deliver_advertiser_notices
 from .operator_inbox import OperatorInbox
 from .lifecycle_notices import deliver_lifecycle_notices
@@ -738,6 +738,7 @@ def poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigatio
                     offset=next_offset
                     continue
                 if ready:
+                    resume_on_start(update, _internal_api, configured_bot_username())
                     verified = verification_response(update, _internal_api,
                         lambda method, payload: raw_telegram_call(token, method, payload, timeout=3))
                     if verified is not None:

@@ -36,3 +36,15 @@ class VpnNotices(TestCase):
                 open_url.return_value.__enter__.return_value=io.BytesIO(b'{}')
                 main._internal_api(route,{})
                 self.assertEqual(open_url.call_args.kwargs['timeout'],timeout)
+
+    def test_resume_requires_private_start_from_the_recipient(self):
+        from bot.vpn_notices import resume_on_start
+        api=Mock()
+        message={'from':{'id':123},'chat':{'type':'private','id':123},'text':'/start@PUSHOK_bot flow_link'}
+        with patch('bot.vpn_notices.is_test_environment',return_value=False):
+            for invalid in ({'text':'/start@other_bot'},{'text':'/help'},{'from':{'id':456}},
+                            {'chat':{'type':'group','id':123}},{'from':{'id':123,'is_bot':True}}):
+                resume_on_start({'message':{**message,**invalid}}, api, 'pushok_bot')
+            api.assert_not_called()
+            resume_on_start({'message':message},api,'pushok_bot')
+            api.assert_called_once_with('vpn-reminders/resume',{'telegram_user_id':123})

@@ -8,6 +8,24 @@ from .telegram_environment import is_test_environment
 log = logging.getLogger('pushok.bot.vpn')
 
 
+def resume_on_start(update, api, username):
+    if is_test_environment():
+        return
+    message = update.get('message') or {}
+    chat = message.get('chat') or {}
+    actor = message.get('from') or {}
+    words = (message.get('text') or '').lower().split(maxsplit=1)
+    if not words or words[0] not in ('/start', '/start@' + username.lower()):
+        return
+    if (chat.get('type') != 'private' or type(actor.get('id')) is not int
+            or actor['id'] <= 0 or chat.get('id') != actor['id'] or actor.get('is_bot')):
+        return
+    try:
+        api('vpn-reminders/resume', {'telegram_user_id':actor['id']})
+    except Exception as error:
+        log.warning('VPN chat resume unavailable: %s', type(error).__name__)
+
+
 def deliver(api, send, launch='https://pushok.shop/miniapp', queue='vpn-notices'):
     if is_test_environment():
         return

@@ -152,6 +152,15 @@ class PostgresIntegration(unittest.TestCase):
             self.assertEqual(claim(),[])
             def finish(row, status):
                 vpn_reminders.finish(Receipt(id=row['id'],lease=row['lease'],status=status),'ab'*32)
+            finish(item,'blocked')
+            self.assertEqual(claim(),[])
+            resumed = vpn_reminders.ResumedChat(telegram_user_id=tg)
+            vpn_reminders.resume(resumed,'ab'*32)
+            item, = claim()
+            vpn_reminders.resume(resumed,'ab'*32)
+            self.assertEqual(claim(),[])  # Restarting the bot preserves the active lease.
+            finish(item,'blocked')  # Late denial from before the user restarted the bot.
+            item, = claim()
             finish(item,'retry')
             with psycopg.connect(self.dsn) as conn:
                 conn.execute('UPDATE vpn_scheduled_notices SET next_attempt=0 WHERE id=%s',(item['id'],))

@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 from psycopg.rows import dict_row
 from fastapi import APIRouter, Header
+from pydantic import BaseModel, Field
 from .bot_routes import _verify_bot_secret
 from .vpn_cabinet import observations
 from .vpn_notices import Receipt
@@ -88,7 +89,7 @@ def claim():
                 lease=secrets.token_hex(16)
                 event=conn.execute("""INSERT INTO vpn_scheduled_notices(user_id,kind,anchor,lease,next_attempt)
                     VALUES(%s,%s,%s,%s,%s) ON CONFLICT(user_id,kind) DO UPDATE SET
-                    anchor=excluded.anchor,lease=excluded.lease,next_attempt=excluded.next_attempt,
+                    anchor=excluded.anchor,lease=excluded.lease,next_attempt=excluded.next_attempt,chat_reopened=false,
                     sent_at=CASE WHEN vpn_scheduled_notices.anchor=excluded.anchor THEN vpn_scheduled_notices.sent_at END
                     WHERE NOT vpn_scheduled_notices.blocked AND (vpn_scheduled_notices.anchor!=excluded.anchor OR
                     (vpn_scheduled_notices.next_attempt<=%s AND (vpn_scheduled_notices.sent_at IS NULL OR
@@ -116,7 +117,25 @@ def finish(receipt:Receipt,x_pushok_bot_secret:str|None=Header(default=None)):
     _verify_bot_secret(x_pushok_bot_secret)
     now=int(time.time())
     with psycopg.connect(os.environ['DATABASE_URL']) as conn:
-        conn.execute("""UPDATE vpn_scheduled_notices SET lease=NULL,next_attempt=%s,blocked=%s,
+        conn.execute("""UPDATE vpn_scheduled_notices SET lease=NULL,next_attempt=%s,blocked=(%s AND NOT chat_reopened),chat_reopened=false,
             sent_at=CASE WHEN %s THEN %s ELSE sent_at END WHERE id=%s AND lease=%s""",
             (now+300 if receipt.status=='retry' else now,receipt.status=='blocked',receipt.status=='sent',now,receipt.id,receipt.lease))
+    return {'ok':True}
+
+
+class ResumedChat(BaseModel):
+    telegram_user_id: int = Field(gt=0, le=2**63-1, strict=True)
+
+
+@router.post('/resume')
+def resume(chat: ResumedChat, x_pushok_bot_secret: str | None = Header(default=None)):
+    _verify_bot_secret(x_pushok_bot_secret)
+    with psycopg.connect(os.environ['DATABASE_URL']) as conn:
+        # Preserve a live lease. A 403 from a send started before /start can arrive late.
+        conn.execute("""UPDATE vpn_scheduled_notices n
+            SET blocked=false, chat_reopened=(n.lease IS NOT NULL),
+                next_attempt=CASE WHEN n.blocked THEN 0 ELSE n.next_attempt END
+            FROM users u WHERE n.user_id=u.id AND u.telegram_user_id=%s
+            AND u.blocked_at IS NULL AND (n.blocked OR n.lease IS NOT NULL)""",
+            (chat.telegram_user_id,))
     return {'ok':True}
