@@ -225,13 +225,13 @@ window.pushokVpn = (() => {
   }
   function planNotice(event,own){
     const box=el('details',undefined,'vpn-plan-notice');
-    const states={sent:'Telegram принял сообщение',waiting_chat:'Ожидает запуска чата с Pushok ИИ',
+    const states={sent:'Telegram принял сообщение',waiting_chat:'Ожидает запуска @mtproxy_pushok_bot',
       blocked:'Telegram запретил отправку в этот чат',retry:'Ожидает повторной отправки',
       paused:'Отправка уведомлений выключена в магазине',queued:'В очереди на отправку',unknown:'Для этой отправки подтверждение не сохранено'};
     const caption=own?'Сообщение о смене тарифа':'Уведомление о тарифе';
     box.append(el('summary',caption+' · '+date(event.created)),el('p',event.text),el('small',states[event.delivery]||states.unknown,'muted'));
     if(own&&event.delivery!=='sent'){
-      const link=el('a','Открыть Pushok ИИ','ui-button labeled-action');link.href='/ai-support';link.target='_blank';link.rel='noopener noreferrer';
+      const link=el('a','Открыть бота уведомлений','ui-button labeled-action');link.href='https://t.me/mtproxy_pushok_bot?start=notifications';link.target='_blank';link.rel='noopener noreferrer';
       box.append(link,el('small','В Telegram нажмите «Старт». Если бот заблокирован, сначала разблокируйте его.','muted'));
     }
     return box;

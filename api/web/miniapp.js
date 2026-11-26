@@ -41,9 +41,9 @@ window.pushokMiniApp=(()=>{
     if(state==='unsupported')shortcut.hidden=true;
    });
   }
-  const notify=document.createElement('a');notify.textContent='Подключить уведомления Pushok ИИ';
-  notify.className='ui-button labeled-action';notify.href='/ai-support';notify.target='_blank';notify.rel='noopener noreferrer';
-  const hint=document.createElement('small');hint.className='muted';hint.textContent='Откройте чат и нажмите «Старт». Туда придут изменения вашей подписки.';
+  const notify=document.createElement('a');notify.textContent='Подключить уведомления';
+  notify.className='ui-button labeled-action';notify.href='https://t.me/mtproxy_pushok_bot?start=notifications';notify.target='_blank';notify.rel='noopener noreferrer';
+  const hint=document.createElement('small');hint.className='muted';hint.textContent='Уведомления приходят в @mtproxy_pushok_bot. Если вы впервые открываете чат, нажмите «Старт».';
   section.append(notify,hint);
   if(section.childElementCount>1){phoneControls=section;target.append(section);}
  }

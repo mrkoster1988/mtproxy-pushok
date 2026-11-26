@@ -30,7 +30,7 @@ def deliver(api, send, launch='https://pushok.shop/miniapp', queue='vpn-notices'
             title=titles.get(item.get('category'),'🔔 VPN-подписка')
             body=item.get('formatted_body')
             body=body or escape(item['text'].removeprefix('Pushok ИИ').strip())
-            send({'chat_id':item['telegram_id'],'text':f'<b>{title}</b>\n\n{body}\n\n<i>Pushok ИИ</i>',
+            send({'chat_id':item['telegram_id'],'text':f'<b>{title}</b>\n\n{body}\n\n<i>Команда Pushok 🐾</i>',
                   'parse_mode':'HTML',
                   'reply_markup':{'inline_keyboard':[[button]]}})
             status = 'sent'
@@ -42,7 +42,7 @@ def deliver(api, send, launch='https://pushok.shop/miniapp', queue='vpn-notices'
                 detail = None
             if error.code == 403 and detail == 'recipient_blocked':
                 status = 'blocked'
-            elif queue == 'vpn-notices' and error.code == 503 and detail == 'support_bot_chat_not_started':
+            elif queue == 'vpn-notices' and error.code == 503 and detail == 'cabinet_bot_chat_not_started':
                 status = 'waiting_chat'
         except Exception:
             status = 'retry'

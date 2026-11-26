@@ -11,7 +11,7 @@ from uuid import UUID
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
-from .telegram_environment import bot_api_url, environment_name
+from .telegram_environment import bot_api_url, environment_name, is_test_environment
 from .wizard import DraftWizard, format_tariff
 from .navigation import Navigation
 from .vpn_notices import deliver as deliver_vpn_notices
@@ -738,12 +738,31 @@ def legacy_entry(update):
     if command=='/start':
         launch=miniapp_url()
         keys=[[{'text':'Войти в кабинет','web_app':{'url':launch}}]] if launch else []
-        text='Добро пожаловать! В этом чате можно войти в кабинет и оплатить заказ.'
+        text=('🐾 Уведомления подключены. Сюда будут приходить новости о подписке, оплате и кампаниях.'
+              if parameter=='notifications' else 'Добро пожаловать! Здесь можно войти в кабинет, оплатить заказ и получать уведомления.')
     else:
         keys=[]
         text='🐾 Поддержка, вопросы и предложения теперь в личном чате Pushok ИИ.'
     keys.append([{'text':'Открыть Pushok ИИ','url':'https://pushok.shop/ai-support'}])
     return ({'chat_id':chat['id'],'text':text,'reply_markup':{'inline_keyboard':keys}},callback.get('id'))
+
+
+def notification_chat_opened(update):
+    message = update.get('message') or {}
+    actor, chat = message.get('from') or {}, message.get('chat') or {}
+    uid = actor.get('id')
+    if chat.get('type') != 'private' or type(uid) is not int or uid <= 0 or uid != chat.get('id') or actor.get('is_bot'):
+        return False
+    words = (message.get('text') or '').lower().split()
+    if 'write_access_allowed' not in message and (not words or words[0] not in ('/start', '/start@'+configured_bot_username())):
+        return False
+    if not is_test_environment():
+        for queue in ('vpn-reminders', 'vpn-notices'):
+            try:
+                _internal_api(queue+'/resume', {'telegram_user_id': uid})
+            except (HTTPError, URLError, OSError, RuntimeError, ValueError) as exc:
+                LOG.warning('Не удалось возобновить %s: %s', queue, type(exc).__name__)
+    return True
 
 
 def poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigation, notifications):
@@ -767,6 +786,9 @@ def poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigatio
                 if join and ready:
                     _internal_api("analytics/join",join)
                     offset=next_offset
+                    continue
+                if ready and notification_chat_opened(update) and 'write_access_allowed' in (update.get('message') or {}):
+                    offset = next_offset
                     continue
                 if ready:
                     verified = verification_response(update, _internal_api,

@@ -87,11 +87,12 @@ def claim():
             if not sub and row['telegram_user_id'] in unlinked:continue
             for kind,anchor,repeat,days,stamp in due(policy,row,now):
                 lease=secrets.token_hex(16)
-                event=conn.execute("""INSERT INTO vpn_scheduled_notices(user_id,kind,anchor,lease,next_attempt)
-                    VALUES(%s,%s,%s,%s,%s) ON CONFLICT(user_id,kind) DO UPDATE SET
+                event=conn.execute("""INSERT INTO vpn_scheduled_notices(user_id,kind,anchor,lease,next_attempt,cabinet_sender)
+                    VALUES(%s,%s,%s,%s,%s,true) ON CONFLICT(user_id,kind) DO UPDATE SET
                     anchor=excluded.anchor,lease=excluded.lease,next_attempt=excluded.next_attempt,chat_reopened=false,
+                    blocked=false,cabinet_sender=true,
                     sent_at=CASE WHEN vpn_scheduled_notices.anchor=excluded.anchor THEN vpn_scheduled_notices.sent_at END
-                    WHERE NOT vpn_scheduled_notices.blocked AND (vpn_scheduled_notices.anchor!=excluded.anchor OR
+                    WHERE (NOT vpn_scheduled_notices.blocked OR NOT vpn_scheduled_notices.cabinet_sender) AND (vpn_scheduled_notices.anchor!=excluded.anchor OR
                     (vpn_scheduled_notices.next_attempt<=%s AND (vpn_scheduled_notices.sent_at IS NULL OR
                     (%s>0 AND vpn_scheduled_notices.sent_at+%s<=%s)))) RETURNING id""",
                     (row['id'],kind,anchor,lease,now+120,now,repeat,repeat*DAY,now)).fetchone()

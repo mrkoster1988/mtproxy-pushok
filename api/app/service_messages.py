@@ -1,5 +1,6 @@
-"""Send background notices from the configured Pushok ИИ bot and keep cabinet deep links."""
+"""Send background notices from the MTProxy cabinet bot and keep cabinet deep links."""
 import hmac
+import json
 import os
 import re
 import time
@@ -10,10 +11,13 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal
 
-from . import pushok_support as support
+from urllib.error import HTTPError
+from urllib.request import Request as TelegramRequest
+
+from .channel_topic_suggestions import read_url
 from .bot_routes import _verify_bot_secret
 from .flow_shop_ticket import bridge_key
-from .telegram_environment import is_test_environment
+from .telegram_environment import bot_api_url, is_test_environment
 
 router = APIRouter(include_in_schema=False)
 DOMAIN = b'pushok-shop-telegram-notice-v1:'
@@ -44,33 +48,57 @@ def cabinet_link(button):
     return {'text':str(button['text'])[:64], 'url':'https://t.me/'+username+'?startapp='+route}
 
 
-@lru_cache(maxsize=1)
-def verified_identity(key, username):
-    return support.verify_bot(key, username)['id']
+CABINET_BOT = 'mtproxy_pushok_bot'
 
 
-def send(notice,shop=False):
-    if is_test_environment():raise HTTPException(503,'service_bot_test_environment')
-    cfg=support.credential()
-    if not cfg['token']:raise HTTPException(503,'support_bot_not_configured')
+def telegram_call(token, method, payload):
+    request = TelegramRequest(bot_api_url(token, method), data=json.dumps(payload).encode(),
+                              headers={'Content-Type': 'application/json'})
     try:
-        identity=verified_identity(cfg['token'],cfg['username'])
-        with support.connection(os.environ['DATABASE_URL']) as db:
-            contact=db.execute('SELECT 1 FROM support_bot_contacts WHERE telegram_id=%s AND (bot_id=%s OR (bot_id=0 AND %s))',
-                        (notice.chat_id,identity,cfg.get('legacy_id',identity)==identity)).fetchone()
-        if not contact:raise HTTPException(503,'support_bot_chat_not_started')
-        payload=notice.model_dump(exclude_none=True)
-        if shop:
-            payload['reply_markup']={'inline_keyboard':[[{'text':'Открыть магазин','url':'https://pushok.shop/shop/'}]]}
-        elif notice.reply_markup:
-            payload['reply_markup']={'inline_keyboard':[[cabinet_link(button) for button in row]
-                                          for row in notice.reply_markup['inline_keyboard']]}
-        support.bot_call(cfg['token'],'sendMessage',payload)
-    except support.RecipientUnavailable as error:
-        if getattr(error,'telegram_status',None)==403:raise HTTPException(403,'recipient_blocked') from None
-        raise HTTPException(503,'service_notice_unavailable') from None
-    except (RuntimeError,KeyError,ValueError):raise HTTPException(503,'service_notice_unavailable') from None
-    return {'sent':True}
+        reply = json.loads(read_url(request, 8, 131072))
+    except HTTPError as error:
+        if method == 'sendMessage' and error.code in (400, 403):
+            try:
+                refusal = json.loads(error.read(8192))
+                description = str(refusal.get('description', '')).lower() if isinstance(refusal, dict) else ''
+            except (OSError, ValueError):
+                description = ''
+            if 'chat not found' in description or "can't initiate conversation" in description:
+                raise HTTPException(503, 'cabinet_bot_chat_not_started') from None
+            if error.code == 403 and ('blocked by the user' in description or 'user is deactivated' in description):
+                raise HTTPException(403, 'recipient_blocked') from None
+        raise HTTPException(503, 'service_notice_unavailable') from None
+    except (OSError, ValueError):
+        raise HTTPException(503, 'service_notice_unavailable') from None
+    if not isinstance(reply, dict) or reply.get('ok') is not True or not isinstance(reply.get('result'), dict):
+        raise HTTPException(503, 'service_notice_unavailable')
+    return reply['result']
+
+
+@lru_cache(maxsize=1)
+def verify_sender(token):
+    identity = telegram_call(token, 'getMe', {})
+    if identity.get('is_bot') is not True or str(identity.get('username', '')).lower() != CABINET_BOT:
+        raise HTTPException(503, 'cabinet_bot_wrong_identity')
+
+
+def send(notice, shop=False):
+    if is_test_environment():
+        raise HTTPException(503, 'service_bot_test_environment')
+    token = os.getenv('TELEGRAM_BOT_TOKEN', '')
+    if not re.fullmatch(r'[0-9]{1,16}:[a-zA-Z0-9_-]{25,250}', token):
+        raise HTTPException(503, 'cabinet_bot_not_configured')
+    verify_sender(token)
+    payload = notice.model_dump(exclude_none=True)
+    if shop:
+        payload['reply_markup'] = {'inline_keyboard': [[{'text': 'Открыть магазин', 'url': 'https://pushok.shop/shop/'}]]}
+    elif notice.reply_markup:
+        payload['reply_markup'] = {'inline_keyboard': [[cabinet_link(button) for button in row]
+                                     for row in notice.reply_markup['inline_keyboard']]}
+    message = telegram_call(token, 'sendMessage', payload)
+    if not message.get('message_id') or (message.get('chat') or {}).get('id') != notice.chat_id:
+        raise HTTPException(503, 'service_notice_unconfirmed')
+    return {'sent': True}
 
 
 @router.post('/api/v1/internal/bot/service-message')

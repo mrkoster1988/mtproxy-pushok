@@ -44,7 +44,17 @@ def relay(operation, payload):
 @router.post('/claim')
 def claim(x_pushok_bot_secret: str | None = Header(default=None)):
     _verify_bot_secret(x_pushok_bot_secret)
-    return relay('claim',{'scheduled_by_cabinet':True})
+    return relay('claim',{'scheduled_by_cabinet':True,'notification_sender':'mtproxy_pushok_bot'})
+
+
+class ChatOpened(BaseModel):
+    telegram_user_id: int = Field(gt=0, le=2**52, strict=True)
+
+
+@router.post('/resume')
+def resume(chat: ChatOpened, x_pushok_bot_secret: str | None = Header(default=None)):
+    _verify_bot_secret(x_pushok_bot_secret)
+    return relay('resume-chat', {'telegram_id':chat.telegram_user_id})
 
 
 @router.post('/finish')

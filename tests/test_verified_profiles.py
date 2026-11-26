@@ -125,7 +125,7 @@ class VerificationIntegration(unittest.TestCase):
 
         def telegram(token, method, payload, **kwargs):
             if method == 'getMe':
-                return {'username': 'mtproxy_pushok_bot'}
+                return {'username': 'mtproxy_pushok_bot', 'is_bot':True}
             if method == 'getWebhookInfo':
                 return {}
             if method == 'getUpdates':
@@ -157,17 +157,15 @@ class VerificationIntegration(unittest.TestCase):
                 return {'birthdate': {'day': birthday.day, 'month': birthday.month}}
             if method == 'sendMessage':
                 messages.append(payload)
-                return {'message_id': len(messages)}
+                return {'message_id': len(messages), 'chat':{'id':payload['chat_id']}}
             self.fail('Unexpected Telegram method: '+method)
 
-        self.db('INSERT INTO support_bot_contacts(telegram_id,bot_id) VALUES(%s,123)',(self.tg,))
-        def support_send(key,method,payload):
-            self.assertEqual(key,'123:fixture')
+        cabinet_key = '123:'+'C'*32
+        def cabinet_send(key,method,payload):
+            self.assertEqual(key,cabinet_key)
             return telegram(key,method,payload)
-        with patch('app.service_messages.support.credential',return_value={'token':'123:fixture','username':'server_pushok_bot'}), \
-             patch('app.service_messages.verified_identity',return_value=123), \
-             patch('app.service_messages.support.bot_call',side_effect=support_send), \
-             patch.dict(os.environ, {'DATABASE_URL':self.dsn,'TELEGRAM_BOT_TOKEN': 'local-fixture',
+        with patch('app.service_messages.telegram_call',side_effect=cabinet_send), \
+             patch.dict(os.environ, {'DATABASE_URL':self.dsn,'TELEGRAM_BOT_TOKEN': cabinet_key,
                                     'TELEGRAM_BOT_USERNAME': 'mtproxy_pushok_bot'}), \
              patch.object(bot, 'urlopen', side_effect=bridge), \
              patch.object(bot, 'raw_telegram_call', side_effect=telegram), \
