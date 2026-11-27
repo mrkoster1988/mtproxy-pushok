@@ -44,7 +44,7 @@ class FakeDB:
         self.exited_error = error_type
         return False
 
-    def execute(self, query, values):
+    def execute(self, query, values=None):
         self.calls.append((query, values))
         return DBResult(next(self.rows))
 
@@ -56,7 +56,7 @@ def fake_db(created=True, owner=USER_ID, channel=CHANNEL_ID):
     }
     return FakeDB([
         tariff,
-        None, {"id": USER_ID, "blocked_at": None}, {"id":USER_ID}, {"verified":True},
+        None, {"id": USER_ID, "blocked_at": None}, {"verification_enabled":True}, {"id":USER_ID}, {"verified":True},
         None, {"id": CHANNEL_ID},
         {"id": CAMPAIGN_ID} if created else None,
         *([] if created else [{
@@ -90,10 +90,10 @@ class DraftAPITests(unittest.TestCase):
         self.assertEqual(payload["moderation_status"], "draft")
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(db.calls[1][1], (123,))
-        self.assertEqual(db.calls[5][1], (USER_ID, "https://t.me/mychannel", "@mychannel"))
-        self.assertIn("bot_request_key", db.calls[7][0])
-        self.assertIn("ON CONFLICT (bot_request_key)", db.calls[7][0])
-        self.assertEqual(db.calls[7][1][-1].hex, KEY.replace("-", ""))
+        self.assertEqual(db.calls[6][1], (USER_ID, "https://t.me/mychannel", "@mychannel"))
+        self.assertIn("bot_request_key", db.calls[8][0])
+        self.assertIn("ON CONFLICT (bot_request_key)", db.calls[8][0])
+        self.assertEqual(db.calls[8][1][-1].hex, KEY.replace("-", ""))
 
     def test_repeated_key_returns_same_id(self):
         db = fake_db(created=False)
