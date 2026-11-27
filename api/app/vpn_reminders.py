@@ -62,6 +62,21 @@ def due(p,row,now):
 
 
 def claim():
+    with psycopg.connect(os.environ['DATABASE_URL'],row_factory=dict_row) as conn:
+        gifts=conn.execute('''SELECT n.id,g.id AS gift_id,u.telegram_user_id,g.rank,g.score,g.days FROM vpn_scheduled_notices n
+            JOIN hall_flow_gifts g ON g.user_id=n.user_id AND n.kind='hall_gift_'||g.period_id::text
+            JOIN users u ON u.id=n.user_id WHERE NOT n.blocked AND n.sent_at IS NULL AND g.expires IS NULL
+            AND n.next_attempt<=extract(epoch from now()) AND u.blocked_at IS NULL AND u.telegram_user_id>0
+            ORDER BY n.id LIMIT 5 FOR UPDATE OF n SKIP LOCKED''').fetchall()
+        items=[]
+        for gift in gifts:
+            lease=secrets.token_hex(16)
+            conn.execute('UPDATE vpn_scheduled_notices SET lease=%s,next_attempt=%s,chat_reopened=false WHERE id=%s',
+                         (lease,int(time.time())+120,gift['id']))
+            term='3 месяца' if gift['days']==90 else '1 месяц'
+            items.append(dict(id=gift['id'],lease=lease,telegram_id=gift['telegram_user_id'],category='hall_gift',gift_id=str(gift['gift_id']),
+                text=f"Тебе в подарок — {term} Pushok Flow!",rank=gift['rank'],score=gift['score'],days=gift['days'],renew=False))
+        if items:return items
     data=observations()
     now=int(time.time())
     if data.get('activity_schema')!=1 or not 0<=now-data['sampled_at']<=180:return []

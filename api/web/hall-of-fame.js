@@ -43,19 +43,71 @@ window.pushokHall=(()=>{
   await refresh();if(me?.role==='admin'&&valid())await adminPanel(admin,valid);
  }
  async function adminPanel(target,valid){
-  try{const data=await api('/hall/admin');if(!valid())return;const box=el('details',undefined,'hall-admin panel');box.append(el('summary','Управление и статистика'));target.replaceChildren(box);
+  try{const data=await api('/hall/admin');if(!valid())return;const box=el('details',undefined,'hall-admin panel');box.open=location.hash==='#/hall/settings';box.append(el('summary','Управление и статистика'));target.replaceChildren(box);
    box.append(el('p','Победителей: '+fmt(data.totals.winners)+' · Призовых мест: '+fmt(data.totals.awards)+' · Начислено: '+fmt(data.totals.bonus/100)+' бонусных ₽'));
    const activity=el('details');activity.append(el('summary','Статистика текущего месяца'));for(const [key,item] of Object.entries(data.activity)){if(!titles[key])continue;activity.append(el('p',titles[key]+' · участников: '+fmt(item.participants)+' · всего: '+fmt(key==='spend'?item.total/100:item.total)));}box.append(activity);
    const form=el('form'),size=el('input');size.type='number';size.min=3;size.max=200;size.value=data.settings.top_size;const sizeLabel=el('label','Размер топа');sizeLabel.append(size);form.append(sizeLabel);
    const period=el('select'),metric=el('select');period.setAttribute('aria-label','Период наград');metric.setAttribute('aria-label','Номинация наград');for(const [k,t] of Object.entries(kinds)){const o=el('option',t);o.value=k;period.append(o);}for(const [k,t] of Object.entries(titles)){const o=el('option',t);o.value=k;metric.append(o);}
+   const rules=data.settings.flow_gifts, gifts=el('fieldset');
+   gifts.append(el('legend','Подарки Pushok Flow за месяц'));
+   function field(text,input){const label=el('label',text);label.append(input);gifts.append(label);return input;}
+   const enabled=field('Выдавать подарки',el('input'));enabled.type='checkbox';enabled.checked=rules.enabled;
+   const minimum=field('Минимум приглашённых (0 — без порога)',el('input'));minimum.type='number';minimum.min=0;minimum.max=1000000;minimum.required=true;minimum.value=rules.minimum;
+   const durations=rules.days.map((days,i)=>{
+    const select=field('Место '+(i+1),el('select'));
+    for(const [n,text] of [[0,'Без подарка'],[30,'1 месяц · 30 дней'],[90,'3 месяца · 90 дней']]){
+     const option=el('option',text);option.value=n;select.append(option);
+    }
+    select.value=days;return select;
+   });
+   form.append(gifts);
    const rewards=structuredClone(data.settings.rewards),grid=el('div',undefined,'hall-prize-grid');form.append(period,metric,grid);let previousKind=period.value,previousMetric=metric.value;
    function persist(){rewards[previousKind]??={};rewards[previousKind][previousMetric]=[...grid.querySelectorAll('input')].map(i=>Math.round(Number(i.value)*100));}
    function paint(){previousKind=period.value;previousMetric=metric.value;grid.replaceChildren();for(let i=0;i<10;i++){const label=el('label','Место '+(i+1)),input=el('input');input.type='number';input.min=0;input.max=previousMetric==='spend'?2000000:1000000;input.step='0.01';input.value=(rewards[previousKind]?.[previousMetric]?.[i]||0)/100;label.append(input);grid.append(label);}}
    period.onchange=metric.onchange=()=>{persist();paint();};paint();const submit=window.pushokViews.iconAction(el('button',undefined,'primary'),'save','Сохранить настройки');submit.type='submit';const status=el('p',undefined,'muted');status.setAttribute('role','status');
    form.append(el('small','Награды — в бонусных рублях. 0 означает без награды. Новые правила действуют со следующего месяца или года; правила текущих периодов сохраняются.','muted'),submit,status);
-   form.onsubmit=async e=>{e.preventDefault();persist();submit.disabled=true;try{await api('/hall/admin/settings',{method:'PUT',body:{top_size:Number(size.value),rewards}});if(valid())status.textContent='Сохранено для следующих периодов.';}catch(err){if(valid())status.textContent=err.message;}finally{submit.disabled=false;}};box.append(form);
+   form.onsubmit=async e=>{e.preventDefault();persist();submit.disabled=true;try{await api('/hall/admin/settings',{method:'PUT',body:{top_size:Number(size.value),rewards,flow_gifts:{enabled:enabled.checked,minimum:Number(minimum.value),days:durations.map(input=>Number(input.value))}}});if(valid())status.textContent='Сохранено для следующих периодов.';}catch(err){if(valid())status.textContent=err.message;}finally{submit.disabled=false;}};box.append(form);
    const history=el('details');history.append(el('summary','История итогов и начислений'));for(const p of data.history)history.append(el('p',kinds[p.kind]+' · '+date(p.starts_at)+' · '+(p.closed_at?'Закрыт':'Текущий')+' · '+p.places+' мест · '+fmt(p.bonus/100)+' бонусных ₽'));box.append(history);
   }catch(e){if(valid())target.replaceChildren(el('p',e.message,'muted'),button('Повторить',()=>adminPanel(target,valid)));}
  }
- return {load,medals,frame};
+ async function achievements(target){
+  const session=token,uid=me.id;
+  const current=()=>session===token&&me?.id===uid&&location.hash==='#/achievements';
+  target.replaceChildren(el('p','Загружаем награды…','muted'));
+  try{
+   const [data,gifts,prizes]=await Promise.all([api('/users/'+encodeURIComponent(uid)+'/profile'),api('/hall/gifts'),api('/contests/mine')]);
+   if(!current())return;
+   target.replaceChildren();
+   for(const p of prizes){
+    const a=el('a',window.pushokContests.term(p.days)+' Pushok Flow · '+p.title,'panel');a.href='#/prize/'+p.id;
+    a.append(el('small',p.expires?' · Получен':' · Оформляется'));target.append(a);
+   }
+   for(const gift of gifts){
+    const card=el('article',undefined,'panel'),art=el('img');
+    art.src='/assets/flow-gift-'+gift.days+'.jpg';art.alt='';art.width=120;
+    const status=el('p',undefined,'muted');
+    card.append(art,el('h3',gift.days===90?'3 месяца Pushok Flow':'1 месяц Pushok Flow'),
+                el('p',gift.rank+'-е место · '+month(gift.starts_at)+' · приглашено: '+gift.score),status);
+    const showExpiry=end=>{status.textContent='Доступ до '+date(end*1000);};
+    if(gift.expires)showExpiry(gift.expires);
+    else{
+     const action=button('Забрать подарок',async()=>{
+      action.disabled=true;
+      try{
+       const result=await api('/hall/gifts/'+encodeURIComponent(gift.id)+'/claim',{method:'POST'});
+       if(result.expires){showExpiry(result.expires);action.remove();}
+       else{status.textContent='Оформляем подписку.';action.textContent='Проверить статус';}
+      }catch(error){status.textContent=error.message;}finally{action.disabled=false;}
+     });card.append(action);
+    }
+    target.append(card);
+   }
+   if(data.medals?.length){
+    medals(target,data);
+    target.querySelector('details').open=true;
+   }else target.append(el('p','Здесь появятся ваши медали по итогам рейтинга.','muted'));
+   const board=el('a','Посмотреть рейтинг');board.href='#/hall';target.append(board);
+  }catch(error){if(current())target.replaceChildren(el('p',error.message),button('Повторить',()=>achievements(target)));}
+ }
+ return {load,medals,frame,achievements};
 })();

@@ -1,0 +1,105 @@
+'use strict';
+window.pushokContests=(()=>{
+ const root='/contests';
+ const term=days=>days===90?'3 месяца':'1 месяц';
+ const link=id=>'https://t.me/mtproxy_pushok_bot?startapp=prize_'+id.replaceAll('-','');
+ const end=stamp=>new Date(stamp*1000).toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow'});
+ function field(form,title,type,value=''){
+  const label=el('label',title),input=el('input');input.type=type;input.value=value??'';
+  input.required=true;if(type==='number'){input.step='1';input.min='0';}
+  label.append(input);form.append(label);return input;
+ }
+ function action(host,title,fn){
+  const status=el('small'),btn=button(title,async()=>{
+   btn.disabled=true;status.textContent='';
+   try{await fn();}catch(error){status.textContent=/^[А-ЯЁ]/.test(error.code||'')?error.code:error.message;}
+   finally{btn.disabled=false;}
+  });
+  btn.type='button';status.setAttribute('role','status');host.append(btn,status);
+ }
+ function textForm(host,event,allocate,done){
+  const form=el('form'),title=field(form,'Название мероприятия','text',event.title),sender=field(form,'От кого подарок','text',event.sender);
+  title.maxLength=90;sender.maxLength=64;
+  const greeting=field(form,'Поздравление','text',event.greeting);greeting.required=false;greeting.maxLength=400;
+  let owner,month,quarter;
+  if(allocate){
+   owner=field(form,'Telegram ID организатора','number',me.telegram_user_id||'');owner.min='1';
+   month=field(form,'Количество призов на месяц','number',0);quarter=field(form,'Количество призов на три месяца','number',0);
+   month.max=quarter.max='10000';
+  }
+  const submit=async()=>{
+   if(!form.reportValidity())return;
+   const body={title:title.value,sender:sender.value,greeting:greeting.value};
+   if(allocate)Object.assign(body,{organizer:Number(owner.value),month_limit:Number(month.value),quarter_limit:Number(quarter.value)});
+   const result=await api(allocate?root:root+'/events/'+event.id,{method:allocate?'POST':'PUT',body});
+   done(result);
+  };
+  form.onsubmit=e=>{e.preventDefault();form.querySelector('button').click();};
+  action(form,allocate?'Создать мероприятие':'Сохранить',submit);host.append(form);
+ }
+ async function render(host,id){
+  const session=token,route=location.hash;
+  const current=()=>session===token&&location.hash===route;
+  host.replaceChildren(el('p','Загружаем…'));
+  try{
+   if(!id){
+    const events=await api(root);if(!current())return;host.replaceChildren();
+    if(me.role==='admin'){
+     const create=el('details',undefined,'panel');create.append(el('summary','Создать мероприятие и выделить призы'));
+     textForm(create,{},true,r=>window.cabinet.go('events/'+r.id));host.append(create);
+    }
+    for(const event of events){const a=el('a',event.title,'panel');a.href='#/events/'+event.id;host.append(a);}
+    if(!events.length)host.append(el('p','Здесь появятся мероприятия, для которых вам выделили призы.'));
+    return;
+   }
+   if(route.startsWith('#/prize/')){
+    const prize=await api(root+'/prizes/'+id);if(!current())return;
+    const card=el('article',undefined,'panel'),art=el('img');art.src='/assets/flow-gift-'+prize.days+'.jpg';art.alt='';art.style.cssText='width:min(100%,280px);border-radius:16px';
+    card.append(art,el('h2',term(prize.days)+' Pushok Flow'),el('strong',prize.title),el('p',prize.greeting),el('small','От '+prize.sender));
+    if(prize.expires)card.append(el('p','Подарок получен · доступ до '+end(prize.expires)));
+    else action(card,'Забрать подарок',async()=>{
+     const result=await api(root+'/prizes/'+id+'/claim',{method:'POST'});
+     if(!current())return;
+     if(result.expires)return render(host,id);
+     throw Error('Готовим подключение. Проверьте подарок ещё раз через минуту.');
+    });
+    host.replaceChildren(card);return;
+   }
+   const path=root+'/events/'+id,event=await api(path);if(!current())return;
+   host.replaceChildren(el('h2',event.title));
+   const settings=el('details');settings.append(el('summary','Оформление карточки'));textForm(settings,event,false,()=>render(host,id));host.append(settings);
+   const form=el('form',undefined,'panel'),duration=el('select'),label=el('label','Срок подписки');
+   for(const days of [30,90]){
+    const limit=days===30?event.month_limit:event.quarter_limit;
+    const left=limit-event.prizes.filter(p=>p.days===days&&!p.revoked).length;
+    const o=el('option',term(days)+' · осталось '+left);o.value=days;o.disabled=left<=0;duration.append(o);
+   }
+   label.append(duration);form.append(label);
+   const recipient=field(form,'Telegram ID победителя (для именного подарка)','number');recipient.required=false;recipient.min='1';
+   form.append(el('small','Если оставить поле пустым, подарок сможет забрать первый получатель ссылки.'));
+   let request='',previous='';
+   action(form,'Создать подарок',async()=>{
+    if(!form.reportValidity()||!duration.value)return;
+    const body={days:Number(duration.value),recipient:recipient.value?Number(recipient.value):null};
+    if(JSON.stringify(body)!==previous){request=crypto.randomUUID();previous=JSON.stringify(body);}
+    await api(path+'/prizes',{method:'POST',body:{...body,request_id:request}});if(current())await render(host,id);
+   });form.onsubmit=e=>{e.preventDefault();form.querySelector('button').click();};host.append(form);
+   for(const p of event.prizes){
+    const card=el('article',undefined,'panel');
+    card.append(el('strong',term(p.days)+' Pushok Flow'),el('p',p.recipient?'Для Telegram ID '+p.recipient:'Одноразовая ссылка'),
+     el('small',p.revoked?'Отозван':p.expires?'Получен · доступ до '+end(p.expires):p.winner?'Оформляется':'Готов к отправке'));
+    if(!p.revoked&&!p.winner){
+     action(card,'Отправить карточку',async()=>{
+      const app=window.Telegram?.WebApp;
+      if(!app?.shareMessage||!app.isVersionAtLeast('8.0'))throw Error('Скопируйте ссылку или откройте этот экран в обновлённом Telegram.');
+      const prepared=await api(path+'/prizes/'+p.id+'/share',{method:'POST'});if(current())app.shareMessage(prepared.id);
+     });
+     action(card,'Скопировать ссылку',async()=>{await navigator.clipboard.writeText(link(p.id));notice('Ссылка скопирована');});
+     action(card,'Отозвать',async()=>{if(confirm('Отозвать этот подарок и вернуть его в лимит?')){await api(path+'/prizes/'+p.id+'/revoke',{method:'POST'});if(current())await render(host,id);}});
+    }
+    host.append(card);
+   }
+  }catch(error){if(current())host.replaceChildren(el('p',/^[А-ЯЁ]/.test(error.code||'')?error.code:error.message),button('Повторить',()=>render(host,id)));}
+ }
+ return {render,term};
+})();

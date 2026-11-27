@@ -31,10 +31,14 @@ class Notice(BaseModel):
     parse_mode: Literal['HTML'] | None = None
     reply_markup: dict | None = None
     rich: bool = False
+    trial_gift: bool = False
+    gift_days: Literal[30,90] | None = None
 
 
 def cabinet_link(button):
     route = button.get('callback_data','')
+    if re.fullmatch(r'flowgift:[0-9a-f-]{36}',route):
+        return {'text':'Забрать подарок','callback_data':route,'style':'primary'}
     if route == 'subscription_widget':
         return {'text': str(button['text'])[:64], 'callback_data': route, 'style': 'primary'}
     if 'web_app' in button:
@@ -45,7 +49,7 @@ def cabinet_link(button):
     detail = re.fullmatch(r'(archive|campaign|moderation)/([0-9a-f-]{36})',route)
     if detail:
         route = '_'.join(detail.groups())
-    elif route not in ('vpn','vpn_renew','campaigns','moderation','profile','sponsors','create','channels'):
+    elif route not in ('vpn','vpn_renew','achievements','hall','campaigns','moderation','profile','sponsors','create','channels'):
         route = 'dashboard'
     username = os.getenv('TELEGRAM_BOT_USERNAME','mtproxy_pushok_bot')
     if not re.fullmatch(r'[A-Za-z0-9_]{5,32}',username): raise HTTPException(503,'cabinet_bot_unavailable')
@@ -61,7 +65,7 @@ def telegram_call(token, method, payload):
     try:
         reply = json.loads(read_url(request, 8, 131072))
     except HTTPError as error:
-        if method in ('sendMessage','sendWidget','sendRichMessage','editMessageWidgetData','editMessageText') and error.code in (400,403,404):
+        if method in ('sendPhoto','sendMessage','sendWidget','sendRichMessage','editMessageWidgetData','editMessageText') and error.code in (400,403,404):
             try:
                 refusal = json.loads(error.read(8192))
                 description = str(refusal.get('description', '')).lower() if isinstance(refusal, dict) else ''
@@ -111,7 +115,7 @@ def send(notice, shop=False):
     if not re.fullmatch(r'[0-9]{1,16}:[a-zA-Z0-9_-]{25,250}', token):
         raise HTTPException(503, 'cabinet_bot_not_configured')
     verify_sender(token)
-    payload = notice.model_dump(exclude_none=True, exclude={'rich'})
+    payload = notice.model_dump(exclude_none=True, exclude={'rich','gift_days','trial_gift'})
     if shop:
         payload['reply_markup'] = {'inline_keyboard': [[{'text': 'Открыть магазин', 'url': 'https://pushok.shop/shop/'}]]}
     elif notice.reply_markup:
@@ -119,7 +123,12 @@ def send(notice, shop=False):
                                      for row in notice.reply_markup['inline_keyboard']]}
     rich = rich_notice(notice.text) if notice.rich and notice.parse_mode == 'HTML' and not shop else None
     message = None
-    if rich:
+    if (notice.trial_gift or notice.gift_days) and not shop:
+        asset = 'pushok-pencil.png' if notice.trial_gift else f'flow-gift-{notice.gift_days}.jpg'
+        payload['photo']='https://pushok.shop/assets/'+asset
+        payload['caption']=payload.pop('text')
+        message=telegram_call(token,'sendPhoto',payload)
+    elif rich:
         rich_payload = {key:value for key,value in payload.items() if key not in ('text','parse_mode')}
         try:
             message = telegram_call(token, 'sendRichMessage', dict(rich_payload, rich_message=rich))
@@ -131,6 +140,8 @@ def send(notice, shop=False):
     if not message.get('message_id') or (message.get('chat') or {}).get('id') != notice.chat_id:
         raise HTTPException(503, 'service_notice_unconfirmed')
     from .recipient_history import record
+    if (notice.trial_gift or notice.gift_days) and 'caption' in message:
+        message=dict(message,text=message['caption'])
     if rich and 'text' not in message:
         message = dict(message, text=unescape(re.sub(r'</?[bi]>', '', notice.text)))
     record(os.getenv('DATABASE_URL'),message)

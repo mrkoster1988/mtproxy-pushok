@@ -280,11 +280,11 @@ window.pushokViews=(()=>{
   if(location.hash.startsWith('#/profile'))void window.pushokProfiles.ownOverview(overview);
   if(me.role==='admin'||hasDeveloperAccess(me))window.pushokVerification.profile(target);
   window.pushokGateway?.profile(target);
-  const groups=[['Мой кабинет',[['channels','channel','Мои каналы'],['reports','chart','Отчёты'],...(me.role==='admin'?[]:[['growth','gift','Бонусы и подарки']]),['hall','star','Доска почёта']]]];
+  const groups=[['Мой кабинет',[['channels','channel','Мои каналы'],['reports','chart','Отчёты'],...(me.role==='admin'?[]:[['growth','gift','Бонусы и подарки']]),['achievements','gift','Достижения'],['events','gift','Мероприятия'],['hall','star','Доска почёта']]]];
   if(['admin','operator'].includes(me.role)){
    const admin=[['moderation','moderation','Модерация'],['sponsors','server','Узлы и спонсоры']];
    admin.unshift(['users','users','Пользователи']);
-   if(me.role==='admin')admin.push(['license','moderation','Лицензия приложения'],...window.pushokInterface.managementSections.filter(item=>!item.developerOnly).map(item=>['management/'+item.key,item.icon,item.title]),['growth','gift','Бонусы и акции'],['profile/updates','refresh','Версия и обновления']);
+   if(me.role==='admin')admin.push(['license','moderation','Лицензия приложения'],...window.pushokInterface.managementSections.filter(item=>!item.developerOnly).map(item=>['management/'+item.key,item.icon,item.title]),['hall/settings','gift','Награды рейтинга'],['growth','gift','Бонусы и акции'],['profile/updates','refresh','Версия и обновления']);
    groups.push(['Управление',admin]);
   }
   if(hasDeveloperAccess(me)){

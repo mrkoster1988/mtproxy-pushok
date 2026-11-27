@@ -1,5 +1,6 @@
 """Доска почёта: календарные периоды Москвы, фиксированные итоги и бонусы без дублей."""
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -33,7 +34,14 @@ def bounds(kind, at):
     return start, end
 
 
+class GiftRules(BaseModel):
+    enabled: bool = False
+    minimum: int = Field(default=10, ge=0, le=1000000, strict=True)
+    days: list[Literal[0, 30, 90]] = Field(default_factory=lambda: [90,30,30], min_length=3, max_length=3)
+
+
 class Settings(BaseModel):
+    flow_gifts: GiftRules | None = None
     model_config = ConfigDict(extra='forbid')
     top_size: int = Field(default=50, ge=3, le=200, strict=True)
     # Копейки бонусных рублей, до 10 мест на каждую номинацию и период.
@@ -107,7 +115,7 @@ def settle(conn, now=None):
         rewards = {} if end <= settings['rewards_started_at'] else settings['rewards']
         return conn.execute('''INSERT INTO hall_periods(kind,starts_at,ends_at,settings) VALUES(%s,%s,%s,%s)
             ON CONFLICT(kind,starts_at) DO UPDATE SET kind=EXCLUDED.kind RETURNING *''',
-            (kind,start,end,Jsonb({'top_size':settings['top_size'],'rewards':rewards}))).fetchone()
+            (kind,start,end,Jsonb({'top_size':settings['top_size'],'rewards':rewards,'flow_gifts':settings['flow_gifts'] if start >= settings['flow_gifts_since'] else {}}))).fetchone()
 
     def finish(row):
         nonlocal closed
@@ -117,6 +125,14 @@ def settle(conn, now=None):
             prizes=cfg['rewards'].get(kind,{}).get(metric,[]) if end>settings['rewards_started_at'] else []
             for item in scores(conn,metric,max(start,since),end,cfg['top_size']):
                 rank=item['rank'];amount=prizes[rank-1] if rank<=len(prizes) else 0
+                rules = cfg.get('flow_gifts') or {}
+                if kind=='month' and metric=='invited' and rank<=3 and rules.get('enabled') and item['score']>=rules['minimum']:
+                    days=rules['days'][rank-1]
+                    if days:
+                        conn.execute('INSERT INTO hall_flow_gifts(period_id,user_id,rank,score,days) VALUES(%s,%s,%s,%s,%s)',
+                                     (row['id'],item['user_id'],rank,item['score'],days))
+                        conn.execute('INSERT INTO vpn_scheduled_notices(user_id,kind,anchor,cabinet_sender) VALUES(%s,%s,%s,true)',
+                            (item['user_id'],'hall_gift_'+str(row['id']),str(row['id'])))
                 entry=None
                 if amount:
                     entry=post(conn,item['user_id'],'BONUS',amount,'gift_credit',
@@ -160,6 +176,18 @@ def medal_history(conn, uid):
         FROM hall_results r JOIN hall_periods p ON p.id=r.period_id
         WHERE r.user_id=%s AND r.metric='invited' AND r.rank<=3 AND p.kind='month' AND p.closed_at IS NOT NULL
         ORDER BY p.starts_at DESC,r.rank,r.metric LIMIT 120''',(uid,)).fetchall()
+
+
+def redeem_gift(db,gift_id,user):
+    from .vpn_shop import exchange
+    import json
+    gift=db(lambda c:c.execute('SELECT days,expires FROM hall_flow_gifts WHERE id=%s AND user_id=%s',(gift_id,user['id'])).fetchone())
+    if not gift: raise HTTPException(404,'gift_not_found')
+    if gift['expires']: return {'expires':gift['expires']}
+    result=json.loads(exchange('gift',user,gift_id=str(gift_id),days=gift['days']).body)
+    if result.get('expires'):
+        db(lambda c:c.execute('UPDATE hall_flow_gifts SET expires=%s WHERE id=%s AND user_id=%s',(result['expires'],gift_id,user['id'])))
+    return result
 
 
 def router_for(dsn,current_user,require_admin):
@@ -221,10 +249,18 @@ def router_for(dsn,current_user,require_admin):
         data=user_avatar(db(find))
         return Response(data,status_code=200 if data else 204,media_type='image/jpeg',headers={'Cache-Control':'private, no-store'})
 
+    @router.get('/gifts')
+    def gifts(user=Depends(current_user)):
+        return db(lambda c:c.execute('SELECT g.id,g.rank,g.score,g.days,g.expires,p.starts_at FROM hall_flow_gifts g JOIN hall_periods p ON p.id=g.period_id WHERE user_id=%s ORDER BY starts_at DESC',(user['id'],)).fetchall())
+
+    @router.post('/gifts/{gift_id}/claim')
+    def claim_gift(gift_id: UUID,user=Depends(current_user)):
+        return redeem_gift(db,gift_id,user)
+
     @router.get('/admin')
     def admin(user=Depends(require_admin)):
         def read(conn):
-            cfg=conn.execute('SELECT top_size,rewards,started_at,rewards_started_at FROM hall_settings WHERE singleton').fetchone()
+            cfg=conn.execute('SELECT top_size,rewards,flow_gifts,started_at,rewards_started_at FROM hall_settings WHERE singleton').fetchone()
             cfg['started_at']=counting_start(conn,cfg)
             totals=conn.execute('''SELECT count(DISTINCT user_id) FILTER(WHERE rank<=3) winners,count(*) FILTER(WHERE bonus_amount>0) awards,coalesce(sum(bonus_amount),0) bonus
                 FROM hall_results r JOIN hall_periods p ON p.id=r.period_id WHERE p.kind IN ('month','year')''').fetchone()
@@ -244,6 +280,8 @@ def router_for(dsn,current_user,require_admin):
         def update(conn):
             # Сначала фиксируем текущие правила. Новые награды применяются со следующего периода.
             settle(conn)
+            if payload.flow_gifts is not None:
+                conn.execute('UPDATE hall_settings SET flow_gifts=%s WHERE singleton',(Jsonb(payload.flow_gifts.model_dump()),))
             conn.execute('UPDATE hall_settings SET top_size=%s,rewards=%s WHERE singleton',(payload.top_size,Jsonb(payload.rewards)))
             conn.execute("INSERT INTO audit_events(actor_user_id,event_type,details_json) VALUES(%s,'hall_settings_changed',%s)",(user['id'],Jsonb(payload.model_dump())))
             return payload.model_dump()

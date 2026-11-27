@@ -120,7 +120,9 @@ window.pushokMiniApp=(()=>{
    const clean=new URL(location.href);
    for(const key of [...clean.searchParams.keys()])if(key.startsWith('tgWebApp')||key==='sbp_campaign')clean.searchParams.delete(key);
    if((newLaunch&&launch.startsWith('r_'))||!clean.hash.startsWith('#/'))clean.hash='/dashboard';
-   if(newLaunch&&['profile','wallet','campaigns','moderation','sponsors','create','channels'].includes(startParam))clean.hash='/'+startParam;
+   if(newLaunch&&['achievements','hall','profile','wallet','campaigns','moderation','sponsors','create','channels'].includes(startParam))clean.hash='/'+startParam;
+   const prize=/^prize_([0-9a-f]{32})$/.exec(startParam||'');
+   if(newLaunch&&prize)clean.hash='/prize/'+prize[1];
    const noticeRoute=/^(archive|moderation|campaign)_([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/.exec(startParam||'');
    if(newLaunch&&noticeRoute)clean.hash='/'+noticeRoute[1]+'/'+noticeRoute[2];
    if(newLaunch&&startParam==='wallet_topup')clean.hash='/wallet/topup';

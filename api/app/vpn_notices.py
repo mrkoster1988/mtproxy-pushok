@@ -3,6 +3,7 @@ import hmac
 import json
 import os
 import time
+from uuid import UUID
 from typing import Literal
 
 import psycopg
@@ -46,6 +47,24 @@ def relay(operation, payload):
 def claim(x_pushok_bot_secret: str | None = Header(default=None)):
     _verify_bot_secret(x_pushok_bot_secret)
     return relay('claim',{'scheduled_by_cabinet':True,'notification_sender':'mtproxy_pushok_bot'})
+
+
+class GiftClaim(BaseModel):
+    telegram_user_id: int = Field(gt=0, le=2**52, strict=True)
+    gift_id: UUID
+
+
+@router.post('/redeem')
+def redeem(payload: GiftClaim,x_pushok_bot_secret:str|None=Header(default=None)):
+    from psycopg.rows import dict_row
+    from .hall_of_fame import redeem_gift
+    _verify_bot_secret(x_pushok_bot_secret)
+    def db(fn):
+        with psycopg.connect(os.environ['DATABASE_URL'],row_factory=dict_row) as conn:
+            return fn(conn)
+    user=db(lambda c:c.execute('SELECT id,telegram_user_id FROM users WHERE telegram_user_id=%s AND blocked_at IS NULL',(payload.telegram_user_id,)).fetchone())
+    if not user:raise HTTPException(404,'gift_not_found')
+    return redeem_gift(db,payload.gift_id,user)
 
 
 class ChatOpened(BaseModel):

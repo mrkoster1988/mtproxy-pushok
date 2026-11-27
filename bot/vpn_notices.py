@@ -31,7 +31,17 @@ def deliver(api, send, launch='https://pushok.shop/miniapp', queue='vpn-notices'
             title=titles.get(item.get('category'),'🔔 VPN-подписка')
             body=item.get('formatted_body')
             body=body or escape(item['text'].removeprefix('Pushok ИИ').strip())
-            send({'chat_id':item['telegram_id'],'text':f'<b>{title}</b>\n\n{body}\n\n<i>Команда Pushok 🐾</i>',
+            if item.get('category')=='hall_gift':
+                send({'chat_id':item['telegram_id'],'gift_days':item['days'],
+                      'text':f"<b>{escape(item['text'])}</b>\n\n{item['rank']}-е место в рейтинге приглашений.\nПриглашено друзей: {item['score']}.",
+                      'parse_mode':'HTML','reply_markup':{'inline_keyboard':[[
+                          {'text':'Забрать подарок','callback_data':'flowgift:'+item['gift_id']},
+                          {'text':'Мой рейтинг','web_app':{'url':launch+'#/hall'}}]]}})
+            elif item.get('category')=='trial_gift':
+                send({'chat_id':item['telegram_id'],'trial_gift':True,'text':body,
+                      'parse_mode':'HTML','reply_markup':{'inline_keyboard':[[button]]}})
+            else:
+                send({'chat_id':item['telegram_id'],'text':f'<b>{title}</b>\n\n{body}\n\n<i>Команда Pushok 🐾</i>',
                   'parse_mode':'HTML','rich':True,
                   'reply_markup':{'inline_keyboard':[[button]]}})
             status = 'sent'

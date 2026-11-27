@@ -88,6 +88,21 @@ class HallIntegration(unittest.TestCase):
             self.payment(conn,at='2030-02-06')
             a,b=hall.bounds('month',dt('2030-02-05'));self.assertEqual(hall.scores(conn,'paid_referrals',a,b,50),[])
 
+    def test_flow_gift_freezes_threshold_and_notifies_once(self):
+        with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
+            # The fixture has exactly two qualifying invitations for the winner.
+            rules={'enabled':True,'minimum':2,'days':[90,30,30]}
+            conn.execute("UPDATE hall_settings SET flow_gifts=%s,flow_gifts_since='2029-12-01'",(Jsonb(rules),))
+            hall.settle(conn,dt('2030-01-10'))
+            rules['minimum']=3
+            conn.execute("UPDATE hall_settings SET flow_gifts=%s",(Jsonb(rules),))
+            hall.settle(conn,dt('2030-02-10'))
+            hall.settle(conn,dt('2030-02-10'))
+            awards=conn.execute("SELECT user_id,days FROM hall_flow_gifts").fetchall()
+            self.assertEqual(awards,[{'user_id':self.owner,'days':90}])
+            self.assertEqual(conn.execute("SELECT count(*) AS n FROM vpn_scheduled_notices WHERE kind LIKE 'hall_gift_%'").fetchone()['n'],1)
+            conn.rollback()
+
     def test_frozen_rewards_concurrent_settlement_and_medals(self):
         with psycopg.connect(self.dsn,row_factory=dict_row) as conn:
             hall.settle(conn,dt('2030-01-15'))

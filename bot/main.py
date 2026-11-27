@@ -789,6 +789,37 @@ def subscription_request(update):
     return None
 
 
+def receive_flow_gift(token,update,ready):
+    callback=update.get('callback_query') or {}
+    match=re.fullmatch(r'flowgift:([a-f0-9-]{36})',callback.get('data',''))
+    if not match:return False
+    message=callback.get('message') or {}
+    actor=callback.get('from') or {}
+    chat=message.get('chat') or {}
+    if chat.get('type')!='private' or actor.get('is_bot') or chat.get('id')!=actor.get('id'):
+        return True
+    try:
+        raw_telegram_call(token,'answerCallbackQuery',{'callback_query_id':callback['id']},timeout=3)
+    except (HTTPError,URLError,OSError,ValueError,RuntimeError):
+        pass
+    if not ready or is_test_environment():return True
+    try:
+        result=_internal_api('vpn-notices/redeem',{'telegram_user_id':actor['id'],'gift_id':match[1]})
+        expiry=result.get('expires')
+        if expiry:
+            from datetime import datetime
+            from zoneinfo import ZoneInfo
+            end=datetime.fromtimestamp(expiry,ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y')
+            raw_telegram_call(token,'editMessageCaption',{'chat_id':chat['id'],'message_id':message['message_id'],
+                'caption':'🎁 Подарок активирован!\n\nPushok Flow доступен до '+end+'.',
+                'reply_markup':{'inline_keyboard':[[{'text':'Моя подписка','callback_data':'subscription_widget'}]]}})
+        else:
+            raw_telegram_call(token,'sendMessage',{'chat_id':chat['id'],'text':'Готовим подписку. Нажмите «Забрать подарок» позже, чтобы проверить результат.'})
+    except (HTTPError,URLError,OSError,ValueError,RuntimeError):
+        raw_telegram_call(token,'sendMessage',{'chat_id':chat['id'],'text':'Не удалось подтвердить активацию. Откройте «Достижения» в профиле, чтобы проверить подарок.'})
+    return True
+
+
 def show_subscription(token, update, ready):
     uid = subscription_request(update)
     if uid is None:
@@ -837,7 +868,7 @@ def poll_updates(token, ready, wizard, operator_inbox, delivery_inbox, navigatio
                 if ready and notification_chat_opened(update) and 'write_access_allowed' in (update.get('message') or {}):
                     offset = next_offset
                     continue
-                if show_subscription(token, update, ready):
+                if receive_flow_gift(token,update,ready) or show_subscription(token, update, ready):
                     offset=next_offset
                     continue
                 if ready:
