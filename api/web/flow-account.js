@@ -6,7 +6,6 @@ window.pushokFlowAccount = (() => {
   const codePattern = /^[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{12}$/;
   const scopes = ['profile:read', 'wallet:read'];
   const storageKey = 'pushok-flow-intent-v1', maxAge = 300000;
-  const expectedBot = 'mtproxy_pushok_bot';
   let code = '', context = null, epoch = 0, controller = null;
   let busy = false, deadline = 0, timer = null, dialog = null, intro = null;
   let receivedAt = 0, botName = '';
@@ -87,9 +86,7 @@ window.pushokFlowAccount = (() => {
 
   function configure(config) {
     // Flow uses this existing bot only. No server-provided URL is opened.
-    const configured = config?.telegram_bot_username;
-    botName = typeof configured === 'string' && /^[A-Za-z0-9_]{5,32}$/.test(configured) &&
-      configured.toLowerCase() === expectedBot ? expectedBot : '';
+    botName = cabinetBotUsername(config);
     if (intro && unbound()) showIntro();
   }
 
