@@ -58,7 +58,35 @@ def check_user_access(browser,base,output,failures,dsn):
         card.locator('.role-button').click()
         admin.once('dialog',lambda d:d.accept())
         card.get_by_role('button',name='Назначить статус «Тамада»',exact=True).click()
-        expect(card.locator('.role-button')).to_contain_text('Модератор · 🎩 Тамада')
+        expect(card.locator('.role-button')).to_contain_text('Модератор · Тамада')
+        card.locator('.role-button').click()
+        card.get_by_role('button',name='Добавить в «Друзья»',exact=True).click()
+        expect(card.locator('.role-button')).to_have_text('Модератор · Тамада · Друзья')
+        def check_status_layout(page,container):
+            badge=container.locator(':scope > .role-statuses')
+            expect(badge).to_have_text('Модератор · Тамада · Друзья')
+            expect(badge.locator('.role-status-part')).to_have_count(3)
+            expect(badge.locator('.role-status-separator')).to_have_count(2)
+            assert badge.locator('.tamada-status').evaluate('e=>getComputedStyle(e).color')=='rgb(167, 139, 250)'
+            for width in (320,390,768):
+                page.set_viewport_size({'width':width,'height':844})
+                assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                assert badge.evaluate("""e=>{const b=e.getBoundingClientRect(),c=e.parentElement.getBoundingClientRect();
+                    const identity=e.parentElement.querySelector('.user-summary,.person-line').getBoundingClientRect();
+                    return b.left>=c.left&&b.right<=c.right&&b.top>=identity.bottom-1&&
+                        [...e.querySelectorAll('.role-status-part')].every(p=>{const r=p.getBoundingClientRect();
+                            return r.left>=b.left-1&&r.right<=b.right+1&&r.width>0&&r.height>0&&getComputedStyle(p).whiteSpace==='pre';});
+                }""")
+        check_status_layout(admin,card)
+        go(admin,'users')
+        admin.get_by_label('Поиск пользователей',exact=True).fill(str(tgs['target']))
+        admin.locator('.directory-search button[type=submit]').click()
+        directory_card=admin.locator('.user-directory .directory-user')
+        expect(directory_card).to_have_count(1)
+        check_status_layout(admin,directory_card)
+        directory_card.screenshot(path=str(output/'59-directory-combined-status.png'))
+        profile(admin,'target')
+        admin.set_viewport_size({'width':390,'height':844})
         with psycopg.connect(dsn) as conn:
             assert conn.execute('SELECT role,is_tamada FROM users WHERE id=%s',(ids['target'],)).fetchone()==('moderator',True)
             sid=uuid4()
@@ -66,7 +94,7 @@ def check_user_access(browser,base,output,failures,dsn):
             tokens['target']=api._create_session_token(ids['target'],sid)
         tamada=launch('target')
         go(tamada,'profile')
-        expect(tamada.locator('[data-page=profile] .profile-role')).to_contain_text('Модератор · 🎩 Тамада')
+        expect(tamada.locator('[data-page=profile] .profile-role')).to_have_text('Модератор · Тамада · Друзья')
         expect(tamada.get_by_role('link',name='Модерация',exact=True).first).to_be_visible()
         go(tamada,'events')
         panel=tamada.locator('[data-page=events]')
@@ -82,6 +110,9 @@ def check_user_access(browser,base,output,failures,dsn):
         card.locator('.role-button').click()
         admin.once('dialog',lambda d:d.accept())
         card.get_by_role('button',name='Снять статус «Тамада»',exact=True).click()
+        expect(card.locator('.role-button')).to_have_text('Модератор · Друзья')
+        card.locator('.role-button').click()
+        card.get_by_role('button',name='Снять отметку «Друзья»',exact=True).click()
         expect(card.locator('.role-button')).to_have_text('Модератор')
         go(tamada,'events')
         expect(panel.get_by_text('Создать мероприятие и выделить призы',exact=True)).to_have_count(0)

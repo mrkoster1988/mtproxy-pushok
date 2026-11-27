@@ -391,3 +391,18 @@ body.cabinet-mode .vpn-policy-card .vpn-format button{width:auto;min-width:32px;
 
 /* Независимый статус организатора мероприятий. */
 .tamada-status{color:#a78bfa!important;font-weight:600}
+
+/* Статусы: обычный текст, точка относится к следующему слову. Не flex-элементы. */
+.cabinet-mode .person-role.role-statuses{display:inline-block!important;box-sizing:border-box;min-width:0;max-width:100%;white-space:normal;word-break:normal;overflow-wrap:normal;line-height:1.45;text-align:left;gap:0!important}
+.role-statuses .role-status-part{display:inline-block;white-space:pre;word-break:normal;overflow-wrap:normal;vertical-align:baseline}
+.role-statuses .role-status-separator{color:var(--muted);font-weight:400}
+.role-statuses .blocked-status{color:#f5a6a6}
+.cabinet-mode .directory-user>.role-statuses:not(.role-combined),.cabinet-mode .profile-identity>.role-statuses:not(.role-combined){text-align:right;justify-self:end;max-width:100%!important}
+.cabinet-mode .directory-user:has(>.role-combined)>.user-summary{grid-column:1/-1}
+.cabinet-mode .directory-user>.role-combined{grid-column:1/-1;grid-row:2;justify-self:start;width:fit-content;max-width:100%!important;text-align:left;min-height:24px!important}
+.cabinet-mode .directory-user:has(>.role-combined)>p{grid-row:3}
+.cabinet-mode .directory-user:has(>.role-combined)>.role-editor{grid-row:4}
+.cabinet-mode .profile-identity:has(>.role-combined)>.person-line{grid-column:1/-1}
+.cabinet-mode .profile-identity>.profile-role.role-combined{grid-column:1/-1;grid-row:2;justify-self:start;width:fit-content;max-width:100%!important;text-align:left}
+.cabinet-mode .profile-identity:has(>.role-combined)>.role-editor{grid-row:3}
+.cabinet-mode .team-member>.role-statuses{max-width:100%;text-align:left}
