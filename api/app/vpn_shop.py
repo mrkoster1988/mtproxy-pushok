@@ -43,9 +43,12 @@ def exchange(action,user,**fields):
             reply=client.post('https://pushok.shop/shop/api/flow/miniapp-vpn/'+action,data=raw,
                 headers={'Content-Type':'application/json','X-Pushok-Management':stamp+':'+signature},
                 timeout=(3,20),allow_redirects=False)
+            if not 200 <= reply.status_code < 300 and reply.status_code < 400:
+                raise HTTPException(503,'vpn_shop_unavailable')
             if reply.status_code>=400:
                 try:
-                    detail=reply.json().get('detail')
+                    error=reply.json()
+                    detail=error.get('detail') if isinstance(error,dict) else None
                 except ValueError:
                     detail=None
                 if isinstance(detail,dict) and detail.get('code')=='FLOW_IDENTITY_CONFLICT':
@@ -53,6 +56,14 @@ def exchange(action,user,**fields):
                 if isinstance(detail,str) and detail in ('cabinet_stars_disabled','telegram_bot_token_not_configured','invoice_unavailable'):
                     raise HTTPException(reply.status_code,detail)
                 if reply.status_code==409:
+                    if action=='gift':
+                        gift_codes={'gift_conflict':'vpn_gift_conflict',
+                                    'premium_subscription':'vpn_gift_premium',
+                                    'subscription_unavailable':'vpn_gift_subscription_unavailable',
+                                    'vpn_order_issuing':'vpn_gift_order_issuing'}
+                        code=detail.get('code') if isinstance(detail,dict) else detail
+                        raise HTTPException(409,gift_codes.get(code,'vpn_gift_unavailable')
+                                            if isinstance(code,str) else 'vpn_gift_unavailable')
                     raise HTTPException(409,'vpn_offer_changed')
                 if reply.status_code==502 and action=='checkout':
                     raise HTTPException(502,'invoice_unavailable')
@@ -62,6 +73,8 @@ def exchange(action,user,**fields):
                 raise HTTPException(404,'vpn_order_missing')
             reply.raise_for_status()
             result=reply.json()
+            if not isinstance(result,dict):
+                raise HTTPException(503,'vpn_shop_unavailable')
             if action=='plans' and result.get('available') and result.get('issuer')=='cabinet':
                 reason=None
                 if not accepts_stars():

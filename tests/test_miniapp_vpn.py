@@ -3,7 +3,7 @@ from unittest import TestCase
 from unittest.mock import patch, MagicMock
 from uuid import UUID
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from app import vpn_download, vpn_shop
 
@@ -19,6 +19,36 @@ class MiniAppVpn(TestCase):
             exchange.assert_not_called()
             self.assertEqual(client.post('/api/v1/vpn/checkout',json=choice).status_code,200)
             exchange.assert_called_once_with('checkout',user,choice=choice)
+
+    def test_gift_conflicts_are_not_payment_offer_changes(self):
+        user={'id':UUID(int=1),'telegram_user_id':125}
+        response=MagicMock()
+        session=MagicMock()
+        session.__enter__.return_value=session
+        session.post.return_value=response
+        with patch.object(vpn_shop,'is_test_environment',return_value=False), \
+             patch.object(vpn_shop,'bridge_key',return_value=b'x'*32), \
+             patch.object(vpn_shop.requests,'Session',return_value=session):
+            for detail,code in [('gift_conflict','vpn_gift_conflict'),
+                                ('premium_subscription','vpn_gift_premium'),
+                                ('subscription_unavailable','vpn_gift_subscription_unavailable'),
+                                ({'code':'vpn_order_issuing'},'vpn_gift_order_issuing'),
+                                (['invalid'],'vpn_gift_unavailable')]:
+                response.status_code=409
+                response.json.return_value={'detail':detail}
+                with self.assertRaises(HTTPException) as error:
+                    vpn_shop.exchange('gift',user,gift_id=str(UUID(int=2)),days=30)
+                self.assertEqual((error.exception.status_code,error.exception.detail),(409,code))
+            response.json.return_value=[]
+            with self.assertRaises(HTTPException) as error:
+                vpn_shop.exchange('checkout',user)
+            self.assertEqual(error.exception.detail,'vpn_offer_changed')
+            for status,body in [(302,{'expires':123}),(200,[])]:
+                response.status_code=status
+                response.json.return_value=body
+                with self.assertRaises(HTTPException) as error:
+                    vpn_shop.exchange('gift',user)
+                self.assertEqual(error.exception.status_code,503)
 
     def test_apk_is_verified_and_served_as_attachment_with_cors(self):
         app=FastAPI();app.include_router(vpn_download.router);cli=TestClient(app)

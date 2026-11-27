@@ -49,11 +49,13 @@ class ContestGifts(unittest.TestCase):
         self.request('POST',base+'/prizes/'+prize['id']+'/claim',410)
         with patch('app.contest_gifts.vpn_shop.exchange',side_effect=[JSONResponse({'expires':None}),JSONResponse({'expires':1900000000})]) as exchange:
             self.assertIsNone(self.request('POST',claim)['expires'])
+            self.assertTrue(self.request('GET',claim.removesuffix('/claim'))['claim_pending'])
             overrides[who] = lambda: stranger
             self.request('POST',claim,410)
             overrides[who] = lambda: winner
             for _ in range(2): self.assertEqual(self.request('POST',claim)['expires'],1900000000)
             self.assertEqual(exchange.call_count,2)
+            self.assertFalse(self.request('GET',claim.removesuffix('/claim'))['claim_pending'])
         self.assertEqual(self.request('GET',base+'/mine')[0]['id'],opened['id'])
 
     def test_tamada_is_independent_and_scoped(self):
@@ -158,3 +160,21 @@ class ContestGifts(unittest.TestCase):
             self.assertEqual(self.request('POST',claim)['expires'],1900000000)
             self.assertEqual(self.request('POST',claim)['expires'],1900000000)
             self.assertEqual(exchange.call_count,2)
+
+    def test_stale_session_cannot_create_events(self):
+        uid,sid=uuid4(),uuid4()
+        admin=dict(id=uid,role='admin',telegram_user_id=int(uid.hex[:12],16),session_id=sid)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('INSERT INTO users(id,role,telegram_user_id) VALUES(%(id)s,%(role)s,%(telegram_user_id)s)',admin)
+            conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')",(sid,uid))
+        overrides=fixture.main.app.dependency_overrides
+        self.addCleanup(overrides.clear)
+        overrides[fixture.main.get_current_user]=lambda:admin
+        data=dict(title='Сессия',sender='Канал',organizer=admin['telegram_user_id'],month_limit=1,quarter_limit=0)
+        event=self.request('POST','/contests',json=data)
+        path='/contests/events/'+event['id']
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE user_sessions SET revoked_at=now() WHERE id=%s',(sid,))
+        self.request('POST','/contests',401,json=data)
+        self.request('GET',path,401)
+        self.request('POST',path+'/prizes',401,json=dict(days=30,request_id=str(uuid4())))
