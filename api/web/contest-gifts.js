@@ -65,13 +65,14 @@ window.pushokContests=(()=>{
     const card=el('article',undefined,'panel'),art=el('img');art.src='/assets/flow-gift-'+prize.days+'.jpg';art.alt='';art.style.cssText='width:min(100%,280px);border-radius:16px';
     card.append(art,el('h2',term(prize.days)+' Pushok Flow'),el('strong',prize.title),el('p',prize.greeting),el('small','От '+prize.sender));
     if(prize.expires)card.append(el('p','Подарок получен · доступ до '+end(prize.expires)));
-    else action(card,'Забрать подарок',async()=>{
-     if(!current())return;
-     const result=await api(root+'/prizes/'+id+'/claim',{method:'POST'});
-     if(!current())return;
-     if(result.expires)return render(host,id);
-     throw Error('Готовим подключение. Проверьте подарок ещё раз через минуту.');
-    });
+    else{
+     if(prize.claim_pending)card.append(el('p','Подарок закреплён за вашим аккаунтом. Подписка ещё оформляется.','muted'));
+     action(card,prize.claim_pending?'Проверить получение':'Забрать подарок',async()=>{
+      if(!current())return;
+      await api(root+'/prizes/'+id+'/claim',{method:'POST'});
+      if(current())await render(host,id);
+     });
+    }
     host.replaceChildren(card);return;
    }
    const path=root+'/events/'+id,[event,profile]=await Promise.all([api(path),api('/me')]);if(!current())return;

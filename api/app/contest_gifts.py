@@ -68,6 +68,13 @@ def router_for(dsn, current_user, require_admin):
             FROM users WHERE id=%s FOR SHARE""", (user['id'],)).fetchone()
         if not row or row['blocked_at'] or row['telegram_user_id'] != user['telegram_user_id']:
             raise HTTPException(401, 'user_blocked')
+        # Match the session used by get_current_user, not just its user id.
+        # Session revocation/expiry after authentication must stop stale requests.
+        session_id = user.get('session_id')
+        if session_id is not None and not conn.execute("""SELECT id FROM user_sessions
+            WHERE id=%s AND user_id=%s AND revoked_at IS NULL AND expires_at>clock_timestamp()
+            FOR SHARE""", (session_id,row['id'])).fetchone():
+            raise HTTPException(401, 'session_revoked_or_expired')
         return row
 
     def require_event_manager(conn, user):
@@ -242,7 +249,8 @@ def router_for(dsn, current_user, require_admin):
         with db() as conn:
             user = actor(conn,user)
             row = visible(conn,prize_id,user)
-            return {key:row[key] for key in ('title','sender','greeting','days','expires')}
+            return {**{key:row[key] for key in ('title','sender','greeting','days','expires')},
+                    'claim_pending':row['winner'] is not None and row['expires'] is None}
 
     @router.post('/prizes/{prize_id}/claim')
     def claim(prize_id: UUID, user=Depends(current_user)):
