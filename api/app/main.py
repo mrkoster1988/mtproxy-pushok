@@ -59,7 +59,7 @@ from .channel_topics import Topic, label as topic_label
 
 app = FastAPI(
     title="MTProxy Pushok API",
-    version="2.41",
+    version="2.42",
     description="API кабинета рекламодателя MTProxy Pushok.",
 )
 app.include_router(bot_router)
@@ -106,6 +106,7 @@ class UserResponse(BaseModel):
     has_launched_ads: bool = False
     is_owner: bool = False
     is_developer: bool = False
+    verification_enabled: bool = True
     phone_verified: bool = False
     id: UUID
     telegram_user_id: int
@@ -424,6 +425,7 @@ def get_current_user(
                 """
                 SELECT u.id, u.telegram_user_id, u.role, u.is_owner, u.is_developer, u.is_friend, u.has_launched_ads, u.first_name, u.last_name,
                        u.username, u.blocked_at, s.id AS session_id, s.login_surface,
+                       (SELECT verification_enabled FROM birthday_settings WHERE singleton) AS verification_enabled,
                        EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=u.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
                 FROM users AS u
                 JOIN user_sessions AS s ON s.user_id = u.id

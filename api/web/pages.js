@@ -666,7 +666,7 @@
   if(name==='management'){section=window.pushokInterface.managementSection(section).key;history.replaceState(null,'','#/management/'+section);}
   if(name==='campaigns')state.scope=section==='mine'?'mine':'all';
   if(name!=='sponsors')automationFocusRoute='';
-  if(name==='create'&&!me?.phone_verified){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Подтвердите номер перед созданием кампании.');}
+  if(name==='create'&&me?.verification_enabled!==false&&!me?.phone_verified){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Подтвердите номер перед созданием кампании.');}
   const allowed=name==='management'&&section==='ai-bot'?hasDeveloperAccess(me):
    permitted(name)||(name==='management'&&section==='vpn'&&hasDeveloperAccess(me));
   if(!allowed){history.replaceState(null,'','#/dashboard');name='dashboard';notice('Этот раздел недоступен вашей роли.');}

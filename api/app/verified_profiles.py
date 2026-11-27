@@ -77,6 +77,7 @@ class Contact(Input):
 
 
 class Settings(Input):
+    verification_enabled: bool | None = None
     congratulations_enabled: bool
     bonus_amount: int = Field(ge=0, le=1000000)
 
@@ -306,14 +307,14 @@ def router_for(dsn, current_user, require_admin):
     @router.get('/admin/birthday-settings')
     def get_settings(response: Response, admin=Depends(require_admin)):
         response.headers['Cache-Control'] = 'private, no-store'
-        return db(lambda conn: conn.execute('SELECT congratulations_enabled,bonus_amount FROM birthday_settings WHERE singleton').fetchone())
+        return db(lambda conn: conn.execute('SELECT verification_enabled,congratulations_enabled,bonus_amount FROM birthday_settings WHERE singleton').fetchone())
 
     @router.put('/admin/birthday-settings')
     def set_settings(payload: Settings, admin=Depends(require_admin)):
         return db(lambda conn: conn.execute('''UPDATE birthday_settings SET congratulations_enabled=%s,
-            bonus_amount=%s,updated_at=now(),updated_by=%s WHERE singleton
-            RETURNING congratulations_enabled,bonus_amount''',
-            (payload.congratulations_enabled, payload.bonus_amount, admin['id'])).fetchone())
+            verification_enabled=coalesce(%s,verification_enabled),bonus_amount=%s,updated_at=now(),updated_by=%s WHERE singleton
+            RETURNING verification_enabled,congratulations_enabled,bonus_amount''',
+            (payload.congratulations_enabled, payload.verification_enabled, payload.bonus_amount, admin['id'])).fetchone())
 
     @router.post('/internal/bot/verification/request')
     def bot_request(payload: BotIntent, response: Response, x_pushok_bot_secret: str | None = Header(default=None),

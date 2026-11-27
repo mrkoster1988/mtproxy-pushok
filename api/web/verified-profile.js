@@ -40,7 +40,7 @@ window.pushokVerification=(()=>{
   return data.phone_verified;
  }
  function home(target){
-  if(!me||me.phone_verified){target.replaceChildren();target.hidden=true;delete target.dataset.state;return;}
+  if(!me||me.verification_enabled===false||me.phone_verified){target.replaceChildren();target.hidden=true;delete target.dataset.state;return;}
   target.hidden=false;
   const key=me.id+':'+Boolean(me.phone_verified);if(target.dataset.state===key)return;target.dataset.state=key;
   target.replaceChildren();
@@ -148,14 +148,15 @@ window.pushokVerification=(()=>{
  }
  async function settings(){
   if(me?.role!=='admin')return;const session=token;let box=$('birthday-settings');if(!box){box=el('section',undefined,'panel birthday-settings');box.id='birthday-settings';$('settings-system').append(box);}
-  box.replaceChildren(el('h3','Поздравления и подарок ко дню рождения'),el('p','Загружаем настройки…','muted'));
+  box.replaceChildren(el('h3','Верификация и дни рождения'),el('p','Загружаем настройки…','muted'));
   const data=await api('/admin/birthday-settings');if(session!==token||me?.role!=='admin')return;
+  const verification=el('input');verification.type='checkbox';verification.checked=data.verification_enabled;
   const form=el('form'),enabled=el('input'),amount=el('input');enabled.type='checkbox';enabled.checked=data.congratulations_enabled;
   amount.type='number';amount.min='0';amount.max='10000';amount.step='1';amount.required=true;amount.value=String(data.bonus_amount/100);
-  box.replaceChildren(el('h3','Поздравления и подарок ко дню рождения'),form);
-  form.append(label('Отправлять поздравление в Telegram',enabled),label('Ежегодный подарок, бонусных ₽',amount),el('p','0 — без начисления. Подарок получают пользователи с подтверждённым номером и включёнными поздравлениями. Один раз в год, по московскому времени. Для 29 февраля — 28 февраля в невисокосный год.','muted'));
+  box.replaceChildren(el('h3','Верификация и дни рождения'),form);
+  form.append(label('Требовать верификацию номера для кампаний',verification),label('Отправлять поздравление в Telegram',enabled),label('Ежегодный подарок, бонусных ₽',amount),el('p','0 — без начисления. Подарок получают пользователи с подтверждённым номером и включёнными поздравлениями. Один раз в год, по московскому времени. Для 29 февраля — 28 февраля в невисокосный год.','muted'));
   const save=el('button','Сохранить'),status=el('p',undefined,'verification-status');save.type='submit';status.setAttribute('role','status');form.append(save,status);
-  form.addEventListener('submit',async event=>{event.preventDefault();if(save.disabled)return;save.disabled=true;try{await api('/admin/birthday-settings',{method:'PUT',body:{congratulations_enabled:enabled.checked,bonus_amount:Math.round(Number(amount.value)*100)}});if(session===token)status.textContent='Настройки сохранены.';}catch(e){if(session===token)status.textContent=e.message;}finally{save.disabled=false;}});
+  form.addEventListener('submit',async event=>{event.preventDefault();if(save.disabled)return;save.disabled=true;try{await api('/admin/birthday-settings',{method:'PUT',body:{verification_enabled:verification.checked,congratulations_enabled:enabled.checked,bonus_amount:Math.round(Number(amount.value)*100)}});if(session===token){me.verification_enabled=verification.checked;window.cabinet.sync(ownCampaigns);status.textContent='Настройки сохранены.';}}catch(e){if(session===token)status.textContent=e.message;}finally{save.disabled=false;}});
  }
  function reset(){activeAttempt?.abort();activeAttempt=null;pollEpoch++;profileNode=null;profileUser=null;profileSync=null;document.querySelectorAll('#birthday-settings,#dashboard-verification').forEach(n=>{n.replaceChildren();delete n.dataset.state;});}
  return {badge,home,profile,readOnly,settings,reset};

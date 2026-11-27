@@ -35,6 +35,8 @@ def frame_ranks(conn):
 
 
 def require_verified(conn,uid):
+    if not conn.execute("SELECT verification_enabled FROM birthday_settings WHERE singleton FOR SHARE").fetchone()["verification_enabled"]:
+        return
     conn.execute('SELECT id FROM users WHERE id=%s FOR SHARE',(uid,)).fetchone()
     if not conn.execute('SELECT 1 FROM verified_profiles WHERE user_id=%s AND telegram_environment=%s AND phone_verified_at IS NOT NULL',(uid,environment_name())).fetchone():
         raise HTTPException(403,'phone_verification_required')

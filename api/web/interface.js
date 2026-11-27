@@ -38,7 +38,7 @@ window.pushokInterface=(()=>{
  function settings(){
   const sys=$('settings-system');if(!sys)return;
   const design=group(sys,'design','Оформление','edit'),people=group(sys,'people','Пользователи и награды','users'),technical=group(sys,'technical','Диагностика','status');
-  for(const [id,g,title] of [['home-banner-settings',design,'Текст на главной'],['loading-title-form',design,'Экран загрузки'],['icons-form',design,'Иконки Telegram'],['team-form',people,'Права пользователей'],['birthday-settings',people,'Дни рождения'],['referral-settings',people,'Приглашения и награды'],['launch-refresh',technical,'Проверка запуска']]){
+  for(const [id,g,title] of [['home-banner-settings',design,'Текст на главной'],['loading-title-form',design,'Экран загрузки'],['icons-form',design,'Иконки Telegram'],['team-form',people,'Права пользователей'],['birthday-settings',people,'Верификация и дни рождения'],['referral-settings',people,'Приглашения и награды'],['launch-refresh',technical,'Проверка запуска']]){
    const source=$(id);if(source)wrap(source.closest('.core-health')||source,g,title);
   }
   for(const node of [...sys.querySelectorAll(':scope > .core-health')])wrap(node,technical,'Испытания ядра');
