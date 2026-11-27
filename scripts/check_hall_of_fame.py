@@ -16,6 +16,12 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
         for uid,role in ((admin,'admin'),(owner,'advertiser'),(friend,'advertiser')):
             conn.execute("INSERT INTO users(id,telegram_user_id,role,first_name,username) VALUES(%s,%s,%s,'Лидер','leader_test')",(uid,int(uid.hex[:12],16),role))
             sid=uuid4();conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')",(sid,uid));tokens[role]=api._create_session_token(uid,sid)
+        # A real verified, online birthday user must show only verification in the home strip.
+        birthday=community.today()
+        conn.execute("""INSERT INTO verified_profiles(user_id,telegram_environment,phone_number,phone_verified_at,
+            birth_day,birth_month,birthday_source) VALUES(%s,%s,'+79990001133',now(),%s,%s,'telegram')""",
+            (owner,community.environment_name(),birthday.day,birthday.month))
+        conn.execute('UPDATE users SET last_seen_at=now() WHERE id=%s',(owner,))
         conn.execute("UPDATE hall_settings SET started_at=%s",(previous,))
         conn.execute("INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days,created_at) VALUES(%s,%s,10,90,now())",(friend,owner))
         for inviter,count in ((owner,3),(friend,2),(admin,1)):
@@ -73,8 +79,14 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                 home=page.locator('.dashboard-intro > .home-leaders')
                 avatars=home.locator('.home-leader-avatars > .user-avatar')
                 expect(avatars).to_have_count(10)
-                expect(home.locator('.avatar-verification,.avatar-vpn,.user-online,.birthday-avatar')).to_have_count(0)
-                assert avatars.evaluate_all("items=>items.every((a,i)=>a.dataset.hallRank===String(i+1)&&a.dataset.avatarIndicators==='off')")
+                expect(home.get_by_role('heading',name='Лидеры месяца',exact=True)).to_be_visible()
+                verified_leader=home.locator('.user-avatar[data-user-id="'+str(owner)+'"]')
+                unverified_leader=home.locator('.user-avatar[data-user-id="'+str(friend)+'"]')
+                expect(verified_leader.locator(':scope > .avatar-verification')).to_be_visible()
+                expect(verified_leader.get_by_role('img',name='Номер подтверждён в puShok',exact=True)).to_have_count(1)
+                expect(unverified_leader.locator(':scope > .avatar-verification')).to_have_count(0)
+                expect(home.locator('.avatar-vpn,.user-online,.birthday-avatar,.birthday-gift')).to_have_count(0)
+                assert avatars.evaluate_all("items=>items.every((a,i)=>a.dataset.hallRank===String(i+1)&&a.dataset.avatarIndicators==='verification')")
                 for rank,frame in ((1,'hall-gold'),(2,'hall-silver'),(3,'hall-bronze')):
                     expect(avatars.nth(rank-1)).to_have_class(__import__('re').compile(r'\b'+frame+r'\b'))
                     expect(avatars.nth(rank-1)).to_have_attribute('data-hall-rank',str(rank))
@@ -82,9 +94,18 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                     page.set_viewport_size({'width':width,'height':height})
                     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
                     assert home.evaluate("""e=>{
-                        const panel=e.getBoundingClientRect(),strip=e.querySelector('.home-leader-avatars'),box=strip.getBoundingClientRect();
+                        const panel=e.getBoundingClientRect(),heading=e.querySelector('h2'),title=heading.getBoundingClientRect();
+                        const strip=e.querySelector('.home-leader-avatars'),box=strip.getBoundingClientRect();
+                        const text=document.createRange();text.selectNodeContents(heading);
                         const items=[...strip.querySelectorAll(':scope > .user-avatar')].map(a=>a.getBoundingClientRect());
-                        return items.length===10&&strip.scrollWidth>strip.clientWidth&&box.left>=panel.left&&box.right<=panel.right&&items.every((r,i)=>Math.abs(r.width-48)<1&&Math.abs(r.height-48)<1&&r.top>=panel.top&&r.bottom<=panel.bottom&&Math.abs(r.top-items[0].top)<1&&(!i||r.left-items[i-1].right>=11));
+                        return text.getClientRects().length===1&&heading.scrollWidth<=heading.clientWidth+1&&title.bottom<=box.top+1&&
+                            title.left>=panel.left&&title.right<=panel.right&&items.length===10&&
+                            (innerWidth>=600||strip.scrollWidth>strip.clientWidth)&&box.left>=panel.left&&box.right<=panel.right&&
+                            items.every((r,i)=>Math.abs(r.width-48)<1&&Math.abs(r.height-48)<1&&r.top>=box.top&&r.bottom<=box.bottom&&Math.abs(r.top-items[0].top)<1&&(!i||r.left-items[i-1].right>=11));
+                    }""")
+                    assert verified_leader.locator('.avatar-verification').evaluate("""e=>{
+                        const badge=e.getBoundingClientRect(),avatar=e.parentElement.getBoundingClientRect(),strip=e.closest('.home-leader-avatars').getBoundingClientRect();
+                        return badge.width>0&&badge.height>0&&badge.left>=avatar.left&&badge.right<=avatar.right+3&&badge.top>=strip.top&&badge.bottom<=strip.bottom;
                     }""")
                 page.set_viewport_size({'width':390,'height':844})
                 strip=home.locator('.home-leader-avatars')
@@ -93,6 +114,13 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                 expect(avatars.last).to_have_attribute('data-hall-rank','10')
                 strip.evaluate("e=>{e.scrollLeft=0}")
                 home.screenshot(path=str(output/f'home-leaders-large-{role}.png'))
+                verified_leader.click()
+                expect(page).to_have_url(base+'/#/'+('user/' if role=='admin' else 'member/')+str(owner))
+                expect(page.locator('.profile-identity .user-avatar[data-user-id="'+str(owner)+'"]')).to_be_visible()
+                page.locator('.screen-back').click()
+                expect(page).to_have_url(base+'/#/dashboard')
+                expect(home.get_by_role('heading',name='Лидеры месяца',exact=True)).to_be_visible()
+                expect(verified_leader.locator(':scope > .avatar-verification')).to_be_visible()
                 page.evaluate("window.cabinet.go('hall')")
                 expect(board).to_be_visible()
                 expect(board.locator('.hall-podium-person')).not_to_have_count(0)
