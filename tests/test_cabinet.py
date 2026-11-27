@@ -30,7 +30,7 @@ class CabinetTests(unittest.TestCase):
         self.assertEqual(self.client.get("/health/live").json(), {"status": "ok"})
 
     def test_public_config_has_no_secrets(self):
-        self.assertEqual(set(self.client.get("/api/v1/public-config").json()), {"telegram_bot_username", "proxy_url", "home_title", "home_subtitle"})
+        self.assertEqual(set(self.client.get("/api/v1/public-config").json()), {"telegram_bot_username", "proxy_url", "home_title", "home_subtitle", "home_connect_label", "home_connect_caption"})
 
     def test_public_proxy_link_is_validated_and_reread(self):
         from app import proxy_link

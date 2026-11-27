@@ -8,14 +8,14 @@
   <meta name="description" content="MTProxy Pushok — кабинет спонсорской рекламы в Telegram. Создание заявки, модерация, оплата и управление размещениями.">
   <title>puShok · MTProxy — кабинет спонсора</title>
   <link rel="stylesheet" href="/assets/styles.css?v=1.113">
-  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=2.34">
+  <link rel="stylesheet" href="/assets/cabinet-reference.css?v=home-connect-text-1">
   <link rel="stylesheet" href="/assets/interface.css?v=2.34">
   <link rel="stylesheet" href="/assets/moderation.css?v=195">
   <link rel="stylesheet" href="/assets/controls.css?v=2.43">
   <link rel="stylesheet" href="/assets/payment-settings.css?v=197">
   <link rel="stylesheet" href="/assets/flow-account.css?v=1.122">
   <script src="/assets/flow-account.js?v=2.44" defer></script>
-  <script src="/assets/app.js?v=2.35" defer></script>
+  <script src="/assets/app.js?v=home-connect-text-1" defer></script>
   <script src="/assets/campaign-analytics.js?v=2.34" defer></script>
   <script src="/assets/merchant-settings.js?v=2.35" defer></script>
   <script src="/assets/channel-ai-settings.js?v=2.34" defer></script>
@@ -53,7 +53,7 @@
   <script src="/assets/release-notes.js?v=2.44" defer></script>
   <script src="/assets/interface.js?v=2.42" defer></script>
   <script src="/assets/controls.js?v=197" defer></script>
-  <script src="/assets/pages.js?v=contest-gifts-1" defer></script>
+  <script src="/assets/pages.js?v=home-connect-text-1" defer></script>
   <script src="/assets/channel-subscription-settings.js?v=1.128" defer></script>
 </head>
 <body>
@@ -343,7 +343,7 @@
             </details>
           </div>
           <section class="core-health" id="channel-subscription-settings" aria-label="Настройки подписки на канал"></section>
-          <section class="panel" id="home-banner-settings"><h3>Главная · Баннер</h3><form id="home-banner-form"><label>Заголовок<input id="home-banner-title" maxlength="100" required></label><label>Подпись<input id="home-banner-subtitle" maxlength="180"></label><div id="home-banner-preview" class="panel"></div><button type="submit">Сохранить текст</button><button type="button" id="home-banner-reset">Стандартный текст</button></form></section>
+          <section class="panel" id="home-banner-settings"><h3>Главная · Текст и кнопка подключения</h3><form id="home-banner-form"><label>Заголовок<input id="home-banner-title" maxlength="100" required></label><label>Подпись<input id="home-banner-subtitle" maxlength="180"></label><label>Текст кнопки «Подключить»<input id="home-connect-label" maxlength="24" required></label><label>Подпись на кнопке (необязательно)<input id="home-connect-caption" maxlength="24" placeholder="Можно оставить пустой"></label><p class="muted">До 24 символов в каждом поле. Изменяется только надпись, действие кнопки остаётся прежним.</p><div id="home-banner-preview" class="panel"></div><button type="submit">Сохранить текст</button><button type="button" id="home-banner-reset">Стандартный текст</button></form></section>
 <section class="core-health" aria-labelledby="team-heading"><h3 id="team-heading">Администраторы и операторы</h3>
 <p>Найдите пользователя по @никнейму, имени или ID и выберите его. Перед назначением он должен один раз войти в кабинет. Администратор имеет полный доступ к настройкам, оператор — к модерации и размещениям.</p>
 <form id="team-form"><fieldset id="team-fields" disabled><div id="team-user-picker"></div><label>Роль<select id="team-role"><option value="admin">Администратор</option><option value="operator">Оператор</option><option value="moderator">Модератор</option><option value="advertiser">Базовый доступ · снять права</option></select></label><button type="submit">Сохранить роль</button></fieldset></form>

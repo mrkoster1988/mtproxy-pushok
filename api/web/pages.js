@@ -165,8 +165,15 @@
  heroCopy.append(el('h2','Добро пожаловать в puShok'),el('p','Подключайтесь к MTProxy'));
  const heroActions=el('div',undefined,'dashboard-hero-actions');
  const connectProxy=el('a',undefined,'dashboard-connect-proxy');
- connectProxy.setAttribute('aria-label','Подключить');
- connectProxy.append(window.pushokViews.icon('power'),el('span','Подключить','dashboard-connect-label'),el('span','трафик','dashboard-connect-caption'));
+ const connectLabel=el('span','Подключить','dashboard-connect-label'),connectCaption=el('span','трафик','dashboard-connect-caption');
+ connectProxy.append(window.pushokViews.icon('power'),connectLabel,connectCaption);
+ function applyDashboardConnectText(config){
+  const label=config.home_connect_label||'Подключить',caption=config.home_connect_caption??'трафик';
+  connectLabel.textContent=label;connectLabel.classList.toggle('dashboard-connect-long',label.length>12);
+  connectCaption.textContent=caption;connectCaption.hidden=!caption;
+  connectProxy.setAttribute('aria-label',[label,caption].filter(Boolean).join(' '));
+ }
+ applyDashboardConnectText({});
  let dashboardProxyUrl='',subscriptionJoined=!miniAppMode,subscriptionRequired=miniAppMode,subscriptionEpoch=0;
  connectProxy.setAttribute('role','link');connectProxy.tabIndex=0;connectProxy.setAttribute('aria-disabled','true');connectProxy.title='Ссылка подключения ещё не настроена';
  function updateDashboardConnect(){
@@ -714,7 +721,7 @@
   workspace.querySelectorAll('form').forEach(form=>form.reset());sponsorTag.value='';sponsorResult.textContent='';account.textContent='';
   document.documentElement.style.scrollBehavior='';
   ['launch-readiness','core-readiness','core-test-plan'].forEach(id=>$(id).replaceChildren());
- },proxyConnection(url){dashboardProxyUrl=url||'';updateDashboardConnect();},config(config){heroCopy.querySelector('h2').textContent=config.home_title||'Добро пожаловать в puShok';heroCopy.querySelector('p').textContent=config.home_subtitle??'Подключайтесь к MTProxy';dashboardProxyUrl=config.proxy_url||'';updateDashboardConnect();state.bot=/^[A-Za-z0-9_]{5,32}$/.test(config.telegram_bot_username||'')?config.telegram_bot_username:null;}};
+ },proxyConnection(url){dashboardProxyUrl=url||'';updateDashboardConnect();},config(config){heroCopy.querySelector('h2').textContent=config.home_title||'Добро пожаловать в puShok';heroCopy.querySelector('p').textContent=config.home_subtitle??'Подключайтесь к MTProxy';applyDashboardConnectText(config);dashboardProxyUrl=config.proxy_url||'';updateDashboardConnect();state.bot=/^[A-Za-z0-9_]{5,32}$/.test(config.telegram_bot_username||'')?config.telegram_bot_username:null;}};
  const fieldHelp=[
   [$('channel-form').elements.telegram_url,'Публичная ссылка вида https://t.me/channel. Доступность и содержание проверяются при модерации.'],
   [$('tariff-select'),'Цена фиксируется при создании. Существующие заявки сохранят прежнюю стоимость.'],
