@@ -8,6 +8,8 @@ import time
 from urllib.error import HTTPError, URLError
 from uuid import UUID
 
+from .telegram_environment import matches_bot_command
+
 LOG = logging.getLogger("pushok.bot.moderation")
 _TTL = 600
 
@@ -61,7 +63,7 @@ class OperatorInbox:
             if pending["expires"] < now:
                 self.awaiting_reason.pop(uid, None)
 
-        if cmd in {"/moderation", "/moderation@mtproxy_pushok_bot"} or action == "moderation":
+        if matches_bot_command(cmd, "/moderation") or action == "moderation":
             self.awaiting_reason.pop(user_id, None)
             try:
                 queue = self.queue_loader(user_id, subscribe=True)
@@ -98,7 +100,7 @@ class OperatorInbox:
             buttons.append([{"text": "🔄 Обновить", "callback_data": "moderation"}])
             return _reply(chat_id, "\n".join(lines), callback_id, buttons)
 
-        if cmd in {"/moderation_off", "/moderation_off@mtproxy_pushok_bot"}:
+        if matches_bot_command(cmd, "/moderation_off"):
             self.awaiting_reason.pop(user_id, None)
             try:
                 self.unsubscribe(user_id)

@@ -21,3 +21,9 @@ def bot_api_url(token, method):
     if not isinstance(method, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,63}", method):
         raise ValueError("invalid_telegram_method")
     return "https://api.telegram.org/bot" + token + ("/test/" if is_test_environment() else "/") + method
+
+
+def configured_bot_username():
+    """The installer controls the bot identity; never guess a username."""
+    username = os.getenv('TELEGRAM_BOT_USERNAME', '').strip().lstrip('@')
+    return username if re.fullmatch(r'[A-Za-z0-9_]{5,32}', username) and not username.upper().startswith('REPLACE_') else ''

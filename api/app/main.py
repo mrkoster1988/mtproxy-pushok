@@ -564,7 +564,8 @@ def miniapp_login(payload: MiniAppLoginPayload, response: Response, request: Req
     invite = re.fullmatch(r'(?:r_|ref_)([A-Za-z0-9_-]{3,48})', start)
     session=_start_telegram_session(TelegramLoginPayload(**verified), surface="telegram",
         referral_codes=(invite[1] if invite else None, request.cookies.get('__Host-pushok_invite')))
-    if grant and not is_test_environment() and os.getenv('TELEGRAM_BOT_USERNAME','').lstrip('@').lower()=='mtproxy_pushok_bot':
+    from .telegram_environment import configured_bot_username
+    if grant and not is_test_environment() and configured_bot_username():
         from .vpn_notices import remember_grant
         try:remember_grant(DATABASE_URL,verified['id'])
         except psycopg.Error:logging.getLogger(__name__).warning('Could not queue notification write permission')
@@ -2022,7 +2023,8 @@ def list_operator_campaigns(
 
 @app.get("/api/v1/public-config", tags=["configuration"])
 def public_config() -> dict[str, str]:
-    username = os.getenv("TELEGRAM_BOT_USERNAME", "").lstrip("@")
+    from .telegram_environment import configured_bot_username
+    username = configured_bot_username()
     from .proxy_link import current_proxy_url
     from .home_banner import read
     return {"telegram_bot_username": "" if username.startswith("REPLACE_WITH") else username, "proxy_url": current_proxy_url() or "", **{"home_"+key: value for key,value in read().items()}}
@@ -2925,7 +2927,7 @@ def miniapp_client():
     html = html.replace('<body>', '<body data-miniapp="true" class="miniapp-mode miniapp-loading">')
     # Вход Mini App не должен зависеть от версии кеша основного скрипта.
     html = html.replace('<script src="/assets/app.js',
-                        '<script src="/assets/miniapp.js?v=contest-gifts-1" defer></script>\n  <script src="/assets/app.js', 1)
+                        '<script src="/assets/miniapp.js?v=configured-bot-1" defer></script>\n  <script src="/assets/app.js', 1)
     return HTMLResponse(html, headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'})
 
 

@@ -46,6 +46,8 @@ def relay(operation, payload):
 @router.post('/claim')
 def claim(x_pushok_bot_secret: str | None = Header(default=None)):
     _verify_bot_secret(x_pushok_bot_secret)
+    # Legacy authenticated Shop bridge routing identifier, not the Telegram username.
+    # Keep the wire value until Shop supports a neutral sender identifier.
     return relay('claim',{'scheduled_by_cabinet':True,'notification_sender':'mtproxy_pushok_bot'})
 
 

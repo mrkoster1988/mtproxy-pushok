@@ -115,7 +115,7 @@ def router_for(dsn, current_user, require_admin):
             if action=='revoke':
                 conn.execute('UPDATE contest_prizes SET revoked=true WHERE id=%s',(prize_id,))
                 return {'ok':True}
-        url = f'https://t.me/{service_messages.CABINET_BOT}?startapp=prize_{prize_id.hex}'
+        url = f'https://t.me/{service_messages.cabinet_bot_username()}?startapp=prize_{prize_id.hex}'
         image = f'https://pushok.shop/assets/flow-gift-{row["days"]}.jpg'
         caption = '\n\n'.join(filter(None,[f'🎁 Pushok Flow на {row["days"]} дней',event['title'],event['greeting'],'От '+event['sender']]))
         token = os.getenv('TELEGRAM_BOT_TOKEN','')

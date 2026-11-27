@@ -20,9 +20,10 @@ class ReleaseConsistencyTests(unittest.TestCase):
     def test_official_telegram_links(self):
         page = (ROOT / 'api/web/index.html').read_text(encoding='utf-8')
         config = (ROOT / '.env.example').read_text(encoding='utf-8')
-        self.assertIn('https://t.me/mtproxy_pushok_bot', page)
+        self.assertNotIn('https://t.me/mtproxy_pushok_bot', page)
+        self.assertIn('cabinetBotUsername', (ROOT / 'api/web/app.js').read_text(encoding='utf-8'))
         self.assertIn('https://t.me/pushok_proxy', page)
-        self.assertIn('TELEGRAM_BOT_USERNAME=mtproxy_pushok_bot', config)
+        self.assertIn('TELEGRAM_BOT_USERNAME=\n', config)
 
     def test_mvp_status_not_stale(self):
         mvp = (ROOT / "docs/MVP.md").read_text(encoding="utf-8")

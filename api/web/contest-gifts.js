@@ -2,7 +2,7 @@
 window.pushokContests=(()=>{
  const root='/contests';
  const term=days=>days===90?'3 месяца':'1 месяц';
- const link=id=>'https://t.me/mtproxy_pushok_bot?startapp=prize_'+id.replaceAll('-','');
+ const link=id=>{const url=cabinetBotLink('?startapp=prize_'+id.replaceAll('-',''));if(!url)throw Error('Telegram-бот не настроен');return url;};
  const end=stamp=>new Date(stamp*1000).toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow'});
  function field(form,title,type,value=''){
   const label=el('label',title),input=el('input');input.type=type;input.value=value??'';

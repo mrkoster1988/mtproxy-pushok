@@ -17,7 +17,7 @@ CHANNEL = {"id": -1001234567890, "username": "ExampleChannel", "type": "channel"
 
 class ChannelVerificationTests(unittest.TestCase):
     def setUp(self):
-        self.env = patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "12345:fake_test_only"})
+        self.env = patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "12345:fake_test_only", "TELEGRAM_BOT_USERNAME": BOT["username"]})
         self.env.start()
         self.addCleanup(self.env.stop)
 

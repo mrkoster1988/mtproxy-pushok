@@ -26,7 +26,7 @@ window.pushokVpnHistory=(()=>{
           const state=el('small',status(msg.delivery),'vpn-delivery');state.dataset.delivery=msg.delivery;
           card.append(head,el('p',msg.text),state);
           if(subject===me.id&&['blocked','waiting_chat'].includes(msg.delivery)){
-            const link=el('a','Открыть бота уведомлений');link.href='https://t.me/mtproxy_pushok_bot?start=notifications';link.target='_blank';link.rel='noopener noreferrer';card.append(link);
+            const url=cabinetBotLink('?start=notifications');if(url){const link=el('a','Открыть бота уведомлений');link.href=url;link.target='_blank';link.rel='noopener noreferrer';card.append(link);}
           }
           items.append(card);
         }

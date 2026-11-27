@@ -535,7 +535,9 @@ def check_flow_account(browser, base, output, failures, dsn):
             assert fallback.evaluate("e => {const r=e.getBoundingClientRect();return r.x>=0 && r.right<=innerWidth+1}")
             assert not any(event[2].startswith("https://t.me/") for event in fallback_events)
             assert not decisions(fallback_events)
-            for invalid_bot in ("other_valid_bot", "mtproxy_pushok_bot?x=1", "https://t.me/mtproxy_pushok_bot", ""):
+            fallback_page.evaluate("window.pushokFlowAccount.configure({telegram_bot_username:'NewPushokBot'})")
+            expect(fallback).to_have_attribute("href", "tg://resolve?domain=NewPushokBot&start=flow_" + fallback_item["user_code"])
+            for invalid_bot in ("mtproxy_pushok_bot?x=1", "https://t.me/mtproxy_pushok_bot", "REPLACE_WITH_BOT", ""):
                 fallback_page.evaluate("name => window.pushokFlowAccount.configure({telegram_bot_username:name})", invalid_bot)
                 expect(fallback_page.locator("#flow-account-telegram")).to_have_count(0)
             fallback_page.evaluate("window.pushokFlowAccount.configure({telegram_bot_username:'mtproxy_pushok_bot'})")

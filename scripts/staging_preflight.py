@@ -110,7 +110,7 @@ def validate_values(values, add, *, allow_telegram_deferred=False):
     add("project_name", bool(re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,62}", values.get("COMPOSE_PROJECT_NAME", "mtproxy-pushok"))),
         "Имя Compose-проекта: до 63 строчных букв, цифр, дефисов и подчёркиваний.")
     add("telegram", deferred or (bool(re.fullmatch(r"[1-9][0-9]{0,15}:[A-Za-z0-9_-]{10,256}", values.get("TELEGRAM_BOT_TOKEN", "")))
-        and bool(re.fullmatch(r"[A-Za-z0-9_]{5,32}", values.get("TELEGRAM_BOT_USERNAME", "mtproxy_pushok_bot")))),
+        and bool(re.fullmatch(r"[A-Za-z0-9_]{5,32}", values.get("TELEGRAM_BOT_USERNAME", "")))),
         "Telegram отложен: вход, бот, Mini App и Stars не проверены." if deferred else
         "Проверьте формат токена и username бота (без @). Подлинность токена здесь не проверяется.")
     invalid = [key for key in FLAGS if values.get(key, "0") not in ("0", "1")]
@@ -149,7 +149,7 @@ def compose_policy(config, values):
                 "bot": ("TELEGRAM_BOT_TOKEN", "BOT_INTERNAL_SECRET", "TELEGRAM_BOT_USERNAME",
                         "PUSHOK_TELEGRAM_TEST_ENVIRONMENT", "PUSHOK_MINIAPP_ENABLED", "PUSHOK_MINIAPP_URL")}
     defaults = {key: "0" for key in FLAGS}
-    defaults.update(PUSHOK_SBP_TEST_MODE="1", TELEGRAM_BOT_USERNAME="mtproxy_pushok_bot")
+    defaults.update(PUSHOK_SBP_TEST_MODE="1", TELEGRAM_BOT_USERNAME="")
     for name, keys in expected.items():
         actual = services[name].get("environment", {})
         for key in keys:

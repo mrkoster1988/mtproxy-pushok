@@ -337,7 +337,7 @@ window.pushokVpn = (() => {
       const actions=el('div',undefined,'vpn-links'),get=installer(localSystem());
       if(!row?.is_premium)actions.append(renewLink());actions.append(get);body.append(actions);
       const widget=el('a','Моя подписка в Telegram','ui-button labeled-action');
-      widget.href='https://t.me/mtproxy_pushok_bot?start=subscription';widget.target='_blank';widget.rel='noopener noreferrer';body.append(widget);
+      const widgetUrl=cabinetBotLink('?start=subscription');if(widgetUrl){widget.href=widgetUrl;widget.target='_blank';widget.rel='noopener noreferrer';body.append(widget);}
     }else if(own&&row){
       const platform=localSystem();
       if(installers[platform])body.append(installer(platform));

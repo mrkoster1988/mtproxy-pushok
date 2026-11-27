@@ -9,6 +9,8 @@ import time
 from urllib.error import HTTPError, URLError
 from uuid import uuid4
 
+from .telegram_environment import matches_bot_command
+
 LOG = logging.getLogger("pushok.bot.wizard")
 _USERNAME = re.compile(
     r"^(?:@|https://(?:t\.me|telegram\.me)/|t\.me/)?"
@@ -99,7 +101,7 @@ class DraftWizard:
         action = callback.get("data") if callback else None
         text = message.get("text") if message else None
         first_word = text.split(maxsplit=1)[0].lower() if isinstance(text, str) and text.strip() else ""
-        start = action == "advertise" or first_word in {"/advertise", "/advertise@mtproxy_pushok_bot"}
+        start = action == "advertise" or matches_bot_command(first_word, "/advertise")
         if start:
             if not self.enabled:
                 return _answer(chat_id, "Оформление через бота пока недоступно. Напишите в наш канал: https://t.me/pushok_proxy", callback_id)

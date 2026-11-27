@@ -32,6 +32,8 @@ function notice(message,ok=false,{actions=[],persistent=false}={}){
 }
 function hasDeveloperAccess(user){return Boolean(user?.is_developer||user?.is_owner);}
 function el(tag,text,cls){const x=document.createElement(tag);if(text!==undefined)x.textContent=text;if(cls)x.className=cls;return x;}
+function cabinetBotUsername(config=window.cabinetBotConfig){const name=config?.telegram_bot_username;return typeof name==='string'&&/^[A-Za-z0-9_]{5,32}$/.test(name)&&!/^REPLACE_/i.test(name)?name:'';}
+function cabinetBotLink(query=''){const name=cabinetBotUsername();return name?'https://t.me/'+name+query:'';}
 function appendFormattedText(node,text){
   text.split(/(\*\*[^*\n]+\*\*|__[^_\n]+__)/g).forEach((part,index)=>{
     if(index%2)node.append(el(part.startsWith('**')?'strong':'em',part.slice(2,-2)));
@@ -1029,7 +1031,7 @@ run(async()=>{
  api('/tariffs').then(items=>{if(!me){tariffs=items;updatePublicPrice();}}).catch(()=>{if(!me)$('hero-tariff-price').textContent='Цена временно недоступна';});
  const config=await api('/public-config');window.cabinetBotConfig=config;if(window.cabinet)window.cabinet.config(config);window.pushokFlowAccount?.configure(config);
  const botShortcut=document.querySelector('.hero-link-primary');
- const validBot=/^[A-Za-z0-9_]{5,32}$/.test(config.telegram_bot_username||'');
+ const validBot=Boolean(cabinetBotUsername(config));
  if(validBot){botShortcut.href='https://t.me/'+config.telegram_bot_username;botShortcut.removeAttribute('aria-disabled');}
  else{botShortcut.removeAttribute('href');botShortcut.setAttribute('aria-disabled','true');botShortcut.textContent='Telegram-бот не настроен';}
  if(validBot){

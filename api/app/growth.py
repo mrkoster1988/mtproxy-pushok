@@ -30,7 +30,8 @@ def invitation_qr(link: str) -> str:
 
 
 def telegram_invitation_link(code: str, *, miniapp: bool) -> str | None:
-    bot = os.getenv('TELEGRAM_BOT_USERNAME', 'mtproxy_pushok_bot').lstrip('@')
+    from .telegram_environment import configured_bot_username
+    bot = configured_bot_username()
     if re.fullmatch(r'[A-Za-z0-9_]{5,32}', bot):
         parameter = '?startapp=r_' if miniapp else '?start=r_'
         return 'https://t.me/' + bot + parameter + code

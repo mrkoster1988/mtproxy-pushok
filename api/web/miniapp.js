@@ -42,10 +42,10 @@ window.pushokMiniApp=(()=>{
    });
   }
   const notify=document.createElement('a');notify.textContent='Подключить уведомления';
-  notify.className='ui-button labeled-action';notify.href='https://t.me/mtproxy_pushok_bot?start=notifications';notify.target='_blank';notify.rel='noopener noreferrer';
-  const hint=document.createElement('small');hint.className='muted';hint.textContent='Уведомления приходят в @mtproxy_pushok_bot. Если вы впервые открываете чат, нажмите «Старт».';
-  const sender=String(window.cabinetBotConfig?.telegram_bot_username||'').replace(/^@/,'').toLowerCase();
-  if(sender==='mtproxy_pushok_bot' && app.isVersionAtLeast?.('6.9') && typeof app.requestWriteAccess==='function'){
+  const sender=cabinetBotUsername(),notifyUrl=cabinetBotLink('?start=notifications');
+  notify.className='ui-button labeled-action';if(notifyUrl)notify.href=notifyUrl;else notify.hidden=true;notify.target='_blank';notify.rel='noopener noreferrer';
+  const hint=document.createElement('small');hint.className='muted';hint.textContent=sender?'Уведомления приходят в @'+sender+'. Если вы впервые открываете чат, нажмите «Старт».':'Бот уведомлений пока не настроен.';
+  if(sender && app.isVersionAtLeast?.('6.9') && typeof app.requestWriteAccess==='function'){
    const permission=action('Разрешить уведомления в Telegram',button=>{
     button.disabled=true;
     try{app.requestWriteAccess(granted=>{

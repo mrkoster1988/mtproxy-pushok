@@ -85,7 +85,7 @@ window.pushokVpnPlans=(()=>{
           catch(error){note.textContent=error.message;}finally{select.disabled=false;save.disabled=false;}};
         const hint=el('small',null,'muted');
         const update=select.onchange;select.onchange=()=>{update();const p=plans.find(p=>p.id===select.value);
-          hint.textContent=!p||p.retry?'':p.lifetime?'Поздравление появится в карточке подписки. Сообщение в Telegram придёт от @mtproxy_pushok_bot.':row.is_premium?'Бессрочный доступ сменится выбранным тарифом. Новый срок начнётся сегодня.':'Дата окончания сохранится, списания не будет.';};
+          hint.textContent=!p||p.retry?'':p.lifetime?'Поздравление появится в карточке подписки. Сообщение в Telegram придёт от бота кабинета.':row.is_premium?'Бессрочный доступ сменится выбранным тарифом. Новый срок начнётся сегодня.':'Дата окончания сохранится, списания не будет.';};
         content.replaceChildren(label('Новый тариф',select),terms,hint,save,note);
         if(row.tariff_retry){select.value=plans[0].id;select.onchange();save.textContent='Повторить назначение';}
       }catch(error){content.textContent=error.message;loaded=false;}
