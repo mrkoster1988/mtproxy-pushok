@@ -55,3 +55,48 @@ class ContestGifts(unittest.TestCase):
             for _ in range(2): self.assertEqual(self.request('POST',claim)['expires'],1900000000)
             self.assertEqual(exchange.call_count,2)
         self.assertEqual(self.request('GET',base+'/mine')[0]['id'],opened['id'])
+
+    def test_tamada_is_independent_and_scoped(self):
+        def user(role, is_tamada=False):
+            uid = uuid4()
+            return dict(id=uid, role=role, telegram_user_id=int(uid.hex[:12],16), is_tamada=is_tamada)
+        admin, moderator, organizer, stranger = [user(role) for role in ('admin','moderator','advertiser','advertiser')]
+        with psycopg.connect(self.dsn) as conn:
+            for item in (admin, moderator, organizer, stranger):
+                conn.execute('INSERT INTO users(id,role,telegram_user_id) VALUES(%(id)s,%(role)s,%(telegram_user_id)s)',item)
+        overrides = fixture.main.app.dependency_overrides
+        who = fixture.main.get_current_user
+        self.addCleanup(overrides.clear)
+        overrides[who] = lambda: admin
+        grant = dict(telegram_user_id=moderator['telegram_user_id'],is_tamada=True)
+        base = '/contests'
+        data = dict(title='Тест',sender='Канал',organizer=organizer['telegram_user_id'],month_limit=2,quarter_limit=1)
+        event = self.request('POST',base,json=data)
+        path = base+'/events/'+event['id']
+        self.assertEqual(self.request('PUT','/admin/team/tamada',json=grant),{'is_tamada':True})
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT role,is_tamada FROM users WHERE id=%s',(moderator['id'],)).fetchone(),('moderator',True))
+        moderator['is_tamada']=True
+        overrides[who] = lambda: moderator
+        self.assertEqual(self.request('GET',path)['id'],event['id'])
+        self.request('POST',base,json=data)
+        self.request('PUT','/admin/team/tamada',403,json=dict(telegram_user_id=stranger['telegram_user_id'],is_tamada=True))
+        self.request('GET','/admin/team',403)
+        self.request('POST',path+'/prizes',json=dict(days=30,request_id=str(uuid4())))
+        settings = dict(organizer=stranger['telegram_user_id'],month_limit=1,quarter_limit=0,archived=True)
+        self.request('PUT',path+'/management',409,json={**settings,'month_limit':0})
+        self.request('PUT',path+'/management',json=settings)
+        self.assertIsNotNone(self.request('GET',path)['archived_at'])
+        self.request('POST',path+'/prizes',409,json=dict(days=30,request_id=str(uuid4())))
+        self.request('PUT',path+'/management',json={**settings,'month_limit':2,'archived':False})
+        overrides[who] = lambda: organizer
+        self.request('GET',path,404)
+        self.request('POST',base,403,json=data)
+        overrides[who] = lambda: admin
+        self.request('PUT','/admin/team/tamada',json={**grant,'is_tamada':False})
+        moderator['is_tamada']=False
+        overrides[who] = lambda: moderator
+        self.request('GET',path,404)
+        self.request('POST',base,403,json=data)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT role,is_tamada FROM users WHERE id=%s',(moderator['id'],)).fetchone(),('moderator',False))

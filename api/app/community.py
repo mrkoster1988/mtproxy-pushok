@@ -43,7 +43,7 @@ def require_verified(conn,uid):
 
 
 def person(conn,uid):
-    row=conn.execute('''SELECT id,first_name,last_name,username,role,is_owner,is_developer,is_friend,has_launched_ads,
+    row=conn.execute('''SELECT id,first_name,last_name,username,role,is_owner,is_developer,is_friend,is_tamada,has_launched_ads,
        CASE WHEN is_developer THEN NULL ELSE coalesce(last_seen_at>now()-interval '2 minutes',false) END AS online
        FROM users WHERE id=%s AND blocked_at IS NULL''',(uid,)).fetchone()
     if not row:raise HTTPException(404,'user_profile_not_found')

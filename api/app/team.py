@@ -19,6 +19,12 @@ class FriendChange(BaseModel):
     is_friend: bool = Field(strict=True)
 
 
+class TamadaChange(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    telegram_user_id: int = Field(gt=0, lt=2**52)
+    is_tamada: bool = Field(strict=True)
+
+
 class AccessChange(BaseModel):
     model_config = ConfigDict(extra='forbid')
     telegram_user_id: int = Field(gt=0, lt=2**52)
@@ -34,7 +40,7 @@ def router_for(get_dsn, require_admin, require_operator):
         actor = conn.execute('SELECT role,is_owner,is_developer,blocked_at FROM users WHERE id=%s FOR UPDATE', (actor_id,)).fetchone()
         if not actor or actor['blocked_at'] or actor['role'] not in ('admin','operator'):
             raise HTTPException(403, 'operator_role_required')
-        target = conn.execute('SELECT id,role,is_owner,is_developer,is_friend,blocked_at FROM users WHERE telegram_user_id=%s FOR UPDATE', (telegram_id,)).fetchone()
+        target = conn.execute('SELECT id,role,is_owner,is_developer,is_friend,is_tamada,blocked_at FROM users WHERE telegram_user_id=%s FOR UPDATE', (telegram_id,)).fetchone()
         if not target:raise HTTPException(404, 'team_user_must_login')
         if target['is_owner']:raise HTTPException(403, 'team_owner_protected')
         if target['is_developer'] and not actor['is_developer']:
@@ -55,7 +61,7 @@ def router_for(get_dsn, require_admin, require_operator):
         response.headers['Cache-Control'] = 'private, no-store'
         try:
             with psycopg.connect(get_dsn(), row_factory=dict_row, connect_timeout=3) as conn:
-                return conn.execute("SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,is_developer,has_launched_ads,is_friend,blocked_at FROM users WHERE role IN ('admin','operator','moderator') ORDER BY role,telegram_user_id").fetchall()
+                return conn.execute("SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,is_developer,has_launched_ads,is_friend,is_tamada,blocked_at FROM users WHERE role IN ('admin','operator','moderator') OR is_tamada ORDER BY role,telegram_user_id").fetchall()
         except psycopg.Error as exc:
             explain_license_error(exc)
             raise HTTPException(503, 'database_unavailable') from exc
@@ -102,6 +108,21 @@ def router_for(get_dsn, require_admin, require_operator):
                     VALUES(%s,'friend_mark_changed',jsonb_build_object('telegram_user_id',%s::bigint,'is_friend',%s::boolean))""",
                     (viewer['id'], payload.telegram_user_id, payload.is_friend))
         return {'is_friend': payload.is_friend}
+
+    @router.put('/tamada')
+    def set_tamada(payload: TamadaChange, response: Response, viewer=Depends(require_admin)):
+        response.headers['Cache-Control'] = 'private, no-store'
+        with psycopg.connect(get_dsn(), row_factory=dict_row, connect_timeout=3) as conn:
+            actor, target = lock_users(conn, viewer['id'], payload.telegram_user_id)
+            if actor['role'] != 'admin' and not actor['is_owner'] and not actor['is_developer']:
+                raise HTTPException(403, 'admin_role_required')
+            if target['is_tamada'] != payload.is_tamada:
+                conn.execute('UPDATE users SET is_tamada=%s,updated_at=now() WHERE id=%s',
+                             (payload.is_tamada, target['id']))
+                conn.execute("""INSERT INTO audit_events(actor_user_id,event_type,details_json)
+                    VALUES(%s,'tamada_status_changed',jsonb_build_object('telegram_user_id',%s::bigint,'is_tamada',%s::boolean))""",
+                    (viewer['id'], payload.telegram_user_id, payload.is_tamada))
+        return {'is_tamada': payload.is_tamada}
 
     @router.put('/access')
     def access(payload: AccessChange, response: Response, viewer=Depends(require_operator)):
