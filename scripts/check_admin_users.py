@@ -128,7 +128,7 @@ def check_admin_users(browser,base,output,failures,dsn):
             admin.set_viewport_size({'width':width,'height':844})
             check_card_layout(first)
             assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
-            first.screenshot(path=str(output/f'54-user-directory-meta-{width}.png'))
+            admin.screenshot(path=str(output/f'54-user-directory-meta-{width}.png'),full_page=True)
         admin.set_viewport_size({'width':390,'height':844})
         sort.select_option('recent')
         expect(first).to_contain_text('@directory_admin')
