@@ -114,8 +114,12 @@ def check_management_navigation(browser, base, output, failures, dsn):
             if key == 'automation':
                 group=admin.locator('.automation-settings-list')
                 expect(group.locator('.ai-settings-card')).to_have_count(4)
-                assert group.locator('.ai-settings-card').evaluate_all(
-                    "cards=>cards.every(card=>!card.parentElement.closest('details'))")
+                # Read a single live DOM snapshot: async settings refresh can
+                # detach the element handles between a locator query and evaluate_all.
+                admin.wait_for_function("""()=>{
+                    const cards=[...document.querySelectorAll('.automation-settings-list .ai-settings-card')];
+                    return cards.length===4&&cards.every(card=>card.isConnected&&card.parentElement&&!card.parentElement.closest('details'));
+                }""")
             open_settings(admin)
             for selector in selectors:
                 expect(admin.locator(selector)).to_have_count(1)
