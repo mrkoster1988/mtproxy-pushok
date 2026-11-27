@@ -254,6 +254,27 @@ def main():
                     print('PASS: AI settings — real API, private key, roles, logout, mobile widths')
                     return
                 admin = new_page("admin")
+                vpn_admin = new_page("admin",390)
+                platforms = ('android', 'ios', 'windows', 'macos', 'linux', None)
+                vpn_admin.route('**/api/v1/vpn/dashboard', lambda route: route.fulfill(json={
+                    'can_manage':True,
+                    'members':[dict(id=f'test-peer-{i}',name=f'Тестовый профиль {i}',state='active',
+                                    endpoint_ip=f'2001:4860:4860:0:0:0:0:{i}', endpoint_platform=platform)
+                               for i,platform in enumerate(platforms)],
+                }))
+                go(vpn_admin,'vpn')
+                expect(vpn_admin.locator('.vpn-card details')).to_have_count(len(platforms))
+                for details in vpn_admin.locator('.vpn-card details').all():
+                    details.locator('summary').click()
+                for platform in platforms:
+                    icon=vpn_admin.locator(f'.vpn-endpoint > .vpn-peer-os[data-platform="{platform or "unknown"}"]')
+                    expect(icon).to_be_visible()
+                    assert icon.evaluate('''node => {
+                        const ip = node.nextElementSibling.getBoundingClientRect();
+                        const mark = node.getBoundingClientRect();
+                        return mark.width === 18 && mark.right < ip.left;
+                    }''')
+                vpn_admin.context.close()
                 go(admin, "sponsors")
                 expect(admin.get_by_role('tab', name='Размещения', exact=True)).to_have_attribute('aria-selected', 'true')
                 admin.get_by_role('tab', name='Размещения', exact=True).focus()

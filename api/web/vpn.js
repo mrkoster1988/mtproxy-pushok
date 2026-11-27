@@ -73,17 +73,20 @@ window.pushokVpn = (() => {
   function platformIcon(platform){
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
     const shapes={
-      android:'M4 15a8 8 0 0 1 16 0ZM7 5l2 3m8-3-2 3M8 17v2m8-2v2',
-      ios:'M8 2h8q2 0 2 2v16q0 2-2 2H8q-2 0-2-2V4q0-2 2-2ZM10 5h4m-3 14h2',
+      android:'M3 17a9 9 0 0 1 18 0v2H3ZM6 6l2 3m10-3-2 3M8.5 14h.5m6 0h.5',
+      ios:'M8 2h8q3 0 3 3v14q0 3-3 3H8q-3 0-3-3V5q0-3 3-3ZM9 2v3h6V2m-5 17h4',
       windows:'M3 5l8-1v7H3Zm10-1 8-1v8h-8ZM3 13h8v7l-8-1Zm10 0h8v8l-8-1Z',
       macos:'M5 4h14v12H5ZM2 19h20l-2 1H4Z',
       linux:'M3 4h18v15H3ZM6 8l3 3-3 3m6 0h4',
-      unknown:'M2 4h16v12H2Zm6 15h5m3-7h6v9h-6Z'
+      unknown:'M9 8a3 3 0 1 1 5 2l-2 2v1m0 3v.5M3 12a9 9 0 1 0 18 0 9 9 0 1 0-18 0'
     };
+    const known=Object.hasOwn(systems,platform);
+    const device=known?platform:'unknown';
     svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('class','vpn-peer-os');
-    svg.setAttribute('role','img');const title=systems[platform]?'Платформа по загрузке профиля и адресу подключения · '+systems[platform]:'Устройство подключения неизвестно';
+    svg.dataset.platform=device;
+    svg.setAttribute('role','img');const title=known?systems[device]+' · по загрузке профиля и адресу подключения':'Устройство подключения неизвестно';
     svg.setAttribute('aria-label',title);const tip=document.createElementNS(svg.namespaceURI,'title');tip.textContent=title;
-    const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',shapes[platform]||shapes.unknown);svg.append(tip,path);return svg;
+    const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',shapes[device]);svg.append(tip,path);return svg;
   }
   function installer(platform){
     if(platform==='android'){
@@ -318,7 +321,11 @@ window.pushokVpn = (() => {
         let place=row.country_code;
         if(place){try{place=new Intl.DisplayNames(['ru'],{type:'region'}).of(place);}catch{}}
         const endpoint=metric('Последний IP подключения',row.endpoint_ip||'—');
-        if(row.endpoint_ip)endpoint.querySelector('dd').prepend(platformIcon(row.endpoint_platform));
+        if(row.endpoint_ip){
+          const value=endpoint.querySelector('dd');
+          value.classList.add('vpn-endpoint');
+          value.replaceChildren(platformIcon(row.endpoint_platform),el('span',row.endpoint_ip));
+        }
         addresses.append(endpoint,
           metric('Геолокация по IP',row.country_code==='RU'?(row.city||'—'):([place,row.city].filter(Boolean).join(', ')||'—')),metric('IP в туннеле',ips.join(', ')||'—'));
         body.append(addresses);
