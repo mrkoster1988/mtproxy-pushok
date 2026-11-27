@@ -45,14 +45,18 @@ def check_user_profiles(browser, base, output, failures, dsn):
             card=admin.locator('.approval-advertiser');expect(card.locator('.user-avatar img')).to_have_count(1)
             def check_avatar(container,verified=True):
                 face=container.locator('.user-avatar').first
-                box=face.bounding_box()
-                assert abs(box['width']-48)<1 and abs(box['height']-48)<1
+                expect(face).to_be_visible()
                 expect(face.locator(':scope > .avatar-verification')).to_have_count(int(verified))
                 expect(face.locator(':scope > .avatar-vpn[data-signal=online]')).to_have_count(1)
                 expect(container.locator('.person-name .phone-verified-badge,.person-name .vpn-signal')).to_have_count(0)
-                if verified:
-                    assert face.evaluate("""e=>{const a=e.getBoundingClientRect(),v=e.querySelector('.avatar-verification').getBoundingClientRect(),p=e.querySelector('.avatar-vpn').getBoundingClientRect();
-                        return v.left>=a.left+a.width/2-2&&v.bottom>=a.bottom-2&&p.left<=a.left+2&&p.bottom>=a.bottom-2&&p.right<=v.left+1;}""")
+                assert face.evaluate("""(e,verified)=>{
+                    const a=e.getBoundingClientRect();
+                    if(!e.isConnected||!e.getClientRects().length||getComputedStyle(e).visibility!=='visible'||
+                        Math.abs(a.width-48)>=1||Math.abs(a.height-48)>=1)return false;
+                    if(!verified)return true;
+                    const v=e.querySelector('.avatar-verification').getBoundingClientRect(),p=e.querySelector('.avatar-vpn').getBoundingClientRect();
+                    return v.left>=a.left+a.width/2-2&&v.bottom>=a.bottom-2&&p.left<=a.left+2&&p.bottom>=a.bottom-2&&p.right<=v.left+1;
+                }""",verified),'User avatar size or indicator placement is invalid'
             check_avatar(card)
             assert card.inner_text().count('@ZibrovaM')==1
             expect(card).not_to_contain_text('Telegram ID')

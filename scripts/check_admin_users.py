@@ -37,33 +37,44 @@ def check_admin_users(browser,base,output,failures,dsn):
     def call(p,role,method,path,data=None):
         r=p.request.fetch(base+'/api/v1'+path,method=method,headers={'Authorization':'Bearer '+tokens[role]},data=data);assert r.ok,(r.status,r.text());return r.json()
     def check_card_layout(card):
+        layout=None
         try:
-            avatar=card.locator('.user-avatar').first
-            name=card.locator('.person-name').first
-            badge=card.locator(':scope > .person-role')
-            expect(avatar).to_be_visible()
-            expect(name).to_be_visible()
-            expect(badge).to_be_visible()
-            face=avatar.bounding_box()
-            assert face is not None,'User avatar has no bounding box'
-            assert abs(face['width']-48)<1 and abs(face['height']-48)<1
-            name_box=name.bounding_box()
-            badge_box=badge.bounding_box()
-            assert name_box is not None,'User name has no bounding box'
-            assert badge_box is not None,'User status has no bounding box'
-            assert abs(badge_box['y']-name_box['y'])<=4
-            assert badge.evaluate("e=>getComputedStyle(e).textAlign")=='left'
-            assert badge.evaluate("e=>{const r=e.getBoundingClientRect(),c=e.parentElement.getBoundingClientRect();return r.left>=c.left&&r.right<=c.right}")
-            metadata=card.locator('.directory-meta')
-            expect(metadata.locator('.directory-id')).to_contain_text('ID ')
-            assert metadata.evaluate("""e=>{
-                const box=e.getBoundingClientRect(),id=e.querySelector('.directory-id'),activity=e.querySelector('.directory-activity');
-                const i=id.getBoundingClientRect(),a=activity.getBoundingClientRect();
-                const style=getComputedStyle(activity),line=parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.5;
-                return Math.abs(i.top-a.top)<=2&&Math.abs(a.right-box.right)<=1&&i.right+4<=a.left&&
-                    i.height<=line+1&&a.height<=line+1&&e.scrollWidth<=e.clientWidth+1&&
-                    id.scrollWidth<=id.clientWidth+1&&activity.scrollWidth<=activity.clientWidth+1;
+            expect(card).to_be_visible()
+            # The directory can repaint asynchronously: measure one DOM generation in one call.
+            layout=card.evaluate("""e=>{
+                const measure=node=>{
+                    if(!node)return null;
+                    const box=node.getBoundingClientRect(),style=getComputedStyle(node);
+                    return {...box.toJSON(),text:node.textContent,
+                        visible:node.isConnected&&node.getClientRects().length>0&&box.width>0&&box.height>0&&
+                            style.display!=='none'&&style.visibility==='visible',
+                        textAlign:style.textAlign,scrollWidth:node.scrollWidth,clientWidth:node.clientWidth,
+                        lineHeight:parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.5};
+                };
+                return {card:measure(e),avatar:measure(e.querySelector('.user-avatar')),
+                    name:measure(e.querySelector('.person-name')),badge:measure(e.querySelector(':scope > .person-role')),
+                    metadata:measure(e.querySelector('.directory-meta')),id:measure(e.querySelector('.directory-id')),
+                    activity:measure(e.querySelector('.directory-activity'))};
             }""")
+            for name,node in layout.items():
+                assert node is not None,f'User card is missing {name}'
+                assert node['visible'],f'User card {name} is not visible: {node}'
+            face=layout['avatar']
+            assert abs(face['width']-48)<1 and abs(face['height']-48)<1,'User avatar is not 48 by 48 pixels'
+            badge,name_box,card_box=layout['badge'],layout['name'],layout['card']
+            assert abs(badge['top']-name_box['top'])<=4,'User status is not aligned with the name'
+            assert badge['textAlign']=='left','User status text is not left aligned'
+            assert badge['left']>=card_box['left'] and badge['right']<=card_box['right'],'User status overflows the card'
+            metadata,identity,activity=layout['metadata'],layout['id'],layout['activity']
+            assert 'ID ' in identity['text'],'User ID is missing its label'
+            assert abs(identity['top']-activity['top'])<=2,'User ID and activity are not on the same row'
+            assert abs(activity['right']-metadata['right'])<=1,'User activity is not aligned to the right edge'
+            assert identity['right']+4<=activity['left'],'User ID and activity overlap'
+            assert identity['height']<=activity['lineHeight']+1,'User ID wraps to multiple lines'
+            assert activity['height']<=activity['lineHeight']+1,'User activity wraps to multiple lines'
+            for name,node in (('metadata',metadata),('ID',identity),('activity',activity)):
+                assert node['scrollWidth']<=node['clientWidth']+1,f'User {name} overflows horizontally'
+            return layout
         except Exception:
             # Capture here: the scenario closes its context before the suite's failure screenshots.
             try:
@@ -85,6 +96,7 @@ def check_admin_users(browser,base,output,failures,dsn):
                     }
                     return {route:location.hash,viewport:{width:innerWidth,height:innerHeight},card:inspect(e),nodes,ancestors};
                 }""")
+                snapshot['measuredLayout']=layout
                 diagnostic=json.dumps(snapshot,ensure_ascii=False,indent=2)
                 (output/'54-user-directory-layout-failure.json').write_text(diagnostic,encoding='utf-8')
                 print('User directory layout failure: '+diagnostic)
@@ -145,8 +157,8 @@ def check_admin_users(browser,base,output,failures,dsn):
         for width in (320,390,768):
             admin.set_viewport_size({'width':width,'height':844})
             for card in admin.locator('.user-directory .directory-user').all():
-                check_card_layout(card)
-                assert card.bounding_box()['height']<160
+                layout=check_card_layout(card)
+                assert layout['card']['height']<160
             assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         for role,color in (('admin','rgb(255, 140, 152)'),('operator','rgb(114, 229, 165)')):
             admin.locator('.directory-search').get_by_label('Категория пользователя',exact=True).select_option(role)

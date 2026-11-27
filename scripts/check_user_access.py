@@ -71,14 +71,18 @@ def check_user_access(browser,base,output,failures,dsn):
             for width in (320,390,768):
                 page.set_viewport_size({'width':width,'height':844})
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
-                assert badge.evaluate("""e=>{const b=e.getBoundingClientRect(),c=e.parentElement.getBoundingClientRect();
-                    const name=e.parentElement.querySelector('.person-name').getBoundingClientRect();
-                    return b.left>=c.left&&b.right<=c.right&&Math.abs(b.top-name.top)<=4&&getComputedStyle(e).textAlign==='left'&&
-                        [...e.querySelectorAll('.role-status-part')].every(p=>{const r=p.getBoundingClientRect();
+                expect(container).to_be_visible()
+                assert container.evaluate("""e=>{
+                    const badge=e.querySelector(':scope > .role-statuses'),name=e.querySelector('.person-name'),face=e.querySelector('.user-avatar');
+                    if(!badge||!name||!face)return false;
+                    const b=badge.getBoundingClientRect(),c=e.getBoundingClientRect(),n=name.getBoundingClientRect(),a=face.getBoundingClientRect();
+                    const visible=node=>node.isConnected&&node.getClientRects().length>0&&getComputedStyle(node).visibility==='visible';
+                    return [badge,name,face].every(visible)&&b.width>0&&b.height>0&&n.width>0&&n.height>0&&
+                        Math.abs(a.width-48)<1&&Math.abs(a.height-48)<1&&
+                        b.left>=c.left&&b.right<=c.right&&Math.abs(b.top-n.top)<=4&&getComputedStyle(badge).textAlign==='left'&&
+                        [...badge.querySelectorAll('.role-status-part')].every(p=>{const r=p.getBoundingClientRect();
                             return r.left>=b.left-1&&r.right<=b.right+1&&r.width>0&&r.height>0&&getComputedStyle(p).whiteSpace==='pre';});
-                }""")
-                face=container.locator('.user-avatar').first.bounding_box()
-                assert abs(face['width']-48)<1 and abs(face['height']-48)<1
+                }"""),'User avatar size or combined status layout is invalid'
         check_status_layout(admin,card)
         go(admin,'users')
         admin.get_by_label('Поиск пользователей',exact=True).fill(str(tgs['target']))
