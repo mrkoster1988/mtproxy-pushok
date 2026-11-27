@@ -82,7 +82,7 @@ window.pushokCommunity=(()=>{
  async function leaders(target){const s=token;target.setAttribute('aria-busy','true');try{const data=await api('/hall?kind=month&metric=invited');if(s!==token||!target.isConnected)return;
   const leaders=data.rows.filter(r=>r.rank<=3),key=JSON.stringify(leaders.map(r=>[r.user_id,r.rank,r.first_name]));if(target.dataset.leaders===key)return;target.dataset.leaders=key;
   const avatars=el('div',undefined,'home-leader-avatars');target.replaceChildren(el('h2','Лидеры месяца'),avatars);
-  for(const row of leaders){const avatar=v().userAvatar(row.user_id,row.first_name||'Участник');window.pushokHall.frame(avatar,row.rank);avatars.append(avatar);}
+  for(const row of leaders){const avatar=v().userAvatar(row.user_id,row.first_name||'Участник');window.pushokHall.frame(avatar,row.rank);avatar.dataset.hallRank=String(row.rank);avatars.append(avatar);}
   if(!leaders.length)avatars.append(el('span','Первые места пока свободны','muted'));target.hidden=false;
  }catch{target.hidden=true;}finally{target.setAttribute('aria-busy','false');}}
  function ownerTools(target,uid,data,reload){if(!hasDeveloperAccess(me))return;

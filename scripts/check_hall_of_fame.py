@@ -48,6 +48,25 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                 expect(board.locator('.hall-podium-person .hall-person a')).to_have_count(0)
                 card=board.locator('.hall-podium-person').first.bounding_box()
                 assert abs(card['height']-card['width'])<3, card
+                page.evaluate("window.cabinet.go('dashboard')")
+                home=page.locator('.dashboard-intro > .home-leaders')
+                avatars=home.locator('.home-leader-avatars > .user-avatar')
+                expect(avatars).to_have_count(3)
+                for rank,frame in ((1,'hall-gold'),(2,'hall-silver'),(3,'hall-bronze')):
+                    expect(avatars.nth(rank-1)).to_have_class(__import__('re').compile(r'\b'+frame+r'\b'))
+                    expect(avatars.nth(rank-1)).to_have_attribute('data-hall-rank',str(rank))
+                for width,height in ((320,640),(390,844),(768,844)):
+                    page.set_viewport_size({'width':width,'height':height})
+                    assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                    assert home.evaluate("""e=>{
+                        const panel=e.getBoundingClientRect(),items=[...e.querySelectorAll('.home-leader-avatars > .user-avatar')].map(a=>a.getBoundingClientRect());
+                        return items.length===3&&items.every((r,i)=>Math.abs(r.width-48)<1&&Math.abs(r.height-48)<1&&r.left>=panel.left&&r.right<=panel.right&&r.top>=panel.top&&r.bottom<=panel.bottom&&Math.abs(r.top-items[0].top)<1&&(!i||r.left-items[i-1].right>=11));
+                    }""")
+                page.set_viewport_size({'width':390,'height':844})
+                home.screenshot(path=str(output/f'home-leaders-large-{role}.png'))
+                page.evaluate("window.cabinet.go('hall')")
+                expect(board).to_be_visible()
+                expect(board.locator('.hall-podium-person')).not_to_have_count(0)
                 if role=='advertiser':
                     avatar=board.locator('.hall-place-1 .user-avatar').first
                     uid=avatar.get_attribute('data-user-id');avatar.click()
