@@ -29,9 +29,7 @@ window.pushokProfiles=(()=>{
    if(!name)handle.classList.add('person-name');
    copy.append(handle);
   }else if(!name)copy.append(el('strong','Пользователь','person-name'));
-  if(user.phone_verified)copy.querySelector('.person-name')?.append(window.pushokVerification.badge());
-  window.pushokVpn.badge(copy.querySelector('.person-name'),user.id);
-  return copy;
+   return copy;
  }
  function advertiser(c){
   const user={id:c.advertiser_user_id,telegram_user_id:c.advertiser_telegram_user_id,first_name:c.advertiser_first_name,last_name:c.advertiser_last_name,username:c.advertiser_username};
@@ -43,7 +41,7 @@ window.pushokProfiles=(()=>{
   const id=user.user_id||user.id,row=el(id?'a':'div',undefined,'user-summary person-line'),copy=names(user);
   if(id){row.href=(me?.role==='moderator'?'#/member/':'#/user/')+id;row.setAttribute('aria-label','Открыть профиль пользователя');row.addEventListener('click',()=>{returnRoute=back;});}
   if(user.telegram_user_id)copy.append(el('small','ID '+user.telegram_user_id,'muted'));
-  row.append(views().userAvatar(id,person(user).name||person(user).username),copy);return row;
+  row.append(views().userAvatar(id,person(user).name||person(user).username,false,user),copy);return row;
  }
  function accountDetails(user){
   const details=el('div',undefined,'profile-details'),id=el('div',undefined,'profile-id');id.append(el('span','Telegram ID: '+user.telegram_user_id));
@@ -53,7 +51,7 @@ window.pushokProfiles=(()=>{
  function identity(user){
   const section=el('section',undefined,'profile-identity user-identity'),row=el('div',undefined,'person-line'),copy=names(user,true);
   const access=window.pushokTeam.roleControl(user);access.badge.classList.add('profile-role');
-  row.append(views().userAvatar(user.id,person(user).name||person(user).username),copy);section.append(access.badge,row,access.editor);return section;
+  row.append(views().userAvatar(user.id,person(user).name||person(user).username,false,user),copy);section.append(access.badge,row,access.editor);return section;
  }
  function balance(data,user){
   const box=el('section',undefined,'panel profile-section profile-wallet');box.append(el('h2','Баланс пользователя'),el('p','Виден только администратору','muted'));

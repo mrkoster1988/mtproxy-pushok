@@ -4,17 +4,23 @@ window.pushokCommunity=(()=>{
  const names=u=>[u.first_name,u.last_name].filter(Boolean).join(' ')||u.username||'Участник';
  const v=()=>window.pushokViews;
  async function person(id){if(session!==token){cache.clear();session=token;}const old=cache.get(id);if(old&&Date.now()-old.at<60000)return old.promise;const promise=api('/community/users/'+id);cache.set(id,{at:Date.now(),promise});try{return await promise;}catch(e){cache.delete(id);throw e;}}
- function decorate(node,id){
+ function decorate(node,id,known=null){
   if(!id)return;node.removeAttribute('aria-hidden');node.setAttribute('role','link');node.tabIndex=0;node.setAttribute('aria-label','Открыть профиль');
   const go=e=>{e.preventDefault();e.stopPropagation();const from=location.hash.replace(/^#\/?/,'')||'dashboard';
    // Вложенный профиль сохраняет исходный раздел, в том числе после перехода по имени.
    if(!/^(user|member)\//.test(from)){returnRoute=from;window.pushokProfiles.setBackRoute(from);}
    window.cabinet.go(id===me?.id?'profile':['admin','operator'].includes(me?.role)?'user/'+id:'member/'+id);};
   node.addEventListener('click',go);node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')go(e);});
-  node.dataset.userId=id;updateAvatar(node,id);
+  node.dataset.userId=id;
+  v().avatarVerification(node,id===me?.id?Boolean(me.phone_verified):known?.phone_verified);
+  updateAvatar(node,id,known);
  }
- function updateAvatar(node,id){
-  const s=token;void person(id).then(data=>{if(s!==token)return;
+ function updateAvatar(node,id,known=null){
+  const s=token;
+  window.pushokVpn?.badge(node,id);
+  void person(id).then(data=>{if(s!==token||!node.isConnected)return;
+   v().avatarVerification(node,id===me?.id?Boolean(me.phone_verified):
+     typeof known?.phone_verified==='boolean'?known.phone_verified:data.phone_verified);
    const copy=node.parentElement?.querySelector('.person-copy,.hall-person');if(copy)copy.dataset.userRole=hasDeveloperAccess(data)?'owner':data.role;
    if(!node.dataset.hallRank){node.classList.remove('hall-frame','hall-gold','hall-silver','hall-bronze','hall-teal');window.pushokHall.frame(node,data.frame_rank);}
    node.classList.toggle('user-online',data.online===true);
@@ -26,7 +32,7 @@ window.pushokCommunity=(()=>{
  async function show(target,id){const s=token;target.replaceChildren(el('p','Загрузка…','muted'));try{const u=await person(id);if(s!==token||!target.isConnected)return;
    const card=el('section',undefined,'profile-identity user-identity public-person'),row=el('div',undefined,'person-line'),copy=window.pushokProfiles.names(u,true);
    if(u.online!==null)copy.append(el('small',u.online?'Онлайн в приложении':'Не в сети','muted'));
-   row.append(v().userAvatar(id,names(u)),copy);card.append(row);const role=el('span',window.pushokTeam.displayRole(u),'profile-role');role.dataset.role=hasDeveloperAccess(u)?'owner':u.role;card.append(role);target.replaceChildren(card);window.pushokVpn.profile(target,id);
+   row.append(v().userAvatar(id,names(u),false,u),copy);card.append(row);const role=el('span',window.pushokTeam.displayRole(u),'profile-role');role.dataset.role=hasDeveloperAccess(u)?'owner':u.role;card.append(role);target.replaceChildren(card);window.pushokVpn.profile(target,id);
   }catch(e){if(s===token)target.replaceChildren(el('p',e.message,'empty'));}}
  function invited(id,count){
   const box=el('details',undefined,'panel profile-invited-block'),head=el('summary'),list=el('div',undefined,'invitees'),feedback=el('p',undefined,'invite-feedback'),actions=el('div',undefined,'invite-actions');
@@ -36,7 +42,7 @@ window.pushokCommunity=(()=>{
   const more=v().iconAction(button('',load),'plus','Ещё приглашённые');actions.append(more);actions.hidden=true;
   async function load(){if(busy||s!==token)return;busy=true;more.disabled=true;feedback.textContent='Загрузка…';box.setAttribute('aria-busy','true');
    try{const data=await api('/community/users/'+id+'/invited?page='+nextPage);if(s!==token||!box.isConnected)return;
-    for(const u of data.items){if(seen.has(u.id))continue;seen.add(u.id);const row=el('div',undefined,'person-line invitee user-identity');row.append(v().userAvatar(u.id,names(u)),window.pushokProfiles.names(u,true));if(me?.role==='admin')row.append(v().iconAction(button('',async()=>{
+    for(const u of data.items){if(seen.has(u.id))continue;seen.add(u.id);const row=el('div',undefined,'person-line invitee user-identity');row.append(v().userAvatar(u.id,names(u),false,u),window.pushokProfiles.names(u,true));if(me?.role==='admin')row.append(v().iconAction(button('',async()=>{
       const result=await api('/admin/growth/referrals/'+u.id+'/from/'+id,{method:'DELETE'});
       if(s!==token||!box.isConnected)return;
       row.remove();seen.delete(u.id);

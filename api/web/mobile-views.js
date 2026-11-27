@@ -94,14 +94,27 @@ window.pushokViews=(()=>{
   input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();search.click();}});
   input.form?.addEventListener('reset',()=>{checker.reset();autoTitle='';});return checker;
  }
- function userAvatar(id,name='',hall=false){
+ function describeAvatar(node){
+  const description=[...node.querySelectorAll(':scope > .avatar-verification,:scope > .avatar-vpn')].map(mark=>mark.getAttribute('aria-label')).filter(Boolean).join(' · ');
+  if(description)node.setAttribute('aria-description',description);else node.removeAttribute('aria-description');
+ }
+ function avatarVerification(node,verified){
+  if(typeof verified!=='boolean')return;
+  const old=node.querySelector(':scope > .avatar-verification');
+  if(verified&&!old){const mark=window.pushokVerification.badge();mark.classList.add('avatar-verification');node.append(mark);}
+  else if(!verified&&old)old.remove();
+  describeAvatar(node);
+ }
+ function userAvatar(id,name='',hall=false,known=null){
   const fallback=avatar('user');fallback.classList.add('user-avatar');
   const initials=name.trim().split(/\s+/).filter(Boolean).slice(0,2).map(s=>Array.from(s)[0]).join('').toUpperCase();
   if(initials)fallback.textContent=initials;fallback.setAttribute('aria-hidden','true');
-  const node=loadAvatar(fallback,id?'community/users/'+encodeURIComponent(id)+'/avatar':'','user:'+id,'');
-  window.pushokCommunity.decorate(node,id);return node;
+  // Only the face is replaced by the asynchronous photo loader, never its badges.
+  const face=el('span',undefined,'avatar-face');face.append(...fallback.childNodes);fallback.append(face);
+  const node=loadAvatar(fallback,id?'community/users/'+encodeURIComponent(id)+'/avatar':'','user:'+id,'',face);
+  window.pushokCommunity.decorate(node,id,known);return node;
  }
- function loadAvatar(fallback,path,key,alt){
+ function loadAvatar(fallback,path,key,alt,face=fallback){
   if(!path||!token)return fallback;const scope=token+'|'+me?.role;if(logoSession!==scope){clearLogos();logoSession=scope;}
   const epoch=logoEpoch,session=token;
   if(!logos.has(key)){
@@ -110,12 +123,12 @@ window.pushokViews=(()=>{
    entry.promise=fetchLogo('/api/v1/'+path,{headers:{Authorization:'Bearer '+session},cache:'no-store'})
     .then(async r=>{if(!r||r.status!==200||r.headers.get('Content-Type')?.split(';')[0]!=='image/jpeg')return null;const blob=await r.blob();if(blob.size>1048576||epoch!==logoEpoch||session!==token||scope!==token+'|'+me?.role)return null;entry.url=URL.createObjectURL(blob);return entry.url;}).catch(()=>null).then(src=>{if(!src&&logos.get(key)===entry)logos.delete(key);return src;});
   }
-  const initial=[...fallback.childNodes].map(n=>n.cloneNode(true));
-  logos.get(key).promise.then(src=>{if(!src||epoch!==logoEpoch||session!==token||scope!==token+'|'+me?.role)return;const img=el('img');img.alt=alt;img.width=48;img.height=48;img.decoding='async';img.addEventListener('error',()=>fallback.replaceChildren(...initial),{once:true});img.src=src;fallback.replaceChildren(img);});return fallback;
+  const initial=[...face.childNodes].map(n=>n.cloneNode(true));
+  logos.get(key).promise.then(src=>{if(!src||epoch!==logoEpoch||session!==token||scope!==token+'|'+me?.role)return;const img=el('img');img.alt=alt;img.width=48;img.height=48;img.decoding='async';img.addEventListener('error',()=>face.replaceChildren(...initial),{once:true});img.src=src;face.replaceChildren(img);});return fallback;
  }
  function avatar(kind='channel'){const a=el('span',undefined,'ui-avatar');a.append(icon(kind));return a;}
  function profileAvatar(){
-  return userAvatar(me?.id,[me?.first_name,me?.last_name].filter(Boolean).join(' '));
+  return userAvatar(me?.id,[me?.first_name,me?.last_name].filter(Boolean).join(' '),false,me);
  }
  function brand(target){
   const img=el('img');img.src='/assets/pushok-pencil.png';img.alt='';img.width=44;img.height=44;
@@ -311,5 +324,5 @@ window.pushokViews=(()=>{
    if(!items.length)group.append(emptyLine(emptyText,'campaign'));else{const rows=el('div',undefined,'sponsor-placement-list');items.forEach(c=>rows.append(campaignSummary(c,'sponsors')));group.append(rows);}target.append(group);
   }
  }
- return {emptyLine,clearLogos,channelAvatar,channelPreview,channelSearch,channelVerification,userAvatar,icon,iconAction,disclosure,info,brand,mascot,profileAvatar,statusSteps,progress,facts,campaignSummary,campaignTools,campaigns,channelCards,title,duration,price,profile,sponsors};
+ return {emptyLine,clearLogos,channelAvatar,channelPreview,channelSearch,channelVerification,userAvatar,avatarVerification,describeAvatar,icon,iconAction,disclosure,info,brand,mascot,profileAvatar,statusSteps,progress,facts,campaignSummary,campaignTools,campaigns,channelCards,title,duration,price,profile,sponsors};
 })();

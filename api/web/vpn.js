@@ -36,14 +36,28 @@ window.pushokVpn = (() => {
     mark.setAttribute('aria-label',description);
     return mark;
   }
+  const badgeRequests=new WeakMap();
+  function paintAvatarSignal(node,row) {
+    const old=node.querySelector(':scope > .avatar-vpn');
+    const mark=signal(row);
+    if(old)old.remove();
+    if(mark&&mark.dataset.signal!=='unknown'){
+      mark.classList.add('avatar-vpn');mark.setAttribute('role','img');node.append(mark);
+    }
+    window.pushokViews.describeAvatar(node);
+  }
   function badge(node,id) {
-    if (!node || !id || !token || !staff()) return;
+    if (!node || !id || !token) return;
+    const seq=(badgeRequests.get(node)||0)+1;badgeRequests.set(node,seq);
+    if(id!==me?.id&&!staff()){paintAvatarSignal(node,null);return;}
     const session=token;
+    const current=()=>session===token&&node.isConnected&&badgeRequests.get(node)===seq;
     snapshot().then(data=>{
-      if(session!==token||!staff()||!data.can_manage||node.querySelector('.vpn-signal'))return;
-      const mark=signal(data.members?.find(r=>r.id===id));
-      if(mark && mark.dataset.signal!=='unknown')node.append(mark);
-    }).catch(()=>{});
+      if(!current())return;
+      const row=id===me?.id?(data.personal||(staff()&&data.can_manage?data.members?.find(r=>r.id===id):null)):
+        staff()&&data.can_manage?data.members?.find(r=>r.id===id):null;
+      paintAvatarSignal(node,row);
+    }).catch(()=>{if(current())paintAvatarSignal(node,null);});
   }
   function metric(label,value) {
     const cell=el('div');cell.append(el('dt',label),el('dd',value));return cell;
@@ -255,13 +269,14 @@ window.pushokVpn = (() => {
   let historyFrom='vpn';
   function card(row,subject,name,own,admin,reload,profileLink=false) {
     const tile=el('article',undefined,'campaign-tile vpn-card'),head=el('div',undefined,'tile-heading');
-    const avatar=profileLink?window.pushokViews.userAvatar(subject,name):el('span',undefined,'ui-avatar vpn-avatar');
+    const avatar=profileLink?window.pushokViews.userAvatar(subject,name,false,row):el('span',undefined,'ui-avatar vpn-avatar');
     if(!profileLink)avatar.append(window.pushokViews.icon('server'));
     const copy=el('div'),title=el(profileLink?'a':'h2',name,'tile-title');
     if(profileLink){title.href='#/user/'+encodeURIComponent(subject);title.onclick=()=>window.pushokProfiles.setBackRoute('vpn');}
     const identity=el('div',undefined,'vpn-identity');
     identity.append(title);
-    if(row){
+    if(profileLink)paintAvatarSignal(avatar,row);
+    else if(row){
       const marks=el('span',undefined,'vpn-indicators');
       if(row.phone_verified)marks.append(window.pushokVerification.badge());
       const dot=el('span','·','vpn-separator');dot.setAttribute('aria-hidden','true');

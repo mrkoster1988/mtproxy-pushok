@@ -37,8 +37,21 @@ def check_user_profiles(browser, base, output, failures, dsn):
         page.evaluate('route=>window.cabinet.go(route)',route)
     try:
         with patch('app.community.user_avatar',return_value=photo.getvalue()) as avatar:
-            admin=launch('admin');go(admin,'moderation/'+str(campaigns[0]))
+            admin=launch('admin')
+            vpn_row={'id':str(owner),'name':'Мария Зиброва','state':'active','online':True,'phone_verified':True}
+            admin.route('**/api/v1/vpn/dashboard',lambda route:route.fulfill(json={'can_manage':True,'personal':None,'members':[vpn_row]}))
+            admin.evaluate('window.pushokVpn.reset()')
+            go(admin,'moderation/'+str(campaigns[0]))
             card=admin.locator('.approval-advertiser');expect(card.locator('.user-avatar img')).to_have_count(1)
+            def check_avatar(container,verified=True):
+                face=container.locator('.user-avatar').first
+                expect(face.locator(':scope > .avatar-verification')).to_have_count(int(verified))
+                expect(face.locator(':scope > .avatar-vpn[data-signal=online]')).to_have_count(1)
+                expect(container.locator('.person-name .phone-verified-badge,.person-name .vpn-signal')).to_have_count(0)
+                if verified:
+                    assert face.evaluate("""e=>{const a=e.getBoundingClientRect(),v=e.querySelector('.avatar-verification').getBoundingClientRect(),p=e.querySelector('.avatar-vpn').getBoundingClientRect();
+                        return v.left>=a.left+a.width/2-2&&v.bottom>=a.bottom-2&&p.left<=a.left+2&&p.bottom>=a.bottom-2&&p.right<=v.left+1;}""")
+            check_avatar(card)
             assert card.inner_text().count('@ZibrovaM')==1
             expect(card).not_to_contain_text('Telegram ID')
             assert card.bounding_box()['height']<115
@@ -46,6 +59,7 @@ def check_user_profiles(browser, base, output, failures, dsn):
             card.get_by_role('link',name='Открыть профиль рекламодателя').click()
             profile=admin.locator('[data-page=user]');expect(profile.locator('.person-name')).to_have_text('Мария Зиброва')
             expect(profile.locator('.user-avatar img')).to_have_count(1)
+            check_avatar(profile.locator('.profile-identity'))
             expect(profile.get_by_role('link',name='@ZibrovaM')).to_have_attribute('href','https://t.me/ZibrovaM')
             expect(profile.locator('.profile-invited-block summary')).to_have_text('Приглашено0')
             assert profile.locator('.profile-identity').inner_text().count('@ZibrovaM')==1
@@ -60,6 +74,7 @@ def check_user_profiles(browser, base, output, failures, dsn):
             for width in (390,320):
                 admin.set_viewport_size({'width':width,'height':844})
                 assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                check_avatar(profile.locator('.profile-identity'))
                 admin.screenshot(path=str(output/f'50-advertiser-profile-{width}.png'))
             admin.locator('.screen-back').click()
             expect(admin.locator('.approval-card')).to_have_attribute('data-campaign-id',str(campaigns[0]))
@@ -69,6 +84,8 @@ def check_user_profiles(browser, base, output, failures, dsn):
             expect(client.locator('.public-person a.person-handle')).to_have_count(0)
             moderator=launch('moderator');go(moderator,'member/'+str(owner))
             expect(moderator.locator('.public-person a.person-handle')).to_have_attribute('href','https://t.me/ZibrovaM')
+            expect(moderator.locator('.public-person .user-avatar>.avatar-verification')).to_have_count(1)
+            expect(moderator.locator('.public-person .user-avatar>.avatar-vpn')).to_have_count(0)
             operator=launch('operator');go(operator,'user/'+str(staff))
             expect(operator.locator('[data-page=user] span.person-handle')).to_have_count(0)
             expect(operator.locator('[data-page=user] a.person-handle')).to_have_count(0)
@@ -92,6 +109,7 @@ def check_user_profiles(browser, base, output, failures, dsn):
             assert card.inner_text().count('@ZibrovaM')==1
             expect(card.locator('.user-avatar img')).to_have_count(0)
             expect(card.locator('.user-avatar')).not_to_have_text('')
+            check_avatar(card)
             # Запоздалый профиль после выхода не возвращает персональные данные в DOM.
             held=[]
             def hold_profile(route):
