@@ -370,3 +370,21 @@ body.cabinet-mode .vpn-policy-card .vpn-format button{width:auto;min-width:32px;
 @media (min-width: 720px) {
   .cabinet-mode .vpn-renew .vpn-plans { grid-template-columns: repeat(auto-fit, minmax(min(205px, 100%), 1fr)); }
 }
+
+.cabinet-mode .vpn-renew .vpn-plans {grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))}
+.cabinet-mode .vpn-renew label.flow-tariff,.cabinet-mode .vpn-renew label.flow-tariff:has(input:checked) {
+  --art:url(flow-map.webp);
+  background-color:#081735;
+  background-image:linear-gradient(90deg,#081735 38%,rgba(8,23,53,.93) 50%,transparent 75%),var(--art);
+  background-position:center,right center;
+  background-size:100% 100%,auto 100%;
+  background-repeat:no-repeat;
+  color:#fff;
+
+  grid-template-columns:auto minmax(0,1fr);padding:16px 39% 16px 12px;min-height:136px;border-radius:16px;
+}
+.cabinet-mode .vpn-renew label.flow-tariff.long-term {--art:url(flow-stars.webp)}
+.cabinet-mode .vpn-renew label.flow-tariff.long-term:has(input:checked) {--art:url(flow-stars.webp)}
+.cabinet-mode .vpn-renew label.flow-tariff:has(input:checked) {border-color:#42e7d7;box-shadow:inset 0 0 0 1px #42e7d7}
+.vpn-renew .flow-tariff b {color:#42e7d7;font-size:1.4rem}
+.vpn-renew .flow-tariff small {color:#deebfa}

@@ -88,7 +88,11 @@ window.pushokVpnRenew = (() => {
       const label=el('label',undefined,'vpn-plan'),radio=el('input'),copy=el('span');
       radio.type='radio';radio.name=group;radio.checked=plan===selected;
       radio.onchange=()=>{selected=plan;requestId=crypto.randomUUID();update();};
-      copy.append(el('strong',plan.name),el('small',plan.days+' дн.'));label.append(radio,copy,el('b',plan.amount+' ⭐'));choices.append(label);
+      label.classList.add('flow-tariff');
+      if(plan.days>=90)label.classList.add('long-term');
+      copy.append(el('strong',plan.name),el('b',plan.amount+' ⭐'),el('small',plan.days+' дн.'));
+      if(plan.days>30)copy.append(el('small',(plan.amount*30/plan.days).toLocaleString('ru-RU',{maximumFractionDigits:2})+' ⭐ за 30 дней'));
+      label.append(radio,copy);choices.append(label);
     }
     check.onchange=()=>{note.textContent='';};update();
     pay.onclick=async()=>{
