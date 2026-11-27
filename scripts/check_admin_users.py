@@ -1,6 +1,7 @@
 """Мобильный каталог, роли по никнейму и управление бонусами с настоящим API/SQL."""
 from ui_test_helpers import open_settings, open_management
 from datetime import datetime,timedelta,timezone
+from urllib.parse import parse_qs,urlsplit
 from uuid import uuid4
 import json
 import psycopg
@@ -36,12 +37,33 @@ def check_admin_users(browser,base,output,failures,dsn):
         p.evaluate('r=>window.cabinet.go(r)',route);expect(p.locator('[data-page='+route.split('/')[0]+']')).to_be_visible()
     def call(p,role,method,path,data=None):
         r=p.request.fetch(base+'/api/v1'+path,method=method,headers={'Authorization':'Bearer '+tokens[role]},data=data);assert r.ok,(r.status,r.text());return r.json()
-    def check_card_layout(card):
+    def directory_load(p,action,*,query='',category='',sort='newest'):
+        params={'query':[query],'category':[category],'sort':[sort],'visited':['false'],'page':['0']}
+        with p.expect_response(lambda r:r.request.method=='GET' and
+                urlsplit(r.url).path=='/api/v1/admin/users' and parse_qs(urlsplit(r.url).query,keep_blank_values=True)==params) as pending:
+            action()
+        response=pending.value
+        assert response.ok,(response.status,response.text())
+        items=response.json()['items']
+        # Existing rows can already contain the searched user while the new query is still rendering.
+        expected_ids=[str(user['id']) for user in items]
+        expect(p.locator('.user-directory .directory-user')).to_have_count(len(expected_ids))
+        p.wait_for_function("""ids=>{
+            const avatars=[...document.querySelectorAll('.user-directory .directory-user > .user-summary > .user-avatar')];
+            return avatars.length===ids.length&&avatars.every((avatar,i)=>avatar.dataset.userId===ids[i]);
+        }""",arg=expected_ids)
+        return items
+    def check_card_layout(p,user_id):
+        user_id=str(user_id)
+        card=p.locator('.user-directory .directory-user').filter(has=p.locator('.user-avatar[data-user-id="'+user_id+'"]'))
         layout=None
         try:
             expect(card).to_be_visible()
-            # The directory can repaint asynchronously: measure one DOM generation in one call.
-            layout=card.evaluate("""e=>{
+            # Resolve the stable user ID and measure in one JS task, without a detached Locator handle.
+            layout=p.wait_for_function("""id=>{
+                const e=[...document.querySelectorAll('.user-directory .directory-user')]
+                    .find(card=>card.querySelector('.user-avatar')?.dataset.userId===id);
+                if(!e)return null;
                 const measure=node=>{
                     if(!node)return null;
                     const box=node.getBoundingClientRect(),style=getComputedStyle(node);
@@ -55,7 +77,8 @@ def check_admin_users(browser,base,output,failures,dsn):
                     name:measure(e.querySelector('.person-name')),badge:measure(e.querySelector(':scope > .person-role')),
                     metadata:measure(e.querySelector('.directory-meta')),id:measure(e.querySelector('.directory-id')),
                     activity:measure(e.querySelector('.directory-activity'))};
-            }""")
+            }""",arg=user_id).json_value()
+            assert layout is not None,f'User card {user_id} disappeared before measurement'
             for name,node in layout.items():
                 assert node is not None,f'User card is missing {name}'
                 assert node['visible'],f'User card {name} is not visible: {node}'
@@ -78,7 +101,10 @@ def check_admin_users(browser,base,output,failures,dsn):
         except Exception:
             # Capture here: the scenario closes its context before the suite's failure screenshots.
             try:
-                snapshot=card.evaluate("""e=>{
+                snapshot=p.evaluate("""id=>{
+                    const e=[...document.querySelectorAll('.user-directory .directory-user')]
+                        .find(card=>card.querySelector('.user-avatar')?.dataset.userId===id);
+                    if(!e)return {missingUserId:id,route:location.hash,viewport:{width:innerWidth,height:innerHeight}};
                     const inspect=node=>{
                         const style=getComputedStyle(node),box=node.getBoundingClientRect();
                         return {tag:node.tagName,className:node.className,hidden:node.hidden,
@@ -95,7 +121,7 @@ def check_admin_users(browser,base,output,failures,dsn):
                             display:getComputedStyle(node).display,visibility:getComputedStyle(node).visibility});
                     }
                     return {route:location.hash,viewport:{width:innerWidth,height:innerHeight},card:inspect(e),nodes,ancestors};
-                }""")
+                }""",user_id)
                 snapshot['measuredLayout']=layout
                 diagnostic=json.dumps(snapshot,ensure_ascii=False,indent=2)
                 (output/'54-user-directory-layout-failure.json').write_text(diagnostic,encoding='utf-8')
@@ -103,7 +129,7 @@ def check_admin_users(browser,base,output,failures,dsn):
             except Exception as diagnostic_error:
                 print('Could not capture user directory geometry: '+str(diagnostic_error))
             try:
-                card.page.screenshot(path=str(output/'54-user-directory-layout-failure.png'),full_page=True)
+                p.screenshot(path=str(output/'54-user-directory-layout-failure.png'),full_page=True)
             except Exception as screenshot_error:
                 print('Could not capture user directory screenshot: '+str(screenshot_error))
             raise
@@ -117,7 +143,9 @@ def check_admin_users(browser,base,output,failures,dsn):
         sort=admin.get_by_label('Сортировка пользователей',exact=True)
         expect(sort).to_have_value('newest')
         search=admin.get_by_label('Поиск пользователей',exact=True)
-        search.fill('directory_');admin.locator('.directory-search button[type=submit]').click()
+        search.fill('directory_')
+        found=directory_load(admin,lambda:admin.locator('.directory-search button[type=submit]').click(),query='directory_')
+        assert {str(user['id']) for user in found}=={str(uid) for uid in ids.values()},'Directory search did not return the four fixture users'
         first=admin.locator('.user-directory .directory-user').first
         expect(first).to_contain_text('@directory_new_staff')
         expect(first).to_contain_text('Регистрация ·')
@@ -126,46 +154,50 @@ def check_admin_users(browser,base,output,failures,dsn):
         expect(first.locator('.directory-activity')).not_to_contain_text('МСК')
         for width in (320,390,768):
             admin.set_viewport_size({'width':width,'height':844})
-            check_card_layout(first)
+            check_card_layout(admin,ids['new_staff'])
             assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
             admin.screenshot(path=str(output/f'54-user-directory-meta-{width}.png'),full_page=True)
         admin.set_viewport_size({'width':390,'height':844})
-        sort.select_option('recent')
+        directory_load(admin,lambda:sort.select_option('recent'),query='directory_',sort='recent')
         expect(first).to_contain_text('@directory_admin')
         expect(first).to_contain_text('Последний вход:')
-        go(admin,'profile');admin.get_by_role('link',name='Пользователи',exact=True).click()
+        go(admin,'profile')
+        directory_load(admin,lambda:admin.get_by_role('link',name='Пользователи',exact=True).click(),query='directory_')
         expect(sort).to_have_value('newest')
         expect(first).to_contain_text('@directory_new_staff')
         expect(first).to_contain_text('Регистрация ·')
-        sort.select_option('name')
-        admin.get_by_label('Поиск пользователей',exact=True).fill('@directory_advertiser');admin.locator('.directory-search button[type=submit]').click()
+        directory_load(admin,lambda:sort.select_option('name'),query='directory_',sort='name')
+        admin.get_by_label('Поиск пользователей',exact=True).fill('@directory_advertiser')
+        directory_load(admin,lambda:admin.locator('.directory-search button[type=submit]').click(),query='@directory_advertiser',sort='name')
         row=admin.locator('.user-directory .directory-user');expect(row).to_have_count(1);expect(row).to_contain_text('Последний вход:')
         row.get_by_role('link',name='Открыть профиль пользователя').click();expect(admin.locator('.profile-wallet')).to_contain_text('123,45')
-        admin.get_by_role('button',name='Назад',exact=True).click();expect(admin.locator('[data-page=users]')).to_be_visible()
+        directory_load(admin,lambda:admin.get_by_role('button',name='Назад',exact=True).click(),query='@directory_advertiser',sort='name')
+        expect(admin.locator('[data-page=users]')).to_be_visible()
         expect(sort).to_have_value('name')
         search=admin.get_by_label('Поиск пользователей',exact=True)
         expect(search).to_have_value('@directory_advertiser')
         category=admin.locator('.directory-search').get_by_label('Категория пользователя',exact=True)
-        category.select_option('user')
+        directory_load(admin,lambda:category.select_option('user'),query='@directory_advertiser',category='user',sort='name')
         expect(row).to_have_count(1)
         expect(row.locator(':scope > .person-role')).to_have_text('Пользователь')
-        category.select_option('advertiser')
+        directory_load(admin,lambda:category.select_option('advertiser'),query='@directory_advertiser',category='advertiser',sort='name')
         expect(row).to_have_count(0)
-        category.select_option('user')
+        directory_load(admin,lambda:category.select_option('user'),query='@directory_advertiser',category='user',sort='name')
         search.fill('')
-        admin.locator('.directory-search button[type=submit]').click()
+        full_users=directory_load(admin,lambda:admin.locator('.directory-search button[type=submit]').click(),category='user',sort='name')
+        assert len(full_users)>1,'Unfiltered user category unexpectedly contains only the previously searched user'
         for width in (320,390,768):
             admin.set_viewport_size({'width':width,'height':844})
-            for card in admin.locator('.user-directory .directory-user').all():
-                layout=check_card_layout(card)
+            for user in full_users:
+                layout=check_card_layout(admin,user['id'])
                 assert layout['card']['height']<160
             assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         for role,color in (('admin','rgb(255, 140, 152)'),('operator','rgb(114, 229, 165)')):
-            admin.locator('.directory-search').get_by_label('Категория пользователя',exact=True).select_option(role)
+            directory_load(admin,lambda:category.select_option(role),category=role,sort='name')
             badge=admin.locator('.directory-user>.person-role[data-role='+role+']').first
             expect(badge).to_be_visible()
             assert badge.evaluate('e=>getComputedStyle(e).color')==color
-        category.select_option('user')
+        directory_load(admin,lambda:category.select_option('user'),category='user',sort='name')
         expect(admin.locator('.directory-user>.person-role[data-role=user]').first).to_be_visible()
         admin.screenshot(path=str(output/'54-user-directory.png'))
         operator=launch('operator');go(operator,'user/'+str(ids['advertiser']));expect(operator.locator('[data-page=user] .profile-identity .person-handle')).to_have_count(0);expect(operator.locator('.profile-wallet')).to_have_count(0)
