@@ -8,14 +8,29 @@ window.pushokTeam=(()=>{
   if(user.role==='advertiser'&&!user.has_launched_ads)return 'user';
   return user.role;
  }
- function displayRole(user){return (roles[category(user)]||roles.user)+(user.is_tamada?' · 🎩 Тамада':'')+(user.is_friend?' · Друзья':'');}
+ function statusParts(user){return [{text:roles[category(user)]||roles.user},...(user.is_tamada?[{text:'Тамада',className:'tamada-status'}]:[]),...(user.is_friend?[{text:'Друзья'}]:[])];}
+ function displayRole(user){return statusParts(user).map(part=>part.text).join(' · ');}
  Object.assign(errors,{team_developer_protected:'Управлять другим разработчиком может только разработчик.',team_developer_grant_forbidden:'Назначить разработчика может только разработчик.',user_blocked:'Доступ к кабинету заблокирован. Обратитесь к администратору.',team_admin_protected:'Оператор не может менять права или блокировать администратора.',team_admin_grant_forbidden:'Назначить администратора может только администратор.',team_moderator_protected:'Управлять доступом модератора может администратор.',team_moderator_grant_forbidden:'Назначить модератора может администратор.',team_cannot_block_self:'Нельзя заблокировать собственный аккаунт.'});
  function roleControl(user){
   const editable=!user.is_owner&&(!hasDeveloperAccess(user)||hasDeveloperAccess(me))&&['admin','operator'].includes(me?.role)&&user.id!==me.id&&(me.role==='admin'||!['admin','moderator'].includes(user.role));
   const label=()=>displayRole(user);
   const assignedRole=()=>hasDeveloperAccess(user)?'developer':user.role;
   const badge=el(editable?'button':'span',undefined,'person-role'+(editable?' role-button':'')),editor=el('form',undefined,'role-editor');editor.hidden=true;
-  function paint(){badge.dataset.role=hasDeveloperAccess(user)?'owner':category(user);badge.replaceChildren(document.createTextNode(roles[category(user)]||roles.user));if(user.is_tamada)badge.append(document.createTextNode(' · '),el('span','🎩 Тамада','tamada-status'));if(user.is_friend)badge.append(document.createTextNode(' · Друзья'));if(user.blocked_at)badge.append(document.createTextNode(' · Заблокирован'));badge.classList.toggle('is-blocked',Boolean(user.blocked_at));if(editable){badge.setAttribute('aria-label','Изменить права: '+label());}}
+  function paint(){
+   badge.dataset.role=hasDeveloperAccess(user)?'owner':category(user);
+   const parts=statusParts(user);
+   if(user.blocked_at)parts.push({text:'Заблокирован',className:'blocked-status'});
+   badge.classList.add('role-statuses');
+   badge.classList.toggle('role-combined',parts.length>1);
+   badge.classList.toggle('is-blocked',Boolean(user.blocked_at));
+   badge.replaceChildren();
+   parts.forEach((part,index)=>{
+    const item=el('span',undefined,'role-status-part');
+    if(index){badge.append(el('wbr'));item.append(el('span',' · ','role-status-separator'));}
+    item.append(el('span',part.text,part.className));badge.append(item);
+   });
+   if(editable)badge.setAttribute('aria-label','Изменить права: '+label());
+  }
   paint();if(!editable)return {badge,editor};
   badge.type='button';badge.setAttribute('aria-expanded','false');editor.id='role-'+crypto.randomUUID();badge.setAttribute('aria-controls',editor.id);
   const session=token,viewer=me.id,current=()=>session===token&&viewer===me?.id&&badge.isConnected;

@@ -78,9 +78,13 @@ def check_admin_users(browser,base,output,failures,dsn):
             admin.set_viewport_size({'width':width,'height':844})
             for card in admin.locator('.user-directory .directory-user').all():
                 identity=card.locator('.user-summary').bounding_box();badge=card.locator(':scope > .person-role').bounding_box()
-                assert badge['x']>=identity['x']+identity['width']+6
-                name=card.locator('.person-name').first.bounding_box()
-                assert abs(badge['y']-name['y'])<=4
+                if card.locator(':scope > .role-combined').count():
+                    assert badge['y']>=identity['y']+identity['height']-1
+                    assert badge['x']+badge['width']<=card.bounding_box()['x']+card.bounding_box()['width']
+                else:
+                    assert badge['x']>=identity['x']+identity['width']+6
+                    name=card.locator('.person-name').first.bounding_box()
+                    assert abs(badge['y']-name['y'])<=4
                 assert card.bounding_box()['height']<160
             assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         for role,color in (('admin','rgb(255, 140, 152)'),('operator','rgb(114, 229, 165)')):

@@ -391,3 +391,34 @@ body.cabinet-mode .vpn-policy-card .vpn-format button{width:auto;min-width:32px;
 
 /* Независимый статус организатора мероприятий. */
 .tamada-status{color:#a78bfa!important;font-weight:600}
+
+/* Статусы: обычный текст, точка относится к следующему слову. Не flex-элементы. */
+.cabinet-mode .person-role.role-statuses{display:inline-block!important;box-sizing:border-box;min-width:0;max-width:100%;white-space:normal;word-break:normal;overflow-wrap:normal;line-height:1.45;text-align:left;gap:0!important}
+.role-statuses .role-status-part{display:inline-block;white-space:pre;word-break:normal;overflow-wrap:normal;vertical-align:baseline}
+.role-statuses .role-status-separator{color:var(--muted);font-weight:400}
+.role-statuses .blocked-status{color:#f5a6a6}
+.cabinet-mode .directory-user>.role-statuses:not(.role-combined),.cabinet-mode .profile-identity>.role-statuses:not(.role-combined){text-align:right;justify-self:end;max-width:100%!important}
+.cabinet-mode .directory-user:has(>.role-combined)>.user-summary{grid-column:1/-1}
+.cabinet-mode .directory-user>.role-combined{grid-column:1/-1;grid-row:2;justify-self:start;width:fit-content;max-width:100%!important;text-align:left;min-height:24px!important}
+.cabinet-mode .directory-user:has(>.role-combined)>p{grid-row:3}
+.cabinet-mode .directory-user:has(>.role-combined)>.role-editor{grid-row:4}
+.cabinet-mode .profile-identity:has(>.role-combined)>.person-line{grid-column:1/-1}
+.cabinet-mode .profile-identity>.profile-role.role-combined{grid-column:1/-1;grid-row:2;justify-self:start;width:fit-content;max-width:100%!important;text-align:left}
+.cabinet-mode .profile-identity:has(>.role-combined)>.role-editor{grid-row:3}
+.cabinet-mode .team-member>.role-statuses{max-width:100%;text-align:left}
+
+/* The photo and its overlay badges have independent lifetimes. */
+.user-avatar{--avatar-verification-size:16px;--avatar-vpn-width:21px;--avatar-vpn-height:14px}
+.user-avatar>.avatar-face{display:flex;align-items:center;justify-content:center;width:100%;height:100%;border-radius:50%;overflow:hidden;min-width:0;min-height:0}
+.user-avatar>.avatar-face>img{display:block;width:100%;height:100%;object-fit:cover;border-radius:50%}
+.cabinet-mode .user-avatar>.avatar-verification{position:absolute;right:-2px;bottom:-2px;z-index:2;width:var(--avatar-verification-size);height:var(--avatar-verification-size);flex:none;margin:0!important;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;padding:1px;border-radius:50%;background:#0b1d2b;box-shadow:0 0 0 1px #0b1d2b;pointer-events:none}
+.cabinet-mode .user-avatar>.avatar-verification svg{width:100%;height:100%;display:block}
+.cabinet-mode .user-avatar>.avatar-vpn.vpn-signal{position:absolute;left:-3px;bottom:-2px;z-index:2;display:flex;align-items:center;justify-content:center;gap:0;width:var(--avatar-vpn-width);height:var(--avatar-vpn-height);box-sizing:border-box;margin:0!important;padding:0!important;white-space:nowrap;font:700 8px/1 system-ui,sans-serif;border-radius:6px;border:1px solid currentColor;background:#0b1d2b;box-shadow:0 0 0 1px #0b1d2b;pointer-events:none}
+.cabinet-mode .user-avatar>.avatar-vpn.vpn-signal::before{content:none}
+.cabinet-mode .user-avatar>.avatar-vpn[data-signal=online]{color:#75dfa3}
+.cabinet-mode .user-avatar>.avatar-vpn[data-signal=offline]{color:#ff9299}
+.cabinet-mode .profile-identity .user-avatar{--avatar-verification-size:20px;--avatar-vpn-width:26px;--avatar-vpn-height:16px}
+.cabinet-mode .profile-identity .user-avatar>.avatar-vpn{font-size:9px}
+.cabinet-mode .profile-shortcut .user-avatar,.cabinet-mode .hall-podium-person .user-avatar{--avatar-verification-size:14px;--avatar-vpn-width:18px;--avatar-vpn-height:12px}
+.cabinet-mode .profile-shortcut .user-avatar>.avatar-vpn,.cabinet-mode .hall-podium-person .user-avatar>.avatar-vpn{font-size:7px}
+.user-avatar.user-online::after{top:0;left:0;right:auto;bottom:auto}
