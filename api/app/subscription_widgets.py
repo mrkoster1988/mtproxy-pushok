@@ -47,7 +47,7 @@ def snapshot(row):
     if active and row.get('is_premium'):
         title,term = '💛 Premium', 'Вам подарили бессрочный доступ. Расходы берём на себя!'
     elif active and row.get('expires_at'):
-        term = 'До '+datetime.fromtimestamp(row['expires_at'],ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y, %H:%M МСК')
+        term = 'До '+datetime.fromtimestamp(row['expires_at'],ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y, %H:%M мск')
     return [title,term,'↓ '+traffic(row.get('received'))+'   ↑ '+traffic(row.get('sent'))]
 
 

@@ -72,11 +72,13 @@ def check_user_access(browser,base,output,failures,dsn):
                 page.set_viewport_size({'width':width,'height':844})
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
                 assert badge.evaluate("""e=>{const b=e.getBoundingClientRect(),c=e.parentElement.getBoundingClientRect();
-                    const identity=e.parentElement.querySelector('.user-summary,.person-line').getBoundingClientRect();
-                    return b.left>=c.left&&b.right<=c.right&&b.top>=identity.bottom-1&&
+                    const name=e.parentElement.querySelector('.person-name').getBoundingClientRect();
+                    return b.left>=c.left&&b.right<=c.right&&Math.abs(b.top-name.top)<=4&&getComputedStyle(e).textAlign==='left'&&
                         [...e.querySelectorAll('.role-status-part')].every(p=>{const r=p.getBoundingClientRect();
                             return r.left>=b.left-1&&r.right<=b.right+1&&r.width>0&&r.height>0&&getComputedStyle(p).whiteSpace==='pre';});
                 }""")
+                face=container.locator('.user-avatar').first.bounding_box()
+                assert abs(face['width']-48)<1 and abs(face['height']-48)<1
         check_status_layout(admin,card)
         go(admin,'users')
         admin.get_by_label('Поиск пользователей',exact=True).fill(str(tgs['target']))

@@ -22,7 +22,7 @@ window.pushokVpnHistory=(()=>{
         if(!box.isConnected||token!==session||version!==revision)return;
         for(const msg of data.items){
           const card=el('article',undefined,'vpn-history-entry'),head=el('header');
-          head.append(el('strong',msg.title||kinds[msg.kind]||'VPN'),el('small',new Date(msg.created*1000).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' МСК'));
+          head.append(el('strong',msg.title||kinds[msg.kind]||'VPN'),el('small',new Date(msg.created*1000).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' мск'));
           const state=el('small',status(msg.delivery),'vpn-delivery');state.dataset.delivery=msg.delivery;
           card.append(head,el('p',msg.text),state);
           if(subject===me.id&&['blocked','waiting_chat'].includes(msg.delivery)){

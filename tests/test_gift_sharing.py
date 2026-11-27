@@ -39,7 +39,7 @@ class CertificateContracts(unittest.TestCase):
         with patch.dict(os.environ,{'TELEGRAM_BOT_USERNAME':'pushok_test_bot'}):
             row=gift(recipient_telegram_id=12345);data=sharing.share_data(row)
         self.assertIn('1 000,25 ₽',data['text']);self.assertIn('Именной подарок',data['text'])
-        self.assertIn('в веб-кабинете',data['text']);self.assertIn('МСК',data['text'])
+        self.assertIn('в веб-кабинете',data['text']);self.assertIn('мск',data['text'])
         self.assertLessEqual(len(data['text']),1024)
         self.assertNotIn('12345',data['text']);self.assertNotIn(row['name'],data['text'])
         query=parse_qs(urlsplit(data['share_url']).query)

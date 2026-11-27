@@ -69,8 +69,8 @@ window.pushokGrowth=(()=>{
   const tariff=field(f,'Тариф','select');
   const hours=field(f,'Минимальная длительность размещения, часов','number',o?o.min_duration_seconds/3600:0,true);hours.min=0;hours.max=8760;
   const local=value=>value?moscowInput(value):'';
-  const start=field(f,'Начало (МСК; пусто — сейчас)','datetime-local',local(o?.starts_at));
-  const end=field(f,'Окончание (МСК; пусто — без срока)','datetime-local',local(o?.ends_at));
+  const start=field(f,'Начало (мск; пусто — сейчас)','datetime-local',local(o?.starts_at));
+  const end=field(f,'Окончание (мск; пусто — без срока)','datetime-local',local(o?.ends_at));
   const limit=field(f,'Всего заявок (пусто — без ограничения)','number',o?.total_limit||'');limit.min=Math.max(1,o?.uses||0);limit.max=1000000;
   const own=field(f,'Заявок на одного пользователя','number',o?.per_user_limit||1,true);own.min=1;own.max=1000000;
   const personal=field(f,'Персональное предложение','checkbox');personal.checked=Boolean(o?.recipient_user_id);personal.disabled=used||referral;

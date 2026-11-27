@@ -58,15 +58,14 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                 for width in (320,390,768):
                     page.set_viewport_size({'width':width,'height':844})
                     assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
-                    podium_size=48 if width<=360 else 56
-                    assert board.evaluate("""(e,size)=>{
+                    assert board.evaluate("""e=>{
                         const podium=[...e.querySelectorAll('.hall-podium-person')],rows=[...e.querySelectorAll('.hall-row')];
-                        const fits=(item,diameter)=>{
+                        const fits=item=>{
                             const a=item.querySelector('.user-avatar'),r=a.getBoundingClientRect(),b=item.getBoundingClientRect();
-                            return a.dataset.avatarIndicators==='off'&&Math.abs(r.width-diameter)<1&&Math.abs(r.height-diameter)<1&&r.left>=b.left&&r.right<=b.right&&r.top>=b.top&&r.bottom<=b.bottom;
+                            return a.dataset.avatarIndicators==='off'&&Math.abs(r.width-48)<1&&Math.abs(r.height-48)<1&&r.left>=b.left&&r.right<=b.right&&r.top>=b.top&&r.bottom<=b.bottom;
                         };
-                        return podium.length===3&&rows.length>0&&podium.every(item=>fits(item,size))&&rows.every(item=>fits(item,48));
-                    }""",podium_size)
+                        return podium.length===3&&rows.length>0&&podium.every(fits)&&rows.every(fits);
+                    }""")
                 page.set_viewport_size({'width':390,'height':844})
                 page.screenshot(path=str(output/f'hall-large-avatars-{role}.png'))
                 board.locator('.hall-rest summary').click()
@@ -114,7 +113,8 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                 archived=board.locator('.hall-podium-person .user-avatar')
                 expect(archived).to_have_count(1)
                 expect(archived).to_have_attribute('data-avatar-indicators','off')
-                expect(archived).to_have_css('width','56px')
+                expect(archived).to_have_css('width','48px')
+                expect(archived).to_have_css('height','48px')
                 expect(board.locator('.avatar-verification,.avatar-vpn,.user-online,.birthday-avatar')).to_have_count(0)
                 page.screenshot(path=str(output/f'hall-{role}-390.png'))
             # Старые валютные результаты остаются читаемыми без живого пересчёта.

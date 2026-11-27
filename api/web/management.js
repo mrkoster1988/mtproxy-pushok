@@ -67,7 +67,7 @@ window.pushokManagement=(()=>{
    action('Изменить слот','edit',()=>{
     const f=editor(body,'Перенести будущий слот',[{name:'start',label:'Новое начало слота',value:local(c.scheduled_start_at),type:'datetime-local'}],v=>api('/operator/campaigns/'+c.id+'/slot',{method:'PATCH',body:{proxy_node_id:select.value,start_at:parseMoscowInput(v.start.value).toISOString()}}));
     const select=el('select');select.required=true;option(select,'','Выберите узел');const active=nodes.filter(n=>n.status==='active');active.forEach(n=>option(select,n.id,n.name));if(active.length===1)select.value=active[0].id;label(f,'Новый узел слота',select);f.prepend(select.closest('label'));
-    f.append(el('p','Часовой пояс: МСК'+'. Перенос доступен до начала слота и до проверки показа.','muted'));
+    f.append(el('p','Часовой пояс: мск'+'. Перенос доступен до начала слота и до проверки показа.','muted'));
    });
    action('Снять будущий слот','close',async()=>{
     if(!confirm('Снять будущий слот? Оплата останется у заявки, затем можно назначить новое время.'))return;

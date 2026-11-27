@@ -37,16 +37,16 @@ window.pushokProfiles=(()=>{
   row.classList.add('advertiser-identity');row.setAttribute('aria-label','Открыть профиль рекламодателя');
   section.append(row,el('span','Автор заявки','person-role'));return section;
  }
- function compact(user,back='wallet'){
+ function compact(user,back='wallet',{showId=true}={}){
   const id=user.user_id||user.id,row=el(id?'a':'div',undefined,'user-summary person-line'),copy=names(user);
   if(id){row.href=(me?.role==='moderator'?'#/member/':'#/user/')+id;row.setAttribute('aria-label','Открыть профиль пользователя');row.addEventListener('click',()=>{returnRoute=back;});}
-  if(user.telegram_user_id)copy.append(el('small','ID '+user.telegram_user_id,'muted'));
+  if(showId&&user.telegram_user_id)copy.append(el('small','ID '+user.telegram_user_id,'muted'));
   row.append(views().userAvatar(id,person(user).name||person(user).username,false,user),copy);return row;
  }
  function accountDetails(user){
-  const details=el('div',undefined,'profile-details'),id=el('div',undefined,'profile-id');id.append(el('span','Telegram ID: '+user.telegram_user_id));
+  const details=el('div',undefined,'profile-details'),id=el('div',undefined,'profile-id');id.append(el('span','ID '+user.telegram_user_id));id.setAttribute('aria-label','Telegram ID '+user.telegram_user_id);
   id.append(views().iconAction(button('',async()=>{try{await navigator.clipboard.writeText(String(user.telegram_user_id));notice('ID скопирован.',true);}catch{notice('Не удалось скопировать.');}}),'copy','Скопировать ID'));details.append(id);
-  if(user.created_at)details.append(el('small','В кабинете с '+new Date(user.created_at).toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow'}),'muted'));return details;
+  if(user.created_at){const registered=el('time',undefined,'profile-registration muted');registered.dateTime=user.created_at;registered.title='Регистрация · '+date(user.created_at);registered.append(el('span','Регистрация · ','registration-prefix'),document.createTextNode(new Date(user.created_at).toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow'})));details.append(registered);}return details;
  }
  function identity(user){
   const section=el('section',undefined,'profile-identity user-identity'),row=el('div',undefined,'person-line'),copy=names(user,true);

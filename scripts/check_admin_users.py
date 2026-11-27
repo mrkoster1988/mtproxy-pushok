@@ -13,7 +13,8 @@ def check_admin_users(browser,base,output,failures,dsn):
     tokens={};tariff,channel,campaign=uuid4(),uuid4(),uuid4()
     with psycopg.connect(dsn,row_factory=dict_row) as conn:
         for i,(role,uid) in enumerate(ids.items()):
-            conn.execute('INSERT INTO users(id,telegram_user_id,role,first_name,username) VALUES(%s,%s,%s,%s,%s)',(uid,99883400+i,'advertiser' if role=='new_staff' else role,'Каталог '+role,'directory_'+role))
+            name='Мария-Александра Константинопольская' if role=='new_staff' else 'Каталог '+role
+            conn.execute('INSERT INTO users(id,telegram_user_id,role,first_name,username) VALUES(%s,%s,%s,%s,%s)',(uid,998834000000000+i,'advertiser' if role=='new_staff' else role,name,'directory_'+role))
             sid=uuid4();conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')",(sid,uid));tokens[role]=api._create_session_token(uid,sid)
         # Opposite registration and login orders, restricted to this fixture's search below.
         conn.execute("""UPDATE users SET created_at=now()-interval '2 days',last_login_at=clock_timestamp()
@@ -34,6 +35,24 @@ def check_admin_users(browser,base,output,failures,dsn):
         p.evaluate('r=>window.cabinet.go(r)',route);expect(p.locator('[data-page='+route.split('/')[0]+']')).to_be_visible()
     def call(p,role,method,path,data=None):
         r=p.request.fetch(base+'/api/v1'+path,method=method,headers={'Authorization':'Bearer '+tokens[role]},data=data);assert r.ok,(r.status,r.text());return r.json()
+    def check_card_layout(card):
+        face=card.locator('.user-avatar').first.bounding_box()
+        assert abs(face['width']-48)<1 and abs(face['height']-48)<1
+        badge=card.locator(':scope > .person-role')
+        name=card.locator('.person-name').first.bounding_box()
+        assert abs(badge.bounding_box()['y']-name['y'])<=4
+        assert badge.evaluate("e=>getComputedStyle(e).textAlign")=='left'
+        assert badge.evaluate("e=>{const r=e.getBoundingClientRect(),c=e.parentElement.getBoundingClientRect();return r.left>=c.left&&r.right<=c.right}")
+        metadata=card.locator('.directory-meta')
+        expect(metadata.locator('.directory-id')).to_contain_text('ID ')
+        assert metadata.evaluate("""e=>{
+            const box=e.getBoundingClientRect(),id=e.querySelector('.directory-id'),activity=e.querySelector('.directory-activity');
+            const i=id.getBoundingClientRect(),a=activity.getBoundingClientRect();
+            const style=getComputedStyle(activity),line=parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.5;
+            return Math.abs(i.top-a.top)<=2&&Math.abs(a.right-box.right)<=1&&i.right+4<=a.left&&
+                i.height<=line+1&&a.height<=line+1&&e.scrollWidth<=e.clientWidth+1&&
+                id.scrollWidth<=id.clientWidth+1&&activity.scrollWidth<=activity.clientWidth+1;
+        }""")
     try:
         admin=launch('admin');go(admin,'campaigns')
         expect(admin.locator('#campaigns')).to_contain_text('Кампания из каталога')
@@ -48,6 +67,15 @@ def check_admin_users(browser,base,output,failures,dsn):
         first=admin.locator('.user-directory .directory-user').first
         expect(first).to_contain_text('@directory_new_staff')
         expect(first).to_contain_text('Регистрация ·')
+        expect(first.locator('.directory-id')).to_have_text('ID 998834000000003')
+        expect(first.locator('.directory-activity')).to_contain_text('мск')
+        expect(first.locator('.directory-activity')).not_to_contain_text('МСК')
+        for width in (320,390,768):
+            admin.set_viewport_size({'width':width,'height':844})
+            check_card_layout(first)
+            assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+            first.screenshot(path=str(output/f'54-user-directory-meta-{width}.png'))
+        admin.set_viewport_size({'width':390,'height':844})
         sort.select_option('recent')
         expect(first).to_contain_text('@directory_admin')
         expect(first).to_contain_text('Последний вход:')
@@ -72,19 +100,10 @@ def check_admin_users(browser,base,output,failures,dsn):
         category.select_option('user')
         search.fill('')
         admin.locator('.directory-search button[type=submit]').click()
-        for width in (320,390):
-            admin.set_viewport_size({'width':width,'height':844});assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
-        for width in (320,390):
+        for width in (320,390,768):
             admin.set_viewport_size({'width':width,'height':844})
             for card in admin.locator('.user-directory .directory-user').all():
-                identity=card.locator('.user-summary').bounding_box();badge=card.locator(':scope > .person-role').bounding_box()
-                if card.locator(':scope > .role-combined').count():
-                    assert badge['y']>=identity['y']+identity['height']-1
-                    assert badge['x']+badge['width']<=card.bounding_box()['x']+card.bounding_box()['width']
-                else:
-                    assert badge['x']>=identity['x']+identity['width']+6
-                    name=card.locator('.person-name').first.bounding_box()
-                    assert abs(badge['y']-name['y'])<=4
+                check_card_layout(card)
                 assert card.bounding_box()['height']<160
             assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         for role,color in (('admin','rgb(255, 140, 152)'),('operator','rgb(114, 229, 165)')):
@@ -100,7 +119,7 @@ def check_admin_users(browser,base,output,failures,dsn):
         admin.get_by_label('Пользователь для назначения роли',exact=True).fill('@directory_new_staff');admin.locator('#team-role').select_option('operator');admin.once('dialog',lambda d:d.accept());admin.locator('#team-form button[type=submit]').click();expect(admin.locator('#team-status')).to_contain_text('Роль сохранена')
         with psycopg.connect(dsn) as conn:assert conn.execute('SELECT role FROM users WHERE id=%s',(ids['new_staff'],)).fetchone()[0]=='operator'
         go(admin,'wallet');admin.locator('[data-wallet-section=gifts]>summary').click()
-        admin.get_by_label('Название подарка',exact=True).fill('Подарок по никнейму');admin.get_by_label('Подарок, бонусных ₽',exact=True).fill('50');admin.get_by_label('Только одному пользователю Telegram',exact=True).check();admin.get_by_label('Получатель подарка: @никнейм или ID',exact=True).fill('@directory_advertiser');admin.get_by_label('Действует до (МСК)',exact=True).fill((datetime.now(timezone(timedelta(hours=3)))+timedelta(days=10)).strftime('%Y-%m-%dT%H:%M'));admin.get_by_role('button',name='Создать подарочный код',exact=True).click()
+        admin.get_by_label('Название подарка',exact=True).fill('Подарок по никнейму');admin.get_by_label('Подарок, бонусных ₽',exact=True).fill('50');admin.get_by_label('Только одному пользователю Telegram',exact=True).check();admin.get_by_label('Получатель подарка: @никнейм или ID',exact=True).fill('@directory_advertiser');admin.get_by_label('Действует до (мск)',exact=True).fill((datetime.now(timezone(timedelta(hours=3)))+timedelta(days=10)).strftime('%Y-%m-%dT%H:%M'));admin.get_by_role('button',name='Создать подарочный код',exact=True).click()
         gift=admin.locator('.wallet-gift').filter(has=admin.get_by_role('heading',name='Подарок по никнейму',exact=True));expect(gift).to_contain_text('@directory_advertiser');code=gift.locator('.growth-code').inner_text()
         gift.get_by_role('button',name='Изменить',exact=True).click();edit=gift.locator('.gift-editor');edit.get_by_label('Название подарка',exact=True).fill('Изменённый подарок');edit.get_by_label('Подарок, бонусных ₽',exact=True).fill('75');edit.get_by_role('button',name='Сохранить подарок',exact=True).click()
         gift=admin.locator('.wallet-gift').filter(has=admin.get_by_role('heading',name='Изменённый подарок',exact=True));expect(gift).to_contain_text('75')

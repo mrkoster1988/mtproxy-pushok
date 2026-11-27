@@ -79,7 +79,7 @@ function moscowInput(instant) {
  return fields.year+'-'+fields.month+'-'+fields.day+'T'+fields.hour+':'+fields.minute;
 }
 function parseMoscowInput(value) { return new Date(value+'+03:00'); }
-function date(v){return v?new Date(v).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'})+' МСК':'Не назначено';}
+function date(v){return v?new Date(v).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'Europe/Moscow'})+' мск':'Не назначено';}
 function showWorkspace(view){
  if(window.cabinet){window.cabinet.go(view==='settings'?'settings':view==='operator'?'moderation':'campaigns');return;}
  const admin=me?.role==='admin';
@@ -952,7 +952,7 @@ async function loadAvailability(){
   }));
  }catch(e){if(request===calendarRequest){$('availability-days').replaceChildren(el('p','Не удалось получить доступные даты.','muted'));throw e;}}
 }
-$('calendar-zone').textContent='Часовой пояс: МСК'+'. Длительность — по выбранному тарифу.';
+$('calendar-zone').textContent='Часовой пояс: мск'+'. Длительность — по выбранному тарифу.';
 $('calendar-from').value=localDay(new Date());$('calendar-from').min=localDay(new Date());const calendarLastDay=new Date(Date.now()+77*86400000);$('calendar-from').max=localDay(calendarLastDay);
 $('calendar-clear').addEventListener('click',clearRequestedDate);
 for(const id of ['calendar-from','calendar-time','tariff-select'])$(id).addEventListener('change',()=>run(loadAvailability));

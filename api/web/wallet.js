@@ -299,7 +299,7 @@ window.pushokWallet=(()=>{
   personal.addEventListener('change',recipientMode);recipientMode();
   if(used)f.append(el('p','Подарок уже получали. Сумма и получатель зафиксированы; название, срок и общий лимит можно изменить.','muted'));
   const originalDate=g?moscowInput(g.expires_at):'';
-  const expires=field(f,'Действует до (МСК)','datetime-local',originalDate);expires.required=true;
+  const expires=field(f,'Действует до (мск)','datetime-local',originalDate);expires.required=true;
   submit(f,g?'Сохранить подарок':'Создать подарочный код',async()=>{
    const user=personal.checked&&!used?await picker.resolve():null;
    const body={name:name.value,amount:minor(a.value,'BONUS'),max_uses:Number(limit.value),expires_at:g&&expires.value===originalDate?g.expires_at:parseMoscowInput(expires.value).toISOString(),recipient_telegram_id:used?g.recipient_telegram_id:personal.checked?user?.telegram_user_id:null};
