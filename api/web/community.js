@@ -73,12 +73,38 @@ window.pushokCommunity=(()=>{
   }
   box.addEventListener('toggle',()=>{if(box.open&&!loaded)void load();});return box;
  }
- async function leaders(target){const s=token;target.setAttribute('aria-busy','true');try{const data=await api('/hall?kind=month&metric=invited');if(s!==token||!target.isConnected)return;
-  const leaders=data.rows.filter(r=>r.rank<=3),key=JSON.stringify(leaders.map(r=>[r.user_id,r.rank,r.first_name]));if(target.dataset.leaders===key)return;target.dataset.leaders=key;
-  const avatars=el('div',undefined,'home-leader-avatars');target.replaceChildren(el('h2','Лидеры месяца'),avatars);
-  for(const row of leaders){const avatar=v().userAvatar(row.user_id,row.first_name||'Участник');window.pushokHall.frame(avatar,row.rank);avatars.append(avatar);}
-  if(!leaders.length)avatars.append(el('span','Первые места пока свободны','muted'));target.hidden=false;
- }catch{target.hidden=true;}finally{target.setAttribute('aria-busy','false');}}
+ const homeLeaderSnapshots=new WeakMap();
+ async function leaders(target){
+  const s=token;target.setAttribute('aria-busy','true');
+  try{
+   const data=await api('/hall?kind=month&metric=invited');
+   if(s!==token||!target.isConnected)return;
+   const leaders=data.rows.filter(r=>r.rank>=1&&r.rank<=10).sort((a,b)=>a.rank-b.rank).slice(0,10);
+   const key=JSON.stringify(leaders.map(r=>[r.user_id,r.rank,r.first_name]));
+   const previous=homeLeaderSnapshots.get(target);
+   if(previous?.session===s&&previous.key===key){target.hidden=false;return;}
+   const heading=el('div',undefined,'home-leader-heading'),all=el('a','Все →','home-leader-all');
+   all.href='#/hall';all.setAttribute('aria-label','Открыть полную доску почёта');
+   heading.append(el('h2','Лидеры месяца'),all);
+   const avatars=el('div',undefined,'home-leader-avatars');
+   if(leaders.length){
+    avatars.tabIndex=0;avatars.setAttribute('role','group');avatars.setAttribute('aria-label','Лидеры месяца, горизонтальная прокрутка');
+   }
+   for(const row of leaders){
+    const name=row.first_name||'Участник',item=el('div',undefined,'home-leader-item');
+    const avatar=v().userAvatar(row.user_id,name);
+    avatar.dataset.hallRank=String(row.rank);window.pushokHall.frame(avatar,row.rank);
+    avatar.setAttribute('aria-label',name+' · место '+row.rank+' · открыть профиль');
+    const rank=el('span','#'+row.rank,'home-leader-rank');rank.setAttribute('aria-hidden','true');
+    item.append(avatar,rank);avatars.append(item);
+   }
+   if(!leaders.length)avatars.append(el('span','Первые места пока свободны','muted'));
+   target.replaceChildren(heading,avatars);
+   homeLeaderSnapshots.set(target,{session:s,key});
+   target.hidden=false;
+  }catch{if(s===token&&target.isConnected)target.hidden=true;}
+  finally{if(s===token)target.setAttribute('aria-busy','false');}
+ }
  function ownerTools(target,uid,data,reload){if(!hasDeveloperAccess(me))return;
   const box=el('details',undefined,'owner-personal-tools'),head=el('summary');head.append(v().icon('settings'),el('span','Изменить сведения'));head.title='Изменить или перенести сведения';head.setAttribute('aria-label',head.title);box.append(head);target.append(box);
   const form=el('form'),phone=el('input'),birthday=el('input'),year=el('input');phone.value=data.phone_number||'';phone.placeholder='+79991234567';birthday.placeholder='ДД.ММ';birthday.value=data.birthday?[data.birthday.day,data.birthday.month].map(x=>String(x).padStart(2,'0')).join('.'):'';year.type='number';year.value=data.birthday?.year||'';year.placeholder='Необязательно';
