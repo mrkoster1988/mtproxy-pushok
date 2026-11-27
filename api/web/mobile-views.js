@@ -105,14 +105,14 @@ window.pushokViews=(()=>{
   else if(!verified&&old)old.remove();
   describeAvatar(node);
  }
- function userAvatar(id,name='',hall=false,known=null){
+ function userAvatar(id,name='',hall=false,known=null,options={}){
   const fallback=avatar('user');fallback.classList.add('user-avatar');
   const initials=name.trim().split(/\s+/).filter(Boolean).slice(0,2).map(s=>Array.from(s)[0]).join('').toUpperCase();
   if(initials)fallback.textContent=initials;fallback.setAttribute('aria-hidden','true');
   // Only the face is replaced by the asynchronous photo loader, never its badges.
   const face=el('span',undefined,'avatar-face');face.append(...fallback.childNodes);fallback.append(face);
   const node=loadAvatar(fallback,id?'community/users/'+encodeURIComponent(id)+'/avatar':'','user:'+id,'',face);
-  window.pushokCommunity.decorate(node,id,known);return node;
+  window.pushokCommunity.decorate(node,id,known,options);return node;
  }
  function loadAvatar(fallback,path,key,alt,face=fallback){
   if(!path||!token)return fallback;const scope=token+'|'+me?.role;if(logoSession!==scope){clearLogos();logoSession=scope;}

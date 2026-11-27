@@ -1,10 +1,10 @@
 'use strict';
 window.pushokCommunity=(()=>{
- const cache=new Map();let session='',activeAt=Date.now(),returnRoute='hall';
+ const cache=new Map(),leaderLoads=new WeakMap();let session='',activeAt=Date.now(),returnRoute='hall';
  const names=u=>[u.first_name,u.last_name].filter(Boolean).join(' ')||u.username||'Участник';
  const v=()=>window.pushokViews;
  async function person(id){if(session!==token){cache.clear();session=token;}const old=cache.get(id);if(old&&Date.now()-old.at<60000)return old.promise;const promise=api('/community/users/'+id);cache.set(id,{at:Date.now(),promise});try{return await promise;}catch(e){cache.delete(id);throw e;}}
- function decorate(node,id,known=null){
+ function decorate(node,id,known=null,{indicators=true}={}){
   if(!id)return;node.removeAttribute('aria-hidden');node.setAttribute('role','link');node.tabIndex=0;node.setAttribute('aria-label','Открыть профиль');
   const go=e=>{e.preventDefault();e.stopPropagation();const from=location.hash.replace(/^#\/?/,'')||'dashboard';
    // Вложенный профиль сохраняет исходный раздел, в том числе после перехода по имени.
@@ -12,10 +12,12 @@ window.pushokCommunity=(()=>{
    window.cabinet.go(id===me?.id?'profile':['admin','operator'].includes(me?.role)?'user/'+id:'member/'+id);};
   node.addEventListener('click',go);node.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' ')go(e);});
   node.dataset.userId=id;
+  if(!indicators){node.dataset.avatarIndicators='off';return;}
   v().avatarVerification(node,id===me?.id?Boolean(me.phone_verified):known?.phone_verified);
   updateAvatar(node,id,known);
  }
  function updateAvatar(node,id,known=null){
+  if(node.dataset.avatarIndicators==='off')return;
   const s=token;
   window.pushokVpn?.badge(node,id);
   void person(id).then(data=>{if(s!==token||!node.isConnected)return;
@@ -79,12 +81,30 @@ window.pushokCommunity=(()=>{
   }
   box.addEventListener('toggle',()=>{if(box.open&&!loaded)void load();});return box;
  }
- async function leaders(target){const s=token;target.setAttribute('aria-busy','true');try{const data=await api('/hall?kind=month&metric=invited');if(s!==token||!target.isConnected)return;
-  const leaders=data.rows.filter(r=>r.rank<=3),key=JSON.stringify(leaders.map(r=>[r.user_id,r.rank,r.first_name]));if(target.dataset.leaders===key)return;target.dataset.leaders=key;
-  const avatars=el('div',undefined,'home-leader-avatars');target.replaceChildren(el('h2','Лидеры месяца'),avatars);
-  for(const row of leaders){const avatar=v().userAvatar(row.user_id,row.first_name||'Участник');window.pushokHall.frame(avatar,row.rank);avatars.append(avatar);}
-  if(!leaders.length)avatars.append(el('span','Первые места пока свободны','muted'));target.hidden=false;
- }catch{target.hidden=true;}finally{target.setAttribute('aria-busy','false');}}
+ async function leaders(target){
+  const s=token,previous=leaderLoads.get(target),state={session:s,key:previous?.session===s?previous.key:null};
+  leaderLoads.set(target,state);
+  if(previous?.session!==s){target.replaceChildren(el('h2','Лидеры месяца'));target.hidden=false;}
+  const current=()=>s===token&&target.isConnected&&leaderLoads.get(target)===state;
+  target.setAttribute('aria-busy','true');
+  try{
+   const data=await api('/hall/home-leaders');if(!current())return;
+   const leaders=data.rows.filter(r=>r.rank>=1&&r.rank<=10).sort((a,b)=>a.rank-b.rank).slice(0,10);
+   const key=JSON.stringify(leaders.map(r=>[r.user_id,r.rank,r.first_name,r.last_name]));
+   target.hidden=false;if(state.key===key)return;
+   const avatars=el('div',undefined,'home-leader-avatars');
+   avatars.setAttribute('role','group');avatars.setAttribute('aria-label','Первые десять лидеров месяца');
+   for(const row of leaders){
+    const name=[row.first_name,row.last_name].filter(Boolean).join(' ')||'Участник';
+    const avatar=v().userAvatar(row.user_id,name,false,null,{indicators:false});
+    window.pushokHall.frame(avatar,row.rank);avatar.dataset.hallRank=String(row.rank);
+    avatar.setAttribute('aria-label','Место '+row.rank+' · '+name+' · Открыть профиль');avatars.append(avatar);
+   }
+   if(!leaders.length)avatars.append(el('span','Первые места пока свободны','muted'));
+   target.replaceChildren(el('h2','Лидеры месяца'),avatars);state.key=key;
+  }catch{if(current())target.hidden=true;}
+  finally{if(current())target.setAttribute('aria-busy','false');}
+ }
  function ownerTools(target,uid,data,reload){if(!hasDeveloperAccess(me))return;
   const box=el('details',undefined,'owner-personal-tools'),head=el('summary');head.append(v().icon('settings'),el('span','Изменить сведения'));head.title='Изменить или перенести сведения';head.setAttribute('aria-label',head.title);box.append(head);target.append(box);
   const form=el('form'),phone=el('input'),birthday=el('input'),year=el('input');phone.value=data.phone_number||'';phone.placeholder='+79991234567';birthday.placeholder='ДД.ММ';birthday.value=data.birthday?[data.birthday.day,data.birthday.month].map(x=>String(x).padStart(2,'0')).join('.'):'';year.type='number';year.value=data.birthday?.year||'';year.placeholder='Необязательно';

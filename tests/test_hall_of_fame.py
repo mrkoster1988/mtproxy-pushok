@@ -122,6 +122,25 @@ class HallIntegration(unittest.TestCase):
         self.assertTrue(data['closed']);self.assertEqual(data['rows'][0]['score'],2)
         self.assertEqual(self.request('GET',f'/users/{self.owner}/profile')['frame_rank'],1)
 
+    def test_home_leaders_is_top_ten_independent_of_board_size(self):
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('UPDATE hall_settings SET top_size=3')
+            for _ in range(11):
+                inviter,referred=uuid4(),uuid4()
+                for uid in (inviter,referred):
+                    conn.execute("INSERT INTO users(id,telegram_user_id,role,first_name,created_at) VALUES(%s,%s,'advertiser','Лидер','2030-01-01T00:00:00+03')",(uid,int(uid.hex[:12],16)))
+                conn.execute("INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days,created_at) VALUES(%s,%s,10,90,'2030-01-02')",(referred,inviter))
+        period=hall.bounds('month',dt('2030-01-10'))
+        with patch.object(hall,'bounds',return_value=period):
+            rows=self.request('GET','/hall/home-leaders')['rows']
+            self.assertEqual(len(rows),10)
+            self.assertEqual([row['rank'] for row in rows],list(range(1,11)))
+            self.assertEqual(rows[0]['user_id'],str(self.owner))
+            self.assertTrue(all(set(row)=={'user_id','rank','first_name','last_name'} for row in rows))
+            self.assertEqual(len(self.request('GET','/hall?kind=month&metric=invited')['rows']),3)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('SELECT top_size FROM hall_settings WHERE singleton').fetchone()[0],3)
+
     def test_admin_settings_access_and_budget(self):
         self.request('GET','/hall/admin',403)
         self.request('PUT','/hall/admin/settings',403,json={'top_size':50,'rewards':{}})

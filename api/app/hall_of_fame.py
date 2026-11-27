@@ -237,6 +237,21 @@ def router_for(dsn,current_user,require_admin):
                         rewards=effective['rewards'].get(kind,{}).get(metric,[]),metrics={'invited':METRICS['invited']},started_at=cfg['started_at'],legacy_spend=legacy_spend)
         return db(read)
 
+    @router.get('/home-leaders')
+    def home_leaders(response: Response, user=Depends(current_user)):
+        """The dashboard always previews the first ten current monthly inviters."""
+        response.headers['Cache-Control']='private, no-store'
+        def read(conn):
+            cfg=conn.execute('SELECT started_at FROM hall_settings WHERE singleton').fetchone()
+            start,end=bounds('month',datetime.now(timezone.utc))
+            rows=scores(conn,'invited',max(start,counting_start(conn,cfg)),end,10)
+            # The preview needs no Telegram handles, traffic or presence information.
+            for row in rows:
+                hide_username(row)
+            return {'rows':[{key:row[key] for key in ('user_id','rank','first_name','last_name')}
+                            for row in rows]}
+        return db(read)
+
     @router.get('/avatar/{uid}')
     def avatar(uid:str,user=Depends(current_user)):
         from uuid import UUID

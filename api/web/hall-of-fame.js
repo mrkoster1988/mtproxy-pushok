@@ -18,8 +18,8 @@ window.pushokHall=(()=>{
   function valid(){return session===token&&target.isConnected&&location.hash.startsWith('#/hall');}
   function periodTitle(d){return new Date(d.starts_at).toLocaleDateString('ru-RU',{year:'numeric',...(kind==='month'?{month:'long'}:{}),timeZone:'Europe/Moscow'});}
   function person(row,metric,podium=false){
-   const line=el('article',undefined,podium?'hall-podium-person hall-place-'+row.rank:'hall-row'),avatar=window.pushokViews.userAvatar(row.user_id,row.first_name||row.username||'',true),copy=el('div',undefined,'hall-person');frame(avatar,row.rank<=10?row.rank:null);avatar.dataset.hallRank=String(row.rank);
-   const name=[row.first_name,row.last_name].filter(Boolean).join(' ')||row.username||'Участник';copy.append(el('strong',name));if(!podium){
+   const line=el('article',undefined,podium?'hall-podium-person hall-place-'+row.rank:'hall-row'),avatar=window.pushokViews.userAvatar(row.user_id,row.first_name||row.username||'',true,null,{indicators:false}),copy=el('div',undefined,'hall-person');frame(avatar,row.rank<=10?row.rank:null);avatar.dataset.hallRank=String(row.rank);
+   const name=[row.first_name,row.last_name].filter(Boolean).join(' ')||row.username||'Участник';avatar.setAttribute('aria-label','Место '+row.rank+' · '+name+' · Открыть профиль');copy.append(el('strong',name));if(!podium){
     const handle=window.pushokProfiles.telegramHandle(row);
     if(handle)copy.append(handle);
    }
