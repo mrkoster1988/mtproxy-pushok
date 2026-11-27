@@ -94,9 +94,67 @@ class ContestGifts(unittest.TestCase):
         self.request('POST',base,403,json=data)
         overrides[who] = lambda: admin
         self.request('PUT','/admin/team/tamada',json={**grant,'is_tamada':False})
-        moderator['is_tamada']=False
+        # Deliberately keep a stale authenticated snapshot: DB authorization must win.
         overrides[who] = lambda: moderator
         self.request('GET',path,404)
         self.request('POST',base,403,json=data)
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('SELECT role,is_tamada FROM users WHERE id=%s',(moderator['id'],)).fetchone(),('moderator',False))
+
+    def test_event_idempotency_revisions_and_private_response(self):
+        uid = uuid4()
+        admin = dict(id=uid,role='admin',telegram_user_id=int(uid.hex[:12],16))
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute('INSERT INTO users(id,role,telegram_user_id) VALUES(%(id)s,%(role)s,%(telegram_user_id)s)',admin)
+        overrides = fixture.main.app.dependency_overrides
+        self.addCleanup(overrides.clear)
+        overrides[fixture.main.get_current_user] = lambda: admin
+        data = dict(title='Без дублей',sender='Канал',organizer=admin['telegram_user_id'],
+                    month_limit=2,quarter_limit=1,request_id=str(uuid4()))
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            results = list(pool.map(lambda _:self.client.post('/api/v1/contests',json=data),range(2)))
+        self.assertEqual([r.status_code for r in results],[200,200])
+        self.assertEqual(results[0].json(),results[1].json())
+        self.assertIn('no-store',results[0].headers['cache-control'])
+        path = '/contests/events/'+results[0].json()['id']
+        self.request('POST','/contests',409,json={**data,'title':'Другой запрос'})
+        event=self.request('GET',path)
+        self.assertNotIn('creation_fingerprint',event)
+        self.assertEqual(event['revision'],0)
+        self.request('PUT',path,json=dict(title='Новое название',sender='Канал',expected_revision=0))
+        self.request('PUT',path,409,json=dict(title='Старое название',sender='Канал',expected_revision=0))
+        management=dict(organizer=admin['telegram_user_id'],month_limit=2,quarter_limit=1,archived=True)
+        self.request('PUT',path+'/management',409,json={**management,'expected_revision':0})
+        self.request('PUT',path+'/management',json={**management,'expected_revision':1})
+        self.assertEqual(self.request('GET',path)['revision'],2)
+        self.assertEqual(self.request('POST','/contests',json=data),results[0].json())
+        with psycopg.connect(self.dsn) as conn:
+            count=conn.execute("SELECT count(*) FROM audit_events WHERE actor_user_id=%s AND event_type='contest_created'",(uid,)).fetchone()[0]
+            self.assertEqual(count,1)
+            conn.execute('UPDATE users SET blocked_at=now() WHERE id=%s',(uid,))
+        self.request('POST','/contests',401,json=data)
+
+    def test_gift_claim_bad_shop_reply_does_not_lose_winner_or_double_issue(self):
+        def user(role):
+            uid=uuid4()
+            return dict(id=uid,role=role,telegram_user_id=int(uid.hex[:12],16))
+        admin,winner,stranger=[user(role) for role in ('admin','advertiser','advertiser')]
+        with psycopg.connect(self.dsn) as conn:
+            for item in (admin,winner,stranger):
+                conn.execute('INSERT INTO users(id,role,telegram_user_id) VALUES(%(id)s,%(role)s,%(telegram_user_id)s)',item)
+        overrides=fixture.main.app.dependency_overrides
+        who=fixture.main.get_current_user
+        self.addCleanup(overrides.clear)
+        overrides[who]=lambda:admin
+        event=self.request('POST','/contests',json=dict(title='Подарок',sender='Канал',organizer=admin['telegram_user_id'],month_limit=1,quarter_limit=0))
+        prize=self.request('POST','/contests/events/'+event['id']+'/prizes',json=dict(days=30,request_id=str(uuid4())))
+        claim='/contests/prizes/'+prize['id']+'/claim'
+        overrides[who]=lambda:winner
+        with patch('app.contest_gifts.vpn_shop.exchange',side_effect=[JSONResponse({'expires':True}),JSONResponse({'expires':1900000000})]) as exchange:
+            self.request('POST',claim,503)
+            overrides[who]=lambda:stranger
+            self.request('POST',claim,410)
+            overrides[who]=lambda:winner
+            self.assertEqual(self.request('POST',claim)['expires'],1900000000)
+            self.assertEqual(self.request('POST',claim)['expires'],1900000000)
+            self.assertEqual(exchange.call_count,2)
