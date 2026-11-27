@@ -2,6 +2,7 @@
 from ui_test_helpers import open_settings, open_management
 from datetime import datetime,timedelta,timezone
 from uuid import uuid4
+import json
 import psycopg
 from psycopg.rows import dict_row
 from playwright.sync_api import expect
@@ -36,23 +37,64 @@ def check_admin_users(browser,base,output,failures,dsn):
     def call(p,role,method,path,data=None):
         r=p.request.fetch(base+'/api/v1'+path,method=method,headers={'Authorization':'Bearer '+tokens[role]},data=data);assert r.ok,(r.status,r.text());return r.json()
     def check_card_layout(card):
-        face=card.locator('.user-avatar').first.bounding_box()
-        assert abs(face['width']-48)<1 and abs(face['height']-48)<1
-        badge=card.locator(':scope > .person-role')
-        name=card.locator('.person-name').first.bounding_box()
-        assert abs(badge.bounding_box()['y']-name['y'])<=4
-        assert badge.evaluate("e=>getComputedStyle(e).textAlign")=='left'
-        assert badge.evaluate("e=>{const r=e.getBoundingClientRect(),c=e.parentElement.getBoundingClientRect();return r.left>=c.left&&r.right<=c.right}")
-        metadata=card.locator('.directory-meta')
-        expect(metadata.locator('.directory-id')).to_contain_text('ID ')
-        assert metadata.evaluate("""e=>{
-            const box=e.getBoundingClientRect(),id=e.querySelector('.directory-id'),activity=e.querySelector('.directory-activity');
-            const i=id.getBoundingClientRect(),a=activity.getBoundingClientRect();
-            const style=getComputedStyle(activity),line=parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.5;
-            return Math.abs(i.top-a.top)<=2&&Math.abs(a.right-box.right)<=1&&i.right+4<=a.left&&
-                i.height<=line+1&&a.height<=line+1&&e.scrollWidth<=e.clientWidth+1&&
-                id.scrollWidth<=id.clientWidth+1&&activity.scrollWidth<=activity.clientWidth+1;
-        }""")
+        try:
+            avatar=card.locator('.user-avatar').first
+            name=card.locator('.person-name').first
+            badge=card.locator(':scope > .person-role')
+            expect(avatar).to_be_visible()
+            expect(name).to_be_visible()
+            expect(badge).to_be_visible()
+            face=avatar.bounding_box()
+            assert face is not None,'User avatar has no bounding box'
+            assert abs(face['width']-48)<1 and abs(face['height']-48)<1
+            name_box=name.bounding_box()
+            badge_box=badge.bounding_box()
+            assert name_box is not None,'User name has no bounding box'
+            assert badge_box is not None,'User status has no bounding box'
+            assert abs(badge_box['y']-name_box['y'])<=4
+            assert badge.evaluate("e=>getComputedStyle(e).textAlign")=='left'
+            assert badge.evaluate("e=>{const r=e.getBoundingClientRect(),c=e.parentElement.getBoundingClientRect();return r.left>=c.left&&r.right<=c.right}")
+            metadata=card.locator('.directory-meta')
+            expect(metadata.locator('.directory-id')).to_contain_text('ID ')
+            assert metadata.evaluate("""e=>{
+                const box=e.getBoundingClientRect(),id=e.querySelector('.directory-id'),activity=e.querySelector('.directory-activity');
+                const i=id.getBoundingClientRect(),a=activity.getBoundingClientRect();
+                const style=getComputedStyle(activity),line=parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.5;
+                return Math.abs(i.top-a.top)<=2&&Math.abs(a.right-box.right)<=1&&i.right+4<=a.left&&
+                    i.height<=line+1&&a.height<=line+1&&e.scrollWidth<=e.clientWidth+1&&
+                    id.scrollWidth<=id.clientWidth+1&&activity.scrollWidth<=activity.clientWidth+1;
+            }""")
+        except Exception:
+            # Capture here: the scenario closes its context before the suite's failure screenshots.
+            try:
+                snapshot=card.evaluate("""e=>{
+                    const inspect=node=>{
+                        const style=getComputedStyle(node),box=node.getBoundingClientRect();
+                        return {tag:node.tagName,className:node.className,hidden:node.hidden,
+                            text:node.textContent.trim().slice(0,160),box:box.toJSON(),
+                            display:style.display,visibility:style.visibility,minWidth:style.minWidth,
+                            flex:style.flex,columns:style.gridTemplateColumns};
+                    };
+                    const selectors=[':scope > .user-summary','.user-avatar','.person-copy','.person-name',
+                        ':scope > .person-role','.directory-meta','.directory-id','.directory-activity'];
+                    const nodes=Object.fromEntries(selectors.map(selector=>[selector,
+                        [...e.querySelectorAll(selector)].map(inspect)]));
+                    const ancestors=[];for(let node=e.parentElement;node;node=node.parentElement){
+                        ancestors.push({tag:node.tagName,className:node.className,hidden:node.hidden,
+                            display:getComputedStyle(node).display,visibility:getComputedStyle(node).visibility});
+                    }
+                    return {route:location.hash,viewport:{width:innerWidth,height:innerHeight},card:inspect(e),nodes,ancestors};
+                }""")
+                diagnostic=json.dumps(snapshot,ensure_ascii=False,indent=2)
+                (output/'54-user-directory-layout-failure.json').write_text(diagnostic,encoding='utf-8')
+                print('User directory layout failure: '+diagnostic)
+            except Exception as diagnostic_error:
+                print('Could not capture user directory geometry: '+str(diagnostic_error))
+            try:
+                card.page.screenshot(path=str(output/'54-user-directory-layout-failure.png'),full_page=True)
+            except Exception as screenshot_error:
+                print('Could not capture user directory screenshot: '+str(screenshot_error))
+            raise
     try:
         admin=launch('admin');go(admin,'campaigns')
         expect(admin.locator('#campaigns')).to_contain_text('Кампания из каталога')

@@ -19,8 +19,14 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
         # A real verified, online birthday user must show only verification in the home strip.
         birthday=community.today()
         conn.execute("""INSERT INTO verified_profiles(user_id,telegram_environment,phone_number,phone_verified_at,
-            birth_day,birth_month,birthday_source) VALUES(%s,%s,'+79990001133',now(),%s,%s,'telegram')""",
+            birth_day,birth_month,birthday_source) VALUES(%s,%s,'+79990001133',now(),%s,%s,'telegram')
+            ON CONFLICT(user_id,telegram_environment) DO UPDATE SET
+                phone_number=EXCLUDED.phone_number,phone_verified_at=EXCLUDED.phone_verified_at,
+                birth_day=EXCLUDED.birth_day,birth_month=EXCLUDED.birth_month,birthday_source=EXCLUDED.birthday_source""",
             (owner,community.environment_name(),birthday.day,birthday.month))
+        # The integration fixture trigger verifies new users; explicitly exercise an unverified leader too.
+        conn.execute("""UPDATE verified_profiles SET phone_number=NULL,phone_verified_at=NULL
+            WHERE user_id=%s AND telegram_environment=%s""",(friend,community.environment_name()))
         conn.execute('UPDATE users SET last_seen_at=now() WHERE id=%s',(owner,))
         conn.execute("UPDATE hall_settings SET started_at=%s",(previous,))
         conn.execute("INSERT INTO growth_referrals(referred_user_id,inviter_user_id,reward_percent,reward_days,created_at) VALUES(%s,%s,10,90,now())",(friend,owner))
