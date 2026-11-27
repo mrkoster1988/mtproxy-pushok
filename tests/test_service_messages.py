@@ -66,15 +66,27 @@ class ServiceMessages(TestCase):
             return json.dumps({'ok':True, 'result':result}).encode()
         service.verify_sender.cache_clear()
         self.addCleanup(service.verify_sender.cache_clear)
-        with patch.dict('os.environ',TELEGRAM_BOT_TOKEN=token), patch.object(service,'read_url',side_effect=reply) as call, \
+        with patch.dict('os.environ',TELEGRAM_BOT_TOKEN=token,TELEGRAM_BOT_USERNAME='mtproxy_pushok_bot'), patch.object(service,'read_url',side_effect=reply) as call, \
              patch('app.recipient_history.record'):
             for shop in (False, True):
                 self.assertEqual(service.send(service.Notice(chat_id=22,text='Напоминание'),shop), {'sent':True})
             self.assertEqual(call.call_count,3)
             self.assertIn('Открыть магазин',str(json.loads(call.call_args.args[0].data)))
 
+    def test_renamed_bot_uses_configured_identity(self):
+        service.verify_sender.cache_clear()
+        self.addCleanup(service.verify_sender.cache_clear)
+        with patch.dict('os.environ',TELEGRAM_BOT_USERNAME='NewPushokBot'), patch.object(service,'telegram_call',return_value={'is_bot':True,'username':'newpushokbot'}) as call:
+            service.verify_sender('fixture-token')
+            service.verify_sender('fixture-token')
+            self.assertEqual(call.call_count,1)
+            self.assertIn('https://t.me/NewPushokBot?',service.cabinet_link({'text':'Открыть','callback_data':'campaigns'})['url'])
+            with patch.dict('os.environ',TELEGRAM_BOT_USERNAME='OtherPushokBot'):
+                with self.assertRaises(HTTPException):
+                    service.verify_sender('fixture-token')
+
     def test_wrong_bot_is_rejected_before_sending(self):
-        with patch.dict('os.environ',TELEGRAM_BOT_TOKEN='42:'+'X'*32), patch.object(service,'telegram_call',
+        with patch.dict('os.environ',TELEGRAM_BOT_TOKEN='42:'+'X'*32,TELEGRAM_BOT_USERNAME='mtproxy_pushok_bot'), patch.object(service,'telegram_call',
                 return_value={'is_bot':True,'username':'server_pushok_bot'}) as call:
             with self.assertRaises(HTTPException) as exc:
                 service.send(service.Notice(chat_id=22,text='Сообщение'))
