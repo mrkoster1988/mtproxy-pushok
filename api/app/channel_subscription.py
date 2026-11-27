@@ -6,11 +6,11 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener, ProxyHandler
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
 
 from . import control
 from .channel_logos import NoRedirect
-from .telegram_environment import bot_api_url
+from .telegram_environment import bot_api_url, configured_bot_username
 
 DEFAULT_CHANNEL_URL = 'https://t.me/pushok_proxy'
 CHANNEL_URL_PATTERN = r'^https://t\.me/[A-Za-z][A-Za-z0-9_]{3,31}/?$'
@@ -20,6 +20,26 @@ class ChannelSubscriptionSettings(BaseModel):
     model_config = ConfigDict(extra='forbid', str_strip_whitespace=True)
     enabled: StrictBool
     channel_url: str = Field(min_length=10, max_length=120, pattern=CHANNEL_URL_PATTERN)
+
+    @field_validator('channel_url', mode='before')
+    @classmethod
+    def normalize_channel(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+            if re.fullmatch(r'@?[A-Za-z][A-Za-z0-9_]{3,31}', value):
+                value = 'https://t.me/' + value.lstrip('@')
+            elif re.fullmatch(r't\.me/[A-Za-z][A-Za-z0-9_]{3,31}/?', value):
+                value = 'https://' + value
+        return value
+
+    @field_validator('channel_url')
+    @classmethod
+    def reject_cabinet_bot(cls, value):
+        username = value.rstrip('/').rsplit('/', 1)[-1]
+        bot = configured_bot_username()
+        if bot and username.lower() == bot.lower():
+            raise ValueError('Укажите канал, а не username бота')
+        return value.rstrip('/')
 
 
 def read_settings():

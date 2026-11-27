@@ -18,7 +18,7 @@ from urllib.request import Request as TelegramRequest
 from .channel_topic_suggestions import read_url
 from .bot_routes import _verify_bot_secret
 from .flow_shop_ticket import bridge_key
-from .telegram_environment import bot_api_url, is_test_environment
+from .telegram_environment import bot_api_url, is_test_environment, configured_bot_username
 
 router = APIRouter(include_in_schema=False)
 DOMAIN = b'pushok-shop-telegram-notice-v1:'
@@ -51,12 +51,16 @@ def cabinet_link(button):
         route = '_'.join(detail.groups())
     elif route not in ('vpn','vpn_renew','achievements','hall','campaigns','moderation','profile','sponsors','create','channels'):
         route = 'dashboard'
-    username = os.getenv('TELEGRAM_BOT_USERNAME','mtproxy_pushok_bot')
+    username = cabinet_bot_username()
     if not re.fullmatch(r'[A-Za-z0-9_]{5,32}',username): raise HTTPException(503,'cabinet_bot_unavailable')
     return {'text':str(button['text'])[:64], 'url':'https://t.me/'+username+'?startapp='+route}
 
 
-CABINET_BOT = 'mtproxy_pushok_bot'
+def cabinet_bot_username():
+    username = configured_bot_username()
+    if not username:
+        raise HTTPException(503, 'cabinet_bot_unavailable')
+    return username
 
 
 def telegram_call(token, method, payload):
@@ -92,10 +96,17 @@ def telegram_call(token, method, payload):
 
 
 @lru_cache(maxsize=1)
-def verify_sender(token):
+def _verify_sender(token, username):
     identity = telegram_call(token, 'getMe', {})
-    if identity.get('is_bot') is not True or str(identity.get('username', '')).lower() != CABINET_BOT:
+    if identity.get('is_bot') is not True or str(identity.get('username', '')).lower() != username.lower():
         raise HTTPException(503, 'cabinet_bot_wrong_identity')
+
+
+def verify_sender(token):
+    return _verify_sender(token, cabinet_bot_username())
+
+
+verify_sender.cache_clear = _verify_sender.cache_clear
 
 
 def rich_notice(text):
