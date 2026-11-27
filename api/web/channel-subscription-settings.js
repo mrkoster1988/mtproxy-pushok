@@ -14,10 +14,10 @@ window.pushokChannelSubscriptionSettings=(()=>{
    if(!valid())return;
    const form=el('form'),fields=el('fieldset'),enabled=el('input'),channel=el('input');
    enabled.type='checkbox';enabled.checked=saved.enabled;
-   channel.type='url';channel.required=true;channel.maxLength=120;channel.autocomplete='off';channel.autocapitalize='none';channel.spellcheck=false;channel.value=saved.channel_url;channel.placeholder='https://t.me/pushok_proxy';
+   channel.type='text';channel.required=true;channel.maxLength=120;channel.autocomplete='off';channel.autocapitalize='none';channel.spellcheck=false;channel.value=saved.channel_url;channel.placeholder='@username или https://t.me/username';
    const enabledLabel=el('label');enabledLabel.className='settings-subscription-toggle';enabledLabel.append(enabled,el('span','Требовать подписку на канал перед подключением'));
-   const channelLabel=el('label','Публичная ссылка Telegram-канала');channelLabel.append(channel);
-   const help=el('p','После перехода кнопка «Назад» в Telegram возвращает пользователя в оставшееся открытым приложение. Для проверки бот должен быть администратором канала.','muted');
+   const channelLabel=el('label','Ссылка или @username Telegram-канала');channelLabel.append(channel);
+   const help=el('p','После перехода кнопка «Назад» в Telegram возвращает пользователя в оставшееся открытым приложение. Укажите именно канал, не бота. Для проверки бот кабинета должен быть администратором канала.','muted');
    const save=el('button','Сохранить настройку');save.type='submit';save.className='primary';
    const status=el('p',undefined,'settings-subscription-status');status.setAttribute('role','status');
    fields.append(enabledLabel,channelLabel,help,save,status);form.append(fields);
@@ -30,7 +30,7 @@ window.pushokChannelSubscriptionSettings=(()=>{
      if(result.channel_url)channel.value=result.channel_url;
     }catch(error){if(valid())status.textContent=({
       admin_role_required:'Настройки доступны только администратору.',
-      channel_subscription_settings_invalid:'Укажите публичную ссылку вида https://t.me/username.'
+      channel_subscription_settings_invalid:'Укажите публичный канал: @username или https://t.me/username.'
      })[error.message]||'Не удалось сохранить настройку. Проверьте ссылку и повторите.';}
     finally{save.disabled=false;}
    });

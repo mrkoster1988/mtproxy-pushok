@@ -11,7 +11,7 @@ from uuid import UUID
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
-from .telegram_environment import bot_api_url, environment_name, is_test_environment
+from .telegram_environment import bot_api_url, environment_name, is_test_environment, configured_bot_username
 from .wizard import DraftWizard, format_tariff
 from .navigation import Navigation
 from .vpn_notices import deliver as deliver_vpn_notices
@@ -26,17 +26,6 @@ from .campaign_analytics import member_payload
 from .verified_profiles import verification_response, deliver_birthdays
 
 CHANNEL_URL = "https://t.me/pushok_proxy"
-BOT_USERNAME = "mtproxy_pushok_bot"
-
-
-def configured_bot_username():
-    """Имя бота берётся из мастера установки, а не из чужого проекта."""
-    username = os.getenv("TELEGRAM_BOT_USERNAME", BOT_USERNAME)
-    if not re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
-        raise RuntimeError("Неверный TELEGRAM_BOT_USERNAME в настройках")
-    return username.lower()
-
-
 COMMANDS = frozenset(("start", "advertise", "campaigns", "tariffs", "channels", "help", "paysupport"))
 LOG = logging.getLogger("pushok.bot")
 _navigation = None
@@ -275,7 +264,7 @@ def submission_reply(callback, submitter):
     except HTTPError as exc:
         if exc.code == 409:
             text = ("⚠️ Не удалось подтвердить права на канал.\n"
-                    "Добавьте @mtproxy_pushok_bot администратором рекламируемого "
+                    f"Добавьте @{configured_bot_username()} администратором рекламируемого "
                     "канала и убедитесь, что вы сами его администратор.\n"
                     "После этого нажмите кнопку проверки повторно.")
         elif exc.code == 404:

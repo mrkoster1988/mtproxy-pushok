@@ -7,6 +7,8 @@ import logging
 from urllib.error import HTTPError, URLError
 from uuid import UUID
 
+from .telegram_environment import matches_bot_command
+
 LOG = logging.getLogger("pushok.bot.delivery")
 
 
@@ -44,7 +46,7 @@ class DeliveryInbox:
         text = message.get("text") if message else None
         command = text.split(maxsplit=1)[0].lower() if isinstance(text, str) and text.strip() else ""
         show_report = (
-            command in ("/delivery", "/delivery@mtproxy_pushok_bot")
+            matches_bot_command(command, "/delivery")
             or action == "delivery:refresh"
         )
         if isinstance(action, str) and action.startswith("delivery:retry:"):
