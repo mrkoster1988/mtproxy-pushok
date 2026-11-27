@@ -161,7 +161,7 @@ window.pushokViews=(()=>{
   ['Черновик','Модерация','Оплата','Расписание','Активна','Завершена'].forEach((name,i)=>{const step=el('li',undefined,i<state[2]?'is-done':i===state[2]?'is-current':''),dot=el('span',undefined,'progress-dot');dot.append(i<state[2]?icon('check'):document.createTextNode(String(i+1)));step.append(dot,el('span',name));if(i===state[2])step.setAttribute('aria-current','step');rail.append(step);});return rail;
  }
  const launchClock=new Intl.DateTimeFormat('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
- function launchTime(value){return launchClock.format(new Date(value))+' МСК';}
+ function launchTime(value){return launchClock.format(new Date(value))+' мск';}
  function launchPeriod(c){
   const start=c.scheduled_start_at,end=c.scheduled_end_at;
   if(c.placement_status==='completed')return end?'Размещение завершено · окончание по плану '+launchTime(end):'Размещение завершено';
@@ -190,7 +190,7 @@ window.pushokViews=(()=>{
    const stamp=new Date(value),group=el('div'),time=el('time');
    time.dateTime=value;time.title=launchTime(value);
    time.append(el('strong',stamp.toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow',day:'numeric',month:'short',year:'numeric'})),
-    el('small',stamp.toLocaleTimeString('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit'})+' МСК'));
+    el('small',stamp.toLocaleTimeString('ru-RU',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit'})+' мск'));
    group.append(el('span',label),time);period.append(group);
   }
   const fraction=Math.max(0,Math.min(100,100*(Date.now()-start)/(end-start)));

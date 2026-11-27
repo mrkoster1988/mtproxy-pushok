@@ -317,7 +317,7 @@ window.pushokVpn = (() => {
       dates.append(terms);
       if(row.last_seen){
         const stamp=new Date(row.last_seen*1000);
-        const seen=el('time',stamp.toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' МСК','vpn-seen');
+        const seen=el('time',stamp.toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' мск','vpn-seen');
         seen.dateTime=stamp.toISOString();seen.title='Последний отклик';seen.setAttribute('aria-label','Последний отклик '+seen.textContent);
         dates.append(seen);
       }
@@ -384,7 +384,7 @@ window.pushokVpn = (() => {
       const valid=rows.map(r=>usage(r,period.value)).filter(Boolean);
       const rx=valid.reduce((sum,p)=>sum+p[0],0),tx=valid.reduce((sum,p)=>sum+p[1],0);
       facts.replaceChildren(metric('Всего',traffic(valid.length?rx+tx:null)),metric('Получено',traffic(valid.length?rx:null)),metric('Отправлено',traffic(valid.length?tx:null)));
-      note.textContent=period.value==='all'?'По счётчикам WireGuard':'Прирост счётчиков с начала наблюдения · МСК';
+      note.textContent=period.value==='all'?'По счётчикам WireGuard':'Прирост счётчиков с начала наблюдения · мск';
       if(valid.length<rows.length)note.textContent+=' · Есть профили без данных';
     };
     period.onchange=render;box.append(head,facts,note);render();return box;

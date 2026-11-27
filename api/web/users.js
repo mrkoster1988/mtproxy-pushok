@@ -37,9 +37,13 @@ window.pushokUsers=(()=>{
    const byRegistration=sorting.value==='newest'||sorting.value==='oldest';
    for(const user of data.items){
     const row=el('article',undefined,'card directory-user'),access=window.pushokTeam.roleControl(user);
-    const timestamp=byRegistration?'Регистрация · '+date(user.created_at):
-      user.last_login_at?'Последний вход: '+date(user.last_login_at):'Вход в приложение ещё не зафиксирован.';
-    row.append(window.pushokProfiles.compact(user,'users'),access.badge,access.editor,el('p',timestamp,'muted'));list.append(row);
+    const meta=el('div',undefined,'directory-meta muted'),id=el('span','ID '+user.telegram_user_id,'directory-id');
+    const stamp=byRegistration?user.created_at:user.last_login_at,label=byRegistration?'Регистрация · ':'Последний вход: ';
+    const activity=el(stamp?'time':'span',undefined,'directory-activity');
+    if(stamp){activity.dateTime=stamp;activity.title=label+date(stamp);activity.setAttribute('aria-label',activity.title);activity.append(el('span',label,'directory-activity-label'),document.createTextNode(date(stamp)));}
+    else{activity.textContent='Не входил';activity.title='Вход в приложение ещё не зафиксирован.';activity.setAttribute('aria-label',activity.title);}
+    meta.append(id,activity);
+    row.append(window.pushokProfiles.compact(user,'users',{showId:false}),access.badge,meta,access.editor);list.append(row);
    }
    if(!data.items.length)list.append(el('p','Пользователи не найдены. Измените поиск или фильтр.','empty'));
    if(page)nav.append(button('Предыдущие',()=>{page--;return load();}));if(data.more)nav.append(button('Следующие',()=>{page++;return load();}));

@@ -38,19 +38,25 @@ def check_user_profiles(browser, base, output, failures, dsn):
     try:
         with patch('app.community.user_avatar',return_value=photo.getvalue()) as avatar:
             admin=launch('admin')
-            vpn_row={'id':str(owner),'name':'Мария Зиброва','state':'active','online':True,'phone_verified':True}
+            vpn_row={'id':str(owner),'name':'Мария Зиброва','state':'active','online':True,'phone_verified':True,'last_seen':1761921900}
             admin.route('**/api/v1/vpn/dashboard',lambda route:route.fulfill(json={'can_manage':True,'personal':None,'members':[vpn_row]}))
             admin.evaluate('window.pushokVpn.reset()')
             go(admin,'moderation/'+str(campaigns[0]))
             card=admin.locator('.approval-advertiser');expect(card.locator('.user-avatar img')).to_have_count(1)
             def check_avatar(container,verified=True):
                 face=container.locator('.user-avatar').first
+                expect(face).to_be_visible()
                 expect(face.locator(':scope > .avatar-verification')).to_have_count(int(verified))
                 expect(face.locator(':scope > .avatar-vpn[data-signal=online]')).to_have_count(1)
                 expect(container.locator('.person-name .phone-verified-badge,.person-name .vpn-signal')).to_have_count(0)
-                if verified:
-                    assert face.evaluate("""e=>{const a=e.getBoundingClientRect(),v=e.querySelector('.avatar-verification').getBoundingClientRect(),p=e.querySelector('.avatar-vpn').getBoundingClientRect();
-                        return v.left>=a.left+a.width/2-2&&v.bottom>=a.bottom-2&&p.left<=a.left+2&&p.bottom>=a.bottom-2&&p.right<=v.left+1;}""")
+                assert face.evaluate("""(e,verified)=>{
+                    const a=e.getBoundingClientRect();
+                    if(!e.isConnected||!e.getClientRects().length||getComputedStyle(e).visibility!=='visible'||
+                        Math.abs(a.width-48)>=1||Math.abs(a.height-48)>=1)return false;
+                    if(!verified)return true;
+                    const v=e.querySelector('.avatar-verification').getBoundingClientRect(),p=e.querySelector('.avatar-vpn').getBoundingClientRect();
+                    return v.left>=a.left+a.width/2-2&&v.bottom>=a.bottom-2&&p.left<=a.left+2&&p.bottom>=a.bottom-2&&p.right<=v.left+1;
+                }""",verified),'User avatar size or indicator placement is invalid'
             check_avatar(card)
             assert card.inner_text().count('@ZibrovaM')==1
             expect(card).not_to_contain_text('Telegram ID')
@@ -71,7 +77,7 @@ def check_user_profiles(browser, base, output, failures, dsn):
             profile.get_by_role('button',name='Отчёт кампании '+str(campaigns[11])[:8]).click()
             expect(profile.locator('.campaign-report')).to_contain_text('Тестирование')
             profile.get_by_role('button',name='Текущие · 11',exact=True).click()
-            for width in (390,320):
+            for width in (390,320,768):
                 admin.set_viewport_size({'width':width,'height':844})
                 assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
                 check_avatar(profile.locator('.profile-identity'))
@@ -100,6 +106,20 @@ def check_user_profiles(browser, base, output, failures, dsn):
                 go(client,'profile')
             forbidden=client.request.get(base+f'/api/v1/users/{staff}/profile',headers={'Authorization':'Bearer '+tokens['advertiser']})
             assert forbidden.status==404
+            # VPN shares the photo size and badge layout with user lists and profiles.
+            go(admin,'vpn')
+            vpn_card=admin.locator('.vpn-directory .vpn-card').filter(has_text='Мария Зиброва')
+            expect(vpn_card).to_have_count(1)
+            expect(vpn_card.locator('.vpn-seen')).to_contain_text('мск')
+            expect(vpn_card.locator('.vpn-seen')).not_to_contain_text('МСК')
+            for width in (320,390,768):
+                admin.set_viewport_size({'width':width,'height':844})
+                check_avatar(vpn_card)
+                assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                vpn_card.screenshot(path=str(output/f'51-vpn-avatar-{width}.png'))
+            admin.set_viewport_size({'width':390,'height':844})
+            go(admin,'moderation/'+str(campaigns[0]))
+            expect(card.locator('.user-avatar img')).to_have_count(1)
             # Нет фотографии и имя совпадает с ником — без дубля и сломанного <img>.
             avatar.return_value=None
             with psycopg.connect(dsn) as conn:

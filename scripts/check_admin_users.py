@@ -1,7 +1,9 @@
 """Мобильный каталог, роли по никнейму и управление бонусами с настоящим API/SQL."""
 from ui_test_helpers import open_settings, open_management
 from datetime import datetime,timedelta,timezone
+from urllib.parse import parse_qs,urlsplit
 from uuid import uuid4
+import json
 import psycopg
 from psycopg.rows import dict_row
 from playwright.sync_api import expect
@@ -13,7 +15,8 @@ def check_admin_users(browser,base,output,failures,dsn):
     tokens={};tariff,channel,campaign=uuid4(),uuid4(),uuid4()
     with psycopg.connect(dsn,row_factory=dict_row) as conn:
         for i,(role,uid) in enumerate(ids.items()):
-            conn.execute('INSERT INTO users(id,telegram_user_id,role,first_name,username) VALUES(%s,%s,%s,%s,%s)',(uid,99883400+i,'advertiser' if role=='new_staff' else role,'Каталог '+role,'directory_'+role))
+            name='Мария-Александра Константинопольская' if role=='new_staff' else 'Каталог '+role
+            conn.execute('INSERT INTO users(id,telegram_user_id,role,first_name,username) VALUES(%s,%s,%s,%s,%s)',(uid,998834000000000+i,'advertiser' if role=='new_staff' else role,name,'directory_'+role))
             sid=uuid4();conn.execute("INSERT INTO user_sessions(id,user_id,expires_at) VALUES(%s,%s,now()+interval '1 hour')",(sid,uid));tokens[role]=api._create_session_token(uid,sid)
         # Opposite registration and login orders, restricted to this fixture's search below.
         conn.execute("""UPDATE users SET created_at=now()-interval '2 days',last_login_at=clock_timestamp()
@@ -34,6 +37,102 @@ def check_admin_users(browser,base,output,failures,dsn):
         p.evaluate('r=>window.cabinet.go(r)',route);expect(p.locator('[data-page='+route.split('/')[0]+']')).to_be_visible()
     def call(p,role,method,path,data=None):
         r=p.request.fetch(base+'/api/v1'+path,method=method,headers={'Authorization':'Bearer '+tokens[role]},data=data);assert r.ok,(r.status,r.text());return r.json()
+    def directory_load(p,action,*,query='',category='',sort='newest'):
+        params={'query':[query],'category':[category],'sort':[sort],'visited':['false'],'page':['0']}
+        with p.expect_response(lambda r:r.request.method=='GET' and
+                urlsplit(r.url).path=='/api/v1/admin/users' and parse_qs(urlsplit(r.url).query,keep_blank_values=True)==params) as pending:
+            action()
+        response=pending.value
+        assert response.ok,(response.status,response.text())
+        items=response.json()['items']
+        # Existing rows can already contain the searched user while the new query is still rendering.
+        expected_ids=[str(user['id']) for user in items]
+        expect(p.locator('.user-directory .directory-user')).to_have_count(len(expected_ids))
+        p.wait_for_function("""ids=>{
+            const avatars=[...document.querySelectorAll('.user-directory .directory-user > .user-summary > .user-avatar')];
+            return avatars.length===ids.length&&avatars.every((avatar,i)=>avatar.dataset.userId===ids[i]);
+        }""",arg=expected_ids)
+        return items
+    def check_card_layout(p,user_id):
+        user_id=str(user_id)
+        card=p.locator('.user-directory .directory-user').filter(has=p.locator('.user-avatar[data-user-id="'+user_id+'"]'))
+        layout=None
+        try:
+            expect(card).to_be_visible()
+            # Resolve the stable user ID and measure in one JS task, without a detached Locator handle.
+            layout=p.wait_for_function("""id=>{
+                const e=[...document.querySelectorAll('.user-directory .directory-user')]
+                    .find(card=>card.querySelector('.user-avatar')?.dataset.userId===id);
+                if(!e)return null;
+                const measure=node=>{
+                    if(!node)return null;
+                    const box=node.getBoundingClientRect(),style=getComputedStyle(node);
+                    return {...box.toJSON(),text:node.textContent,
+                        visible:node.isConnected&&node.getClientRects().length>0&&box.width>0&&box.height>0&&
+                            style.display!=='none'&&style.visibility==='visible',
+                        textAlign:style.textAlign,scrollWidth:node.scrollWidth,clientWidth:node.clientWidth,
+                        lineHeight:parseFloat(style.lineHeight)||parseFloat(style.fontSize)*1.5};
+                };
+                return {card:measure(e),avatar:measure(e.querySelector('.user-avatar')),
+                    name:measure(e.querySelector('.person-name')),badge:measure(e.querySelector(':scope > .person-role')),
+                    metadata:measure(e.querySelector('.directory-meta')),id:measure(e.querySelector('.directory-id')),
+                    activity:measure(e.querySelector('.directory-activity'))};
+            }""",arg=user_id).json_value()
+            assert layout is not None,f'User card {user_id} disappeared before measurement'
+            for name,node in layout.items():
+                assert node is not None,f'User card is missing {name}'
+                assert node['visible'],f'User card {name} is not visible: {node}'
+            face=layout['avatar']
+            assert abs(face['width']-48)<1 and abs(face['height']-48)<1,'User avatar is not 48 by 48 pixels'
+            badge,name_box,card_box=layout['badge'],layout['name'],layout['card']
+            assert abs(badge['top']-name_box['top'])<=4,'User status is not aligned with the name'
+            assert badge['textAlign']=='left','User status text is not left aligned'
+            assert badge['left']>=card_box['left'] and badge['right']<=card_box['right'],'User status overflows the card'
+            metadata,identity,activity=layout['metadata'],layout['id'],layout['activity']
+            assert 'ID ' in identity['text'],'User ID is missing its label'
+            assert abs(identity['top']-activity['top'])<=2,'User ID and activity are not on the same row'
+            assert abs(activity['right']-metadata['right'])<=1,'User activity is not aligned to the right edge'
+            assert identity['right']+4<=activity['left'],'User ID and activity overlap'
+            assert identity['height']<=activity['lineHeight']+1,'User ID wraps to multiple lines'
+            assert activity['height']<=activity['lineHeight']+1,'User activity wraps to multiple lines'
+            for name,node in (('metadata',metadata),('ID',identity),('activity',activity)):
+                assert node['scrollWidth']<=node['clientWidth']+1,f'User {name} overflows horizontally'
+            return layout
+        except Exception:
+            # Capture here: the scenario closes its context before the suite's failure screenshots.
+            try:
+                snapshot=p.evaluate("""id=>{
+                    const e=[...document.querySelectorAll('.user-directory .directory-user')]
+                        .find(card=>card.querySelector('.user-avatar')?.dataset.userId===id);
+                    if(!e)return {missingUserId:id,route:location.hash,viewport:{width:innerWidth,height:innerHeight}};
+                    const inspect=node=>{
+                        const style=getComputedStyle(node),box=node.getBoundingClientRect();
+                        return {tag:node.tagName,className:node.className,hidden:node.hidden,
+                            text:node.textContent.trim().slice(0,160),box:box.toJSON(),
+                            display:style.display,visibility:style.visibility,minWidth:style.minWidth,
+                            flex:style.flex,columns:style.gridTemplateColumns};
+                    };
+                    const selectors=[':scope > .user-summary','.user-avatar','.person-copy','.person-name',
+                        ':scope > .person-role','.directory-meta','.directory-id','.directory-activity'];
+                    const nodes=Object.fromEntries(selectors.map(selector=>[selector,
+                        [...e.querySelectorAll(selector)].map(inspect)]));
+                    const ancestors=[];for(let node=e.parentElement;node;node=node.parentElement){
+                        ancestors.push({tag:node.tagName,className:node.className,hidden:node.hidden,
+                            display:getComputedStyle(node).display,visibility:getComputedStyle(node).visibility});
+                    }
+                    return {route:location.hash,viewport:{width:innerWidth,height:innerHeight},card:inspect(e),nodes,ancestors};
+                }""",user_id)
+                snapshot['measuredLayout']=layout
+                diagnostic=json.dumps(snapshot,ensure_ascii=False,indent=2)
+                (output/'54-user-directory-layout-failure.json').write_text(diagnostic,encoding='utf-8')
+                print('User directory layout failure: '+diagnostic)
+            except Exception as diagnostic_error:
+                print('Could not capture user directory geometry: '+str(diagnostic_error))
+            try:
+                p.screenshot(path=str(output/'54-user-directory-layout-failure.png'),full_page=True)
+            except Exception as screenshot_error:
+                print('Could not capture user directory screenshot: '+str(screenshot_error))
+            raise
     try:
         admin=launch('admin');go(admin,'campaigns')
         expect(admin.locator('#campaigns')).to_contain_text('Кампания из каталога')
@@ -44,55 +143,61 @@ def check_admin_users(browser,base,output,failures,dsn):
         sort=admin.get_by_label('Сортировка пользователей',exact=True)
         expect(sort).to_have_value('newest')
         search=admin.get_by_label('Поиск пользователей',exact=True)
-        search.fill('directory_');admin.locator('.directory-search button[type=submit]').click()
+        search.fill('directory_')
+        found=directory_load(admin,lambda:admin.locator('.directory-search button[type=submit]').click(),query='directory_')
+        assert {str(user['id']) for user in found}=={str(uid) for uid in ids.values()},'Directory search did not return the four fixture users'
         first=admin.locator('.user-directory .directory-user').first
         expect(first).to_contain_text('@directory_new_staff')
         expect(first).to_contain_text('Регистрация ·')
-        sort.select_option('recent')
+        expect(first.locator('.directory-id')).to_have_text('ID 998834000000003')
+        expect(first.locator('.directory-activity')).to_contain_text('мск')
+        expect(first.locator('.directory-activity')).not_to_contain_text('МСК')
+        for width in (320,390,768):
+            admin.set_viewport_size({'width':width,'height':844})
+            check_card_layout(admin,ids['new_staff'])
+            assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+            admin.screenshot(path=str(output/f'54-user-directory-meta-{width}.png'),full_page=True)
+        admin.set_viewport_size({'width':390,'height':844})
+        directory_load(admin,lambda:sort.select_option('recent'),query='directory_',sort='recent')
         expect(first).to_contain_text('@directory_admin')
         expect(first).to_contain_text('Последний вход:')
-        go(admin,'profile');admin.get_by_role('link',name='Пользователи',exact=True).click()
+        go(admin,'profile')
+        directory_load(admin,lambda:admin.get_by_role('link',name='Пользователи',exact=True).click(),query='directory_')
         expect(sort).to_have_value('newest')
         expect(first).to_contain_text('@directory_new_staff')
         expect(first).to_contain_text('Регистрация ·')
-        sort.select_option('name')
-        admin.get_by_label('Поиск пользователей',exact=True).fill('@directory_advertiser');admin.locator('.directory-search button[type=submit]').click()
+        directory_load(admin,lambda:sort.select_option('name'),query='directory_',sort='name')
+        admin.get_by_label('Поиск пользователей',exact=True).fill('@directory_advertiser')
+        directory_load(admin,lambda:admin.locator('.directory-search button[type=submit]').click(),query='@directory_advertiser',sort='name')
         row=admin.locator('.user-directory .directory-user');expect(row).to_have_count(1);expect(row).to_contain_text('Последний вход:')
         row.get_by_role('link',name='Открыть профиль пользователя').click();expect(admin.locator('.profile-wallet')).to_contain_text('123,45')
-        admin.get_by_role('button',name='Назад',exact=True).click();expect(admin.locator('[data-page=users]')).to_be_visible()
+        directory_load(admin,lambda:admin.get_by_role('button',name='Назад',exact=True).click(),query='@directory_advertiser',sort='name')
+        expect(admin.locator('[data-page=users]')).to_be_visible()
         expect(sort).to_have_value('name')
         search=admin.get_by_label('Поиск пользователей',exact=True)
         expect(search).to_have_value('@directory_advertiser')
         category=admin.locator('.directory-search').get_by_label('Категория пользователя',exact=True)
-        category.select_option('user')
+        directory_load(admin,lambda:category.select_option('user'),query='@directory_advertiser',category='user',sort='name')
         expect(row).to_have_count(1)
         expect(row.locator(':scope > .person-role')).to_have_text('Пользователь')
-        category.select_option('advertiser')
+        directory_load(admin,lambda:category.select_option('advertiser'),query='@directory_advertiser',category='advertiser',sort='name')
         expect(row).to_have_count(0)
-        category.select_option('user')
+        directory_load(admin,lambda:category.select_option('user'),query='@directory_advertiser',category='user',sort='name')
         search.fill('')
-        admin.locator('.directory-search button[type=submit]').click()
-        for width in (320,390):
-            admin.set_viewport_size({'width':width,'height':844});assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
-        for width in (320,390):
+        full_users=directory_load(admin,lambda:admin.locator('.directory-search button[type=submit]').click(),category='user',sort='name')
+        assert len(full_users)>1,'Unfiltered user category unexpectedly contains only the previously searched user'
+        for width in (320,390,768):
             admin.set_viewport_size({'width':width,'height':844})
-            for card in admin.locator('.user-directory .directory-user').all():
-                identity=card.locator('.user-summary').bounding_box();badge=card.locator(':scope > .person-role').bounding_box()
-                if card.locator(':scope > .role-combined').count():
-                    assert badge['y']>=identity['y']+identity['height']-1
-                    assert badge['x']+badge['width']<=card.bounding_box()['x']+card.bounding_box()['width']
-                else:
-                    assert badge['x']>=identity['x']+identity['width']+6
-                    name=card.locator('.person-name').first.bounding_box()
-                    assert abs(badge['y']-name['y'])<=4
-                assert card.bounding_box()['height']<160
+            for user in full_users:
+                layout=check_card_layout(admin,user['id'])
+                assert layout['card']['height']<160
             assert admin.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         for role,color in (('admin','rgb(255, 140, 152)'),('operator','rgb(114, 229, 165)')):
-            admin.locator('.directory-search').get_by_label('Категория пользователя',exact=True).select_option(role)
+            directory_load(admin,lambda:category.select_option(role),category=role,sort='name')
             badge=admin.locator('.directory-user>.person-role[data-role='+role+']').first
             expect(badge).to_be_visible()
             assert badge.evaluate('e=>getComputedStyle(e).color')==color
-        category.select_option('user')
+        directory_load(admin,lambda:category.select_option('user'),category='user',sort='name')
         expect(admin.locator('.directory-user>.person-role[data-role=user]').first).to_be_visible()
         admin.screenshot(path=str(output/'54-user-directory.png'))
         operator=launch('operator');go(operator,'user/'+str(ids['advertiser']));expect(operator.locator('[data-page=user] .profile-identity .person-handle')).to_have_count(0);expect(operator.locator('.profile-wallet')).to_have_count(0)
@@ -100,7 +205,7 @@ def check_admin_users(browser,base,output,failures,dsn):
         admin.get_by_label('Пользователь для назначения роли',exact=True).fill('@directory_new_staff');admin.locator('#team-role').select_option('operator');admin.once('dialog',lambda d:d.accept());admin.locator('#team-form button[type=submit]').click();expect(admin.locator('#team-status')).to_contain_text('Роль сохранена')
         with psycopg.connect(dsn) as conn:assert conn.execute('SELECT role FROM users WHERE id=%s',(ids['new_staff'],)).fetchone()[0]=='operator'
         go(admin,'wallet');admin.locator('[data-wallet-section=gifts]>summary').click()
-        admin.get_by_label('Название подарка',exact=True).fill('Подарок по никнейму');admin.get_by_label('Подарок, бонусных ₽',exact=True).fill('50');admin.get_by_label('Только одному пользователю Telegram',exact=True).check();admin.get_by_label('Получатель подарка: @никнейм или ID',exact=True).fill('@directory_advertiser');admin.get_by_label('Действует до (МСК)',exact=True).fill((datetime.now(timezone(timedelta(hours=3)))+timedelta(days=10)).strftime('%Y-%m-%dT%H:%M'));admin.get_by_role('button',name='Создать подарочный код',exact=True).click()
+        admin.get_by_label('Название подарка',exact=True).fill('Подарок по никнейму');admin.get_by_label('Подарок, бонусных ₽',exact=True).fill('50');admin.get_by_label('Только одному пользователю Telegram',exact=True).check();admin.get_by_label('Получатель подарка: @никнейм или ID',exact=True).fill('@directory_advertiser');admin.get_by_label('Действует до (мск)',exact=True).fill((datetime.now(timezone(timedelta(hours=3)))+timedelta(days=10)).strftime('%Y-%m-%dT%H:%M'));admin.get_by_role('button',name='Создать подарочный код',exact=True).click()
         gift=admin.locator('.wallet-gift').filter(has=admin.get_by_role('heading',name='Подарок по никнейму',exact=True));expect(gift).to_contain_text('@directory_advertiser');code=gift.locator('.growth-code').inner_text()
         gift.get_by_role('button',name='Изменить',exact=True).click();edit=gift.locator('.gift-editor');edit.get_by_label('Название подарка',exact=True).fill('Изменённый подарок');edit.get_by_label('Подарок, бонусных ₽',exact=True).fill('75');edit.get_by_role('button',name='Сохранить подарок',exact=True).click()
         gift=admin.locator('.wallet-gift').filter(has=admin.get_by_role('heading',name='Изменённый подарок',exact=True));expect(gift).to_contain_text('75')

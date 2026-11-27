@@ -51,7 +51,7 @@ def check_automatic_schedule(browser, base, output, failures, dsn):
         staff=launch('admin',390);go(staff,'moderation/'+str(campaign))
         from zoneinfo import ZoneInfo
         planned=(start+timedelta(hours=1)).astimezone(ZoneInfo('Europe/Moscow')).strftime('%d.%m.%Y, %H:%M')
-        expect(staff.locator('.approval-card .tile-period')).to_contain_text(planned+' МСК')
+        expect(staff.locator('.approval-card .tile-period')).to_contain_text(planned+' мск')
         expect(staff.locator('.approval-period')).to_contain_text('Окончание:')
         expect(staff.locator('.approval-current')).to_contain_text('Ожидается автоматический запуск')
         staff.screenshot(path=str(output/'53-automatic-schedule-admin-390.png'))

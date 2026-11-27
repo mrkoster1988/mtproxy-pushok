@@ -7,7 +7,7 @@
 .cabinet-mode .approval-navigation select { flex:1; width:0; font-size:12px; }
 .cabinet-mode .approval-advertiser { padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--surface); }
 .cabinet-mode .approval-advertiser .person-caption { margin:0 0 8px; font-size:11px; }
-.cabinet-mode .approval-advertiser .user-avatar { width:36px; height:36px; flex-basis:36px; }
+.cabinet-mode .approval-advertiser .user-avatar { width:var(--user-avatar-size,48px); height:var(--user-avatar-size,48px); flex-basis:var(--user-avatar-size,48px); }
 .cabinet-mode .approval-current { display:grid; gap:12px; padding:12px; }
 .cabinet-mode .approval-archive-notice { display:grid; gap:12px; padding:12px; }
 .cabinet-mode .approval-archive-notice > * { margin-block:0; }

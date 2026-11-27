@@ -46,7 +46,7 @@ window.pushokVpnSettings=(()=>{
      inner.append(grid,el('small',k==='expiry'?'Введите сроки через запятую.':'0 в поле повтора — отправить один раз.','muted'));
      if(k==='never'){
        const stamp=record.last_first_notice_at;
-       const when=stamp?new Date(stamp*1000).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' МСК':'';
+       const when=stamp?new Date(stamp*1000).toLocaleString('ru-RU',{timeZone:'Europe/Moscow',dateStyle:'short',timeStyle:'short'})+' мск':'';
        inner.append(el('small',when?'Последняя подтверждённая отправка · '+when:'Подтверждённых отправок пока нет.','muted'));
      }
      const msg=el('textarea');msg.value=p[k+'_text'];msg.required=true;msg.maxLength=700;msg.rows=3;
