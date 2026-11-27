@@ -1304,8 +1304,24 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden)void refre
 
 async function renderHomeBanner(){
  if(me?.role!=='admin')return;const session=token;const data=await api('/admin/home-banner');if(session!==token||me?.role!=='admin')return;
- const title=$('home-banner-title'),subtitle=$('home-banner-subtitle'),preview=$('home-banner-preview');title.value=data.title;subtitle.value=data.subtitle;
- const show=()=>preview.replaceChildren(el('strong',title.value),el('p',subtitle.value));title.oninput=subtitle.oninput=show;show();
- $('home-banner-reset').onclick=()=>{title.value='Добро пожаловать в puShok';subtitle.value='Подключайтесь к MTProxy';show();};
- $('home-banner-form').onsubmit=async e=>{e.preventDefault();try{await api('/admin/home-banner',{method:'PUT',body:{title:title.value,subtitle:subtitle.value}});window.cabinet.config({...window.cabinetBotConfig,home_title:title.value.trim(),home_subtitle:subtitle.value.trim()});notice('Текст главной сохранён.',true);}catch(err){notice(err.message);}};
+ const title=$('home-banner-title'),subtitle=$('home-banner-subtitle'),label=$('home-connect-label'),caption=$('home-connect-caption'),preview=$('home-banner-preview');
+ title.value=data.title;subtitle.value=data.subtitle;label.value=data.connect_label??'Подключить';caption.value=data.connect_caption??'трафик';
+ const show=()=>{
+  const buttonPreview=el('div',undefined,'home-connect-preview');
+  buttonPreview.append(el('small','Кнопка подключения'),el('strong',label.value.trim()||'Подключить'));
+  if(caption.value.trim())buttonPreview.append(el('span',caption.value.trim()));
+  preview.replaceChildren(el('strong',title.value),el('p',subtitle.value),buttonPreview);
+ };
+ title.oninput=subtitle.oninput=label.oninput=caption.oninput=show;show();
+ $('home-banner-reset').onclick=()=>{title.value='Добро пожаловать в puShok';subtitle.value='Подключайтесь к MTProxy';label.value='Подключить';caption.value='трафик';show();};
+ $('home-banner-form').onsubmit=async e=>{
+  e.preventDefault();
+  try{
+   const saved=await api('/admin/home-banner',{method:'PUT',body:{title:title.value,subtitle:subtitle.value,connect_label:label.value,connect_caption:caption.value}});
+   if(session!==token||me?.role!=='admin')return;
+   title.value=saved.title;subtitle.value=saved.subtitle;label.value=saved.connect_label;caption.value=saved.connect_caption;show();
+   window.cabinetBotConfig={...window.cabinetBotConfig,home_title:saved.title,home_subtitle:saved.subtitle,home_connect_label:saved.connect_label,home_connect_caption:saved.connect_caption};
+   window.cabinet?.config(window.cabinetBotConfig);notice('Текст главной сохранён.',true);
+  }catch(err){if(session===token)notice(err.message);}
+ };
 }

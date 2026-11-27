@@ -10,6 +10,8 @@ class Banner(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra='forbid')
     title: str = Field(default='Добро пожаловать в puShok', min_length=1, max_length=100)
     subtitle: str = Field(default='Подключайтесь к MTProxy', max_length=180)
+    connect_label: str = Field(default='Подключить', min_length=1, max_length=24)
+    connect_caption: str = Field(default='трафик', max_length=24)
 
 def read():
     try:
@@ -18,6 +20,12 @@ def read():
         return Banner().model_dump()
 
 def save(data):
+    # Старые версии кабинета сохраняли только заголовок и подпись баннера.
+    # Не сбрасываем пользовательскую надпись кнопки при таком запросе.
+    missing = {'connect_label', 'connect_caption'} - data.model_fields_set
+    if missing:
+        current = read()
+        data = data.model_copy(update={key: current[key] for key in missing})
     FILE.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(dir=FILE.parent, prefix='home-banner-')
     try:
