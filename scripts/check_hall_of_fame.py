@@ -52,8 +52,24 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                 expect(board.locator('.hall-category')).to_have_count(1)
                 expect(board.locator('.hall-podium-person .hall-rank')).to_have_count(0)
                 expect(board.locator('.hall-podium-person .hall-person a')).to_have_count(0)
-                card=board.locator('.hall-podium-person').first.bounding_box()
-                assert abs(card['height']-card['width'])<3, card
+                board.locator('.hall-rest summary').click()
+                expect(board.locator('.hall-row').first).to_be_visible()
+                expect(board.locator('.avatar-verification,.avatar-vpn,.user-online,.birthday-avatar')).to_have_count(0)
+                for width in (320,390,768):
+                    page.set_viewport_size({'width':width,'height':844})
+                    assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+                    podium_size=48 if width<=360 else 56
+                    assert board.evaluate("""(e,size)=>{
+                        const podium=[...e.querySelectorAll('.hall-podium-person')],rows=[...e.querySelectorAll('.hall-row')];
+                        const fits=(item,diameter)=>{
+                            const a=item.querySelector('.user-avatar'),r=a.getBoundingClientRect(),b=item.getBoundingClientRect();
+                            return a.dataset.avatarIndicators==='off'&&Math.abs(r.width-diameter)<1&&Math.abs(r.height-diameter)<1&&r.left>=b.left&&r.right<=b.right&&r.top>=b.top&&r.bottom<=b.bottom;
+                        };
+                        return podium.length===3&&rows.length>0&&podium.every(item=>fits(item,size))&&rows.every(item=>fits(item,48));
+                    }""",podium_size)
+                page.set_viewport_size({'width':390,'height':844})
+                page.screenshot(path=str(output/f'hall-large-avatars-{role}.png'))
+                board.locator('.hall-rest summary').click()
                 page.evaluate("window.cabinet.go('dashboard')")
                 home=page.locator('.dashboard-intro > .home-leaders')
                 avatars=home.locator('.home-leader-avatars > .user-avatar')
@@ -95,6 +111,11 @@ def check_hall_of_fame(browser,base,output,failures,dsn):
                     form.get_by_role('button',name='Сохранить настройки').click();expect(form.get_by_role('status')).to_contain_text('Сохранено')
                 else:expect(board.locator('.hall-admin')).to_have_count(0)
                 board.get_by_label('Период рейтинга').select_option(str(p));expect(board.locator('.hall-heading')).to_contain_text('Итоги');expect(board.locator('.hall-gold')).to_have_count(1)
+                archived=board.locator('.hall-podium-person .user-avatar')
+                expect(archived).to_have_count(1)
+                expect(archived).to_have_attribute('data-avatar-indicators','off')
+                expect(archived).to_have_css('width','56px')
+                expect(board.locator('.avatar-verification,.avatar-vpn,.user-online,.birthday-avatar')).to_have_count(0)
                 page.screenshot(path=str(output/f'hall-{role}-390.png'))
             # Старые валютные результаты остаются читаемыми без живого пересчёта.
             with psycopg.connect(dsn) as conn:

@@ -431,3 +431,15 @@ body.cabinet-mode .vpn-policy-card .vpn-format button{width:auto;min-width:32px;
 .cabinet-mode .dashboard-intro .home-leaders .user-avatar>.avatar-verification,.cabinet-mode .dashboard-intro .home-leaders .user-avatar>.avatar-vpn,.cabinet-mode .dashboard-intro .home-leaders .user-avatar>.birthday-gift{display:none!important}
 .cabinet-mode .dashboard-intro .home-leaders .user-avatar.user-online::after{content:none}
 .cabinet-mode .dashboard-intro .home-leader-avatars .muted{white-space:normal;min-width:0}
+
+/* Доска почёта: крупные портреты, рамки мест без личных индикаторов. */
+.cabinet-mode .hall-board .hall-podium{align-items:stretch!important}
+.cabinet-mode .hall-board .hall-podium-person{aspect-ratio:auto;min-height:112px!important;height:100%!important;max-width:144px;padding:9px 5px!important;gap:6px!important}
+.cabinet-mode .hall-board .hall-podium-person .user-avatar{width:56px!important;height:56px!important;min-width:56px;flex:0 0 56px!important;font-size:18px}
+.cabinet-mode .hall-board .hall-row{gap:10px;min-width:0}
+.cabinet-mode .hall-board .hall-row .user-avatar{width:48px;height:48px;min-width:48px;flex:0 0 48px;font-size:16px}
+.cabinet-mode .hall-board .hall-value{flex:0 1 auto;min-width:0;max-width:42%;overflow-wrap:anywhere}
+.cabinet-mode .hall-board .hall-podium-person .hall-value{max-width:100%}
+.cabinet-mode .hall-board .user-avatar>.avatar-verification,.cabinet-mode .hall-board .user-avatar>.avatar-vpn,.cabinet-mode .hall-board .user-avatar>.birthday-gift{display:none!important}
+.cabinet-mode .hall-board .user-avatar.user-online::after,.cabinet-mode .hall-board .user-avatar.birthday-avatar::before{content:none}
+@media(max-width:360px){.cabinet-mode .hall-board .hall-podium-person .user-avatar{width:48px!important;height:48px!important;min-width:48px;flex-basis:48px!important}.cabinet-mode .hall-board .hall-podium-person{min-height:104px!important}}
