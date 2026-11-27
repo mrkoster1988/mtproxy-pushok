@@ -25,6 +25,19 @@ class Allocation(EventText):
     quarter_limit: int = Field(ge=0, le=10000)
 
 
+class EventManagement(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    organizer: int = Field(gt=0, lt=2**52)
+    month_limit: int = Field(ge=0, le=10000)
+    quarter_limit: int = Field(ge=0, le=10000)
+    archived: bool = Field(strict=True)
+
+
+def can_manage_events(user):
+    return bool(user.get('is_tamada') or user.get('is_owner') or
+                user.get('is_developer') or user.get('role') in ('admin', 'developer'))
+
+
 class Prize(BaseModel):
     request_id: UUID
     recipient: int | None = Field(default=None, gt=0, lt=2**52)
@@ -37,11 +50,20 @@ def router_for(dsn, current_user, require_admin):
     def db():
         return psycopg.connect(dsn(), row_factory=dict_row, connect_timeout=3)
 
+    def require_event_manager(user=Depends(current_user)):
+        if not can_manage_events(user):
+            raise HTTPException(403, 'Недостаточно прав для управления мероприятиями')
+        return user
+
     def owned(conn, event_id, user):
         event = conn.execute('SELECT * FROM contest_events WHERE id=%s FOR UPDATE', (event_id,)).fetchone()
-        if not event or (user['role'] != 'admin' and event['organizer'] != user['telegram_user_id']):
+        if not event or (not can_manage_events(user) and event['organizer'] != user['telegram_user_id']):
             raise HTTPException(404, 'Мероприятие не найдено')
         return event
+
+    def active(event):
+        if event['archived_at'] is not None:
+            raise HTTPException(409, 'Мероприятие в архиве')
 
     def visible(conn, prize_id, user, lock=False):
         query = """SELECT p.*,e.title,e.sender,e.greeting FROM contest_prizes p
@@ -57,10 +79,10 @@ def router_for(dsn, current_user, require_admin):
     def events(user=Depends(current_user)):
         with db() as conn:
             return conn.execute("""SELECT * FROM contest_events WHERE organizer=%s OR %s
-                ORDER BY created DESC""", (user['telegram_user_id'], user['role']=='admin')).fetchall()
+                ORDER BY archived_at NULLS FIRST, created DESC""", (user['telegram_user_id'], can_manage_events(user))).fetchall()
 
     @router.post('')
-    def allocate(data: Allocation, admin=Depends(require_admin)):
+    def allocate(data: Allocation, manager=Depends(require_event_manager)):
         with db() as conn:
             return conn.execute("""INSERT INTO contest_events(title,sender,greeting,organizer,month_limit,quarter_limit)
                 VALUES (%(title)s,%(sender)s,%(greeting)s,%(organizer)s,%(month_limit)s,%(quarter_limit)s)
@@ -76,15 +98,31 @@ def router_for(dsn, current_user, require_admin):
     def details(event_id: UUID, user=Depends(current_user)):
         with db() as conn:
             event = owned(conn,event_id,user)
-            prizes = conn.execute('SELECT * FROM contest_prizes WHERE event_id=%s ORDER BY created DESC',(event_id,)).fetchall()
+            prizes = conn.execute("""SELECT p.*,u.telegram_user_id AS winner_telegram_id
+                FROM contest_prizes p LEFT JOIN users u ON u.id=p.winner
+                WHERE p.event_id=%s ORDER BY p.created DESC""",(event_id,)).fetchall()
             return dict(event, prizes=prizes)
 
     @router.put('/events/{event_id}')
     def edit(event_id: UUID, data: EventText, user=Depends(current_user)):
         with db() as conn:
-            owned(conn,event_id,user)
+            active(owned(conn,event_id,user))
             conn.execute('UPDATE contest_events SET title=%s,sender=%s,greeting=%s WHERE id=%s',
                          (data.title,data.sender,data.greeting,event_id))
+        return {'ok':True}
+
+    @router.put('/events/{event_id}/management')
+    def manage_event(event_id: UUID, data: EventManagement, user=Depends(require_event_manager)):
+        with db() as conn:
+            owned(conn, event_id, user)
+            used = {row['days']: row['n'] for row in conn.execute(
+                """SELECT days,count(*) AS n FROM contest_prizes
+                   WHERE event_id=%s AND NOT revoked GROUP BY days""", (event_id,)).fetchall()}
+            if data.month_limit < used.get(30, 0) or data.quarter_limit < used.get(90, 0):
+                raise HTTPException(409, 'Лимит не может быть меньше числа выданных подарков')
+            conn.execute("""UPDATE contest_events SET organizer=%s,month_limit=%s,quarter_limit=%s,
+                archived_at=CASE WHEN %s THEN coalesce(archived_at,now()) ELSE NULL END WHERE id=%s""",
+                (data.organizer,data.month_limit,data.quarter_limit,data.archived,event_id))
         return {'ok':True}
 
     @router.post('/events/{event_id}/prizes')
@@ -97,6 +135,7 @@ def router_for(dsn, current_user, require_admin):
                 if (old['days'],old['recipient']) != (data.days,data.recipient):
                     raise HTTPException(409,'Запрос уже использован')
                 return old
+            active(event)
             used = conn.execute('SELECT count(*) AS n FROM contest_prizes WHERE event_id=%s AND days=%s AND NOT revoked',
                                 (event_id,data.days)).fetchone()['n']
             if used >= event['month_limit' if data.days==30 else 'quarter_limit']:
@@ -112,6 +151,8 @@ def router_for(dsn, current_user, require_admin):
                                (prize_id,event_id)).fetchone()
             if not row or row['revoked'] or row['winner']:
                 raise HTTPException(409,'Подарок недоступен')
+            if action=='share':
+                active(event)
             if action=='revoke':
                 conn.execute('UPDATE contest_prizes SET revoked=true WHERE id=%s',(prize_id,))
                 return {'ok':True}

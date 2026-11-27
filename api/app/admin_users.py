@@ -20,6 +20,7 @@ DIRECTORY_CATEGORIES = {
     'developer': 'is_developer',
     'moderator': "NOT is_developer AND role='moderator'",
     'friends': 'is_friend',
+    'tamada': 'is_tamada',
 }
 
 
@@ -57,7 +58,7 @@ def router_for(dsn, require_operator):
             with psycopg.connect(dsn(), row_factory=dict_row, connect_timeout=3) as conn:
                 conn.execute('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY')
                 total = conn.execute('SELECT count(*) AS n FROM users WHERE '+where, params).fetchone()['n']
-                rows = conn.execute('''SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,is_developer,is_friend,has_launched_ads,
+                rows = conn.execute('''SELECT id,telegram_user_id,first_name,last_name,username,role,is_owner,is_developer,is_friend,is_tamada,has_launched_ads,
                     created_at,last_login_at,blocked_at,
                     EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=users.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified
                     FROM users WHERE '''+where+' ORDER BY '+order+', id LIMIT 20 OFFSET %s',

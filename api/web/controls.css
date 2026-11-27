@@ -388,3 +388,6 @@ body.cabinet-mode .vpn-policy-card .vpn-format button{width:auto;min-width:32px;
 .cabinet-mode .vpn-renew label.flow-tariff:has(input:checked) {border-color:#42e7d7;box-shadow:inset 0 0 0 1px #42e7d7}
 .vpn-renew .flow-tariff b {color:#42e7d7;font-size:1.4rem}
 .vpn-renew .flow-tariff small {color:#deebfa}
+
+/* Независимый статус организатора мероприятий. */
+.tamada-status{color:#a78bfa!important;font-weight:600}

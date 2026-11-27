@@ -2,20 +2,20 @@
 window.pushokTeam=(()=>{
  const form=$('team-form'),fields=$('team-fields'),status=$('team-status'),list=$('team-list');
  let picker=null;
- const roles={developer:'Разработчик',admin:'Администратор',operator:'Оператор',moderator:'Модератор',friends:'Друзья',advertiser:'Рекламодатель',user:'Пользователь'};
+ const roles={developer:'Разработчик',admin:'Администратор',operator:'Оператор',moderator:'Модератор',friends:'Друзья',tamada:'Тамада',advertiser:'Рекламодатель',user:'Пользователь'};
  function category(user){
   if(hasDeveloperAccess(user))return 'developer';
   if(user.role==='advertiser'&&!user.has_launched_ads)return 'user';
   return user.role;
  }
- function displayRole(user){return (roles[category(user)]||roles.user)+(user.is_friend?' · Друзья':'');}
+ function displayRole(user){return (roles[category(user)]||roles.user)+(user.is_tamada?' · 🎩 Тамада':'')+(user.is_friend?' · Друзья':'');}
  Object.assign(errors,{team_developer_protected:'Управлять другим разработчиком может только разработчик.',team_developer_grant_forbidden:'Назначить разработчика может только разработчик.',user_blocked:'Доступ к кабинету заблокирован. Обратитесь к администратору.',team_admin_protected:'Оператор не может менять права или блокировать администратора.',team_admin_grant_forbidden:'Назначить администратора может только администратор.',team_moderator_protected:'Управлять доступом модератора может администратор.',team_moderator_grant_forbidden:'Назначить модератора может администратор.',team_cannot_block_self:'Нельзя заблокировать собственный аккаунт.'});
  function roleControl(user){
   const editable=!user.is_owner&&(!hasDeveloperAccess(user)||hasDeveloperAccess(me))&&['admin','operator'].includes(me?.role)&&user.id!==me.id&&(me.role==='admin'||!['admin','moderator'].includes(user.role));
   const label=()=>displayRole(user);
   const assignedRole=()=>hasDeveloperAccess(user)?'developer':user.role;
   const badge=el(editable?'button':'span',undefined,'person-role'+(editable?' role-button':'')),editor=el('form',undefined,'role-editor');editor.hidden=true;
-  function paint(){badge.dataset.role=hasDeveloperAccess(user)?'owner':category(user);badge.replaceChildren(document.createTextNode(label()+(user.blocked_at?' · Заблокирован':'')));badge.classList.toggle('is-blocked',Boolean(user.blocked_at));if(editable){badge.setAttribute('aria-label','Изменить права: '+label());}}
+  function paint(){badge.dataset.role=hasDeveloperAccess(user)?'owner':category(user);badge.replaceChildren(document.createTextNode(roles[category(user)]||roles.user));if(user.is_tamada)badge.append(document.createTextNode(' · '),el('span','🎩 Тамада','tamada-status'));if(user.is_friend)badge.append(document.createTextNode(' · Друзья'));if(user.blocked_at)badge.append(document.createTextNode(' · Заблокирован'));badge.classList.toggle('is-blocked',Boolean(user.blocked_at));if(editable){badge.setAttribute('aria-label','Изменить права: '+label());}}
   paint();if(!editable)return {badge,editor};
   badge.type='button';badge.setAttribute('aria-expanded','false');editor.id='role-'+crypto.randomUUID();badge.setAttribute('aria-controls',editor.id);
   const session=token,viewer=me.id,current=()=>session===token&&viewer===me?.id&&badge.isConnected;
@@ -41,9 +41,23 @@ window.pushokTeam=(()=>{
     editor.dispatchEvent(new CustomEvent('friend-mark-changed',{bubbles:true}));
    }catch(error){if(current())feedback.textContent=error.message;}finally{fields.disabled=false;}
   });
+  const tamada=button('',async()=>{
+   if(!current()||me.role!=='admin')return;
+   const grant=!user.is_tamada;
+   if(!confirm(grant?'Назначить статус «Тамада»? Пользователь получит полный доступ к мероприятиям и выделению призов.':'Снять статус «Тамада»? Доступ к чужим мероприятиям будет отозван.'))return;
+   fields.disabled=true;
+   try{
+    const result=await api('/admin/team/tamada',{method:'PUT',body:{telegram_user_id:user.telegram_user_id,is_tamada:grant}});
+    if(!current())return;
+    user.is_tamada=result.is_tamada;paint();update();close();
+    notice(result.is_tamada?'Статус «Тамада» назначен.':'Статус «Тамада» снят.',true);
+    editor.dispatchEvent(new CustomEvent('tamada-status-changed',{bubbles:true}));
+   }catch(error){if(current())feedback.textContent=error.message;}finally{fields.disabled=false;}
+  });
+  tamada.classList.add('tamada-status');
   window.pushokViews.iconAction(cancel,'back','Отмена');
   block.className='role-block';feedback.setAttribute('role','status');
-  function update(){friend.textContent=user.is_friend?'Снять отметку «Друзья»':'Добавить в «Друзья»';hint.textContent=descriptions[select.value];save.disabled=select.value===assignedRole();window.pushokViews.iconAction(block,'power',user.blocked_at?'Разблокировать':'Заблокировать');}
+  function update(){tamada.textContent=user.is_tamada?'Снять статус «Тамада»':'Назначить статус «Тамада»';friend.textContent=user.is_friend?'Снять отметку «Друзья»':'Добавить в «Друзья»';hint.textContent=descriptions[select.value];save.disabled=select.value===assignedRole();window.pushokViews.iconAction(block,'power',user.blocked_at?'Разблокировать':'Заблокировать');}
   function close(){editor.hidden=true;badge.setAttribute('aria-expanded','false');badge.focus({preventScroll:true});}
   badge.addEventListener('click',()=>{if(!current())return;if(!editor.hidden){close();return;}select.value=assignedRole();feedback.textContent='';update();editor.hidden=false;badge.setAttribute('aria-expanded','true');select.focus({preventScroll:true});editor.scrollIntoView({block:'nearest'});});
   select.addEventListener('change',update);editor.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();close();}});
@@ -54,7 +68,7 @@ window.pushokTeam=(()=>{
    try{await api('/admin/team',{method:'PUT',body:{telegram_user_id:user.telegram_user_id,role}});if(!current())return;user.is_developer=role==='developer';user.role=user.is_developer?'admin':role;document.querySelectorAll('[data-person-id="'+user.id+'"]').forEach(n=>n.dataset.userRole=user.is_developer?'owner':role);paint();close();notice('Права сохранены. Пользователю нужно войти заново.',true);}
    catch(e){if(current())feedback.textContent=e.message;}finally{fields.disabled=false;}
   });
-  actions.append(save,cancel,friend,block);fields.append(title,selectLabel,hint,actions,feedback);editor.append(fields);update();return {badge,editor};
+  actions.append(save,cancel,friend,...(me.role==='admin'?[tamada]:[]),block);fields.append(title,selectLabel,hint,actions,feedback);editor.append(fields);update();return {badge,editor};
  }
  async function load(){
   if(me?.role!=='admin')return;

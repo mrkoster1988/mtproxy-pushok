@@ -103,6 +103,7 @@ class SessionResponse(BaseModel):
 
 class UserResponse(BaseModel):
     is_friend: bool = False
+    is_tamada: bool = False
     has_launched_ads: bool = False
     is_owner: bool = False
     is_developer: bool = False
@@ -423,7 +424,7 @@ def get_current_user(
         with psycopg.connect(DATABASE_URL, connect_timeout=3, row_factory=dict_row) as connection:
             user = connection.execute(
                 """
-                SELECT u.id, u.telegram_user_id, u.role, u.is_owner, u.is_developer, u.is_friend, u.has_launched_ads, u.first_name, u.last_name,
+                SELECT u.id, u.telegram_user_id, u.role, u.is_owner, u.is_developer, u.is_friend, u.is_tamada, u.has_launched_ads, u.first_name, u.last_name,
                        u.username, u.blocked_at, s.id AS session_id, s.login_surface,
                        (SELECT verification_enabled FROM birthday_settings WHERE singleton) AS verification_enabled,
                        EXISTS(SELECT 1 FROM verified_profiles v WHERE v.user_id=u.id AND v.phone_verified_at IS NOT NULL AND v.telegram_environment=%s) AS phone_verified

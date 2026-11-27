@@ -477,6 +477,7 @@ EOF
     database/091_phone_verification.sql
     database/092_hall_flow_gifts.sql
     database/093_contest_gifts.sql
+    database/094_tamada_events.sql
   )
   runtime migrate "${migrations[@]}"
   INSTALL_STAGE="назначение владельца"

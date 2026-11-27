@@ -1,6 +1,7 @@
 'use strict';
 window.pushokContests=(()=>{
  const root='/contests';
+ const manager=()=>me?.role==='admin'||hasDeveloperAccess(me)||Boolean(me?.is_tamada);
  const term=days=>days===90?'3 месяца':'1 месяц';
  const link=id=>'https://t.me/mtproxy_pushok_bot?startapp=prize_'+id.replaceAll('-','');
  const end=stamp=>new Date(stamp*1000).toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow'});
@@ -44,11 +45,11 @@ window.pushokContests=(()=>{
   try{
    if(!id){
     const events=await api(root);if(!current())return;host.replaceChildren();
-    if(me.role==='admin'){
+    if(manager()){
      const create=el('details',undefined,'panel');create.append(el('summary','Создать мероприятие и выделить призы'));
      textForm(create,{},true,r=>window.cabinet.go('events/'+r.id));host.append(create);
     }
-    for(const event of events){const a=el('a',event.title,'panel');a.href='#/events/'+event.id;host.append(a);}
+    for(const [archived,title] of [[false,'Активные мероприятия'],[true,'Архив']]){const rows=events.filter(event=>Boolean(event.archived_at)===archived);if(rows.length)host.append(el('h3',title));for(const event of rows){const a=el('a',event.title,'panel');a.href='#/events/'+event.id;host.append(a);}}
     if(!events.length)host.append(el('p','Здесь появятся мероприятия, для которых вам выделили призы.'));
     return;
    }
@@ -67,6 +68,21 @@ window.pushokContests=(()=>{
    }
    const path=root+'/events/'+id,event=await api(path);if(!current())return;
    host.replaceChildren(el('h2',event.title));
+   if(event.archived_at)host.append(el('p','В архиве. Создание новых подарков приостановлено. Ранее выданные ссылки действуют, пока не отозваны.','muted'));
+   if(manager()){
+    const section=el('details',undefined,'panel');section.append(el('summary','Управление мероприятием'));
+    const controls=el('form'),owner=field(controls,'Telegram ID организатора','number',event.organizer),month=field(controls,'Количество призов на месяц','number',event.month_limit),quarter=field(controls,'Количество призов на три месяца','number',event.quarter_limit);
+    owner.min='1';month.max=quarter.max='10000';
+    const archive=el('input');archive.type='checkbox';archive.checked=Boolean(event.archived_at);const archiveLabel=el('label','В архиве');archiveLabel.prepend(archive);controls.append(archiveLabel);
+    action(controls,'Сохранить управление',async()=>{
+     if(!controls.reportValidity())return;
+     if(archive.checked!==Boolean(event.archived_at)&&!confirm(archive.checked?'Перенести мероприятие в архив? Выданные ссылки сохранятся.':'Восстановить мероприятие?'))return;
+     await api(path+'/management',{method:'PUT',body:{organizer:Number(owner.value),month_limit:Number(month.value),quarter_limit:Number(quarter.value),archived:archive.checked}});if(current())await render(host,id);
+    });controls.onsubmit=e=>{e.preventDefault();controls.querySelector('button').click();};section.append(controls);host.append(section);
+   }
+   const used=event.prizes.filter(p=>!p.revoked),claimed=used.filter(p=>p.expires).length;
+   host.append(el('p','Выдано: '+used.length+' · Получено: '+claimed+' · Осталось: '+(event.month_limit+event.quarter_limit-used.length),'muted'));
+   if(!event.archived_at){
    const settings=el('details');settings.append(el('summary','Оформление карточки'));textForm(settings,event,false,()=>render(host,id));host.append(settings);
    const form=el('form',undefined,'panel'),duration=el('select'),label=el('label','Срок подписки');
    for(const days of [30,90]){
@@ -84,17 +100,19 @@ window.pushokContests=(()=>{
     if(JSON.stringify(body)!==previous){request=crypto.randomUUID();previous=JSON.stringify(body);}
     await api(path+'/prizes',{method:'POST',body:{...body,request_id:request}});if(current())await render(host,id);
    });form.onsubmit=e=>{e.preventDefault();form.querySelector('button').click();};host.append(form);
+   }
    for(const p of event.prizes){
     const card=el('article',undefined,'panel');
     card.append(el('strong',term(p.days)+' Pushok Flow'),el('p',p.recipient?'Для Telegram ID '+p.recipient:'Одноразовая ссылка'),
      el('small',p.revoked?'Отозван':p.expires?'Получен · доступ до '+end(p.expires):p.winner?'Оформляется':'Готов к отправке'));
+    if(p.winner_telegram_id)card.append(el('small','Победитель: Telegram ID '+p.winner_telegram_id));
     if(!p.revoked&&!p.winner){
-     action(card,'Отправить карточку',async()=>{
+     if(!event.archived_at)action(card,'Отправить карточку',async()=>{
       const app=window.Telegram?.WebApp;
       if(!app?.shareMessage||!app.isVersionAtLeast('8.0'))throw Error('Скопируйте ссылку или откройте этот экран в обновлённом Telegram.');
       const prepared=await api(path+'/prizes/'+p.id+'/share',{method:'POST'});if(current())app.shareMessage(prepared.id);
      });
-     action(card,'Скопировать ссылку',async()=>{await navigator.clipboard.writeText(link(p.id));notice('Ссылка скопирована');});
+     if(!event.archived_at)action(card,'Скопировать ссылку',async()=>{await navigator.clipboard.writeText(link(p.id));notice('Ссылка скопирована');});
      action(card,'Отозвать',async()=>{if(confirm('Отозвать этот подарок и вернуть его в лимит?')){await api(path+'/prizes/'+p.id+'/revoke',{method:'POST'});if(current())await render(host,id);}});
     }
     host.append(card);
