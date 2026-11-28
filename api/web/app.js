@@ -46,6 +46,7 @@ function clearCabinetSession({preserveUnboundFlow=false,expired=false,clearWorks
  $('workspace').hidden=true;$('login').hidden=miniAppMode;$('logout').hidden=true;
  if(clearWorkspace){
   window.pushokSBP?.reset();window.pushokWalletConnections?.reset();window.pushokChannelSubscriptionSettings?.reset();window.pushokAI?.reset();window.pushokProvisioning?.reset();window.pushokGateway?.reset();
+  window.pushokVpnFleet?.reset();
   window.cabinet?.logout({preserveUnboundFlow});
  }
  if(expired&&miniAppMode)window.pushokMiniApp.expired({preserveUnboundFlow});
