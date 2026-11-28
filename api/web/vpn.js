@@ -427,7 +427,9 @@ window.pushokVpn = (() => {
       if(own&&directory&&!admin)host.append(androidDownloadLink());
       if(directory&&admin){
         const settings=el('a','Настройки VPN','ui-button');settings.href='#/management/vpn';
-        host.prepend(settings,usageSummary((data.members||[]).filter(r=>r.id!==subject)));
+        const servers=el('a','Серверы','ui-button');servers.href='#/vpn/servers';
+        const links=el('nav',undefined,'vpn-policy-links');links.setAttribute('aria-label','Управление VPN');links.append(servers,settings);
+        host.prepend(links,usageSummary((data.members||[]).filter(r=>r.id!==subject)));
       }else if(admin&&row)host.append(usageSummary([row],true));
       else if(own&&directory&&!admin&&!row?.is_premium)offers();
       if(admin&&(directory||row)){
@@ -444,6 +446,7 @@ window.pushokVpn = (() => {
       if(host.isConnected&&session===token){
         const retry=button('Обновить сведения',reload);
         host.replaceChildren(el('p','Не удалось загрузить сведения о подписке.','muted'),retry);
+        if(own&&directory&&staff()){const servers=el('a','Серверы','ui-button');servers.href='#/vpn/servers';host.append(servers);}
         if(own&&directory&&!staff()){host.append(androidDownloadLink());offers();}
         else if(own&&!directory&&staff())host.append(renewLink());
       }
@@ -453,5 +456,5 @@ window.pushokVpn = (() => {
     if (id !== me?.id && !staff()) return;
     const block = el('div',undefined,'vpn-profile'); target.append(block); void show(block,id,false);
   }
-  return {androidDownloadLink,download,load:(target,section)=>{if(section==='messages')return window.pushokVpnHistory.show(target,location.hash.split('/')[3]);if(section==='renew')return window.pushokVpnRenew.show(target);reset();return show(target,me?.id,true);},historyBack:()=>historyFrom,renewBack:()=>renewFrom,badge,profile,reset};
+  return {androidDownloadLink,download,load:(target,section)=>{if(section==='servers')return window.pushokVpnFleet.show(target);if(section==='messages')return window.pushokVpnHistory.show(target,location.hash.split('/')[3]);if(section==='renew')return window.pushokVpnRenew.show(target);reset();return show(target,me?.id,true);},historyBack:()=>historyFrom,renewBack:()=>renewFrom,badge,profile,reset};
 })();

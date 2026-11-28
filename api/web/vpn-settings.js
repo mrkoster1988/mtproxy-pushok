@@ -83,7 +83,7 @@ window.pushokVpnSettings=(()=>{
  async function show(host){
    if(!host||!(me?.role==='admin'||hasDeveloperAccess(me)))return;
    const session=token,notices=el('div','Загрузка уведомлений…'),issuance=el('div','Загрузка условий…'),plans=el('div','Загрузка тарифов…'),links=el('nav',null,'vpn-policy-links');
-   for(const [title,url] of [['Подписки и расход','#/vpn'],['Настройки платежей','#/management/payments']]){
+   for(const [title,url] of [['Подписки и расход','#/vpn'],['Серверы','#/vpn/servers'],['Настройки платежей','#/management/payments']]){
      const a=el('a',title,'ui-button');a.href=url;links.append(a);}
    host.replaceChildren(links,plans,notices,issuance);
    await Promise.all([[notices,'/vpn/settings',notifications],[issuance,'/vpn/settings/access',access],[plans,'/vpn/settings/plans',window.pushokVpnPlans.catalog]].map(async([node,path,render])=>{
